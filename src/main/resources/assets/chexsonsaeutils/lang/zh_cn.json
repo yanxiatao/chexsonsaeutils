@@ -1,0 +1,19 @@
+{
+  "item.chexsonsaeutils.multi_level_emitter": "多物品发信器",
+  "gui.chexsonsaeutils.MultiLevelEmitter": "多物品发信器",
+  "gui.chexsonsaeutils.multi_level_emitter": "多物品发信器",
+  "gui.chexsonsaeutils.multi_level_emitter.title": "多物品发信器配置",
+  "gui.chexsonsaeutils.multi_level_emitter.logic_mode": "逻辑模式",
+  "gui.chexsonsaeutils.multi_level_emitter.logic_mode.and": "与 (AND)",
+  "gui.chexsonsaeutils.multi_level_emitter.logic_mode.or": "或 (OR)",
+  "gui.chexsonsaeutils.multi_level_emitter.add_item": "添加物品",
+  "gui.chexsonsaeutils.multi_level_emitter.remove_item": "移除",
+  "gui.chexsonsaeutils.multi_level_emitter.threshold": "阈值",
+  "gui.chexsonsaeutils.multi_level_emitter.monitored_items": "监控物品",
+  "gui.chexsonsaeutils.multi_level_emitter.no_items": "未监控任何物品",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode": "红石模式",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.high_signal": "激活时发出信号",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.high_signal.tooltip": "当监控条件满足时发出红石信号（根据每个物品的比较模式和逻辑关系判断）",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.low_signal": "未激活时发出信号",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.low_signal.tooltip": "当监控条件不满足时发出红石信号（根据每个物品的比较模式和逻辑关系判断）"
+}

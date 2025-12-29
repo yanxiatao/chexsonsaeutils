@@ -1,0 +1,43 @@
+{
+  "$schema": "ae2:screens/schema.json",
+  "includes": ["ae2:screens/common/common.json", "ae2:screens/common/player_inventory.json"],
+  "background": {
+    "texture": "ae2:textures/guis/energy_level_emitter.png",
+    "srcRect": [0, 0, 176, 184]
+  },
+  "slots": {
+    "CONFIG": {
+      "left": 137,
+      "top": 15,
+      "grid": "VERTICAL"
+    },
+    "UPGRADE": {
+      "left": 187,
+      "top": 6,
+      "grid": "VERTICAL"
+    }
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.chexsonsaeutils.multi_level_emitter"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    }
+  },
+  "widgets": {
+    "thresholdInput_0": {
+      "left": 23,
+      "top": 10,
+      "width": 103,
+      "height": 12
+    },
+    "threshold_0": {
+      "$type": "number_entry",
+      "style": "thresholdInput_0"
+    }
+  }
+}

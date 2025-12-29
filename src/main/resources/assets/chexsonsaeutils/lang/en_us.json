@@ -1,0 +1,19 @@
+{
+  "item.chexsonsaeutils.multi_level_emitter": "Multi-Level Emitter",
+  "gui.chexsonsaeutils.MultiLevelEmitter": "Multi-Level Emitter",
+  "gui.chexsonsaeutils.multi_level_emitter": "Multi-Level Emitter",
+  "gui.chexsonsaeutils.multi_level_emitter.title": "Multi-Level Emitter Configuration",
+  "gui.chexsonsaeutils.multi_level_emitter.logic_mode": "Logic Mode",
+  "gui.chexsonsaeutils.multi_level_emitter.logic_mode.and": "AND",
+  "gui.chexsonsaeutils.multi_level_emitter.logic_mode.or": "OR",
+  "gui.chexsonsaeutils.multi_level_emitter.add_item": "Add Item",
+  "gui.chexsonsaeutils.multi_level_emitter.remove_item": "Remove",
+  "gui.chexsonsaeutils.multi_level_emitter.threshold": "Threshold",
+  "gui.chexsonsaeutils.multi_level_emitter.monitored_items": "Monitored Items",
+  "gui.chexsonsaeutils.multi_level_emitter.no_items": "No items monitored",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode": "Redstone Mode",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.high_signal": "Emit signal when active",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.high_signal.tooltip": "Emit redstone signal when conditions are met (based on comparison mode and logic relation of each item)",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.low_signal": "Emit signal when inactive",
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.low_signal.tooltip": "Emit redstone signal when conditions are not met (based on comparison mode and logic relation of each item)"
+}
