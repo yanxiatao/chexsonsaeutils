@@ -1403,10 +1403,9 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
         MultiLevelEmitterPart.LogicRelation current = relations.size() > buttonIndex
             ? relations.get(buttonIndex)
             : MultiLevelEmitterPart.LogicRelation.AND;
-        MultiLevelEmitterPart.LogicRelation next = current == MultiLevelEmitterPart.LogicRelation.AND
+        return current == MultiLevelEmitterPart.LogicRelation.AND
             ? MultiLevelEmitterPart.LogicRelation.OR
             : MultiLevelEmitterPart.LogicRelation.AND;
-        return next;
     }
 
     /**

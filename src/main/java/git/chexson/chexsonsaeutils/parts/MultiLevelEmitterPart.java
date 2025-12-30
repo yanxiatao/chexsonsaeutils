@@ -134,14 +134,14 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
                     
                     for (int i = 0; i < itemCount; i++) {
                         AEKey configuredKey = config.getKey(i);
-                        if (configuredKey != null && what.equals(configuredKey)) {
+                        if (what.equals(configuredKey)) {
                             isConfiguredItem = true;
                             slotIndex = i;
                             break;
                         }
                     }
                     
-                    if (isConfiguredItem && slotIndex >= 0) {
+                    if (isConfiguredItem) {
                         // 直接更新对应的lastReportedValue
                         lastReportedValues.put(slotIndex, amount);
                         updateState();
