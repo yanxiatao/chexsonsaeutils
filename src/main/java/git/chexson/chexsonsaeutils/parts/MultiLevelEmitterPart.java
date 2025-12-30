@@ -132,14 +132,14 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
                 
                 for (int i = 0; i < itemCount; i++) {
                     AEKey configuredKey = config.getKey(i);
-                    if (configuredKey != null && what.equals(configuredKey)) {
+                    if (what.equals(configuredKey)) {
                         isConfiguredItem = true;
                         slotIndex = i;
                         break;
                     }
                 }
                 
-                if (isConfiguredItem && slotIndex >= 0 && !isUpgradedWith(AEItems.FUZZY_CARD)) {
+                if (isConfiguredItem && !isUpgradedWith(AEItems.FUZZY_CARD)) {
                     // 如果没有安装模糊卡且是配置的物品发生变化，直接更新对应的lastReportedValue
                     lastReportedValues.put(slotIndex, amount);
                     updateState();
