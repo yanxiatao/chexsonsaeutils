@@ -543,7 +543,8 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
                                     relation == MultiLevelEmitterPart.LogicRelation.AND 
                                         ? Component.literal("A").withStyle(ChatFormatting.YELLOW)
                                         : Component.literal("O").withStyle(ChatFormatting.GREEN)
-                                );            }
+                                );
+            }
             
             rows.add(new ScrollableRow(i, input, comparisonButton, i < logicButtons.size() ? logicButtons.get(i) : null));
         }
@@ -565,11 +566,7 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
         
         // 更新控件的可见性和位置
         for (int i = 0; i < rows.size(); i++) {
-            // 检查rows列表是否包含足够的元素
-            if (i >= rows.size()) {
-                break; // 避免IndexOutOfBoundsException
-            }
-            
+
             ScrollableRow row = rows.get(i);
             int visibleIndex = i - scrollOffset;
             
@@ -603,11 +600,7 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
         int configTotalRows = itemCount + 1; // 显示 n+1 行
         
         for (int i = 0; i < configSlots.size(); i++) {
-            // 检查configSlots列表是否包含足够的元素
-            if (i >= configSlots.size()) {
-                break; // 避免IndexOutOfBoundsException
-            }
-            
+
             int visibleIndex = i - scrollOffset;
             // 只显示已配置的槽位和下一个空槽位（用于添加新物品）
             if (i < configTotalRows && visibleIndex >= 0 && visibleIndex < MAX_VISIBLE_ROWS) {
