@@ -16,6 +16,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +54,10 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
     private final List<Button> comparisonButtons = new ArrayList<>();
     private final List<Button> logicButtons = new ArrayList<>();
     private final List<ScrollableRow> rows = new ArrayList<>();
+    
+    // 编辑状态跟踪 - 现在只跟踪active状态
+    private final List<Boolean> inputActiveStates = new ArrayList<>();
+    private boolean lastCraftingCardState = false; // 跟踪合成卡状态，避免重复更新
     
     // 滚动状态
     private int scrollOffset = 0;
@@ -122,288 +127,1108 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
         return MultiLevelEmitterUtils.calculateConfiguredItemCount(menu.getHost().getConfig());
     }
     
-    @Override
-    protected void updateBeforeRender() {
-        super.updateBeforeRender();
-
-        // 计算实际的配置物品数量（从配置槽位中计算）
-        int actualConfiguredItemCount = calculateConfiguredItemCount();
-        
-        // 重新计算期望的行数（使用实际数量）
-        int expectedRows = actualConfiguredItemCount + 1;
-        
-
-        
-        // 检查数据是否已同步
-        boolean dataSynced = menu.dataSynced;
-        
-        // 延迟刷新逻辑：在数据同步后等待几帧再刷新控件
-        if (dataSynced) {
-            framesSinceDataSync++;
-        }
-        
-        // 在数据同步后的前几帧，强制刷新控件
-        boolean initialRefresh = dataSynced && framesSinceDataSync <= 3 && actualConfiguredItemCount > 0;
-        
-        // 检测强制刷新标志
-        if (menu.forceRefresh) {
+            @Override
     
-            menu.forceRefresh = false;
-            // 直接更新所有输入框的值（从 Part 中读取）
-            for (int i = 0; i < rows.size(); i++) {
-                ScrollableRow row = rows.get(i);
-                if (row != null && row.input != null) {
-                                      long thresholdFromPart = menu.getHost().getReportingValueForSlot(i);
-                                      String newValue = String.valueOf(thresholdFromPart);
-                                      String currentValue = row.input.getValue();
-                                      if (!currentValue.equals(newValue)) {
-                                          row.input.setValue(newValue);
-                                          row.input.setHighlightPos(newValue.length());
-                                      }
-                                      // 更新 Menu 的 thresholds 映射（避免触发 setResponder）
-                                      menu.thresholds.put(i, thresholdFromPart);
-                                      }
-            }
-            return;
-        }
+            protected void updateBeforeRender() {
+    
+                super.updateBeforeRender();
+    
         
-                                // 检测配置物品数量是否减少（通过比较实际数量和上次记录的数量）
-        
-                                boolean itemCountDecreased = (actualConfiguredItemCount < lastConfiguredItemCount && lastConfiguredItemCount > 0);
-        
-                                if (itemCountDecreased) {
-        
+    
+                // 计算实际的配置物品数量（从配置槽位中计算）
+    
+                int actualConfiguredItemCount = calculateConfiguredItemCount();
+    
+                
+    
+                // 重新计算期望的行数（使用实际数量）
+    
+                int expectedRows;
 
+
+                // 检查数据是否已同步
+    
+                boolean dataSynced = menu.dataSynced;
+    
+                
+    
+                // 延迟刷新逻辑：在数据同步后等待几帧再刷新控件
+    
+                if (dataSynced) {
+    
+                    framesSinceDataSync++;
+    
+                }
+    
+                
+    
+                // 在数据同步后的前几帧，强制刷新控件
+    
+                boolean initialRefresh = dataSynced && framesSinceDataSync <= 3 && actualConfiguredItemCount > 0;
+    
+                
+    
+                // 检测强制刷新标志
+    
+                if (menu.forceRefresh) {
+    
+            
+    
+                    menu.forceRefresh = false;
+    
+                    // 直接更新所有输入框的值（从 Part 中读取）
+    
+                    for (int i = 0; i < rows.size(); i++) {
+    
+                        ScrollableRow row = rows.get(i);
+    
+                        if (row != null && row.input != null) {
+    
+                                              long thresholdFromPart = menu.getHost().getReportingValueForSlot(i);
+    
+                                              String newValue = String.valueOf(thresholdFromPart);
+    
+                                              String currentValue = row.input.getValue();
+    
+                                              if (!currentValue.equals(newValue)) {
+    
+                                                  row.input.setValue(newValue);
+    
+                                                  row.input.setHighlightPos(newValue.length());
+    
+                                              }
+    
+                                              // 更新 Menu 的 thresholds 映射（避免触发 setResponder）
+    
+                                              menu.thresholds.put(i, thresholdFromPart);
+    
+                                              }
+    
+                    }
+    
+                    return;
+    
+                }
+    
+                
+    
+                                        // 检测配置物品数量是否减少（通过比较实际数量和上次记录的数量）
+    
+                
+    
+                                        boolean itemCountDecreased = (actualConfiguredItemCount < lastConfiguredItemCount && lastConfiguredItemCount > 0);
+    
+                
+    
+                                        if (itemCountDecreased) {
+    
+                
+    
         
-                                    // 由于删除物品时会移动后面的物品，所以需要更新所有有效的输入框
+    
+                
+    
+                                            // 由于删除物品时会移动后面的物品，所以需要更新所有有效的输入框
+    
+                
+    
+                                            // 但只更新到新的物品数量+1（n+1行）
+    
+                
+    
+                                            int rowsToUpdate = Math.min(rows.size(), actualConfiguredItemCount + 1);
+    
+                
+    
+                                            for (int i = 0; i < rowsToUpdate; i++) {
+    
+                                                
+    
+                                                // 检查rows列表是否包含足够的元素
+    
+                                                if (i >= rows.size()) {
+    
+                                                    break; // 避免IndexOutOfBoundsException
+    
+                                                }
+    
+                                                
+    
+                                                ScrollableRow row = rows.get(i);
+    
+                
+    
+                                                if (row != null && row.input != null) {
+    
+                
+    
+                                                    long thresholdFromPart = menu.getHost().getReportingValueForSlot(i);
+    
+                
+    
+                                                    String newValue = String.valueOf(thresholdFromPart);
+    
+                
+    
+                                                    String currentValue = row.input.getValue();
+    
+                
+    
+                                                    if (!currentValue.equals(newValue)) {
+    
+                
+    
+                                                        row.input.setValue(newValue);
+    
+                
+    
+                                                        row.input.setHighlightPos(newValue.length());
+    
+                
+    
         
-                                                                        // 但只更新到新的物品数量+1（n+1行）
+    
+                
+    
+                                                    }
+    
+                
+    
+                                                                        // 更新 Menu 的 thresholds 映射（确保下次刷新时使用正确的值）
+    
+                
+    
+                                                                        if (!Objects.equals(menu.thresholds.get(i), thresholdFromPart)) {
+    
+                
+    
+                                                                            menu.thresholds.put(i, thresholdFromPart);
+    
+                
+    
+                                        
+    
+                                        
+    
+                                                                        }
+    
+                
+    
+                                                }
+    
+                
+    
+                                            }
+    
+                
+    
+                                            lastConfiguredItemCount = actualConfiguredItemCount;
+    
+                
+    
+                                        }
+    
+                
+    
+                                        
+    
+                
+    
+                                        // 重新计算期望的行数（使用实际数量）
+    
+                
+    
+                                        expectedRows = actualConfiguredItemCount + 1;
+    
+                
+    
+                                        
+    
+                
+    
+                                        // 检查是否需要刷新控件
+    
+                
+    
+                                        if (!dataSynced || actualConfiguredItemCount != lastConfiguredItemCount || rows.size() != expectedRows || initialRefresh) {
+    
+                
+    
+                                    
+    
+                
+    
+                                            lastConfiguredItemCount = actualConfiguredItemCount;
+    
+                
+    
+                                            updateDynamicControls();
+    
+                
+    
+                                        } else if (!itemCountDecreased) {
+    
+                
+    
+                                            // 只有在物品数量没有减少时，才执行常规的更新逻辑
+    
+                
+    
+                                            // 行数没有变化，更新现有输入框的值（只更新实际需要的行）
+    
+                
+    
+                                            int rowsToUpdate = Math.min(rows.size(), actualConfiguredItemCount + 1);
+    
+                
+    
+                                            for (int i = 0; i < rowsToUpdate; i++) {
+    
+                
+    
+                                                // 检查rows列表是否包含足够的元素
+    
+                                                if (i >= rows.size()) {
+    
+                                                    break; // 避免IndexOutOfBoundsException
+    
+                                                }
+    
+                
+    
+                                                ScrollableRow row = rows.get(i);
+    
+                
+    
+                                                if (row != null && row.input != null) {
+    
+                
+    
+                                                    // 从 Part 中读取最新的阈值（而不是从 Menu 的 thresholds 数组）
+    
+                
+    
+                                                    long latestThreshold = menu.getThreshold(i);
+    
+                
+    
+                                                    String currentValue = row.input.getValue();
+    
+                
+    
+                                                    String newValue = String.valueOf(latestThreshold);
+    
+                
+    
         
-                                                                        int rowsToUpdate = Math.min(rows.size(), actualConfiguredItemCount + 1);
-        
-                                                                        
-        
-                                                                        for (int i = 0; i < rowsToUpdate; i++) {
-        
-                                                                            
-        
-                                                                            // 检查rows列表是否包含足够的元素
-        
-                                                                            if (i >= rows.size()) {
-        
-                                                                                break; // 避免IndexOutOfBoundsException
-        
-                                                                            }
-        
-                                                                            
-        
-                                                                            ScrollableRow row = rows.get(i);
-        
-                                                                            
-        
-                                                                            if (row != null && row.input != null) {
-        
+    
+                
+    
+                                                    if (!currentValue.equals(newValue)) {
+    
+                
+    
+                                                        row.input.setValue(newValue);
+    
+                
+    
+                                                        // 更新光标位置，确保文本正确显示
+    
+                
+    
+                                                        row.input.setHighlightPos(newValue.length());
+    
+                
+    
+                                                    }
+    
+                
+    
+                                                                                                // 更新 Menu 的 thresholds 映射（确保下次刷新时使用正确的值）
+    
+                                                    
+    
+                                                                                                if (!Objects.equals(menu.thresholds.get(i), latestThreshold)) {
+    
+                                                    
+    
+                                                                                                    menu.thresholds.put(i, latestThreshold);
+    
+                                                    
+    
+                                                    
+    
+                                                                                                }        
+    
+                                                }
+    
+                
+    
+                                            }
+    
+                
+    
+                                        }
+    
+                
+    
+                                                                // 每帧都更新配置槽位的位置（确保槽位位置正确）
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                updateScrollPositions();
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                // 配置阈值输入框和按钮的可用性：如果安装了合成卡，则禁用所有相关控件
+    
+                
+    
                                                                                 
-        
-                                                                                long thresholdFromPart = menu.getHost().getReportingValueForSlot(i);
-        
+    
+                
+    
+                                                                                final boolean hasCraftingCard = menu.hasUpgrade(AEItems.CRAFTING_CARD);
+    
+                
+    
+                                                                
+    
+                
+    
                                                                                 
-        
-                                                                                String newValue = String.valueOf(thresholdFromPart);
-        
+    
+                
+    
                                                                                 
-        
-                                                                                String currentValue = row.input.getValue();
-        
+    
+                
+    
+                                                                                // 只有在合成卡状态改变时才更新控件状态，避免无限循环
+    
+                
+    
                                                                                 
-        
-                                                                                if (!currentValue.equals(newValue)) {
-        
-                                                                                    
-        
-                                                                                    row.input.setValue(newValue);
-        
-                                                                                    
-        
-                                                                                    row.input.setHighlightPos(newValue.length());
-        
-                                                                                    
-        
+    
+                
+    
+                                                                                if (lastCraftingCardState != hasCraftingCard) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                    lastCraftingCardState = hasCraftingCard;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                    // 更新阈值输入框的状态
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                    for (int i = 0; i < thresholdInputs.size(); i++) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                        EditBox input = thresholdInputs.get(i);
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                        input.active = !hasCraftingCard;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                        if (i < inputActiveStates.size()) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                            inputActiveStates.set(i, !hasCraftingCard);
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                        } else {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                            // 确保列表大小足够
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                            while (inputActiveStates.size() <= i) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                                inputActiveStates.add(true); // 默认为true，但在下一行会更新
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                            }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                            inputActiveStates.set(i, !hasCraftingCard);
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                        }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                    }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                    // 更新比较模式按钮和逻辑按钮的激活状态
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                    for (Button button : comparisonButtons) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                        button.active = !hasCraftingCard;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                    }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                    for (Button button : logicButtons) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                        button.active = !hasCraftingCard;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                                    }
+    
+                
+    
+                                                                
+    
+                
+    
                                                                                 }
-        
-                                                                                
-        
-                                                                                                    // 更新 Menu 的 thresholds 映射（确保下次刷新时使用正确的值）
-        
-                                                                                                    
-        
-                                                                                                    if (!Objects.equals(menu.thresholds.get(i), thresholdFromPart)) {
-        
-                                                                                                        
-        
-                                                                                                        menu.thresholds.put(i, thresholdFromPart);
-        
-                                                                                                        
-        
-                                                                                                    }
-        
-                                                                                                    
-        
-                                                                            }
-        
-                                                                            
-        
-                                                                        }
-        
-                                    lastConfiguredItemCount = actualConfiguredItemCount;
-        
-                                }
-        
-                                
-        
-                                // 重新计算期望的行数（使用实际数量）
-        
-                                expectedRows = actualConfiguredItemCount + 1;
-        
-                                
-        
-                                // 检查是否需要刷新控件
-        
-                                if (!dataSynced || actualConfiguredItemCount != lastConfiguredItemCount || rows.size() != expectedRows || initialRefresh) {
-        
-                            
-        
-                                    lastConfiguredItemCount = actualConfiguredItemCount;
-        
-                                    updateDynamicControls();
-        
-                                                                } else if (!itemCountDecreased) {
-        
-                                        
-        
-                                                                    // 只有在物品数量没有减少时，才执行常规的更新逻辑
-        
-                                        
-        
-                                                                    // 行数没有变化，更新现有输入框的值（只更新实际需要的行）
-        
-                                        
-        
-                                                                    int rowsToUpdate = Math.min(rows.size(), actualConfiguredItemCount + 1);
-        
-                                        
-        
-                                                                    for (int i = 0; i < rowsToUpdate; i++) {
-        
-                                        
-        
-                                                                        // 检查rows列表是否包含足够的元素
-        
-                                                                        if (i >= rows.size()) {
-        
-                                                                            break; // 避免IndexOutOfBoundsException
-        
-                                                                        }
-        
-                                        
-        
-                                                                        ScrollableRow row = rows.get(i);
-        
-                                        
-        
-                                                                        if (row != null && row.input != null) {
-        
-                                        
-        
-                                                                            // 从 Part 中读取最新的阈值（而不是从 Menu 的 thresholds 数组）
-        
-                                        
-        
-                                                                            long latestThreshold = menu.getThreshold(i);
-        
-                                        
-        
-                                                                            String currentValue = row.input.getValue();
-        
-                                        
-        
-                                                                            String newValue = String.valueOf(latestThreshold);
-        
-                                        
-        
-                                
-        
-                                        
-        
-                                                                            if (!currentValue.equals(newValue)) {
-        
-                                        
-        
-                                                                                row.input.setValue(newValue);
-        
-                                        
-        
-                                                                                // 更新光标位置，确保文本正确显示
-        
-                                        
-        
-                                                                                row.input.setHighlightPos(newValue.length());
-        
-                                        
-        
-                                                                            }
-        
-                                        
-        
-                                                                                                                        // 更新 Menu 的 thresholds 映射（确保下次刷新时使用正确的值）
-        
-                                                                            
-        
-                                                                                                                        if (!Objects.equals(menu.thresholds.get(i), latestThreshold)) {
-        
-                                                                            
-        
-                                                                                                                            menu.thresholds.put(i, latestThreshold);
-        
-                                                                            
-        
-                                                                            
-        
-                                                                                                                        }        
-        
-                                                                        }
-        
-                                        
-        
-                                                                    }
-        
-                                        
-        
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                // 更新工具栏按钮状态
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                boolean redstoneModeActive = !hasCraftingCard;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                if (this.redstoneMode.active != redstoneModeActive) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                    this.redstoneMode.active = redstoneModeActive;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
                                                                 }
-        
-        // 每帧都更新配置槽位的位置（确保槽位位置正确）
-        updateScrollPositions();
-
-        // 更新工具栏按钮状态
-        this.redstoneMode.active = true;
-        this.redstoneMode.set(menu.getRedStoneMode());
-
-        // 模糊模式按钮：只有在支持模糊搜索时才显示
-        boolean supportsFuzzy = menu.supportsFuzzySearch();
-        this.fuzzyMode.visible = supportsFuzzy;
-        this.fuzzyMode.active = supportsFuzzy;
-        if (supportsFuzzy) {
-            this.fuzzyMode.set(menu.getFuzzyMode());
-        }
-
-        // 合成模式按钮：只有在安装了合成卡时才显示
-        boolean hasCraftingCard = menu.hasUpgrade(AEItems.CRAFTING_CARD);
-        this.craftingMode.visible = hasCraftingCard;
-        this.craftingMode.active = hasCraftingCard;
-        if (hasCraftingCard) {
-            this.craftingMode.set(menu.getCraftingMode());
-        }
-    }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                this.redstoneMode.set(menu.getRedStoneMode());
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                // 模糊模式按钮：只有在支持模糊搜索时才显示
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                boolean supportsFuzzy = menu.supportsFuzzySearch();
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                boolean fuzzyVisible = supportsFuzzy && !hasCraftingCard;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                boolean fuzzyActive = supportsFuzzy && !hasCraftingCard;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                if (this.fuzzyMode.visible != fuzzyVisible) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                    this.fuzzyMode.visible = fuzzyVisible;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                if (this.fuzzyMode.active != fuzzyActive) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                    this.fuzzyMode.active = fuzzyActive;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                if (supportsFuzzy) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                    this.fuzzyMode.set(menu.getFuzzyMode());
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                // 合成模式按钮：只有在安装了合成卡时才显示
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                boolean craftingActive = menu.hasUpgrade(AEItems.CRAFTING_CARD);
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                if (this.craftingMode.visible != craftingActive) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                    this.craftingMode.visible = craftingActive;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                if (this.craftingMode.active != craftingActive) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                    this.craftingMode.active = craftingActive;
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                if (craftingActive) {
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                    this.craftingMode.set(menu.getCraftingMode());
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                }
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                                
+    
+                
+    
+                                                            }
+    
+                
+    
+                
     
     /**
      * 更新动态控件
@@ -418,139 +1243,170 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
             return;
         }
         
-        // 清空所有旧的控件
-        this.children().removeIf(child -> thresholdInputs.contains(child) || logicButtons.contains(child) || comparisonButtons.contains(child));
-        this.renderables.removeIf(child -> thresholdInputs.contains(child) || logicButtons.contains(child) || comparisonButtons.contains(child));
-        
-        // 清除旧控件列表
-        thresholdInputs.clear();
-        logicButtons.clear();
-        comparisonButtons.clear();
-        rows.clear();
-        
-        // 创建每行的控件
-        for (int i = 0; i < totalRows; i++) {
-            final int rowIndex = i;
-            
-            // 比较模式按钮（放在输入框左方）
-            MultiLevelEmitterPart.ComparisonMode comparisonMode = menu.getComparisonMode(rowIndex);
-            Button comparisonButton = Button.builder(
-                Component.literal(comparisonMode == MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL ? "≥" : "<"),
-                btn -> {
-                    MultiLevelEmitterPart.ComparisonMode current = menu.getComparisonMode(rowIndex);
-                    MultiLevelEmitterPart.ComparisonMode next = current == MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL 
-                        ? MultiLevelEmitterPart.ComparisonMode.LESS_THAN 
-                        : MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
-                    
-                    // 使用客户端操作同步比较模式
-                    menu.setComparisonMode(rowIndex, next);
-                    
-                    // 立即更新按钮显示
-                    btn.setMessage(next == MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL 
-                        ? Component.literal("≥").withStyle(ChatFormatting.YELLOW)
-                        : Component.literal("<").withStyle(ChatFormatting.RED));
-                }
-            ).bounds(
-                this.leftPos + COMPARISON_X,
-                this.topPos + CONTENT_TOP + i * ROW_HEIGHT,
-                COMPARISON_WIDTH,
-                12
-            ).build();
-            comparisonButton.setMessage(
-                comparisonMode == MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL 
-                    ? Component.literal("≥").withStyle(ChatFormatting.YELLOW)
-                    : Component.literal("<").withStyle(ChatFormatting.RED)
-            );
-            comparisonButtons.add(comparisonButton);
-            this.addRenderableWidget(comparisonButton);
-            
-            // 阈值输入框（坐标是相对于窗口的绝对位置）
-            EditBox input = new EditBox(
-                this.font,
-                this.leftPos + INPUT_X,
-                this.topPos + CONTENT_TOP + i * ROW_HEIGHT,
-                INPUT_WIDTH,
-                12,
-                Component.literal("Threshold")
-            );
-            // 从 Part 中读取最新的阈值（而不是从 Menu 的 thresholds 数组）
-            long thresholdValue = menu.getHost().getReportingValueForSlot(i);
-            input.setValue(String.valueOf(thresholdValue));
-
-            input.setResponder(value -> {
-                // 检查输入是否为有效数字
-                if (value.isEmpty()) {
-                    // 空字符串允许，设置为0
-                    menu.setReportingValue(0, rowIndex);
-                    // 确保Part被标记为需要保存
-                    menu.getHost().getHost().markForSave();
-                    return;
-                }
-                try {
-                    long threshold = Long.parseLong(value);
-                    // 只有当值真正改变时才更新
-                    if (threshold != menu.getThreshold(rowIndex)) {
-                        menu.setReportingValue(threshold, rowIndex);
-                        // 确保Part被标记为需要保存
-                        menu.getHost().getHost().markForSave();
+                        // 清空所有旧的控件
+                        this.children().removeIf(child -> thresholdInputs.contains(child) || logicButtons.contains(child) || comparisonButtons.contains(child));
+                        this.renderables.removeIf(child -> thresholdInputs.contains(child) || logicButtons.contains(child) || comparisonButtons.contains(child));
                         
-                        // 添加额外的同步，防止快速操作时数据不同步
-                        menu.broadcastChanges();
-                    }
-                } catch (NumberFormatException e) {
-                    // 无效输入，不修改
-                }
-            });
-            // 设置光标位置，确保文本正确显示
-            input.setHighlightPos(input.getValue().length());
-            thresholdInputs.add(input);
-            this.addRenderableWidget(input);
-            
-            // 逻辑关系按钮（放在上下两个输入框之间，最后一行不显示）
-            if (i < totalRows - 1) {
-                final int buttonIndex = i;
-                Button logicButton = Button.builder(Component.literal("AND"), btn -> {
-                    List<MultiLevelEmitterPart.LogicRelation> relations = menu.getLogicRelations();
-                    MultiLevelEmitterPart.LogicRelation current = relations.size() > buttonIndex
-                        ? relations.get(buttonIndex)
-                        : MultiLevelEmitterPart.LogicRelation.AND;
-                    MultiLevelEmitterPart.LogicRelation next = current == MultiLevelEmitterPart.LogicRelation.AND
-                        ? MultiLevelEmitterPart.LogicRelation.OR
-                        : MultiLevelEmitterPart.LogicRelation.AND;
-
-                    // 使用客户端操作同步逻辑关系
-                    menu.setLogicRelation(buttonIndex, next);
+                        // 清除旧控件列表
+                        thresholdInputs.clear();
+                        logicButtons.clear();
+                        comparisonButtons.clear();
+                        rows.clear();
+                        inputActiveStates.clear(); // 清除激活状态跟踪                
+                // 创建每行的控件
+                for (int i = 0; i < totalRows; i++) {
+                    final int rowIndex = i;
                     
-                    // 立即更新按钮显示
-                    btn.setMessage(next == MultiLevelEmitterPart.LogicRelation.AND 
-                        ? Component.literal("A").withStyle(ChatFormatting.YELLOW)
-                        : Component.literal("O").withStyle(ChatFormatting.GREEN));
-                }).bounds(
-                    this.leftPos + LOGIC_X,
-                    this.topPos + CONTENT_TOP + (i + 1) * ROW_HEIGHT - 6,  // 放在上下两个输入框之间
-                    LOGIC_WIDTH,
-                    12
-                ).build();
-                logicButtons.add(logicButton);
-                this.addRenderableWidget(logicButton);
-                
-                                // 更新按钮状态
-                                List<MultiLevelEmitterPart.LogicRelation> relations = menu.getLogicRelations();
-                                MultiLevelEmitterPart.LogicRelation relation = relations != null && buttonIndex < relations.size() 
-                                    ? relations.get(buttonIndex) 
-                                    : MultiLevelEmitterPart.LogicRelation.AND;
-                                logicButton.setMessage(
-                                    relation == MultiLevelEmitterPart.LogicRelation.AND 
-                                        ? Component.literal("A").withStyle(ChatFormatting.YELLOW)
-                                        : Component.literal("O").withStyle(ChatFormatting.GREEN)
+                                // 比较模式按钮（放在输入框左方）
+                                MultiLevelEmitterPart.ComparisonMode comparisonMode = menu.getComparisonMode(rowIndex);
+                                Button comparisonButton = Button.builder(
+                                    Component.literal(comparisonMode == MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL ? "≥" : "<"),
+                                    btn -> {
+                                        // 检查是否安装了合成卡，如果是则不允许修改比较模式
+                                        if (menu.hasUpgrade(AEItems.CRAFTING_CARD)) {
+                                            // 如果安装了合成卡，不执行任何操作
+                                            return;
+                                        }
+                                        
+                                        MultiLevelEmitterPart.ComparisonMode current = menu.getComparisonMode(rowIndex);
+                                        MultiLevelEmitterPart.ComparisonMode next = current == MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL 
+                                            ? MultiLevelEmitterPart.ComparisonMode.LESS_THAN 
+                                            : MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
+                                        
+                                        // 使用客户端操作同步比较模式
+                                        menu.setComparisonMode(rowIndex, next);
+                                        
+                                        // 立即更新按钮显示
+                                        btn.setMessage(next == MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL 
+                                            ? Component.literal("≥").withStyle(ChatFormatting.YELLOW)
+                                            : Component.literal("<").withStyle(ChatFormatting.RED));
+                                    }
+                                ).bounds(
+                                    this.leftPos + COMPARISON_X,
+                                    this.topPos + CONTENT_TOP + i * ROW_HEIGHT,
+                                    COMPARISON_WIDTH,
+                                    12
+                                ).build();
+                                comparisonButton.setMessage(
+                                    comparisonMode == MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL 
+                                        ? Component.literal("≥").withStyle(ChatFormatting.YELLOW)
+                                        : Component.literal("<").withStyle(ChatFormatting.RED)
                                 );
-            }
-            
-            rows.add(new ScrollableRow(i, input, comparisonButton, i < logicButtons.size() ? logicButtons.get(i) : null));
-        }
-        
+                                // 设置按钮的激活状态
+                                comparisonButton.active = !menu.hasUpgrade(AEItems.CRAFTING_CARD);
+                                comparisonButtons.add(comparisonButton);
+                                this.addRenderableWidget(comparisonButton);                    
+                                            // 阈值输入框（坐标是相对于窗口的绝对位置）
+                                            EditBox input = new EditBox(
+                                                this.font,
+                                                this.leftPos + INPUT_X,
+                                                this.topPos + CONTENT_TOP + i * ROW_HEIGHT,
+                                                INPUT_WIDTH,
+                                                12,
+                                                Component.literal("Threshold")
+                                            );
+                                            // 从 Part 中读取最新的阈值（而不是从 Menu 的 thresholds 数组）
+                                            long thresholdValue = menu.getHost().getReportingValueForSlot(i);
+                                            input.setValue(String.valueOf(thresholdValue));
+                                
+                                            // 配置阈值输入框的可用性：如果安装了合成卡，则禁用阈值输入
+                                            final boolean hasCraftingCard = menu.hasUpgrade(AEItems.CRAFTING_CARD);
+                                            input.active = !hasCraftingCard; // 只使用active属性
+                                
+                                            input.setResponder(value -> {
+                                                // 检查是否安装了合成卡，如果已安装则不允许修改阈值
+                                                if (menu.hasUpgrade(AEItems.CRAFTING_CARD)) {
+                                                    // 如果安装了合成卡，恢复原始值并返回
+                                                    input.setValue(String.valueOf(menu.getThreshold(rowIndex)));
+                                                    return;
+                                                }
+                                                
+                                                // 检查输入是否为有效数字
+                                                if (value.isEmpty()) {
+                                                    // 空字符串允许，设置为0
+                                                    menu.setReportingValue(0, rowIndex);
+                                                    // 确保Part被标记为需要保存
+                                                    menu.getHost().getHost().markForSave();
+                                                    return;
+                                                }
+                                                try {
+                                                    long threshold = Long.parseLong(value);
+                                                    // 只有当值真正改变时才更新
+                                                    if (threshold != menu.getThreshold(rowIndex)) {
+                                                        menu.setReportingValue(threshold, rowIndex);
+                                                        // 确保Part被标记为需要保存
+                                                        menu.getHost().getHost().markForSave();
+                                                        
+                                                        // 添加额外的同步，防止快速操作时数据不同步
+                                                        menu.broadcastChanges();
+                                                    }
+                                                } catch (NumberFormatException e) {
+                                                    // 无效输入，不修改
+                                                    // 恢复之前的值
+                                                    input.setValue(String.valueOf(menu.getThreshold(rowIndex)));
+                                                }
+                                            });
+                                            // 设置光标位置，确保文本正确显示
+                                            input.setHighlightPos(input.getValue().length());
+                                            thresholdInputs.add(input);
+                                            this.addRenderableWidget(input);
+                                            
+                                            // 记录当前激活状态
+                                            inputActiveStates.add(!hasCraftingCard);                                // 逻辑关系按钮（放在上下两个输入框之间，最后一行不显示）
+                                if (i < totalRows - 1) {
+                                    final int buttonIndex = i;
+                                    Button logicButton = Button.builder(Component.literal("AND"), btn -> {
+                                        // 检查是否安装了合成卡，如果是则不允许修改逻辑关系
+                                        if (menu.hasUpgrade(AEItems.CRAFTING_CARD)) {
+                                            // 如果安装了合成卡，不执行任何操作
+                                            return;
+                                        }
+
+                                        MultiLevelEmitterPart.LogicRelation next = getLogicRelation(buttonIndex);
+
+                                        // 使用客户端操作同步逻辑关系
+                                        menu.setLogicRelation(buttonIndex, next);
+                                        
+                                        // 立即更新按钮显示
+                                        btn.setMessage(next == MultiLevelEmitterPart.LogicRelation.AND 
+                                            ? Component.literal("A").withStyle(ChatFormatting.YELLOW)
+                                            : Component.literal("O").withStyle(ChatFormatting.GREEN));
+                                    }).bounds(
+                                        this.leftPos + LOGIC_X,
+                                        this.topPos + CONTENT_TOP + (i + 1) * ROW_HEIGHT - 6,  // 放在上下两个输入框之间
+                                        LOGIC_WIDTH,
+                                        12
+                                    ).build();
+                                    logicButton.active = !menu.hasUpgrade(AEItems.CRAFTING_CARD);
+                                    logicButtons.add(logicButton);
+                                    this.addRenderableWidget(logicButton);
+                                    
+                                    // 更新按钮状态
+                                    List<MultiLevelEmitterPart.LogicRelation> relations = menu.getLogicRelations();
+                                    MultiLevelEmitterPart.LogicRelation relation = relations != null && buttonIndex < relations.size() 
+                                        ? relations.get(buttonIndex) 
+                                        : MultiLevelEmitterPart.LogicRelation.AND;
+                                    logicButton.setMessage(
+                                        relation == MultiLevelEmitterPart.LogicRelation.AND 
+                                            ? Component.literal("A").withStyle(ChatFormatting.YELLOW)
+                                            : Component.literal("O").withStyle(ChatFormatting.GREEN)
+                                    );
+                                }                    
+                    rows.add(new ScrollableRow(i, input, comparisonButton, i < logicButtons.size() ? logicButtons.get(i) : null));
+                }        
         // 更新滚动位置（包括配置槽位）
         updateScrollPositions();
+    }
+
+    private MultiLevelEmitterPart.@NotNull LogicRelation getLogicRelation(int buttonIndex) {
+        List<MultiLevelEmitterPart.LogicRelation> relations = menu.getLogicRelations();
+        MultiLevelEmitterPart.LogicRelation current = relations.size() > buttonIndex
+            ? relations.get(buttonIndex)
+            : MultiLevelEmitterPart.LogicRelation.AND;
+        MultiLevelEmitterPart.LogicRelation next = current == MultiLevelEmitterPart.LogicRelation.AND
+            ? MultiLevelEmitterPart.LogicRelation.OR
+            : MultiLevelEmitterPart.LogicRelation.AND;
+        return next;
     }
 
     /**
@@ -564,35 +1420,59 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
             scrollOffset = Math.min(scrollOffset, totalRows - MAX_VISIBLE_ROWS);
         }
         
-        // 更新控件的可见性和位置
-        for (int i = 0; i < rows.size(); i++) {
-
-            ScrollableRow row = rows.get(i);
-            int visibleIndex = i - scrollOffset;
-            
-            if (visibleIndex >= 0 && visibleIndex < MAX_VISIBLE_ROWS) {
-                // 可见（控件坐标是相对于窗口的绝对位置）
-                row.input.visible = true;
-                row.input.active = true;
-                row.input.setY(this.topPos + CONTENT_TOP + visibleIndex * ROW_HEIGHT);
-                
-                if (row.logicButton != null) {
-                    row.logicButton.visible = true;
-                    row.logicButton.active = true;
-                    row.logicButton.setY(this.topPos + CONTENT_TOP + (visibleIndex + 1) * ROW_HEIGHT - 6);
-                }
-            } else {
-                // 不可见
-                row.input.visible = false;
-                row.input.active = false;
-                
-                if (row.logicButton != null) {
-                    row.logicButton.visible = false;
-                    row.logicButton.active = false;
-                }
-            }
-        }
-        
+                // 更新控件的可见性和位置
+                for (int i = 0; i < rows.size(); i++) {
+                    // 检查rows列表是否包含足够的元素
+                    
+                    ScrollableRow row = rows.get(i);
+                    int visibleIndex = i - scrollOffset;
+                    
+                    if (visibleIndex >= 0 && visibleIndex < MAX_VISIBLE_ROWS) {
+                        // 可见（控件坐标是相对于窗口的绝对位置）
+                        row.input.visible = true;
+                        // 根据合成卡状态更新输入框的激活状态
+                        final boolean hasCraftingCard = menu.hasUpgrade(AEItems.CRAFTING_CARD);
+                        if (row.input.active == hasCraftingCard) {
+                            row.input.active = !hasCraftingCard;
+                        }
+                        
+                        // 配置阈值输入框的可用性：如果安装了合成卡，则禁用阈值输入
+                        // 只有在状态改变时才更新，避免无限循环
+                        if (i < inputActiveStates.size()) {
+                            boolean currentActiveState = inputActiveStates.get(i);
+                            if (currentActiveState == hasCraftingCard) { // 如果当前状态与应该的状态不同
+                                inputActiveStates.set(i, !hasCraftingCard);
+                            }
+                        } else {
+                            // 如果状态列表大小不够，扩展它并设置新状态
+                            while (inputActiveStates.size() <= i) {
+                                inputActiveStates.add(true); // 默认为true，但在下一行会更新
+                            }
+                            row.input.active = !hasCraftingCard;
+                            inputActiveStates.set(i, !hasCraftingCard);
+                        }
+                        
+                        row.input.setY(this.topPos + CONTENT_TOP + visibleIndex * ROW_HEIGHT);
+                        
+                        if (row.logicButton != null) {
+                            row.logicButton.visible = true;
+                            // 根据合成卡状态更新按钮的激活状态
+                            if (row.logicButton.active == hasCraftingCard) {
+                                row.logicButton.active = !hasCraftingCard;
+                            }
+                            row.logicButton.setY(this.topPos + CONTENT_TOP + (visibleIndex + 1) * ROW_HEIGHT - 6);
+                        }
+                    } else {
+                        // 不可见
+                        row.input.visible = false;
+                        row.input.active = false;
+                        
+                        if (row.logicButton != null) {
+                            row.logicButton.visible = false;
+                            row.logicButton.active = false;
+                        }
+                    }
+                }        
         // 更新配置槽位的位置（与输入框同步滚动）
         var configSlots = menu.getSlots(SlotSemantics.CONFIG);
         
