@@ -125,10 +125,38 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
 
             @Override
             public void onStackChange(AEKey what, long amount) {
+                // 如果没有安装模糊卡，检查是否是配置的物品发生了变化
+                if (!isUpgradedWith(AEItems.FUZZY_CARD)) {
+                    // 检查变化的物品是否在配置槽位中
+                    int itemCount = getConfiguredItemCount();
+                    boolean isConfiguredItem = false;
+                    int slotIndex = -1;
+                    
+                    for (int i = 0; i < itemCount; i++) {
+                        AEKey configuredKey = config.getKey(i);
+                        if (configuredKey != null && what.equals(configuredKey)) {
+                            isConfiguredItem = true;
+                            slotIndex = i;
+                            break;
+                        }
+                    }
+                    
+                    if (isConfiguredItem && slotIndex >= 0) {
+                        // 直接更新对应的lastReportedValue
+                        lastReportedValues.put(slotIndex, amount);
+                        updateState();
+                        return;
+                    }
+                }
+                
+                // 如果是模糊卡升级或变化的不是配置物品，则重新扫描整个网络
                 long currentTick = TickHandler.instance().getCurrentTick();
                 if (currentTick != lastUpdateTick) {
                     lastUpdateTick = currentTick;
-                    updateState();
+                    IGrid grid = getMainNode().getNode().getGrid();
+                    if (grid != null) {
+                        updateReportingValue(grid);
+                    }
                 }
             }
         };
