@@ -15,6 +15,7 @@ import net.minecraft.world.level.material.MapColor;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
+import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.client.event.ModelEvent;
@@ -125,6 +126,12 @@ public class Chexsonsaeutils {
         }
     }
 
+    // You can use SubscribeEvent and let the Event Bus discover methods to call
+    @SubscribeEvent
+    public void onServerStarting(ServerStartingEvent event) {
+        // Do something when the server starts
+        LOGGER.info("HELLO from server starting");
+    }
 
     // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
@@ -132,13 +139,18 @@ public class Chexsonsaeutils {
 
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
+            // Some client setup code
+            LOGGER.info("HELLO FROM CLIENT SETUP");
+            LOGGER.info("MINECRAFT NAME >> {}", Minecraft.getInstance().getUser().getName());
 
             // Register Multi-Level Emitter Screen
+            LOGGER.info("Starting Multi-Level Emitter Screen registration...");
             try {
                 var menuType = git.chexson.chexsonsaeutils.parts.MultiLevelEmitterMenu.MENU_TYPE.get();
+                LOGGER.info("MenuType: {}", menuType);
 
                 // 注册 Screen（使用 AE2 标准样式系统）
-                net.minecraft.client.gui.screens.MenuScreens.register(
+                net.minecraft.client.gui.screens.MenuScreens.<git.chexson.chexsonsaeutils.parts.MultiLevelEmitterMenu, git.chexson.chexsonsaeutils.parts.MultiLevelEmitterScreen>register(
                     menuType,
                     (menu, playerInv, title) -> {
                         LOGGER.info("Creating Multi-Level Emitter Screen");
@@ -147,7 +159,9 @@ public class Chexsonsaeutils {
                         return new git.chexson.chexsonsaeutils.parts.MultiLevelEmitterScreen(menu, playerInv, title, style);
                     }
                 );
-            } catch (Exception ignored) {
+                LOGGER.info("Registered Multi-Level Emitter Screen successfully");
+            } catch (Exception e) {
+                LOGGER.error("Failed to register Multi-Level Emitter Screen", e);
             }
         }
 
