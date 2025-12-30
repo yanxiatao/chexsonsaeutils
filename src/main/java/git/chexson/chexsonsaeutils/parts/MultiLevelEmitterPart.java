@@ -487,25 +487,7 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
         if (data.contains(NBT_CONFIGURED_ITEM_COUNT)) {
             data.getInt(NBT_CONFIGURED_ITEM_COUNT);
         }
-/*
-        // 读取阈值数组
-        thresholds.clear(); // 清空现有阈值
-        if (data.contains("thresholds", Tag.TAG_COMPOUND)) {
-            var thresholdTag = data.getCompound("thresholds");
-            for (String key : thresholdTag.getAllKeys()) {
-                try {
-                    int slot = Integer.parseInt(key);
-                    long value = thresholdTag.getLong(key);
-                    thresholds.put(slot, value);
-                } catch (NumberFormatException e) {
-                    // 忽略无效的键
-                    com.mojang.logging.LogUtils.getLogger().warn("Invalid threshold key: {}", key);
-                }
-            }
-
-        }
-        */
-        // 读取逻辑关系
+// 读取逻辑关系
         logicRelations.clear();
         logicRelations.addAll(MultiLevelEmitterUtils.readLogicRelationsFromNBT(data, NBT_LOGIC_RELATIONS));
         
