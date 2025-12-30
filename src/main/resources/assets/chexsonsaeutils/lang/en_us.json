@@ -15,5 +15,6 @@
   "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.high_signal": "Emit signal when active",
   "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.high_signal.tooltip": "Emit redstone signal when conditions are met (based on comparison mode and logic relation of each item)",
   "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.low_signal": "Emit signal when inactive",
-  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.low_signal.tooltip": "Emit redstone signal when conditions are not met (based on comparison mode and logic relation of each item)"
+  "gui.chexsonsaeutils.multi_level_emitter.redstone_mode.low_signal.tooltip": "Emit redstone signal when conditions are not met (based on comparison mode and logic relation of each item)",
+  "itemGroup.chexsonsaeutils": "chexsonsaeutils"
 }

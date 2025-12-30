@@ -3,8 +3,8 @@ package git.chexson.chexsonsaeutils;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -50,15 +50,9 @@ public class Chexsonsaeutils {
     // Creates a new BlockItem with the id "chexsonsaeutils:example_block", combining the namespace and path
     public static final RegistryObject<Item> EXAMPLE_BLOCK_ITEM = ITEMS.register("example_block", () -> new BlockItem(EXAMPLE_BLOCK.get(), new Item.Properties()));
 
-    // Creates a new food item with the id "chexsonsaeutils:example_id", nutrition 1 and saturation 2
-    public static final RegistryObject<Item> EXAMPLE_ITEM = ITEMS.register("example_item", () -> new Item(new Item.Properties().food(new FoodProperties.Builder().alwaysEat().nutrition(1).saturationMod(2f).build())));
-
     // Creates a creative tab with the id "chexsonsaeutils:example_tab" for the example item, that is placed after the combat tab
-    public static final RegistryObject<CreativeModeTab> chexsonsaeutils_tab = CREATIVE_MODE_TABS.register("chexsonsaeutils", () -> CreativeModeTab.builder().withTabsBefore(CreativeModeTabs.COMBAT).icon(() -> EXAMPLE_ITEM.get().getDefaultInstance()).displayItems((parameters, output) -> {
-        output.accept(EXAMPLE_ITEM.get()); // Add the example item to the tab. For your own tabs, this method is preferred over the event
-    }).build());
-
-    public Chexsonsaeutils() {
+        public static  final RegistryObject<CreativeModeTab> chexsonsaeutils_tab = CREATIVE_MODE_TABS.register("chexsonsaeutils",() -> CreativeModeTab.builder().icon(() ->MultiLevelEmitterItem.ITEM.get().getDefaultInstance()).title(Component.translatable("itemGroup.chexsonsaeutils")).build());
+        public Chexsonsaeutils() {
     @SuppressWarnings("removal") IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
         // Register the commonSetup method for modloading
