@@ -5,14 +5,12 @@ import appeng.api.config.RedstoneMode;
 import appeng.api.config.Settings;
 import appeng.api.config.YesNo;
 import appeng.api.networking.IGrid;
-import appeng.api.networking.IGridNode;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.crafting.ICraftingWatcherNode;
 import appeng.api.networking.storage.IStorageWatcherNode;
 import appeng.api.parts.IPartModel;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
-import appeng.api.storage.MEStorage;
 import appeng.api.networking.IStackWatcher;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
@@ -36,6 +34,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -61,13 +60,20 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
     // 定义模型组合（根据状态返回）
     private static final IPartModel MODEL_ON = new PartModel(MODEL_BASE, MODEL_STATUS_ON);
     private static final IPartModel MODEL_OFF = new PartModel(MODEL_BASE, MODEL_STATUS_OFF);
+
+    // 配置槽（支持动态数量的物品）
+    private final ConfigInventory config = ConfigInventory.configTypes(64, this::configureWatchers); // 初始大小64，可根据需要调整
     
-    // 配置槽（支持无限个物品，初始 6 个基础槽位 + 可选扩展）
-    private final ConfigInventory config = ConfigInventory.configTypes(256, this::configureWatchers);
+    // 每个槽位的lastReportedValue（实际数量），对应每个配置物品的数量
+    private final java.util.Map<Integer, Long> lastReportedValues = new java.util.HashMap<>();
     
-    // 使用Map动态管理阈值，确保阈值与物品正确关联
-    private final java.util.Map<Integer, Long> thresholds = new java.util.HashMap<>();
+    // 每个槽位的reportingValue（阈值），对应每个配置物品的阈值
+    private final java.util.Map<Integer, Long> reportingValues = new java.util.HashMap<>();
     
+    // 本地客户端状态，用于处理客户端显示
+    private boolean localClientSideOn = false;
+
+
     // 升级槽（最多 2 个升级：模糊卡和合成卡）
     private final IUpgradeInventory upgrades;
     
@@ -76,13 +82,25 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
     
     // 比较模式列表（每个物品一个比较模式）
     private final List<ComparisonMode> comparisonModes = new ArrayList<>();
-    
-    // 标志：配置物品数量是否已从 NBT 读取
-    private boolean configuredItemCountLoadedFromNBT = false;
-    
+
+
     private IStackWatcher storageWatcher;
     private IStackWatcher craftingWatcher;
     private long lastUpdateTick = -1L;
+
+    @Override
+    public void writeVisualStateToNBT(CompoundTag data) {
+        super.writeVisualStateToNBT(data);
+
+        data.putBoolean("on", isLevelEmitterOn());
+    }
+    
+    @Override
+    public void readVisualStateFromNBT(CompoundTag data) {
+        super.readVisualStateFromNBT(data);
+
+        this.localClientSideOn = data.getBoolean("on");
+    }
 
     public MultiLevelEmitterPart(PartItem<?> partItem) {
         super(partItem);
@@ -110,8 +128,6 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
                 long currentTick = TickHandler.instance().getCurrentTick();
                 if (currentTick != lastUpdateTick) {
                     lastUpdateTick = currentTick;
-                    // 直接调用 updateState() 来刷新红石信号
-                    // 不需要调用 updateReportingValue()，因为 isLevelEmitterOn() 会直接从存储中获取物品数量
                     updateState();
                 }
             }
@@ -175,14 +191,21 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
 
         if (isUpgradedWith(AEItems.CRAFTING_CARD)) {
             if (this.craftingWatcher != null) {
-                this.craftingWatcher.setWatchAll(true);
+                if (itemCount == 0) this.craftingWatcher.setWatchAll(true);
+                else {
+                    for (int i = 0; i < itemCount; i++){
+                        AEKey key = config.getKey(i);
+                        if (key != null) {
+                            this.craftingWatcher.add(key);
+                        }
+                    }
+                }
             }
         } else {
             if (this.storageWatcher != null) {
-                if (isUpgradedWith(AEItems.FUZZY_CARD)) {
+                if (isUpgradedWith(AEItems.FUZZY_CARD) || itemCount == 0) {
                     this.storageWatcher.setWatchAll(true);
                 } else {
-                    // 性能优化：只监控已配置的槽位中的物品（强制按顺序配置）
                     for (int i = 0; i < itemCount; i++) {
                         AEKey key = config.getKey(i);
                         if (key != null) {
@@ -191,11 +214,9 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
                     }
                 }
             }
+            getMainNode().ifPresent(this::updateReportingValue);
         }
-        
-        // 直接调用 updateState() 来刷新红石信号
-        // 不需要调用 updateReportingValue()，因为 isLevelEmitterOn() 会直接从存储中获取物品数量
-        updateState();
+
     }
     
     private void updateReportingValue(IGrid grid) {
@@ -204,27 +225,32 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
         // 性能优化：只遍历已配置的槽位（强制按顺序配置）
         int itemCount = getConfiguredItemCount();
         
+        // 清空之前的报告值
+        lastReportedValues.clear();
+        
         if (isUpgradedWith(AEItems.FUZZY_CARD)) {
-            this.lastReportedValue = 0;
             var fzMode = this.getConfigManager().getSetting(Settings.FUZZY_MODE);
             for (int i = 0; i < itemCount; i++) {
                 AEKey key = config.getKey(i);
                 if (key != null) {
                     var fuzzyList = stacks.findFuzzy(key, fzMode);
+                    long totalValue = 0;
                     for (var st : fuzzyList) {
-                        this.lastReportedValue += st.getLongValue();
+                        totalValue += st.getLongValue();
                     }
+                    lastReportedValues.put(i, totalValue);
+
                 }
             }
         } else {
-            this.lastReportedValue = 0;
             for (int i = 0; i < itemCount; i++) {
                 AEKey key = config.getKey(i);
                 if (key != null) {
-                    this.lastReportedValue += stacks.get(key);
+                    lastReportedValues.put(i, stacks.get(key));
                 }
             }
         }
+        
         updateState();
     }
 
@@ -237,7 +263,21 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
     protected boolean getDirectOutput() {
         var grid = this.getMainNode().getGrid();
         if (grid != null) {
-            return grid.getCraftingService().isRequestingAny();
+            // 性能优化：只检查已配置的物品是否被请求
+            int itemCount = getConfiguredItemCount();
+            if (itemCount > 0) {
+                for (int i = 0; i < itemCount; i++) {
+                    AEKey key = config.getKey(i);
+                    if (key != null && grid.getCraftingService().isRequesting(key)) {
+                        return true;
+                    }
+                }
+            }
+            else {
+                return grid.getCraftingService().isRequestingAny();
+            }
+
+            // 如果没有任何配置物品被请求，检查是否有任何物品被请求（当没有配置物品时）
         }
         return false;
     }
@@ -259,12 +299,23 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
     
     @Override
     public Set<AEKey> getEmitableItems() {
-        if (isUpgradedWith(AEItems.CRAFTING_CARD)
-                && getConfigManager().getSetting(Settings.CRAFT_VIA_REDSTONE) == YesNo.YES) {
+            if (isUpgradedWith(AEItems.CRAFTING_CARD)
+                    && getConfigManager().getSetting(Settings.CRAFT_VIA_REDSTONE) == YesNo.YES) {
+                // 性能优化：只遍历已配置的槽位（强制按顺序配置）
+                int itemCount = getConfiguredItemCount();
+                if (itemCount > 0) {
+                    java.util.Set<AEKey> result = new java.util.HashSet<>();
+                    for (int i = 0; i < itemCount; i++) {
+                        AEKey key = config.getKey(i);
+                        if (key != null) {
+                            result.add(key);
+                        }
+                    }
+                    return result;
+                }
+            }
             return Set.of();
         }
-        return Set.of();
-    }
     
     @Override
     protected void onReportingValueChanged() {
@@ -281,123 +332,82 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
     
     @Override
     protected boolean isLevelEmitterOn() {
+        if (isClientSide()) {
+            // 对于客户端，返回本地客户端状态
+            return localClientSideOn;
+        }
+
+        if (!this.getMainNode().isActive()) {
+            return false;
+        }
+
+        if (hasDirectOutput()) {
+            return getDirectOutput();
+        }
+
+        // 实现多物品逻辑判断
         int itemCount = getConfiguredItemCount();
-        if (itemCount == 0) {
-            return false;
-        }
-        
-        // 尝试获取 grid 和 storage，不检查 main node 是否激活
-        IGridNode node = this.getMainNode().getNode();
-        if (node == null || !node.isActive()) {
-            return false;
-        }
-        
-        IGrid grid = node.getGrid();
-        if (grid == null) {
-            return false;
-        }
-        
-        MEStorage storage = grid.getStorageService().getInventory();
-        if (storage == null) {
-            return false;
-        }
-        
-        // 计算每个配置物品的数量
-        List<Long> currentCounts = new ArrayList<>(itemCount);
-        List<Long> thresholds = new ArrayList<>(itemCount);
-        List<ComparisonMode> modes = new ArrayList<>(itemCount);
-        
-        // 确保比较模式列表大小正确
-        while (comparisonModes.size() < itemCount) {
-            comparisonModes.add(ComparisonMode.GREATER_OR_EQUAL);
-        }
-        
+
+
+        // 计算每个配置物品的数量和阈值比较结果
+        List<Boolean> results = new ArrayList<>(itemCount);
+
         for (int i = 0; i < itemCount; i++) {
             AEKey key = config.getKey(i);
             if (key != null) {
-                long count = storage.getAvailableStacks().get(key);
-                long threshold = getReportingValueForSlot(i);
-                ComparisonMode mode = comparisonModes.get(i);
+                ComparisonMode mode = getComparisonMode(i);
+
+                // 比较实际数量与阈值
+                boolean conditionMet;
+                if (Objects.requireNonNull(mode) == ComparisonMode.LESS_THAN) {
+                    conditionMet = lastReportedValues.get(i) < reportingValues.get(i);
+                } else {
+                    conditionMet = lastReportedValues.get(i) >= reportingValues.get(i);
+                }
                 
-                currentCounts.add(count);
-                thresholds.add(threshold);
-                modes.add(mode);
+                results.add(conditionMet);
+            } else {
+                // 如果槽位没有配置物品，则视为不满足条件
+                results.add(false);
             }
         }
-        
-        // 根据逻辑关系判断是否激活
-        boolean result;
-        if (logicRelations.isEmpty()) {
-            // 默认使用 AND 逻辑
-            result = checkAndLogic(currentCounts, thresholds, modes);
-        } else {
-            result = checkLogicRelations(currentCounts, thresholds, modes);
-        }
-        
+
+        // 根据逻辑关系组合结果
+        boolean finalResult = isFinalResult(results);
+
         // 根据红石模式取反
         RedstoneMode rsMode = getConfigManager().getSetting(Settings.REDSTONE_EMITTER);
         if (rsMode == RedstoneMode.HIGH_SIGNAL) {
-            return result;
+            return finalResult;
         } else {
-            return !result;
+            return !finalResult;
         }
-    }
-    
-    private boolean checkAndLogic(List<Long> currentCounts, List<Long> thresholds, List<ComparisonMode> modes) {
-        for (int i = 0; i < currentCounts.size(); i++) {
-            boolean condition = checkCondition(currentCounts.get(i), thresholds.get(i), modes.get(i));
-            if (!condition) {
-                return false;
-            }
-        }
-        return true;
     }
 
-    private boolean checkCondition(long currentCount, long threshold, ComparisonMode mode) {
-        return switch (mode) {
-            case GREATER_OR_EQUAL -> currentCount >= threshold;
-            case LESS_THAN -> currentCount < threshold;
-        };
-    }
-    
-    private boolean checkLogicRelations(List<Long> currentCounts, List<Long> thresholds, List<ComparisonMode> modes) {
-        // 性能优化：确保逻辑关系数量匹配（逻辑关系数量 = 物品数量 - 1）
-        int itemCount = currentCounts.size();
-        if (itemCount == 0) {
-            return false;
-        }
-        
-        if (itemCount == 1) {
-            // 只有一个物品，直接返回结果
-            return checkCondition(currentCounts.get(0), thresholds.get(0), modes.get(0));
-        }
-        
-        // 确保逻辑关系列表大小正确（物品数量 - 1）
-        while (logicRelations.size() < itemCount - 1) {
-            logicRelations.add(LogicRelation.AND);
-        }
-        
-        List<Boolean> conditions = new ArrayList<>(itemCount);
-        for (int i = 0; i < itemCount; i++) {
-            boolean condition = checkCondition(currentCounts.get(i), thresholds.get(i), modes.get(i));
-            conditions.add(condition);
-        }
-        
-        // 根据逻辑关系列表计算最终结果
-        boolean result = conditions.get(0);
-        for (int i = 0; i < itemCount - 1; i++) {
-            LogicRelation relation = logicRelations.get(i);
-            boolean nextCondition = conditions.get(i + 1);
-            if (relation == LogicRelation.AND) {
-                result = result && nextCondition;
-            } else {
-                result = result || nextCondition;
+    private boolean isFinalResult(List<Boolean> results) {
+        boolean finalResult;
+        if (results.isEmpty()) {
+            finalResult = false;
+        } else if (results.size() == 1) {
+            finalResult = results.get(0);
+        } else {
+            // 构建逻辑关系进行组合判断
+            finalResult = results.get(0);
+            for (int i = 0; i < results.size() - 1; i++) {
+                LogicRelation relation = i < getLogicRelations().size() ? getLogicRelations().get(i) : LogicRelation.AND;
+
+                boolean nextResult = results.get(i + 1);
+
+                if (relation == LogicRelation.AND) {
+                    finalResult = finalResult && nextResult;
+                } else { // OR
+                    finalResult = finalResult || nextResult;
+                }
             }
         }
-        
-        return result;
+        return finalResult;
     }
-    
+
     public int getConfiguredItemCount() {
         return MultiLevelEmitterUtils.calculateConfiguredItemCount(config);
     }
@@ -409,7 +419,7 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
     
     public long getReportingValueForSlot(int slot) {
         if (slot >= 0) {
-            return thresholds.getOrDefault(slot, 0L);
+            return reportingValues.getOrDefault(slot, 0L);
         }
         return 0;
     }
@@ -426,8 +436,8 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
      */
     public void setReportingValueForSlot(int slot, long value) {
         if (slot >= 0) {
-            long oldValue = thresholds.getOrDefault(slot, 0L);
-            thresholds.put(slot, value);
+            long oldValue = reportingValues.getOrDefault(slot,0L);
+            reportingValues.put(slot, value);
             
             // 如果阈值确实发生了变化，则标记需要保存
             if (oldValue != value) {
@@ -451,7 +461,7 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
         if (data.contains(NBT_CONFIGURED_ITEM_COUNT)) {
             data.getInt(NBT_CONFIGURED_ITEM_COUNT);
         }
-
+/*
         // 读取阈值数组
         thresholds.clear(); // 清空现有阈值
         if (data.contains("thresholds", Tag.TAG_COMPOUND)) {
@@ -468,7 +478,7 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
             }
 
         }
-        
+        */
         // 读取逻辑关系
         logicRelations.clear();
         logicRelations.addAll(MultiLevelEmitterUtils.readLogicRelationsFromNBT(data, NBT_LOGIC_RELATIONS));
@@ -476,6 +486,38 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
         // 读取比较模式
         comparisonModes.clear();
         comparisonModes.addAll(MultiLevelEmitterUtils.readComparisonModesFromNBT(data, "comparison_modes"));
+        
+        // 读取lastReportedValues（如果存在）
+        lastReportedValues.clear();
+        if (data.contains("lastReportedValues", Tag.TAG_COMPOUND)) {
+            var reportedValuesTag = data.getCompound("lastReportedValues");
+            for (String key : reportedValuesTag.getAllKeys()) {
+                try {
+                    int slot = Integer.parseInt(key);
+                    long value = reportedValuesTag.getLong(key);
+                    lastReportedValues.put(slot, value);
+                } catch (NumberFormatException e) {
+                    // 忽略无效的键
+                    com.mojang.logging.LogUtils.getLogger().warn("Invalid lastReportedValue key: {}", key);
+                }
+            }
+        }
+        
+        // 读取reportingValues（如果存在）
+        reportingValues.clear();
+        if (data.contains("reportingValues", Tag.TAG_COMPOUND)) {
+            var reportingValuesTag = data.getCompound("reportingValues");
+            for (String key : reportingValuesTag.getAllKeys()) {
+                try {
+                    int slot = Integer.parseInt(key);
+                    long value = reportingValuesTag.getLong(key);
+                    reportingValues.put(slot, value);
+                } catch (NumberFormatException e) {
+                    // 忽略无效的键
+                    com.mojang.logging.LogUtils.getLogger().warn("Invalid reportingValue key: {}", key);
+                }
+            }
+        }
         
         // 在读取 NBT 后，重新计算配置物品数量并更新配置监控器
         // 这确保了即使 NBT 中保存的值不正确，也能从配置槽位中重新计算
@@ -506,8 +548,7 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
         }
         
         // 标记配置物品数量已从 NBT 读取
-        configuredItemCountLoadedFromNBT = true;
-        
+
         // 通知配置已加载，触发重新计算配置物品数量并同步到客户端
         onConfigLoaded();
     }
@@ -537,13 +578,7 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
         
         // 写入配置物品数量
         data.putInt(NBT_CONFIGURED_ITEM_COUNT, getConfiguredItemCount());
-        
-        // 写入阈值数据
-        var thresholdTag = new net.minecraft.nbt.CompoundTag();
-        for (java.util.Map.Entry<Integer, Long> entry : thresholds.entrySet()) {
-            thresholdTag.putLong(String.valueOf(entry.getKey()), entry.getValue());
-        }
-        data.put("thresholds", thresholdTag);
+
         
 
         
@@ -552,6 +587,20 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
         
         // 写入比较模式
         MultiLevelEmitterUtils.writeComparisonModesToNBT(comparisonModes, data, "comparison_modes");
+        
+        // 写入lastReportedValues
+        var reportedValuesTag = new net.minecraft.nbt.CompoundTag();
+        for (java.util.Map.Entry<Integer, Long> entry : lastReportedValues.entrySet()) {
+            reportedValuesTag.putLong(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        data.put("lastReportedValues", reportedValuesTag);
+        
+        // 写入reportingValues
+        var reportingValuesTag = new net.minecraft.nbt.CompoundTag();
+        for (java.util.Map.Entry<Integer, Long> entry : reportingValues.entrySet()) {
+            reportingValuesTag.putLong(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        data.put("reportingValues", reportingValuesTag);
     }
     
     public ConfigInventory getConfig() {
@@ -564,7 +613,7 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
     }
     
     public List<LogicRelation> getLogicRelations() {
-        return new ArrayList<>(logicRelations);
+        return logicRelations;
     }
 
     public void setLogicRelations(List<LogicRelation> relations) {
@@ -616,10 +665,6 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
         this.getHost().markForSave();
         // 直接调用 updateState() 来刷新红石信号
         updateState();
-    }
-
-    public boolean isConfiguredItemCountLoadedFromNBT() {
-        return configuredItemCountLoadedFromNBT;
     }
 
     /**
