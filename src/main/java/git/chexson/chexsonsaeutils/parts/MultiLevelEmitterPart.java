@@ -125,37 +125,33 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
 
             @Override
             public void onStackChange(AEKey what, long amount) {
-                // 如果没有安装模糊卡，检查是否是配置的物品发生了变化
-                if (!isUpgradedWith(AEItems.FUZZY_CARD)) {
-                    // 检查变化的物品是否在配置槽位中
-                    int itemCount = getConfiguredItemCount();
-                    boolean isConfiguredItem = false;
-                    int slotIndex = -1;
-                    
-                    for (int i = 0; i < itemCount; i++) {
-                        AEKey configuredKey = config.getKey(i);
-                        if (what.equals(configuredKey)) {
-                            isConfiguredItem = true;
-                            slotIndex = i;
-                            break;
-                        }
-                    }
-                    
-                    if (isConfiguredItem) {
-                        // 直接更新对应的lastReportedValue
-                        lastReportedValues.put(slotIndex, amount);
-                        updateState();
-                        return;
+                // 检查变化的物品是否在配置槽位中
+                int itemCount = getConfiguredItemCount();
+                boolean isConfiguredItem = false;
+                int slotIndex = -1;
+                
+                for (int i = 0; i < itemCount; i++) {
+                    AEKey configuredKey = config.getKey(i);
+                    if (configuredKey != null && what.equals(configuredKey)) {
+                        isConfiguredItem = true;
+                        slotIndex = i;
+                        break;
                     }
                 }
                 
-                // 如果是模糊卡升级或变化的不是配置物品，则重新扫描整个网络
-                long currentTick = TickHandler.instance().getCurrentTick();
-                if (currentTick != lastUpdateTick) {
-                    lastUpdateTick = currentTick;
-                    IGrid grid = getMainNode().getNode().getGrid();
-                    if (grid != null) {
-                        updateReportingValue(grid);
+                if (isConfiguredItem && slotIndex >= 0 && !isUpgradedWith(AEItems.FUZZY_CARD)) {
+                    // 如果没有安装模糊卡且是配置的物品发生变化，直接更新对应的lastReportedValue
+                    lastReportedValues.put(slotIndex, amount);
+                    updateState();
+                } else {
+                    // 如果安装了模糊卡，或者变化的不是配置物品，则重新扫描整个网络
+                    long currentTick = TickHandler.instance().getCurrentTick();
+                    if (currentTick != lastUpdateTick) {
+                        lastUpdateTick = currentTick;
+                        IGrid grid = getMainNode().getNode().getGrid();
+                        if (grid != null) {
+                            updateReportingValue(grid);
+                        }
                     }
                 }
             }
@@ -190,6 +186,8 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
     @Override
     public void upgradesChanged() {
         this.configureWatchers();
+        // 当升级卡状态改变时，确保更新红石状态
+        updateState();
     }
     
     @Override
@@ -531,10 +529,11 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
             }
         }
         
-        // 读取reportingValues（如果存在）
-        reportingValues.clear();
+        // 读取reportingValues（如果存在），避免在没有数据时清空现有值
         if (data.contains("reportingValues", Tag.TAG_COMPOUND)) {
             var reportingValuesTag = data.getCompound("reportingValues");
+            // 先清空现有的，因为我们要用NBT中的数据替换
+            reportingValues.clear();
             for (String key : reportingValuesTag.getAllKeys()) {
                 try {
                     int slot = Integer.parseInt(key);
@@ -546,6 +545,7 @@ public class MultiLevelEmitterPart extends AbstractLevelEmitterPart
                 }
             }
         }
+        // 如果NBT中没有reportingValues数据，保持现有值不变（在某些情况下避免重置）
         
         // 在读取 NBT 后，重新计算配置物品数量并更新配置监控器
         // 这确保了即使 NBT 中保存的值不正确，也能从配置槽位中重新计算
