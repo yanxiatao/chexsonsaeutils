@@ -177,45 +177,83 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
         
                                     // 由于删除物品时会移动后面的物品，所以需要更新所有有效的输入框
         
-                                    // 但只更新到新的物品数量+1（n+1行）
+                                                                        // 但只更新到新的物品数量+1（n+1行）
         
-                                    int rowsToUpdate = Math.min(rows.size(), actualConfiguredItemCount + 1);
+                                                                        int rowsToUpdate = Math.min(rows.size(), actualConfiguredItemCount + 1);
         
-                                    for (int i = 0; i < rowsToUpdate; i++) {
+                                                                        
         
-                                        ScrollableRow row = rows.get(i);
+                                                                        for (int i = 0; i < rowsToUpdate; i++) {
         
-                                        if (row != null && row.input != null) {
+                                                                            
         
-                                            long thresholdFromPart = menu.getHost().getReportingValueForSlot(i);
+                                                                            // 检查rows列表是否包含足够的元素
         
-                                            String newValue = String.valueOf(thresholdFromPart);
+                                                                            if (i >= rows.size()) {
         
-                                            String currentValue = row.input.getValue();
+                                                                                break; // 避免IndexOutOfBoundsException
         
-                                            if (!currentValue.equals(newValue)) {
+                                                                            }
         
-                                                row.input.setValue(newValue);
+                                                                            
         
-                                                row.input.setHighlightPos(newValue.length());
+                                                                            ScrollableRow row = rows.get(i);
         
-
+                                                                            
         
-                                            }
+                                                                            if (row != null && row.input != null) {
         
-                                                                // 更新 Menu 的 thresholds 映射（确保下次刷新时使用正确的值）
+                                                                                
         
-                                                                if (!Objects.equals(menu.thresholds.get(i), thresholdFromPart)) {
+                                                                                long thresholdFromPart = menu.getHost().getReportingValueForSlot(i);
         
-                                                                    menu.thresholds.put(i, thresholdFromPart);
+                                                                                
         
-    
+                                                                                String newValue = String.valueOf(thresholdFromPart);
         
-                                                                }
+                                                                                
         
-                                        }
+                                                                                String currentValue = row.input.getValue();
         
-                                    }
+                                                                                
+        
+                                                                                if (!currentValue.equals(newValue)) {
+        
+                                                                                    
+        
+                                                                                    row.input.setValue(newValue);
+        
+                                                                                    
+        
+                                                                                    row.input.setHighlightPos(newValue.length());
+        
+                                                                                    
+        
+                                                                                }
+        
+                                                                                
+        
+                                                                                                    // 更新 Menu 的 thresholds 映射（确保下次刷新时使用正确的值）
+        
+                                                                                                    
+        
+                                                                                                    if (!Objects.equals(menu.thresholds.get(i), thresholdFromPart)) {
+        
+                                                                                                        
+        
+                                                                                                        menu.thresholds.put(i, thresholdFromPart);
+        
+                                                                                                        
+        
+                                                                                                    }
+        
+                                                                                                    
+        
+                                                                            }
+        
+                                                                            
+        
+                                                                        }
         
                                     lastConfiguredItemCount = actualConfiguredItemCount;
         
@@ -239,54 +277,109 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
         
                                     updateDynamicControls();
         
-                                } else if (!itemCountDecreased) {
+                                                                } else if (!itemCountDecreased) {
         
-                                    // 只有在物品数量没有减少时，才执行常规的更新逻辑
+                                        
         
-                                    // 行数没有变化，更新现有输入框的值（只更新实际需要的行）
+                                                                    // 只有在物品数量没有减少时，才执行常规的更新逻辑
         
-                                    int rowsToUpdate = Math.min(rows.size(), actualConfiguredItemCount + 1);
+                                        
         
-                                    for (int i = 0; i < rowsToUpdate; i++) {
+                                                                    // 行数没有变化，更新现有输入框的值（只更新实际需要的行）
         
-                                        ScrollableRow row = rows.get(i);
+                                        
         
-                                        if (row != null && row.input != null) {
+                                                                    int rowsToUpdate = Math.min(rows.size(), actualConfiguredItemCount + 1);
         
-                                            // 从 Part 中读取最新的阈值（而不是从 Menu 的 thresholds 数组）
+                                        
         
-                                            long latestThreshold = menu.getThreshold(i);
+                                                                    for (int i = 0; i < rowsToUpdate; i++) {
         
-                                            String currentValue = row.input.getValue();
+                                        
         
-                                            String newValue = String.valueOf(latestThreshold);
+                                                                        // 检查rows列表是否包含足够的元素
         
-
+                                                                        if (i >= rows.size()) {
         
-                                            if (!currentValue.equals(newValue)) {
+                                                                            break; // 避免IndexOutOfBoundsException
         
-                                                row.input.setValue(newValue);
+                                                                        }
         
-                                                // 更新光标位置，确保文本正确显示
+                                        
         
-                                                row.input.setHighlightPos(newValue.length());
+                                                                        ScrollableRow row = rows.get(i);
         
-                                            }
+                                        
         
-                                                                                        // 更新 Menu 的 thresholds 映射（确保下次刷新时使用正确的值）
-                                            
-                                                                                        if (!Objects.equals(menu.thresholds.get(i), latestThreshold)) {
-                                            
-                                                                                            menu.thresholds.put(i, latestThreshold);
-                                            
-    
-                                            
-                                                                                        }        
-                                        }
+                                                                        if (row != null && row.input != null) {
         
-                                    }
+                                        
         
-                                }
+                                                                            // 从 Part 中读取最新的阈值（而不是从 Menu 的 thresholds 数组）
+        
+                                        
+        
+                                                                            long latestThreshold = menu.getThreshold(i);
+        
+                                        
+        
+                                                                            String currentValue = row.input.getValue();
+        
+                                        
+        
+                                                                            String newValue = String.valueOf(latestThreshold);
+        
+                                        
+        
+                                
+        
+                                        
+        
+                                                                            if (!currentValue.equals(newValue)) {
+        
+                                        
+        
+                                                                                row.input.setValue(newValue);
+        
+                                        
+        
+                                                                                // 更新光标位置，确保文本正确显示
+        
+                                        
+        
+                                                                                row.input.setHighlightPos(newValue.length());
+        
+                                        
+        
+                                                                            }
+        
+                                        
+        
+                                                                                                                        // 更新 Menu 的 thresholds 映射（确保下次刷新时使用正确的值）
+        
+                                                                            
+        
+                                                                                                                        if (!Objects.equals(menu.thresholds.get(i), latestThreshold)) {
+        
+                                                                            
+        
+                                                                                                                            menu.thresholds.put(i, latestThreshold);
+        
+                                                                            
+        
+                                                                            
+        
+                                                                                                                        }        
+        
+                                                                        }
+        
+                                        
+        
+                                                                    }
+        
+                                        
+        
+                                                                }
         
         // 每帧都更新配置槽位的位置（确保槽位位置正确）
         updateScrollPositions();
@@ -441,17 +534,16 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
                 logicButtons.add(logicButton);
                 this.addRenderableWidget(logicButton);
                 
-                // 更新按钮状态
-                List<MultiLevelEmitterPart.LogicRelation> relations = menu.getLogicRelations();
-                MultiLevelEmitterPart.LogicRelation relation = buttonIndex < relations.size() 
-                    ? relations.get(buttonIndex) 
-                    : MultiLevelEmitterPart.LogicRelation.AND;
-                logicButton.setMessage(
-                    relation == MultiLevelEmitterPart.LogicRelation.AND 
-                        ? Component.literal("A").withStyle(ChatFormatting.YELLOW)
-                        : Component.literal("O").withStyle(ChatFormatting.GREEN)
-                );
-            }
+                                // 更新按钮状态
+                                List<MultiLevelEmitterPart.LogicRelation> relations = menu.getLogicRelations();
+                                MultiLevelEmitterPart.LogicRelation relation = relations != null && buttonIndex < relations.size() 
+                                    ? relations.get(buttonIndex) 
+                                    : MultiLevelEmitterPart.LogicRelation.AND;
+                                logicButton.setMessage(
+                                    relation == MultiLevelEmitterPart.LogicRelation.AND 
+                                        ? Component.literal("A").withStyle(ChatFormatting.YELLOW)
+                                        : Component.literal("O").withStyle(ChatFormatting.GREEN)
+                                );            }
             
             rows.add(new ScrollableRow(i, input, comparisonButton, i < logicButtons.size() ? logicButtons.get(i) : null));
         }
@@ -473,6 +565,11 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
         
         // 更新控件的可见性和位置
         for (int i = 0; i < rows.size(); i++) {
+            // 检查rows列表是否包含足够的元素
+            if (i >= rows.size()) {
+                break; // 避免IndexOutOfBoundsException
+            }
+            
             ScrollableRow row = rows.get(i);
             int visibleIndex = i - scrollOffset;
             
@@ -506,6 +603,11 @@ public class MultiLevelEmitterScreen extends UpgradeableScreen<MultiLevelEmitter
         int configTotalRows = itemCount + 1; // 显示 n+1 行
         
         for (int i = 0; i < configSlots.size(); i++) {
+            // 检查configSlots列表是否包含足够的元素
+            if (i >= configSlots.size()) {
+                break; // 避免IndexOutOfBoundsException
+            }
+            
             int visibleIndex = i - scrollOffset;
             // 只显示已配置的槽位和下一个空槽位（用于添加新物品）
             if (i < configTotalRows && visibleIndex >= 0 && visibleIndex < MAX_VISIBLE_ROWS) {
