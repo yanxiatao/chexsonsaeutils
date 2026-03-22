@@ -1,0 +1,62 @@
+package git.chexson.chexsonsaeutils.parts;
+
+import net.minecraft.nbt.CompoundTag;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class MultiLevelEmitterPersistenceIntegrationTest {
+
+    @Test
+    void thresholdComparisonRelationAndMatchingRoundTripIsStable() {
+        CompoundTag root = new CompoundTag();
+
+        Map<Integer, Long> thresholds = MultiLevelEmitterPart.normalizeThresholdsForSlotCount(
+                Map.of(0, 5L, 1, 9L), 2);
+        List<MultiLevelEmitterPart.ComparisonMode> comparisons = List.of(
+                MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                MultiLevelEmitterPart.ComparisonMode.LESS_THAN
+        );
+        List<MultiLevelEmitterPart.LogicRelation> relations = List.of(MultiLevelEmitterPart.LogicRelation.OR);
+        List<MultiLevelEmitterPart.MatchingMode> matching = List.of(
+                MultiLevelEmitterPart.MatchingMode.STRICT,
+                MultiLevelEmitterPart.MatchingMode.FUZZY
+        );
+
+        MultiLevelEmitterPart.writeThresholdsToNbt(thresholds, root, "reportingValues");
+        MultiLevelEmitterUtils.writeComparisonModesToNBT(comparisons, root, "comparison_modes");
+        MultiLevelEmitterUtils.writeLogicRelationsToNBT(relations, root, "logic_relations");
+        MultiLevelEmitterUtils.writeMatchingModesToNBT(matching, root, "matching_modes");
+
+        Map<Integer, Long> loadedThresholds = MultiLevelEmitterPart.readThresholdsFromNbt(root, "reportingValues");
+        List<MultiLevelEmitterPart.ComparisonMode> loadedComparisons =
+                MultiLevelEmitterUtils.readComparisonModesFromNBT(root, "comparison_modes");
+        List<MultiLevelEmitterPart.LogicRelation> loadedRelations =
+                MultiLevelEmitterUtils.readLogicRelationsFromNBT(root, "logic_relations");
+        List<MultiLevelEmitterPart.MatchingMode> loadedMatching =
+                MultiLevelEmitterUtils.readMatchingModesFromNBT(root, "matching_modes");
+
+        assertEquals(thresholds, loadedThresholds);
+        assertEquals(comparisons, loadedComparisons);
+        assertEquals(relations, loadedRelations);
+        assertEquals(matching, loadedMatching);
+    }
+
+    @Test
+    void invalidMatchingModeFallsBackToStrictOnLoad() {
+        CompoundTag root = new CompoundTag();
+        root.putString("invalid", "FUZZY_NOT_SUPPORTED");
+        MultiLevelEmitterPart.MatchingMode parsed =
+                MultiLevelEmitterPart.MatchingMode.fromPersisted(root.getString("invalid"));
+        MultiLevelEmitterPart.MatchingMode effective =
+                MultiLevelEmitterPart.resolveMatchingMode(parsed, false);
+
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, effective);
+        assertTrue(effective != MultiLevelEmitterPart.MatchingMode.FUZZY);
+    }
+}
+
