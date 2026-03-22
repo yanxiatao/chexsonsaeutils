@@ -1,6 +1,10 @@
 package git.chexson.chexsonsaeutils.parts;
 
 import appeng.api.config.RedstoneMode;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -19,17 +23,17 @@ class MultiLevelEmitterPlacementIntegrationTest {
 
     @Test
     void emitterItemFactoryUsesAe2PartItemContract() throws IOException {
-        String itemSource = readSource("src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterItem.java");
+        String migratedItemSource = readSource("src/main/java/git/chexson/chexsonsaeutils/parts/automation/MultiLevelEmitterItem.java");
 
-        assertTrue(itemSource.contains("new PartItem<"),
+        assertTrue(migratedItemSource.contains("new PartItem<"),
                 "emitter item factory must instantiate AE2 PartItem for in-world placement");
-        assertTrue(itemSource.contains("MultiLevelEmitterRuntimePart.class"),
+        assertTrue(migratedItemSource.contains("MultiLevelEmitterRuntimePart.class"),
                 "emitter item factory must bind dedicated MultiLevelEmitter runtime part class");
-        assertTrue(itemSource.contains("MultiLevelEmitterRuntimePart::new"),
+        assertTrue(migratedItemSource.contains("MultiLevelEmitterRuntimePart::new"),
                 "emitter item factory must provide dedicated runtime part constructor");
-        assertFalse(itemSource.contains("StorageLevelEmitterPart.class"),
+        assertFalse(migratedItemSource.contains("StorageLevelEmitterPart.class"),
                 "emitter item factory must not regress to StorageLevelEmitterPart fallback binding");
-        assertFalse(itemSource.contains("StorageLevelEmitterPart::new"),
+        assertFalse(migratedItemSource.contains("StorageLevelEmitterPart::new"),
                 "emitter item factory must not regress to StorageLevelEmitterPart fallback constructor");
     }
 
@@ -81,7 +85,7 @@ class MultiLevelEmitterPlacementIntegrationTest {
     @Test
     void runtimeScreenOpenPathUsesMenuBackedControlsInsteadOfPlaceholderText() throws IOException {
         String screenSource = readSource(
-                "src/main/java/git/chexson/chexsonsaeutils/client/MultiLevelEmitterRuntimeScreen.java"
+                "src/main/java/git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
         );
 
         assertTrue(screenSource.contains("ThresholdEditBox"),
@@ -107,7 +111,7 @@ class MultiLevelEmitterPlacementIntegrationTest {
             Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
             MultiLevelEmitterRuntimePart runtime =
                     (MultiLevelEmitterRuntimePart) allocateInstance.invoke(unsafe, MultiLevelEmitterRuntimePart.class);
-            runtime.applyConfiguration(0, null, null, null);
+            runtime.applyConfiguration(1, null, null, null);
             runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
             return runtime;
         } catch (ReflectiveOperationException exception) {

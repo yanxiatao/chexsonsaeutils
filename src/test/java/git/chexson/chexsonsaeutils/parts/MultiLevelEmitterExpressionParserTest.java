@@ -1,9 +1,9 @@
 package git.chexson.chexsonsaeutils.parts;
 
-import git.chexson.chexsonsaeutils.parts.expression.MultiLevelEmitterExpressionCompileResult;
-import git.chexson.chexsonsaeutils.parts.expression.MultiLevelEmitterExpressionCompiler;
-import git.chexson.chexsonsaeutils.parts.expression.MultiLevelEmitterExpressionDiagnostic;
-import git.chexson.chexsonsaeutils.parts.expression.MultiLevelEmitterExpressionFormatter;
+import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompileResult;
+import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
+import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionDiagnostic;
+import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionFormatter;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;

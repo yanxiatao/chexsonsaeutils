@@ -1,7 +1,7 @@
 {
   "required": true,
   "package": "git.chexson.chexsonsaeutils.mixin",
-  "plugin": "git.chexson.chexsonsaeutils.mixin.ChexsonsaeutilsMixinPlugin",
+  "plugin": "git.chexson.chexsonsaeutils.mixin.ae2.ChexsonsaeutilsMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "ae2.menu.CraftConfirmMenuContinuationMixin",

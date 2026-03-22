@@ -1,0 +1,31 @@
+{
+  "$schema": "schema.json",
+  "includes": ["common/common.json"],
+  "background": {
+    "texture": "guis/multi_level_emitter.png",
+    "srcRect": [0, 0, 176, 236]
+  },
+  "slots": {
+    "PLAYER_INVENTORY": {
+      "left": 8,
+      "bottom": 80,
+      "grid": "BREAK_AFTER_9COLS"
+    },
+    "PLAYER_HOTBAR": {
+      "left": 8,
+      "bottom": 22,
+      "grid": "HORIZONTAL"
+    }
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.chexsonsaeutils.multi_slot_emitter"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    }
+  }
+}

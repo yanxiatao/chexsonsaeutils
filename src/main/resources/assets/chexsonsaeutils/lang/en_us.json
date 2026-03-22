@@ -24,5 +24,6 @@
   "gui.chexsonsaeutils.multi_level_emitter.normalize_expression_spacing": "Normalize expression spacing",
   "gui.chexsonsaeutils.multi_level_emitter.save_expression": "Save this expression",
   "gui.chexsonsaeutils.crafting_mode.default": "Default",
-  "gui.chexsonsaeutils.crafting_mode.ignore_missing": "Ignore Missing"
+  "gui.chexsonsaeutils.crafting_mode.ignore_missing": "Ignore Missing",
+  "gui.chexsonsaeutils.crafting_status.waiting": "Waiting: %s"
 }

@@ -1,12 +1,12 @@
 package git.chexson.chexsonsaeutils;
 
 import com.mojang.logging.LogUtils;
-import git.chexson.chexsonsaeutils.client.MultiLevelEmitterRuntimeScreen;
+import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.parts.MultiLevelEmitterItem;
-import git.chexson.chexsonsaeutils.parts.MultiLevelEmitterMenu;
-import git.chexson.chexsonsaeutils.parts.MultiLevelEmitterRuntimePart;
-import git.chexson.chexsonsaeutils.parts.MultiLevelEmitterScreen;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -15,9 +15,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.extensions.IForgeMenuType;
-import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -67,17 +65,10 @@ public class Chexsonsaeutils {
         CREATIVE_MODE_TABS.register(modEventBus);
 
         modEventBus.addListener(this::onCommonSetup);
-
-        MinecraftForge.EVENT_BUS.register(this);
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap);
-    }
-
-    @SubscribeEvent
-    public void onServerStarting(ServerStartingEvent event) {
-        // Server lifecycle anchor kept for future networked emitter behavior.
     }
 
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)

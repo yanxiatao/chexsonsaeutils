@@ -1,6 +1,8 @@
 package git.chexson.chexsonsaeutils.parts;
 
 import appeng.api.config.RedstoneMode;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;

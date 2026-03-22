@@ -1,8 +1,12 @@
 package git.chexson.chexsonsaeutils.parts;
 
 import appeng.api.config.RedstoneMode;
-import git.chexson.chexsonsaeutils.parts.expression.MultiLevelEmitterExpressionCompiler;
-import git.chexson.chexsonsaeutils.parts.expression.MultiLevelEmitterExpressionOwnership;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
+import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
+import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -119,7 +123,7 @@ class MultiLevelEmitterScreenTest {
     @Test
     void runtimeScreenSourceContainsRealControlsInsteadOfPlaceholderCopy() throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/client/MultiLevelEmitterRuntimeScreen.java"
+                "src/main/java/git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
         ));
 
         assertTrue(source.contains("ThresholdEditBox"));
@@ -203,7 +207,7 @@ class MultiLevelEmitterScreenTest {
     @Test
     void screenSourceContainsExpressionHelperMethods() throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterScreen.java"
+                "src/main/java/git/chexson/chexsonsaeutils/menu/implementations/MultiLevelEmitterScreen.java"
         ));
 
         assertTrue(source.contains("validateExpressionDraft("));
@@ -217,7 +221,7 @@ class MultiLevelEmitterScreenTest {
     @Test
     void screenSourceContainsPhaseThreeSyncHelpers() throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterScreen.java"
+                "src/main/java/git/chexson/chexsonsaeutils/menu/implementations/MultiLevelEmitterScreen.java"
         ));
 
         assertTrue(source.contains("record ThresholdSyncDecision("));
@@ -230,7 +234,7 @@ class MultiLevelEmitterScreenTest {
     @Test
     void runtimeScreenSourceUsesPhaseThreeSyncDecisions() throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/client/MultiLevelEmitterRuntimeScreen.java"
+                "src/main/java/git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
         ));
 
         assertTrue(source.contains("MultiLevelEmitterScreen.resolveThresholdSync("));
@@ -243,7 +247,7 @@ class MultiLevelEmitterScreenTest {
     @Test
     void runtimeScreenSourceResetsLocalSessionStateOnInit() throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/client/MultiLevelEmitterRuntimeScreen.java"
+                "src/main/java/git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
         ));
 
         assertTrue(source.contains("resetLocalUiState();"));

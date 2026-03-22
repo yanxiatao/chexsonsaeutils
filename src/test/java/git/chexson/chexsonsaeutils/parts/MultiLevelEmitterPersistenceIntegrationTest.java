@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils.parts;
 
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 

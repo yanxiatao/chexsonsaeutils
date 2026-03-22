@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils.parts;
 
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.player.Inventory;
 

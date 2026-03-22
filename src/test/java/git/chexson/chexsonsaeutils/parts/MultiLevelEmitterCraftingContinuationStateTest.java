@@ -1,14 +1,13 @@
 package git.chexson.chexsonsaeutils.parts;
 
 import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
-import git.chexson.chexsonsaeutils.crafting.CraftingContinuationSavedData;
-import git.chexson.chexsonsaeutils.crafting.CraftingContinuationStatusSnapshot;
-import git.chexson.chexsonsaeutils.crafting.CraftingContinuationWaitingBranch;
-import git.chexson.chexsonsaeutils.crafting.CraftingContinuationWaitingDetail;
+import git.chexson.chexsonsaeutils.crafting.persistence.CraftingContinuationSavedData;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusSnapshot;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingBranch;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingDetail;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.assertContains;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MultiLevelEmitterCraftingContinuationStateTest {
 
     private static final Path STATUS_SERVICE = Path.of(
-            "src/main/java/git/chexson/chexsonsaeutils/crafting/CraftingContinuationStatusService.java");
+            "src/main/java/git/chexson/chexsonsaeutils/crafting/status/CraftingContinuationStatusService.java");
     private static final Path EXECUTING_JOB_ACCESSOR = Path.of(
             "src/main/java/git/chexson/chexsonsaeutils/mixin/ae2/crafting/ExecutingCraftingJobAccessor.java");
 
@@ -159,6 +159,7 @@ class MultiLevelEmitterCraftingContinuationStateTest {
         assertContains(STATUS_SERVICE, "getWaitingFor().list");
         assertContains(STATUS_SERVICE, "clearCompletedJob(craftId)");
         assertContains(EXECUTING_JOB_ACCESSOR, "getRemainingAmount");
+        assertContains(EXECUTING_JOB_ACCESSOR, "getPlayerId");
     }
 
     @Test
@@ -168,6 +169,8 @@ class MultiLevelEmitterCraftingContinuationStateTest {
         assertContains(STATUS_SERVICE, "currentAvailableWaitingStacks");
         assertContains(STATUS_SERVICE, "previousAvailableWaitingStacks");
         assertContains(STATUS_SERVICE, "hasAvailabilityIncrease(");
+        assertContains(STATUS_SERVICE, "resolveRefillActionSource(");
+        assertContains(STATUS_SERVICE, "storage.insert(liveKey, extracted - inserted, Actionable.MODULATE, refillActionSource)");
     }
 
     private static Map<String, Long> orderedStacks(Map<String, Long> rawStacks) {
@@ -176,12 +179,5 @@ class MultiLevelEmitterCraftingContinuationStateTest {
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> orderedStacks.put(entry.getKey(), entry.getValue()));
         return orderedStacks;
-    }
-
-    private static void assertContains(Path path, String expectedSnippet) throws IOException {
-        assertTrue(Files.exists(path), () -> "Expected file to exist: " + path);
-        String content = Files.readString(path);
-        assertTrue(content.contains(expectedSnippet),
-                () -> "Expected " + path + " to contain: " + expectedSnippet);
     }
 }
