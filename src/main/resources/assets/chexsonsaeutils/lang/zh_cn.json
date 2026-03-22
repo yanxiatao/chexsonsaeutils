@@ -24,5 +24,6 @@
   "gui.chexsonsaeutils.multi_level_emitter.normalize_expression_spacing": "\u89c4\u8303\u8868\u8fbe\u5f0f\u7a7a\u683c",
   "gui.chexsonsaeutils.multi_level_emitter.save_expression": "\u4fdd\u5b58\u5f53\u524d\u8868\u8fbe\u5f0f",
   "gui.chexsonsaeutils.crafting_mode.default": "\u9ed8\u8ba4",
-  "gui.chexsonsaeutils.crafting_mode.ignore_missing": "\u5ffd\u7565\u7f3a\u6599"
+  "gui.chexsonsaeutils.crafting_mode.ignore_missing": "\u5ffd\u7565\u7f3a\u6599",
+  "gui.chexsonsaeutils.crafting_status.waiting": "\u7b49\u5019\u6570\u91cf\uff1a%s"
 }

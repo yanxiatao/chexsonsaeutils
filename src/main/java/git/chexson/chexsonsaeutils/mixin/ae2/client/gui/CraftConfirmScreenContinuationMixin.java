@@ -6,7 +6,7 @@ import appeng.client.gui.style.ScreenStyle;
 import appeng.menu.me.crafting.CraftConfirmMenu;
 import appeng.menu.me.crafting.CraftingPlanSummary;
 import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
-import git.chexson.chexsonsaeutils.crafting.CraftingContinuationSubmitBridge;
+import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationSubmitBridge;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;

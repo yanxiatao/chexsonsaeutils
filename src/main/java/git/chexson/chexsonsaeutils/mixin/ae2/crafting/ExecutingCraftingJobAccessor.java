@@ -5,6 +5,7 @@ import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.ElapsedTimeTracker;
 import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
@@ -21,6 +22,10 @@ public interface ExecutingCraftingJobAccessor {
 
     @Accessor(value = "remainingAmount", remap = false)
     long getRemainingAmount();
+
+    @Accessor(value = "playerId", remap = false)
+    @Nullable
+    Integer getPlayerId();
 
     @Accessor(value = "timeTracker", remap = false)
     ElapsedTimeTracker getTimeTracker();

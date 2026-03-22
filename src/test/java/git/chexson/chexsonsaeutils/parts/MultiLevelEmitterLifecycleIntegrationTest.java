@@ -1,6 +1,11 @@
 package git.chexson.chexsonsaeutils.parts;
 
 import appeng.api.config.RedstoneMode;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import io.netty.buffer.Unpooled;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
@@ -20,14 +25,18 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MultiLevelEmitterLifecycleIntegrationTest {
+    private static final String NBT_CONFIGURED_ITEM_COUNT = "configured_item_count";
+    private static final String NBT_REPORTING_VALUES = "reportingValues";
+    private static final String NBT_COMPARISON_MODES = "comparison_modes";
+    private static final String NBT_LOGIC_RELATIONS = "logic_relations";
 
     @Test
     void emit03FlowUsesDedicatedRuntimePartInsteadOfFallbackBinding() throws IOException {
         String itemSource = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterItem.java"
+                "src/main/java/git/chexson/chexsonsaeutils/parts/automation/MultiLevelEmitterItem.java"
         ));
         String runtimeSource = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterRuntimePart.java"
+                "src/main/java/git/chexson/chexsonsaeutils/parts/automation/MultiLevelEmitterRuntimePart.java"
         ));
 
         assertTrue(itemSource.contains("MultiLevelEmitterRuntimePart.class"),
@@ -66,6 +75,8 @@ class MultiLevelEmitterLifecycleIntegrationTest {
                 "runtime part must write marked item config into NBT");
         assertTrue(runtimeSource.contains("readFromChildTag(data, NBT_CONFIG)"),
                 "runtime part must restore marked item config from NBT");
+        assertFalse(runtimeSource.contains("multi_config"),
+                "runtime part must not retain legacy config-key compatibility branches");
         assertTrue(runtimeSource.contains("expression_text"),
                 "runtime part must persist applied expression text");
         assertTrue(runtimeSource.contains("expression_ownership"),
@@ -74,7 +85,7 @@ class MultiLevelEmitterLifecycleIntegrationTest {
                 "runtime part must expose the authoritative apply-expression entry point");
 
         String menuSource = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterMenu.java"
+                "src/main/java/git/chexson/chexsonsaeutils/menu/implementations/MultiLevelEmitterMenu.java"
         ));
         assertTrue(menuSource.contains("MenuLocators.writeToPacket"),
                 "custom menu open path must serialize a part locator to bind the correct emitter instance");
@@ -211,37 +222,37 @@ class MultiLevelEmitterLifecycleIntegrationTest {
         );
 
         CompoundTag persisted = new CompoundTag();
-        persisted.putInt(MultiLevelEmitterRuntimePart.NBT_CONFIGURED_ITEM_COUNT, 2);
+        persisted.putInt(NBT_CONFIGURED_ITEM_COUNT, 2);
         MultiLevelEmitterPart.writeThresholdsToNbt(
                 beforeReload.thresholds(),
                 persisted,
-                MultiLevelEmitterRuntimePart.NBT_REPORTING_VALUES
+                NBT_REPORTING_VALUES
         );
         MultiLevelEmitterUtils.writeComparisonModesToNBT(
                 beforeReload.comparisonModes(),
                 persisted,
-                MultiLevelEmitterRuntimePart.NBT_COMPARISON_MODES
+                NBT_COMPARISON_MODES
         );
         MultiLevelEmitterUtils.writeLogicRelationsToNBT(
                 beforeReload.relations(),
                 persisted,
-                MultiLevelEmitterRuntimePart.NBT_LOGIC_RELATIONS
+                NBT_LOGIC_RELATIONS
         );
 
         MultiLevelEmitterRuntimePart afterReload = newRuntimePart();
         afterReload.applyConfiguration(
-                persisted.getInt(MultiLevelEmitterRuntimePart.NBT_CONFIGURED_ITEM_COUNT),
+                persisted.getInt(NBT_CONFIGURED_ITEM_COUNT),
                 MultiLevelEmitterPart.readThresholdsFromNbt(
                         persisted,
-                        MultiLevelEmitterRuntimePart.NBT_REPORTING_VALUES
+                        NBT_REPORTING_VALUES
                 ),
                 MultiLevelEmitterUtils.readComparisonModesFromNBT(
                         persisted,
-                        MultiLevelEmitterRuntimePart.NBT_COMPARISON_MODES
+                        NBT_COMPARISON_MODES
                 ),
                 MultiLevelEmitterUtils.readLogicRelationsFromNBT(
                         persisted,
-                        MultiLevelEmitterRuntimePart.NBT_LOGIC_RELATIONS
+                        NBT_LOGIC_RELATIONS
                 )
         );
         MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(afterReload);
@@ -287,7 +298,7 @@ class MultiLevelEmitterLifecycleIntegrationTest {
         assertRoundTripRuntimeState(restoredFromStream);
 
         String runtimeSource = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterRuntimePart.java"
+                "src/main/java/git/chexson/chexsonsaeutils/parts/automation/MultiLevelEmitterRuntimePart.java"
         ));
         assertTrue(runtimeSource.contains("configured_item_count"),
                 "runtime snapshot persistence must stay keyed by configured_item_count");

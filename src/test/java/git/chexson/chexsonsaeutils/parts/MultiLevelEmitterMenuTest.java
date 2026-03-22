@@ -1,6 +1,10 @@
 package git.chexson.chexsonsaeutils.parts;
 
 import appeng.api.config.RedstoneMode;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;

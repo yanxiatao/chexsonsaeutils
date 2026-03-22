@@ -1,6 +1,12 @@
 package git.chexson.chexsonsaeutils.parts;
 
 import appeng.api.config.RedstoneMode;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 
@@ -17,14 +23,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MultiLevelEmitterIntegrationTest {
+    private static final String NBT_CONFIGURED_ITEM_COUNT = "configured_item_count";
+    private static final String NBT_REPORTING_VALUES = "reportingValues";
+    private static final String NBT_COMPARISON_MODES = "comparison_modes";
+    private static final String NBT_LOGIC_RELATIONS = "logic_relations";
 
     @Test
     void runtimePathIsAnchoredAndRejectsPassThroughRegression() throws IOException {
         String itemSource = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterItem.java"
+                "src/main/java/git/chexson/chexsonsaeutils/parts/automation/MultiLevelEmitterItem.java"
         ));
         String runtimeSource = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterRuntimePart.java"
+                "src/main/java/git/chexson/chexsonsaeutils/parts/automation/MultiLevelEmitterRuntimePart.java"
         ));
 
         assertTrue(itemSource.contains("MultiLevelEmitterRuntimePart.class"),
@@ -33,8 +43,8 @@ class MultiLevelEmitterIntegrationTest {
                 "runtime feature path must not regress to StorageLevelEmitterPart fallback");
         assertTrue(runtimeSource.contains("evaluateConfiguredOutput("),
                 "runtime part must expose a concrete evaluation entry point");
-        assertTrue(runtimeSource.contains("MultiLevelEmitterPart.evaluateConfiguredOutput"),
-                "runtime part must execute MultiLevelEmitter evaluation logic directly");
+        assertTrue(runtimeSource.contains("MultiLevelEmitterPart.evaluateSlotComparisons"),
+                "runtime part must execute MultiLevelEmitter slot evaluation logic directly");
     }
 
     @Test
@@ -50,7 +60,7 @@ class MultiLevelEmitterIntegrationTest {
                 List.of(MultiLevelEmitterPart.LogicRelation.AND)
         );
 
-        assertFalse(runtime.evaluateConfiguredOutput(List.of(5L, 1L), true));
+        assertTrue(runtime.evaluateConfiguredOutput(List.of(5L, 1L), true));
         assertTrue(runtime.evaluateConfiguredOutput(List.of(5L, 2L), true));
         assertFalse(runtime.evaluateConfiguredOutput(List.of(5L, 2L), false));
     }
@@ -68,7 +78,7 @@ class MultiLevelEmitterIntegrationTest {
                 List.of(MultiLevelEmitterPart.LogicRelation.AND)
         );
 
-        assertFalse(runtime.evaluateConfiguredOutput(List.of(5L, 3L), true));
+        assertFalse(runtime.evaluateConfiguredOutput(List.of(5L, 2L), true));
 
         runtime.applyConfiguration(
                 2,
@@ -77,7 +87,7 @@ class MultiLevelEmitterIntegrationTest {
                 runtime.relations()
         );
 
-        assertTrue(runtime.evaluateConfiguredOutput(List.of(5L, 3L), true));
+        assertTrue(runtime.evaluateConfiguredOutput(List.of(5L, 2L), true));
     }
 
     @Test
@@ -94,37 +104,37 @@ class MultiLevelEmitterIntegrationTest {
         );
 
         CompoundTag persisted = new CompoundTag();
-        persisted.putInt(MultiLevelEmitterRuntimePart.NBT_CONFIGURED_ITEM_COUNT, 2);
+        persisted.putInt(NBT_CONFIGURED_ITEM_COUNT, 2);
         MultiLevelEmitterPart.writeThresholdsToNbt(
                 beforeReload.thresholds(),
                 persisted,
-                MultiLevelEmitterRuntimePart.NBT_REPORTING_VALUES
+                NBT_REPORTING_VALUES
         );
         MultiLevelEmitterUtils.writeComparisonModesToNBT(
                 beforeReload.comparisonModes(),
                 persisted,
-                MultiLevelEmitterRuntimePart.NBT_COMPARISON_MODES
+                NBT_COMPARISON_MODES
         );
         MultiLevelEmitterUtils.writeLogicRelationsToNBT(
                 beforeReload.relations(),
                 persisted,
-                MultiLevelEmitterRuntimePart.NBT_LOGIC_RELATIONS
+                NBT_LOGIC_RELATIONS
         );
 
         MultiLevelEmitterRuntimePart afterReload = newRuntimePart();
         afterReload.applyConfiguration(
-                persisted.getInt(MultiLevelEmitterRuntimePart.NBT_CONFIGURED_ITEM_COUNT),
+                persisted.getInt(NBT_CONFIGURED_ITEM_COUNT),
                 MultiLevelEmitterPart.readThresholdsFromNbt(
                         persisted,
-                        MultiLevelEmitterRuntimePart.NBT_REPORTING_VALUES
+                        NBT_REPORTING_VALUES
                 ),
                 MultiLevelEmitterUtils.readComparisonModesFromNBT(
                         persisted,
-                        MultiLevelEmitterRuntimePart.NBT_COMPARISON_MODES
+                        NBT_COMPARISON_MODES
                 ),
                 MultiLevelEmitterUtils.readLogicRelationsFromNBT(
                         persisted,
-                        MultiLevelEmitterRuntimePart.NBT_LOGIC_RELATIONS
+                        NBT_LOGIC_RELATIONS
                 )
         );
 
@@ -159,7 +169,8 @@ class MultiLevelEmitterIntegrationTest {
 
         assertEquals(2, firstState.configuredSlots());
         assertEquals(2, reopenedState.configuredSlots());
-        assertEquals(6, reopenedState.visibleSlots());
+        assertEquals(0, reopenedState.markedSlots());
+        assertEquals(2, reopenedState.visibleSlots());
         assertEquals(firstState.slots().get(0).threshold(), reopenedState.slots().get(0).threshold());
         assertEquals(firstState.slots().get(1).threshold(), reopenedState.slots().get(1).threshold());
         assertEquals(firstState.slots().get(1).comparisonMode(), reopenedState.slots().get(1).comparisonMode());
@@ -199,7 +210,7 @@ class MultiLevelEmitterIntegrationTest {
             Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
             MultiLevelEmitterRuntimePart runtime =
                     (MultiLevelEmitterRuntimePart) allocateInstance.invoke(unsafe, MultiLevelEmitterRuntimePart.class);
-            runtime.applyConfiguration(0, null, null, null);
+            runtime.applyConfiguration(1, null, null, null);
             runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
             return runtime;
         } catch (ReflectiveOperationException exception) {

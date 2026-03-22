@@ -1,11 +1,19 @@
 package git.chexson.chexsonsaeutils.parts;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.javaSource;
+import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.readUtf8;
+import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.resourcePath;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,13 +29,15 @@ class MultiLevelEmitterRegistrationTest {
 
     @Test
     void modBootstrapContainsRegistrationAnchors() throws IOException {
-        String modSource = readSource("src/main/java/git/chexson/chexsonsaeutils/Chexsonsaeutils.java");
-        String screenSource = readSource("src/main/java/git/chexson/chexsonsaeutils/client/MultiLevelEmitterRuntimeScreen.java");
-        String itemModel = readSource("src/main/resources/assets/chexsonsaeutils/models/item/multi_level_emitter.json");
-        String enUs = readSource("src/main/resources/assets/chexsonsaeutils/lang/en_us.json");
-        String zhCn = readSource("src/main/resources/assets/chexsonsaeutils/lang/zh_cn.json");
-        String gradleProperties = readSource("gradle.properties");
-        Path itemTexture = Path.of("src/main/resources/assets/chexsonsaeutils/textures/item/multi_level_emitter.png");
+        String modSource = readUtf8(javaSource("git/chexson/chexsonsaeutils/Chexsonsaeutils.java"));
+        String screenSource = readUtf8(javaSource(
+                "git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
+        ));
+        String itemModel = readUtf8(resourcePath("assets/chexsonsaeutils/models/item/multi_level_emitter.json"));
+        JsonObject enUs = readLang(resourcePath("assets/chexsonsaeutils/lang/en_us.json"));
+        JsonObject zhCn = readLang(resourcePath("assets/chexsonsaeutils/lang/zh_cn.json"));
+        String gradleProperties = readUtf8(Path.of("gradle.properties"));
+        Path itemTexture = resourcePath("assets/chexsonsaeutils/textures/item/multi_level_emitter.png");
 
         assertTrue(modSource.contains("MULTI_LEVEL_EMITTER_ITEM"), "missing emitter RegistryObject");
         assertTrue(modSource.contains("ITEMS.register(MultiLevelEmitterItem.id()"), "missing item registration call");
@@ -47,19 +57,19 @@ class MultiLevelEmitterRegistrationTest {
                 "item model must reference the mod texture");
         assertTrue(Files.exists(itemTexture) && Files.size(itemTexture) > 0,
                 "item texture must exist");
-        assertTrue(enUs.contains("item.chexsonsaeutils.multi_level_emitter"),
+        assertTrue(enUs.has("item.chexsonsaeutils.multi_level_emitter"),
                 "English translations must include the emitter item name");
-        assertTrue(zhCn.contains("item.chexsonsaeutils.multi_level_emitter"),
+        assertTrue(zhCn.has("item.chexsonsaeutils.multi_level_emitter"),
                 "Chinese translations must include the emitter item name");
         assertTrue(gradleProperties.contains("mod_name=Chexson's ae utils"),
                 "gradle properties must expose the requested English mod display name");
-        assertTrue(enUs.contains("\"itemGroup.chexsonsaeutils\": \"Chexson's ae utils\""),
+        assertEquals("Chexson's ae utils", enUs.get("itemGroup.chexsonsaeutils").getAsString(),
                 "English creative tab translation must use the requested English mod name");
-        assertTrue(enUs.contains("gui.chexsonsaeutils.multi_level_emitter.apply_expression"),
+        assertTrue(enUs.has("gui.chexsonsaeutils.multi_level_emitter.apply_expression"),
                 "English translations must include emitter button labels");
-        assertTrue(zhCn.contains("gui.chexsonsaeutils.multi_level_emitter.apply_expression"),
+        assertTrue(zhCn.has("gui.chexsonsaeutils.multi_level_emitter.apply_expression"),
                 "Chinese translations must include emitter button labels");
-        assertTrue(zhCn.contains("\"itemGroup.chexsonsaeutils\": \"chexson的ae工具\""),
+        assertEquals("chexson \u7684 ae \u5de5\u5177", zhCn.get("itemGroup.chexsonsaeutils").getAsString(),
                 "Chinese creative tab translation must use the requested mod name");
     }
 
@@ -70,7 +80,7 @@ class MultiLevelEmitterRegistrationTest {
         assertTrue(MultiLevelEmitterItem.isRegistryPath(MultiLevelEmitterItem.id()));
     }
 
-    private static String readSource(String relativePath) throws IOException {
-        return Files.readString(Path.of(relativePath));
+    private static JsonObject readLang(Path path) throws IOException {
+        return JsonParser.parseString(readUtf8(path)).getAsJsonObject();
     }
 }

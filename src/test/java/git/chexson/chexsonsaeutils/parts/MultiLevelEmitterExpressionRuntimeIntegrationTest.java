@@ -1,7 +1,10 @@
 package git.chexson.chexsonsaeutils.parts;
 
 import appeng.api.config.RedstoneMode;
-import git.chexson.chexsonsaeutils.parts.expression.MultiLevelEmitterExpressionOwnership;
+import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
+import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 
@@ -80,7 +83,7 @@ class MultiLevelEmitterExpressionRuntimeIntegrationTest {
         runtime.updateConfiguredItemCountFromUi(2);
 
         String runtimeSource = Files.readString(Path.of(
-                "src/main/java/git/chexson/chexsonsaeutils/parts/MultiLevelEmitterRuntimePart.java"
+                "src/main/java/git/chexson/chexsonsaeutils/parts/automation/MultiLevelEmitterRuntimePart.java"
         ));
 
         assertEquals(2, runtime.configuredItemCount());
