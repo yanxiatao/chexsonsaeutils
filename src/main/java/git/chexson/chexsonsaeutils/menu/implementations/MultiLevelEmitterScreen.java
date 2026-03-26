@@ -368,9 +368,9 @@ public final class MultiLevelEmitterScreen {
                     menu.isSlotConfigured(slotIndex),
                     marked,
                     menu.thresholdForSlot(slotIndex),
-                    craftingCardInstalled,
+                    craftingCardInstalled && craftingMode != MultiLevelEmitterPart.CraftingMode.NONE,
                     menu.comparisonModeForSlot(slotIndex),
-                    craftingCardInstalled,
+                    craftingCardInstalled && craftingMode != MultiLevelEmitterPart.CraftingMode.NONE,
                     matchingMode,
                     craftingMode,
                     menu.hasFuzzyCardInstalled(),
@@ -392,7 +392,7 @@ public final class MultiLevelEmitterScreen {
                 menu.appliedExpressionText(),
                 menu.expressionOwnership(),
                 menu.expressionIsInvalid(),
-                craftingCardInstalled,
+                false,
                 craftingLockTooltip,
                 List.copyOf(slots)
         );

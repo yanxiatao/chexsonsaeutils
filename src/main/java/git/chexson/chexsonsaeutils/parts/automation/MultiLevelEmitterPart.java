@@ -238,6 +238,12 @@ public final class MultiLevelEmitterPart {
         };
     }
 
+    public static boolean isExpressionParticipatingCraftingMode(CraftingMode craftingMode) {
+        CraftingMode effective = craftingMode == null ? CraftingMode.NONE : craftingMode;
+        return effective == CraftingMode.EMIT_WHILE_CRAFTING
+                || effective == CraftingMode.EMIT_TO_CRAFT;
+    }
+
     public static boolean shouldRecomputeAfterMatchingModeChange(MatchingMode previous, MatchingMode current) {
         MatchingMode before = previous == null ? MatchingMode.STRICT : previous;
         MatchingMode after = current == null ? MatchingMode.STRICT : current;

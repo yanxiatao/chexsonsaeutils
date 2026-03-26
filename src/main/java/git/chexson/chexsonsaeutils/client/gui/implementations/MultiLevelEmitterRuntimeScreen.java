@@ -58,6 +58,8 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
     private static final int COLOR_SUBLABEL = 0x606060;
     private static final int COLOR_HELPER = 0x8A8A8A;
     private static final int COLOR_TEXT = 0x202020;
+    private static final int COLOR_INPUT_TEXT = EditBox.DEFAULT_TEXT_COLOR;
+    private static final int COLOR_READONLY_INPUT_TEXT = 0x7A7A7A;
     private static final int COLOR_VALID = 0x6A9955;
     private static final int COLOR_WARNING = 0xD0A146;
     private static final int COLOR_INVALID = 0xB85A5A;
@@ -578,8 +580,12 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             input.setPosition(leftPos + THRESHOLD_X, y);
             input.active = enabled && !slot.thresholdLocked();
             input.setEditable(enabled && !slot.thresholdLocked());
-            input.setTextColor(enabled ? COLOR_TEXT : 0x7A7A7A);
-            input.setTextColorUneditable(0x7A7A7A);
+            input.setTextColor(COLOR_INPUT_TEXT);
+            input.setTextColorUneditable(COLOR_READONLY_INPUT_TEXT);
+            if (!enabled) {
+                input.setTextColor(COLOR_READONLY_INPUT_TEXT);
+                input.setTextColorUneditable(COLOR_READONLY_INPUT_TEXT);
+            }
             MultiLevelEmitterScreen.ThresholdSyncDecision thresholdDecision =
                     MultiLevelEmitterScreen.resolveThresholdSync(
                             input.getValue(),
