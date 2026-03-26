@@ -1,12 +1,19 @@
 package git.chexson.chexsonsaeutils.client.gui.implementations;
 
+import appeng.api.upgrades.Upgrades;
 import appeng.client.gui.AEBaseScreen;
+import appeng.client.gui.Icon;
+import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.style.StyleManager;
+import appeng.client.gui.widgets.UpgradesPanel;
+import appeng.core.localization.GuiText;
+import com.mojang.blaze3d.systems.RenderSystem;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompileResult;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionDiagnostic;
@@ -27,6 +34,7 @@ import org.lwjgl.glfw.GLFW;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collections;
 import java.util.Objects;
 
 public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitterMenu.RuntimeMenu> {
@@ -77,6 +85,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
     private static final int THRESHOLD_X = 55;
     private static final int MODE_X = 96;
     private static final int FUZZY_MODE_X = 123;
+    private static final int FUZZY_MODE_BUTTON_SIZE = 16;
     private static final int HIDDEN_SLOT_X = -10_000;
     private static final int HIDDEN_SLOT_Y = -10_000;
     private static final int EXPRESSION_LABEL_Y = 22;
@@ -99,7 +108,8 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
 
     private final List<ThresholdEditBox> thresholdInputs = new ArrayList<>();
     private final List<Button> comparisonButtons = new ArrayList<>();
-    private final List<FittedTextButton> fuzzyModeButtons = new ArrayList<>();
+    private final List<FuzzyModeButton> fuzzyModeButtons = new ArrayList<>();
+    private final List<FittedTextButton> craftingModeButtons = new ArrayList<>();
     private final List<Button> slotReferenceButtons = new ArrayList<>();
     private Button addSlotButton;
     private Button removeSlotButton;
@@ -137,6 +147,10 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             ScreenStyle style
     ) {
         super(menu, playerInventory, title, style);
+        this.widgets.add("upgrades", new UpgradesPanel(
+                menu.getSlots(SlotSemantics.UPGRADE),
+                this::getCompatibleUpgrades
+        ));
     }
 
     @Override
@@ -145,6 +159,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
         thresholdInputs.clear();
         comparisonButtons.clear();
         fuzzyModeButtons.clear();
+        craftingModeButtons.clear();
         slotReferenceButtons.clear();
         resetLocalUiState();
 
@@ -290,11 +305,11 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             addRenderableWidget(comparisonButton);
             comparisonButtons.add(comparisonButton);
 
-            FittedTextButton fuzzyModeButton = new FittedTextButton(
+            FuzzyModeButton fuzzyModeButton = new FuzzyModeButton(
                     0,
                     0,
-                    24,
-                    14,
+                    FUZZY_MODE_BUTTON_SIZE,
+                    FUZZY_MODE_BUTTON_SIZE,
                     Component.literal("STR"),
                     button -> {
                         int slotIndex = rowToSlotIndex(rowIndex);
@@ -303,12 +318,30 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                         }
                         MultiLevelEmitterScreen.toggleMatchingMode(menu, slotIndex);
                     },
-                    0.9f,
-                    0.62f,
                     Tooltip.create(Component.empty())
             );
             addRenderableWidget(fuzzyModeButton);
             fuzzyModeButtons.add(fuzzyModeButton);
+
+            FittedTextButton craftingModeButton = new FittedTextButton(
+                    0,
+                    0,
+                    24,
+                    14,
+                    Component.literal(""),
+                    button -> {
+                        int slotIndex = rowToSlotIndex(rowIndex);
+                        if (!menu.isSlotConfigured(slotIndex)) {
+                            return;
+                        }
+                        MultiLevelEmitterScreen.toggleCraftingMode(menu, slotIndex);
+                    },
+                    0.9f,
+                    0.62f,
+                    Tooltip.create(Component.empty())
+            );
+            addRenderableWidget(craftingModeButton);
+            craftingModeButtons.add(craftingModeButton);
         }
 
         syncLayoutFromMenu();
@@ -367,6 +400,8 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                 if (color != 0) {
                     guiGraphics.fill(offsetX + ROW_SHADE_LEFT, y, offsetX + ROW_SHADE_RIGHT, y + 18, color);
                 }
+            } else if (slotIndex < state.slots().size() && state.slots().get(slotIndex).duplicateEmitToCraftTarget()) {
+                guiGraphics.fill(offsetX + ROW_SHADE_LEFT, y, offsetX + ROW_SHADE_RIGHT, y + 18, FUZZY_HIGHLIGHT_COLOR);
             } else if (slotIndex < state.slots().size() && state.slots().get(slotIndex).emphasizeFuzzyMode()) {
                 guiGraphics.fill(offsetX + ROW_SHADE_LEFT, y, offsetX + ROW_SHADE_RIGHT, y + 18, FUZZY_HIGHLIGHT_COLOR);
             }
@@ -463,7 +498,8 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             Button slotReferenceButton = slotReferenceButtons.get(row);
             ThresholdEditBox input = thresholdInputs.get(row);
             Button comparisonButton = comparisonButtons.get(row);
-            FittedTextButton fuzzyModeButton = fuzzyModeButtons.get(row);
+            FuzzyModeButton fuzzyModeButton = fuzzyModeButtons.get(row);
+            FittedTextButton craftingModeButton = craftingModeButtons.get(row);
             boolean rowVisible = row < visibleRows;
             if (!rowVisible) {
                 slotReferenceButton.visible = false;
@@ -478,6 +514,9 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                 fuzzyModeButton.visible = false;
                 fuzzyModeButton.active = false;
                 fuzzyModeButton.setPosition(HIDDEN_SLOT_X, HIDDEN_SLOT_Y);
+                craftingModeButton.visible = false;
+                craftingModeButton.active = false;
+                craftingModeButton.setPosition(HIDDEN_SLOT_X, HIDDEN_SLOT_Y);
                 continue;
             }
 
@@ -516,12 +555,20 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                     MultiLevelEmitterScreen.comparisonModeLabel(slot.comparisonMode())
             ));
 
-            fuzzyModeButton.visible = slot.showFuzzyControl();
-            fuzzyModeButton.active = enabled && slot.showFuzzyControl();
-            fuzzyModeButton.setPosition(leftPos + FUZZY_MODE_X, y);
+            fuzzyModeButton.visible = slot.showFuzzyControl() && !slot.showCraftingControl();
+            fuzzyModeButton.active = enabled && slot.showFuzzyControl() && !slot.showCraftingControl();
+            fuzzyModeButton.setPosition(leftPos + FUZZY_MODE_X + 4, y);
+            fuzzyModeButton.setMatchingMode(slot.matchingMode());
             fuzzyModeButton.setMessage(Component.literal(slot.fuzzyShortLabel()));
             fuzzyModeButton.setTooltip(Tooltip.create(slot.fuzzyTooltip()));
             fuzzyModeButton.setTextColorOverride(slot.emphasizeFuzzyMode() ? COLOR_WARNING : -1);
+
+            craftingModeButton.visible = slot.showCraftingControl();
+            craftingModeButton.active = enabled && slot.showCraftingControl();
+            craftingModeButton.setPosition(leftPos + FUZZY_MODE_X, y);
+            craftingModeButton.setMessage(Component.literal(slot.craftingShortLabel()));
+            craftingModeButton.setTooltip(Tooltip.create(slot.craftingTooltip()));
+            craftingModeButton.setTextColorOverride(slot.emphasizeCraftingMode() ? COLOR_WARNING : -1);
         }
     }
 
@@ -749,6 +796,17 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                 && mouseY < topPos + CONFIG_PANEL_Y + CONFIG_PANEL_HEIGHT;
     }
 
+    private List<Component> getCompatibleUpgrades() {
+        var upgrades = menu.getUpgrades();
+        if (upgrades == null) {
+            return Collections.emptyList();
+        }
+        var tooltip = new ArrayList<Component>();
+        tooltip.add(GuiText.CompatibleUpgrades.text());
+        tooltip.addAll(Upgrades.getTooltipLinesForMachine(upgrades.getUpgradableItem()));
+        return tooltip;
+    }
+
     private static boolean startsWithOperator(String text, int index) {
         if (index < 0 || index >= text.length()) {
             return false;
@@ -840,6 +898,19 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
         return Mth.clamp(widthScale, minimumScale, preferredScale);
     }
 
+    private static Icon fuzzyModeIcon(MultiLevelEmitterPart.MatchingMode mode) {
+        MultiLevelEmitterPart.MatchingMode effective =
+                mode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : mode;
+        return switch (effective) {
+            case STRICT -> Icon.TOOLBAR_BUTTON_BACKGROUND;
+            case IGNORE_ALL -> Icon.FUZZY_IGNORE;
+            case PERCENT_99 -> Icon.FUZZY_PERCENT_99;
+            case PERCENT_75 -> Icon.FUZZY_PERCENT_75;
+            case PERCENT_50 -> Icon.FUZZY_PERCENT_50;
+            case PERCENT_25 -> Icon.FUZZY_PERCENT_25;
+        };
+    }
+
     private static Field findField(Class<?> owner, String name) {
         try {
             return ObfuscationReflectionHelper.findField(owner, name);
@@ -868,6 +939,81 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
     private record SelectionRange(int start, int end) {
         private boolean isCollapsed() {
             return start == end;
+        }
+    }
+
+    private final class FuzzyModeButton extends Button {
+
+        private MultiLevelEmitterPart.MatchingMode matchingMode = MultiLevelEmitterPart.MatchingMode.STRICT;
+        private int textColorOverride = -1;
+
+        private FuzzyModeButton(
+                int x,
+                int y,
+                int width,
+                int height,
+                Component message,
+                OnPress onPress,
+                Tooltip tooltip
+        ) {
+            super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
+            this.setTooltip(tooltip);
+        }
+
+        private void setMatchingMode(MultiLevelEmitterPart.MatchingMode matchingMode) {
+            this.matchingMode = matchingMode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : matchingMode;
+        }
+
+        private void setTextColorOverride(int textColorOverride) {
+            this.textColorOverride = textColorOverride;
+        }
+
+        @Override
+        public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            if (!visible) {
+                return;
+            }
+
+            RenderSystem.disableDepthTest();
+            RenderSystem.enableBlend();
+
+            if (isFocused()) {
+                guiGraphics.fill(getX() - 1, getY() - 1, getX() + width + 1, getY(), 0xFFFFFFFF);
+                guiGraphics.fill(getX() - 1, getY(), getX(), getY() + height, 0xFFFFFFFF);
+                guiGraphics.fill(getX() + width, getY(), getX() + width + 1, getY() + height, 0xFFFFFFFF);
+                guiGraphics.fill(getX() - 1, getY() + height, getX() + width + 1, getY() + height + 1, 0xFFFFFFFF);
+            }
+
+            Blitter background = Icon.TOOLBAR_BUTTON_BACKGROUND.getBlitter();
+            if (!active) {
+                background.opacity(0.5f);
+            }
+            background.dest(getX(), getY()).blit(guiGraphics);
+
+            if (matchingMode == MultiLevelEmitterPart.MatchingMode.STRICT) {
+                drawCenteredFittedText(
+                        guiGraphics,
+                        font,
+                        getMessage(),
+                        getX() + 1,
+                        getY() + 1,
+                        getWidth() - 2,
+                        getHeight() - 2,
+                        active
+                                ? textColorOverride >= 0 ? textColorOverride : 0xFFFFFF
+                                : 0xA0A0A0,
+                        0.72f,
+                        0.52f
+                );
+            } else {
+                Blitter icon = fuzzyModeIcon(matchingMode).getBlitter();
+                if (!active) {
+                    icon.opacity(0.5f);
+                }
+                icon.dest(getX(), getY()).blit(guiGraphics);
+            }
+
+            RenderSystem.enableDepthTest();
         }
     }
 

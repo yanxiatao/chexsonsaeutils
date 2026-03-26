@@ -1,18 +1,31 @@
 package git.chexson.chexsonsaeutils.parts;
 
+import appeng.api.config.RedstoneMode;
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.IGrid;
+import appeng.api.networking.IGridNode;
 import appeng.api.networking.IStackWatcher;
+import appeng.api.networking.crafting.CalculationStrategy;
+import appeng.api.networking.crafting.ICraftingCPU;
+import appeng.api.networking.crafting.ICraftingPlan;
+import appeng.api.networking.crafting.ICraftingRequester;
+import appeng.api.networking.crafting.ICraftingService;
+import appeng.api.networking.crafting.ICraftingSimulationRequester;
+import appeng.api.networking.crafting.ICraftingSubmitResult;
+import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.storage.IStorageService;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
-import appeng.api.config.RedstoneMode;
+import appeng.api.storage.AEKeyFilter;
+import com.google.common.collect.ImmutableSet;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
+import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
@@ -28,10 +41,13 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -43,6 +59,7 @@ class MultiLevelEmitterIntegrationTest {
     private static final String NBT_COMPARISON_MODES = "comparison_modes";
     private static final String NBT_LOGIC_RELATIONS = "logic_relations";
     private static final String NBT_MATCHING_MODES = "matching_modes";
+    private static final String NBT_CRAFTING_MODES = "crafting_modes";
 
     @Test
     void runtimePathIsAnchoredAndRejectsPassThroughRegression() throws IOException {
@@ -59,8 +76,10 @@ class MultiLevelEmitterIntegrationTest {
                 "runtime feature path must not regress to StorageLevelEmitterPart fallback");
         assertTrue(runtimeSource.contains("evaluateConfiguredOutput("),
                 "runtime part must expose a concrete evaluation entry point");
-        assertTrue(runtimeSource.contains("MultiLevelEmitterPart.evaluateSlotComparisons"),
-                "runtime part must execute MultiLevelEmitter slot evaluation logic directly");
+        assertTrue(runtimeSource.contains("evaluateSlotComparisonsWithParticipation"),
+                "storage-path regression coverage must keep the participation-aware comparison helper");
+        assertTrue(runtimeSource.contains("isRequesting("),
+                "runtime part must read AE2 crafting request state directly");
         assertTrue(runtimeSource.contains("findFuzzy("),
                 "runtime part must aggregate fuzzy slots through KeyCounter.findFuzzy(...)");
     }
@@ -325,6 +344,219 @@ class MultiLevelEmitterIntegrationTest {
         assertTrue(storageWatcher.addedKeys.isEmpty());
     }
 
+    @Test
+    void emitToCraftExposureDedupesDuplicateMarkedKeys() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(3, null, null, null);
+        readRuntimeSnapshot(runtime, createCraftingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
+                )
+        ));
+
+        DummyKey duplicatedKey = new DummyKey("target", "shared", 0, 0);
+        setConfiguredKey(runtime, 0, duplicatedKey);
+        setConfiguredKey(runtime, 1, duplicatedKey);
+        setConfiguredKey(runtime, 2, duplicatedKey);
+
+        assertEquals(Set.of(duplicatedKey), runtime.getEmitableItems());
+    }
+
+    @Test
+    void configureWatchersAddsMarkedRequestAndSupplyKeysToCraftingWatcher() {
+        WatcherAwareRuntimePart runtime = newWatcherAwareRuntimePart(false, true);
+        runtime.applyConfiguration(3, null, null, null);
+        readRuntimeSnapshot(runtime, createCraftingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.NONE,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                )
+        ));
+
+        DummyKey storageKey = new DummyKey("stored", "strict", 0, 0);
+        DummyKey emitWhileKey = new DummyKey("crafting", "active", 0, 0);
+        DummyKey emitToCraftKey = new DummyKey("crafting", "target", 0, 0);
+        setConfiguredKey(runtime, 0, storageKey);
+        setConfiguredKey(runtime, 1, emitWhileKey);
+        setConfiguredKey(runtime, 2, emitToCraftKey);
+
+        RecordingStackWatcher storageWatcher = new RecordingStackWatcher();
+        RecordingStackWatcher craftingWatcher = new RecordingStackWatcher();
+        attachWatchers(runtime, storageWatcher, craftingWatcher);
+
+        runtime.invokeConfigureWatchers();
+
+        assertFalse(storageWatcher.watchAll);
+        assertEquals(Set.of(storageKey), storageWatcher.addedKeys);
+        assertFalse(craftingWatcher.watchAll);
+        assertEquals(Set.of(emitWhileKey, emitToCraftKey), craftingWatcher.addedKeys);
+    }
+
+    @Test
+    void runtimeEvaluationCombinesStorageAndEmitWhileCraftingSlots() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(
+                2,
+                Map.of(0, 5L, 1, 99L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(MultiLevelEmitterPart.LogicRelation.AND)
+        );
+        readRuntimeSnapshot(runtime, createCraftingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.NONE,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
+                )
+        ));
+        runtime.applyExpressionFromUi("#1 AND #2");
+
+        DummyKey storedKey = new DummyKey("stored", "ingot", 0, 0);
+        DummyKey craftingKey = new DummyKey("crafted", "gear", 0, 0);
+        setConfiguredKey(runtime, 0, storedKey);
+        setConfiguredKey(runtime, 1, craftingKey);
+
+        KeyCounter inventory = new KeyCounter();
+        inventory.add(storedKey, 5L);
+
+        assertTrue(runtime.evaluateConfiguredOutput(gridWithInventoryAndRequests(inventory, Set.of(craftingKey)), true));
+        assertFalse(runtime.evaluateConfiguredOutput(gridWithInventoryAndRequests(inventory, Set.of()), true));
+    }
+
+    @Test
+    void repeatedEmitWhileCraftingSlotsStillRespectOverallRelations() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(
+                2,
+                Map.of(0, 1L, 1, 1L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(MultiLevelEmitterPart.LogicRelation.AND)
+        );
+        readRuntimeSnapshot(runtime, createCraftingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
+                )
+        ));
+        runtime.applyExpressionFromUi("#1 AND #2");
+
+        DummyKey leftKey = new DummyKey("crafted", "left", 0, 0);
+        DummyKey rightKey = new DummyKey("crafted", "right", 0, 0);
+        setConfiguredKey(runtime, 0, leftKey);
+        setConfiguredKey(runtime, 1, rightKey);
+
+        KeyCounter inventory = new KeyCounter();
+
+        assertFalse(runtime.evaluateConfiguredOutput(gridWithInventoryAndRequests(inventory, Set.of(leftKey)), true));
+        assertTrue(runtime.evaluateConfiguredOutput(gridWithInventoryAndRequests(inventory, Set.of(leftKey, rightKey)), true));
+    }
+
+    @Test
+    void emitToCraftRedstoneOnlyTurnsOnWhileRequested() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(
+                2,
+                Map.of(0, 1L, 1, 1L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(MultiLevelEmitterPart.LogicRelation.AND)
+        );
+        readRuntimeSnapshot(runtime, createCraftingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
+                )
+        ));
+
+        DummyKey providerOnlyKey = new DummyKey("crafted", "provider", 0, 0);
+        setConfiguredKey(runtime, 0, providerOnlyKey);
+
+        assertFalse(runtime.evaluateConfiguredOutput(gridWithInventoryAndRequests(new KeyCounter(), Set.of()), true));
+        assertTrue(runtime.evaluateConfiguredOutput(
+                gridWithInventoryAndRequests(new KeyCounter(), Set.of(providerOnlyKey)),
+                true
+        ));
+    }
+
+    @Test
+    void emitToCraftExposureUpdatesImmediatelyWhenModeOrMarkedKeyChanges() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(1, null, null, null);
+        readRuntimeSnapshot(runtime, createCraftingModeSnapshot(
+                List.of(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT)
+        ));
+
+        DummyKey targetKey = new DummyKey("target", "only", 0, 0);
+        setConfiguredKey(runtime, 0, targetKey);
+        assertEquals(Set.of(targetKey), runtime.getEmitableItems());
+
+        runtime.cycleCraftingModeFromUi(0);
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, runtime.craftingModeForSlot(0));
+        assertTrue(runtime.getEmitableItems().isEmpty());
+
+        runtime.cycleCraftingModeFromUi(0);
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, runtime.craftingModeForSlot(0));
+        assertTrue(runtime.getEmitableItems().isEmpty());
+
+        runtime.cycleCraftingModeFromUi(0);
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, runtime.craftingModeForSlot(0));
+        assertEquals(Set.of(targetKey), runtime.getEmitableItems());
+
+        setConfiguredKey(runtime, 0, null);
+        assertTrue(runtime.getEmitableItems().isEmpty());
+    }
+
+    @Test
+    void streamRoundTripPreservesMixedCraftingRuntimeSemantics() {
+        CapabilityAwareRuntimePart beforeRoundTrip = newCapabilityRuntimePart(false, true);
+        beforeRoundTrip.applyConfiguration(
+                3,
+                Map.of(0, 5L, 1, 1L, 2, 1L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(
+                        MultiLevelEmitterPart.LogicRelation.AND,
+                        MultiLevelEmitterPart.LogicRelation.AND
+                )
+        );
+        readRuntimeSnapshot(beforeRoundTrip, createCraftingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.NONE,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                )
+        ));
+
+        FriendlyByteBuf stream = new FriendlyByteBuf(Unpooled.buffer());
+        beforeRoundTrip.writeToStream(stream);
+
+        CapabilityAwareRuntimePart restored = newCapabilityRuntimePart(false, true);
+        assertTrue(restored.readFromStream(stream));
+        DummyKey storedKey = new DummyKey("stored", "ingot", 0, 0);
+        DummyKey requestKey = new DummyKey("crafting", "gear", 0, 0);
+        DummyKey providerKey = new DummyKey("crafting", "plate", 0, 0);
+        setConfiguredKey(restored, 0, storedKey);
+        setConfiguredKey(restored, 1, requestKey);
+        setConfiguredKey(restored, 2, providerKey);
+        restored.applyExpressionFromUi("#1 AND #2 AND #3");
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restored.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, restored.craftingModeForSlot(1));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, restored.craftingModeForSlot(2));
+        assertEquals(Set.of(providerKey), restored.getEmitableItems());
+    }
+
     private static MultiLevelEmitterRuntimePart newRuntimePart() {
         try {
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
@@ -343,6 +575,10 @@ class MultiLevelEmitterIntegrationTest {
     }
 
     private static CapabilityAwareRuntimePart newCapabilityRuntimePart(boolean fuzzyInstalled) {
+        return newCapabilityRuntimePart(fuzzyInstalled, false);
+    }
+
+    private static CapabilityAwareRuntimePart newCapabilityRuntimePart(boolean fuzzyInstalled, boolean craftingInstalled) {
         try {
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
             Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
@@ -351,7 +587,7 @@ class MultiLevelEmitterIntegrationTest {
             Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
             CapabilityAwareRuntimePart runtime =
                     (CapabilityAwareRuntimePart) allocateInstance.invoke(unsafe, CapabilityAwareRuntimePart.class);
-            runtime.setInstalledCards(fuzzyInstalled);
+            runtime.setInstalledCards(fuzzyInstalled, craftingInstalled);
             runtime.applyConfiguration(1, null, null, null);
             runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
             return runtime;
@@ -361,6 +597,10 @@ class MultiLevelEmitterIntegrationTest {
     }
 
     private static WatcherAwareRuntimePart newWatcherAwareRuntimePart(boolean fuzzyInstalled) {
+        return newWatcherAwareRuntimePart(fuzzyInstalled, false);
+    }
+
+    private static WatcherAwareRuntimePart newWatcherAwareRuntimePart(boolean fuzzyInstalled, boolean craftingInstalled) {
         try {
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
             Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
@@ -369,7 +609,7 @@ class MultiLevelEmitterIntegrationTest {
             Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
             WatcherAwareRuntimePart runtime =
                     (WatcherAwareRuntimePart) allocateInstance.invoke(unsafe, WatcherAwareRuntimePart.class);
-            runtime.setInstalledCards(fuzzyInstalled);
+            runtime.setInstalledCards(fuzzyInstalled, craftingInstalled);
             runtime.applyConfiguration(1, null, null, null);
             runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
             return runtime;
@@ -411,6 +651,13 @@ class MultiLevelEmitterIntegrationTest {
         return snapshot;
     }
 
+    private static CompoundTag createCraftingModeSnapshot(List<MultiLevelEmitterPart.CraftingMode> craftingModes) {
+        CompoundTag snapshot = new CompoundTag();
+        snapshot.putInt(NBT_CONFIGURED_ITEM_COUNT, craftingModes.size());
+        MultiLevelEmitterUtils.writeCraftingModesToNBT(craftingModes, snapshot, NBT_CRAFTING_MODES);
+        return snapshot;
+    }
+
     private static void setConfiguredKey(MultiLevelEmitterRuntimePart runtime, int slot, AEKey key) {
         runtime.getConfig().setStack(slot, key == null ? null : new GenericStack(key, 1));
     }
@@ -436,6 +683,10 @@ class MultiLevelEmitterIntegrationTest {
     }
 
     private static IGrid gridWithInventory(KeyCounter inventory) {
+        return gridWithInventoryAndRequests(inventory, Set.of());
+    }
+
+    private static IGrid gridWithInventoryAndRequests(KeyCounter inventory, Set<AEKey> requestingKeys) {
         IStorageService storageService = (IStorageService) Proxy.newProxyInstance(
                 IStorageService.class.getClassLoader(),
                 new Class<?>[]{IStorageService.class},
@@ -445,11 +696,13 @@ class MultiLevelEmitterIntegrationTest {
                     default -> defaultValue(method.getReturnType());
                 }
         );
+        ICraftingService craftingService = new RecordingCraftingService(requestingKeys);
         return (IGrid) Proxy.newProxyInstance(
                 IGrid.class.getClassLoader(),
                 new Class<?>[]{IGrid.class},
                 (proxy, method, args) -> switch (method.getName()) {
                     case "getStorageService" -> storageService;
+                    case "getCraftingService" -> craftingService;
                     default -> defaultValue(method.getReturnType());
                 }
         );
@@ -486,20 +739,101 @@ class MultiLevelEmitterIntegrationTest {
         return null;
     }
 
+    private static final class RecordingCraftingService implements ICraftingService {
+        private final Set<AEKey> requestedKeys;
+
+        private RecordingCraftingService(Set<AEKey> requestedKeys) {
+            this.requestedKeys = new HashSet<>(requestedKeys);
+        }
+
+        @Override
+        public Collection<IPatternDetails> getCraftingFor(AEKey whatToCraft) {
+            return List.of();
+        }
+
+        @Override
+        public void refreshNodeCraftingProvider(IGridNode node) {
+        }
+
+        @Override
+        public AEKey getFuzzyCraftable(AEKey whatToCraft, AEKeyFilter filter) {
+            return null;
+        }
+
+        @Override
+        public Future<ICraftingPlan> beginCraftingCalculation(
+                Level level,
+                ICraftingSimulationRequester simRequester,
+                AEKey craftWhat,
+                long amount,
+                CalculationStrategy strategy
+        ) {
+            return null;
+        }
+
+        @Override
+        public ICraftingSubmitResult submitJob(
+                ICraftingPlan job,
+                ICraftingRequester requestingMachine,
+                ICraftingCPU target,
+                boolean prioritizePower,
+                IActionSource src
+        ) {
+            return null;
+        }
+
+        @Override
+        public ImmutableSet<ICraftingCPU> getCpus() {
+            return ImmutableSet.of();
+        }
+
+        @Override
+        public boolean canEmitFor(AEKey what) {
+            return false;
+        }
+
+        @Override
+        public Set<AEKey> getCraftables(AEKeyFilter filter) {
+            return Set.of();
+        }
+
+        @Override
+        public boolean isRequesting(AEKey what) {
+            return requestedKeys.contains(what);
+        }
+
+        @Override
+        public long getRequestedAmount(AEKey what) {
+            return requestedKeys.contains(what) ? 1L : 0L;
+        }
+
+        @Override
+        public boolean isRequestingAny() {
+            return !requestedKeys.isEmpty();
+        }
+    }
+
     private static class CapabilityAwareRuntimePart extends MultiLevelEmitterRuntimePart {
         private boolean fuzzyInstalled;
+        private boolean craftingInstalled;
 
         private CapabilityAwareRuntimePart() {
             super(null);
         }
 
-        void setInstalledCards(boolean fuzzyInstalled) {
+        void setInstalledCards(boolean fuzzyInstalled, boolean craftingInstalled) {
             this.fuzzyInstalled = fuzzyInstalled;
+            this.craftingInstalled = craftingInstalled;
         }
 
         @Override
         public boolean hasFuzzyCardInstalled() {
             return fuzzyInstalled;
+        }
+
+        @Override
+        public boolean hasCraftingCardInstalled() {
+            return craftingInstalled;
         }
     }
 
