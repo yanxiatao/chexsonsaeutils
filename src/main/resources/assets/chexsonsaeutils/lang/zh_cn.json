@@ -23,6 +23,8 @@
   "gui.chexsonsaeutils.multi_level_emitter.slot_layout_changed": "\u69fd\u4f4d\u5e03\u5c40\u5df2\u53d8\u5316\uff0c\u8349\u7a3f\u5df2\u91cd\u7f6e\u4e3a\u670d\u52a1\u5668\u503c\u3002",
   "gui.chexsonsaeutils.multi_level_emitter.normalize_expression_spacing": "\u89c4\u8303\u8868\u8fbe\u5f0f\u7a7a\u683c",
   "gui.chexsonsaeutils.multi_level_emitter.save_expression": "\u4fdd\u5b58\u5f53\u524d\u8868\u8fbe\u5f0f",
+  "gui.chexsonsaeutils.multi_level_emitter.crafting_lock_helper": "\u5df2\u5b89\u88c5\u5408\u6210\u5361\uff1aexpression\u3001threshold \u548c comparison \u4f1a\u4fdd\u6301\u53ef\u89c1\u4f46\u4e3a\u53ea\u8bfb\u3002",
+  "gui.chexsonsaeutils.multi_level_emitter.crafting_lock_tooltip": "\u79fb\u9664 crafting card \u540e\uff0c\u624d\u80fd\u7f16\u8f91 expression\u3001threshold \u548c comparison\u3002",
   "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode": "\u6a21\u7cca\u5339\u914d",
   "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict": "\u4e25\u683c",
   "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.ignore_all": "\u5339\u914d\u6240\u6709",

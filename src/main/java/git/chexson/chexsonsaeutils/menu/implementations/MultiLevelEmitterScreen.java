@@ -24,6 +24,10 @@ public final class MultiLevelEmitterScreen {
     private static final String REGISTRATION_KEY = MultiLevelEmitterItem.SCREEN_BINDING_KEY;
     private static final String FUZZY_MODE_KEY = "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode";
     private static final String CRAFTING_MODE_KEY = "gui.chexsonsaeutils.multi_level_emitter.crafting_mode";
+    private static final String CRAFTING_LOCK_HELPER_KEY =
+            "gui.chexsonsaeutils.multi_level_emitter.crafting_lock_helper";
+    private static final String CRAFTING_LOCK_TOOLTIP_KEY =
+            "gui.chexsonsaeutils.multi_level_emitter.crafting_lock_tooltip";
     private static final Pattern OPERATOR_PATTERN = Pattern.compile("(?i)\\b(?:AND|OR)\\b");
     private static final Pattern SLOT_REFERENCE_PATTERN = Pattern.compile("#\\d+");
     private static final AtomicReference<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> menuType = new AtomicReference<>();
@@ -49,7 +53,9 @@ public final class MultiLevelEmitterScreen {
             boolean configured,
             boolean marked,
             long threshold,
+            boolean thresholdLocked,
             MultiLevelEmitterPart.ComparisonMode comparisonMode,
+            boolean comparisonLocked,
             MultiLevelEmitterPart.MatchingMode matchingMode,
             MultiLevelEmitterPart.CraftingMode craftingMode,
             boolean showFuzzyControl,
@@ -72,6 +78,8 @@ public final class MultiLevelEmitterScreen {
             String appliedExpressionText,
             MultiLevelEmitterExpressionOwnership expressionOwnership,
             boolean expressionInvalid,
+            boolean expressionLocked,
+            Component craftingLockTooltip,
             List<SlotView> slots
     ) {
     }
@@ -337,6 +345,8 @@ public final class MultiLevelEmitterScreen {
                     "",
                     MultiLevelEmitterExpressionOwnership.AUTO,
                     false,
+                    false,
+                    Component.empty(),
                     List.of()
             );
         }
@@ -344,7 +354,8 @@ public final class MultiLevelEmitterScreen {
         int markedSlots = menu.markedSlotCount();
         int visibleSlots = menu.visibleSlotCount();
         int totalSlots = menu.totalSlotCapacity();
-        boolean showCraftingControl = menu.hasCraftingCardInstalled();
+        boolean craftingCardInstalled = menu.hasCraftingCardInstalled();
+        Component craftingLockTooltip = craftingLockTooltip();
         List<SlotView> slots = new ArrayList<>(visibleSlots);
         for (int slotIndex = 0; slotIndex < visibleSlots; slotIndex++) {
             MultiLevelEmitterPart.MatchingMode matchingMode = menu.matchingModeForSlot(slotIndex);
@@ -357,15 +368,17 @@ public final class MultiLevelEmitterScreen {
                     menu.isSlotConfigured(slotIndex),
                     marked,
                     menu.thresholdForSlot(slotIndex),
+                    craftingCardInstalled,
                     menu.comparisonModeForSlot(slotIndex),
+                    craftingCardInstalled,
                     matchingMode,
                     craftingMode,
                     menu.hasFuzzyCardInstalled(),
                     matchingMode != MultiLevelEmitterPart.MatchingMode.STRICT,
                     fuzzyShortLabel(matchingMode),
                     fuzzyTooltip(matchingMode),
-                    showCraftingControl,
-                    showCraftingControl && craftingMode != MultiLevelEmitterPart.CraftingMode.NONE,
+                    craftingCardInstalled,
+                    craftingCardInstalled && craftingMode != MultiLevelEmitterPart.CraftingMode.NONE,
                     craftingShortLabel(craftingMode),
                     craftingTooltip(craftingMode, marked, duplicateEmitToCraftTarget),
                     duplicateEmitToCraftTarget
@@ -379,6 +392,8 @@ public final class MultiLevelEmitterScreen {
                 menu.appliedExpressionText(),
                 menu.expressionOwnership(),
                 menu.expressionIsInvalid(),
+                craftingCardInstalled,
+                craftingLockTooltip,
                 List.copyOf(slots)
         );
     }
@@ -419,6 +434,14 @@ public final class MultiLevelEmitterScreen {
             case EMIT_WHILE_CRAFTING -> Component.translatable(CRAFTING_MODE_KEY + ".while_crafting");
             case EMIT_TO_CRAFT -> Component.translatable(CRAFTING_MODE_KEY + ".to_craft");
         };
+    }
+
+    public static Component craftingLockHelper() {
+        return Component.translatable(CRAFTING_LOCK_HELPER_KEY);
+    }
+
+    public static Component craftingLockTooltip() {
+        return Component.translatable(CRAFTING_LOCK_TOOLTIP_KEY);
     }
 
     private static String normalizeOperator(String operator) {

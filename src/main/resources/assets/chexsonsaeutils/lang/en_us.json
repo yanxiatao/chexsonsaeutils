@@ -23,6 +23,8 @@
   "gui.chexsonsaeutils.multi_level_emitter.slot_layout_changed": "Slot layout changed. Draft reset to server value.",
   "gui.chexsonsaeutils.multi_level_emitter.normalize_expression_spacing": "Normalize expression spacing",
   "gui.chexsonsaeutils.multi_level_emitter.save_expression": "Save this expression",
+  "gui.chexsonsaeutils.multi_level_emitter.crafting_lock_helper": "Crafting card installed: expression, threshold, and comparison are read-only.",
+  "gui.chexsonsaeutils.multi_level_emitter.crafting_lock_tooltip": "Remove the crafting card before editing expression, threshold, or comparison.",
   "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode": "Fuzzy Comparison",
   "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict": "Strict",
   "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.ignore_all": "Match Any",
