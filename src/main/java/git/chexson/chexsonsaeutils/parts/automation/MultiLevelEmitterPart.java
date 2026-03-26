@@ -61,6 +61,23 @@ public final class MultiLevelEmitterPart {
         }
     }
 
+    public enum CraftingMode {
+        NONE,
+        EMIT_WHILE_CRAFTING,
+        EMIT_TO_CRAFT;
+
+        public static CraftingMode fromPersisted(String value) {
+            if (value == null || value.isBlank()) {
+                return NONE;
+            }
+            try {
+                return CraftingMode.valueOf(value.trim().toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+                return NONE;
+            }
+        }
+    }
+
     private MultiLevelEmitterPart() {
     }
 
@@ -127,6 +144,30 @@ public final class MultiLevelEmitterPart {
         MatchingMode effective = requested == null ? MatchingMode.STRICT : requested;
         if (effective == MatchingMode.FUZZY && !fuzzyCapabilityAvailable) {
             return MatchingMode.STRICT;
+        }
+        return effective;
+    }
+
+    public static List<CraftingMode> normalizeCraftingModesForSlotCount(
+            List<CraftingMode> persistedModes,
+            int slotCount,
+            boolean craftingCapabilityAvailable
+    ) {
+        int normalizedSlotCount = Math.max(0, slotCount);
+        List<CraftingMode> modes = new ArrayList<>(normalizedSlotCount);
+        for (int slot = 0; slot < normalizedSlotCount; slot++) {
+            CraftingMode requested = persistedModes != null && slot < persistedModes.size()
+                    ? persistedModes.get(slot)
+                    : CraftingMode.NONE;
+            modes.add(resolveCraftingMode(requested, craftingCapabilityAvailable));
+        }
+        return modes;
+    }
+
+    public static CraftingMode resolveCraftingMode(CraftingMode requested, boolean craftingCapabilityAvailable) {
+        CraftingMode effective = requested == null ? CraftingMode.NONE : requested;
+        if (effective != CraftingMode.NONE && !craftingCapabilityAvailable) {
+            return CraftingMode.NONE;
         }
         return effective;
     }

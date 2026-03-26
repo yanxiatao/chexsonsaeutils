@@ -295,6 +295,14 @@ public final class MultiLevelEmitterMenu {
             return SLOT_CAPACITY;
         }
 
+        public boolean hasFuzzyCardInstalled() {
+            return runtimePart != null && runtimePart.hasFuzzyCardInstalled();
+        }
+
+        public boolean hasCraftingCardInstalled() {
+            return runtimePart != null && runtimePart.hasCraftingCardInstalled();
+        }
+
         public int visibleSlotCount() {
             return MultiLevelEmitterUtils.calculateVisibleSlotCount(configuredSlotCount(), totalSlotCapacity());
         }
@@ -346,6 +354,26 @@ public final class MultiLevelEmitterMenu {
             return slotIndex < modes.size()
                     ? modes.get(slotIndex)
                     : MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
+        }
+
+        public MultiLevelEmitterPart.MatchingMode matchingModeForSlot(int slotIndex) {
+            if (slotIndex < 0 || slotIndex >= totalSlotCapacity()) {
+                return MultiLevelEmitterPart.MatchingMode.STRICT;
+            }
+            if (runtimePart == null) {
+                return MultiLevelEmitterPart.MatchingMode.STRICT;
+            }
+            return runtimePart.matchingModeForSlot(slotIndex);
+        }
+
+        public MultiLevelEmitterPart.CraftingMode craftingModeForSlot(int slotIndex) {
+            if (slotIndex < 0 || slotIndex >= totalSlotCapacity()) {
+                return MultiLevelEmitterPart.CraftingMode.NONE;
+            }
+            if (runtimePart == null) {
+                return MultiLevelEmitterPart.CraftingMode.NONE;
+            }
+            return runtimePart.craftingModeForSlot(slotIndex);
         }
 
         private void initializeSlots(Inventory inventory, MultiLevelEmitterRuntimePart runtimePart) {

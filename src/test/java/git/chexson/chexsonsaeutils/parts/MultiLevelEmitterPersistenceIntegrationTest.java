@@ -49,6 +49,30 @@ class MultiLevelEmitterPersistenceIntegrationTest {
     }
 
     @Test
+    void matchingAndCraftingModesRoundTripIsStable() {
+        CompoundTag root = new CompoundTag();
+        List<MultiLevelEmitterPart.MatchingMode> matching = List.of(
+                MultiLevelEmitterPart.MatchingMode.FUZZY,
+                MultiLevelEmitterPart.MatchingMode.STRICT
+        );
+        List<MultiLevelEmitterPart.CraftingMode> crafting = List.of(
+                MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+        );
+
+        MultiLevelEmitterUtils.writeMatchingModesToNBT(matching, root, "matching_modes");
+        MultiLevelEmitterUtils.writeCraftingModesToNBT(crafting, root, "crafting_modes");
+
+        List<MultiLevelEmitterPart.MatchingMode> loadedMatching =
+                MultiLevelEmitterUtils.readMatchingModesFromNBT(root, "matching_modes");
+        List<MultiLevelEmitterPart.CraftingMode> loadedCrafting =
+                MultiLevelEmitterUtils.readCraftingModesFromNBT(root, "crafting_modes");
+
+        assertEquals(matching, loadedMatching);
+        assertEquals(crafting, loadedCrafting);
+    }
+
+    @Test
     void invalidMatchingModeFallsBackToStrictOnLoad() {
         CompoundTag root = new CompoundTag();
         root.putString("invalid", "FUZZY_NOT_SUPPORTED");
@@ -59,6 +83,19 @@ class MultiLevelEmitterPersistenceIntegrationTest {
 
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, effective);
         assertTrue(effective != MultiLevelEmitterPart.MatchingMode.FUZZY);
+    }
+
+    @Test
+    void invalidCraftingModeFallsBackToNoneOnLoad() {
+        CompoundTag root = new CompoundTag();
+        root.putString("invalid", "CRAFTING_NOT_SUPPORTED");
+        MultiLevelEmitterPart.CraftingMode parsed =
+                MultiLevelEmitterPart.CraftingMode.fromPersisted(root.getString("invalid"));
+        MultiLevelEmitterPart.CraftingMode effective =
+                MultiLevelEmitterPart.resolveCraftingMode(parsed, false);
+
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, effective);
+        assertTrue(effective != MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT);
     }
 }
 

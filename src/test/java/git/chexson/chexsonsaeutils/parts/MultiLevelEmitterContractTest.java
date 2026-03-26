@@ -34,9 +34,13 @@ class MultiLevelEmitterContractTest {
     void matchingModesNormalizePerSlot() {
         List<MultiLevelEmitterPart.MatchingMode> normalized =
                 MultiLevelEmitterPart.normalizeMatchingModesForSlotCount(
-                        List.of(MultiLevelEmitterPart.MatchingMode.STRICT),
+                        List.of(
+                                MultiLevelEmitterPart.MatchingMode.FUZZY,
+                                MultiLevelEmitterPart.MatchingMode.STRICT,
+                                MultiLevelEmitterPart.MatchingMode.FUZZY
+                        ),
                         3,
-                        true
+                        false
                 );
         assertEquals(3, normalized.size());
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, normalized.get(0));
@@ -52,5 +56,32 @@ class MultiLevelEmitterContractTest {
         assertFalse(MultiLevelEmitterPart.shouldRecomputeAfterMatchingModeChange(
                 MultiLevelEmitterPart.MatchingMode.STRICT,
                 MultiLevelEmitterPart.MatchingMode.STRICT));
+    }
+
+    @Test
+    void craftingFallsBackToNoneWhenCapabilityMissing() {
+        MultiLevelEmitterPart.CraftingMode requested = MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT;
+        MultiLevelEmitterPart.CraftingMode effective =
+                MultiLevelEmitterPart.resolveCraftingMode(requested, false);
+
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, effective);
+    }
+
+    @Test
+    void craftingModesNormalizePerSlotWhenCardIsMissing() {
+        List<MultiLevelEmitterPart.CraftingMode> normalized =
+                MultiLevelEmitterPart.normalizeCraftingModesForSlotCount(
+                        List.of(
+                                MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                                MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                        ),
+                        3,
+                        false
+                );
+
+        assertEquals(3, normalized.size());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, normalized.get(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, normalized.get(1));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, normalized.get(2));
     }
 }

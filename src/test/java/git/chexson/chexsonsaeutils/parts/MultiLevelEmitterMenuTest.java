@@ -5,6 +5,7 @@ import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
+import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -15,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MultiLevelEmitterMenuTest {
 
@@ -147,6 +150,50 @@ class MultiLevelEmitterMenuTest {
         assertEquals(MultiLevelEmitterMenu.SLOT_CAPACITY, menu.configuredSlotCount());
     }
 
+    @Test
+    void runtimeMenuExposesUpgradeDerivedCapabilityAndCardModes() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(true, true);
+        applyCardModeSnapshot(
+                runtime,
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.FUZZY,
+                        MultiLevelEmitterPart.MatchingMode.STRICT
+                ),
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                )
+        );
+
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        assertTrue(menu.hasFuzzyCardInstalled());
+        assertTrue(menu.hasCraftingCardInstalled());
+        assertEquals(MultiLevelEmitterPart.MatchingMode.FUZZY, menu.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, menu.matchingModeForSlot(1));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, menu.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, menu.craftingModeForSlot(1));
+    }
+
+    @Test
+    void runtimeMenuReopenObservesCollapsedCardModesWithoutCapabilities() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, false);
+        applyCardModeSnapshot(
+                runtime,
+                List.of(MultiLevelEmitterPart.MatchingMode.FUZZY),
+                List.of(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT)
+        );
+
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        assertFalse(menu.hasFuzzyCardInstalled());
+        assertFalse(menu.hasCraftingCardInstalled());
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, menu.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, menu.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, menu.matchingModeForSlot(3));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, menu.craftingModeForSlot(3));
+    }
+
     private static MultiLevelEmitterRuntimePart newRuntimePart() {
         try {
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
@@ -161,6 +208,74 @@ class MultiLevelEmitterMenuTest {
             return runtime;
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to allocate runtime part test instance", exception);
+        }
+    }
+
+    private static MultiLevelEmitterRuntimePart newCapabilityRuntimePart(boolean fuzzyInstalled, boolean craftingInstalled) {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            Object unsafe = theUnsafeField.get(null);
+            Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
+            CapabilityAwareRuntimePart runtime =
+                    (CapabilityAwareRuntimePart) allocateInstance.invoke(unsafe, CapabilityAwareRuntimePart.class);
+            runtime.setInstalledCards(fuzzyInstalled, craftingInstalled);
+            runtime.applyConfiguration(1, null, null, null);
+            runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
+            return runtime;
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to allocate capability-aware runtime part test instance", exception);
+        }
+    }
+
+    private static void applyCardModeSnapshot(
+            MultiLevelEmitterRuntimePart runtime,
+            List<MultiLevelEmitterPart.MatchingMode> matchingModes,
+            List<MultiLevelEmitterPart.CraftingMode> craftingModes
+    ) {
+        CompoundTag snapshot = new CompoundTag();
+        snapshot.putInt("configured_item_count", Math.max(matchingModes.size(), craftingModes.size()));
+        MultiLevelEmitterUtils.writeMatchingModesToNBT(matchingModes, snapshot, "matching_modes");
+        MultiLevelEmitterUtils.writeCraftingModesToNBT(craftingModes, snapshot, "crafting_modes");
+        readRuntimeSnapshot(runtime, snapshot);
+    }
+
+    private static void readRuntimeSnapshot(MultiLevelEmitterRuntimePart runtime, CompoundTag snapshot) {
+        try {
+            Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod(
+                    "readRuntimeSnapshot",
+                    CompoundTag.class,
+                    boolean.class
+            );
+            method.setAccessible(true);
+            method.invoke(runtime, snapshot, false);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to read runtime snapshot for menu test instance", exception);
+        }
+    }
+
+    private static final class CapabilityAwareRuntimePart extends MultiLevelEmitterRuntimePart {
+        private boolean fuzzyInstalled;
+        private boolean craftingInstalled;
+
+        private CapabilityAwareRuntimePart() {
+            super(null);
+        }
+
+        void setInstalledCards(boolean fuzzyInstalled, boolean craftingInstalled) {
+            this.fuzzyInstalled = fuzzyInstalled;
+            this.craftingInstalled = craftingInstalled;
+        }
+
+        @Override
+        public boolean hasFuzzyCardInstalled() {
+            return fuzzyInstalled;
+        }
+
+        @Override
+        public boolean hasCraftingCardInstalled() {
+            return craftingInstalled;
         }
     }
 }
