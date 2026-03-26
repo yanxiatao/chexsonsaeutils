@@ -101,6 +101,39 @@ class MultiLevelEmitterScreenTest {
     }
 
     @Test
+    void runtimeScreenSnapshotProjectsCraftingCardLocksFromMenuAuthority() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(2, Map.of(0, 8L, 1, 3L), null, List.of(MultiLevelEmitterPart.LogicRelation.OR));
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(menu);
+
+        assertTrue(state.expressionLocked());
+        assertTrue(state.craftingLockTooltip().toString().contains(
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_lock_tooltip"
+        ));
+        assertTrue(state.slots().get(0).thresholdLocked());
+        assertTrue(state.slots().get(0).comparisonLocked());
+        assertTrue(state.slots().get(1).thresholdLocked());
+        assertTrue(state.slots().get(1).comparisonLocked());
+    }
+
+    @Test
+    void runtimeScreenSnapshotClearsCraftingCardLocksWhenCardMissing() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, false);
+        runtime.applyConfiguration(2, Map.of(0, 8L, 1, 3L), null, List.of(MultiLevelEmitterPart.LogicRelation.OR));
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(menu);
+
+        assertFalse(state.expressionLocked());
+        assertFalse(state.slots().get(0).thresholdLocked());
+        assertFalse(state.slots().get(0).comparisonLocked());
+        assertFalse(state.slots().get(1).thresholdLocked());
+        assertFalse(state.slots().get(1).comparisonLocked());
+    }
+
+    @Test
     void toggleMatchingModeDelegatesToMenuAuthority() {
         MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(true);
         MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
@@ -464,6 +497,18 @@ class MultiLevelEmitterScreenTest {
         assertTrue(source.contains("MultiLevelEmitterScreen.clampScrollOffset("));
         assertTrue(source.contains("previousConfiguredSlots"));
         assertTrue(source.contains("lastServerThresholds"));
+        assertTrue(source.contains("state.expressionLocked()"));
+        assertTrue(source.contains("slot.thresholdLocked()"));
+        assertTrue(source.contains("slot.comparisonLocked()"));
+        assertTrue(source.contains("input.setEditable(enabled && !slot.thresholdLocked())"));
+        assertTrue(source.contains("comparisonButton.active = enabled && !slot.comparisonLocked()"));
+        assertTrue(source.contains("input.setTooltip(Tooltip.create(state.craftingLockTooltip()))"));
+        assertTrue(source.contains("comparisonButton.setTooltip(Tooltip.create(state.craftingLockTooltip()))"));
+        assertTrue(source.contains(
+                "helperStatus = Component.translatable(\"gui.chexsonsaeutils.multi_level_emitter.crafting_lock_helper\")"
+        ));
+        assertTrue(source.contains("craftingModeButton.visible = slot.showCraftingControl()"));
+        assertTrue(source.contains("scrollUpButton.active"));
     }
 
     @Test
@@ -498,7 +543,11 @@ class MultiLevelEmitterScreenTest {
         String chinese = Files.readString(Path.of("src/main/resources/assets/chexsonsaeutils/lang/zh_cn.json"));
 
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.slot_layout_changed"));
+        assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_lock_helper"));
+        assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_lock_tooltip"));
         assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.slot_layout_changed"));
+        assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_lock_helper"));
+        assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_lock_tooltip"));
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict"));
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_25"));
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.disabled"));
