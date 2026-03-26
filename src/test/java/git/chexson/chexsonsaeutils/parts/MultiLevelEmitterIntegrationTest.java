@@ -459,6 +459,45 @@ class MultiLevelEmitterIntegrationTest {
     }
 
     @Test
+    void mixedOffReqSupExpressionKeepsBothCraftingRowsParticipating() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(
+                3,
+                Map.of(0, 5L, 1, 1L, 2, 1L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(
+                        MultiLevelEmitterPart.LogicRelation.OR,
+                        MultiLevelEmitterPart.LogicRelation.OR
+                )
+        );
+        readRuntimeSnapshot(runtime, createCraftingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.NONE,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                )
+        ));
+        runtime.applyExpressionFromUi("#1 OR #2 OR #3");
+
+        DummyKey storageKey = new DummyKey("stored", "ingot", 0, 0);
+        DummyKey requestKey = new DummyKey("crafting", "gear", 0, 0);
+        DummyKey providerKey = new DummyKey("crafting", "plate", 0, 0);
+        setConfiguredKey(runtime, 0, storageKey);
+        setConfiguredKey(runtime, 1, requestKey);
+        setConfiguredKey(runtime, 2, providerKey);
+
+        KeyCounter inventory = new KeyCounter();
+
+        assertFalse(runtime.evaluateConfiguredOutput(gridWithInventoryAndRequests(inventory, Set.of()), true));
+        assertTrue(runtime.evaluateConfiguredOutput(gridWithInventoryAndRequests(inventory, Set.of(requestKey)), true));
+        assertTrue(runtime.evaluateConfiguredOutput(gridWithInventoryAndRequests(inventory, Set.of(providerKey)), true));
+    }
+
+    @Test
     void emitToCraftRedstoneOnlyTurnsOnWhileRequested() {
         CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
         runtime.applyConfiguration(

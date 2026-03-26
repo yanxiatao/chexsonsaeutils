@@ -101,21 +101,76 @@ class MultiLevelEmitterScreenTest {
     }
 
     @Test
-    void runtimeScreenSnapshotProjectsCraftingCardLocksFromMenuAuthority() {
+    void runtimeScreenSnapshotKeepsExpressionEditableAndOffRowsUnlockedWithCraftingCard() {
         MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, true);
         runtime.applyConfiguration(2, Map.of(0, 8L, 1, 3L), null, List.of(MultiLevelEmitterPart.LogicRelation.OR));
         MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
 
         MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(menu);
 
-        assertTrue(state.expressionLocked());
+        assertFalse(state.expressionLocked());
         assertTrue(state.craftingLockTooltip().toString().contains(
                 "gui.chexsonsaeutils.multi_level_emitter.crafting_lock_tooltip"
         ));
-        assertTrue(state.slots().get(0).thresholdLocked());
-        assertTrue(state.slots().get(0).comparisonLocked());
-        assertTrue(state.slots().get(1).thresholdLocked());
-        assertTrue(state.slots().get(1).comparisonLocked());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, state.slots().get(0).craftingMode());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, state.slots().get(1).craftingMode());
+        assertFalse(state.slots().get(0).thresholdLocked());
+        assertFalse(state.slots().get(0).comparisonLocked());
+        assertFalse(state.slots().get(1).thresholdLocked());
+        assertFalse(state.slots().get(1).comparisonLocked());
+    }
+
+    @Test
+    void runtimeScreenSnapshotKeepsMixedOffReqSupRowContractsVisibleUnderCraftingCard() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(
+                3,
+                Map.of(0, 8L, 1, 3L, 2, 21L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.NOT_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.LESS_THAN
+                ),
+                List.of(
+                        MultiLevelEmitterPart.LogicRelation.OR,
+                        MultiLevelEmitterPart.LogicRelation.AND
+                )
+        );
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+        menu.cycleCraftingMode(1);
+        menu.cycleCraftingMode(2);
+        menu.cycleCraftingMode(2);
+
+        MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(menu);
+
+        assertFalse(state.expressionLocked());
+        assertEquals(menu.appliedExpressionText(), state.appliedExpressionText());
+
+        MultiLevelEmitterScreen.SlotView off = state.slots().get(0);
+        MultiLevelEmitterScreen.SlotView req = state.slots().get(1);
+        MultiLevelEmitterScreen.SlotView sup = state.slots().get(2);
+
+        assertEquals("8", MultiLevelEmitterScreen.thresholdFieldValue(off.threshold()));
+        assertEquals("3", MultiLevelEmitterScreen.thresholdFieldValue(req.threshold()));
+        assertEquals("21", MultiLevelEmitterScreen.thresholdFieldValue(sup.threshold()));
+        assertEquals(">=", MultiLevelEmitterScreen.comparisonModeLabel(off.comparisonMode()));
+        assertEquals("!=", MultiLevelEmitterScreen.comparisonModeLabel(req.comparisonMode()));
+        assertEquals("<", MultiLevelEmitterScreen.comparisonModeLabel(sup.comparisonMode()));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, off.craftingMode());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, req.craftingMode());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, sup.craftingMode());
+        assertFalse(off.thresholdLocked());
+        assertFalse(off.comparisonLocked());
+        assertTrue(req.thresholdLocked());
+        assertTrue(req.comparisonLocked());
+        assertTrue(sup.thresholdLocked());
+        assertTrue(sup.comparisonLocked());
+        assertTrue(off.showCraftingControl());
+        assertTrue(req.showCraftingControl());
+        assertTrue(sup.showCraftingControl());
+        assertEquals("OFF", off.craftingShortLabel());
+        assertEquals("REQ", req.craftingShortLabel());
+        assertEquals("SUP", sup.craftingShortLabel());
     }
 
     @Test
@@ -131,6 +186,29 @@ class MultiLevelEmitterScreenTest {
         assertFalse(state.slots().get(0).comparisonLocked());
         assertFalse(state.slots().get(1).thresholdLocked());
         assertFalse(state.slots().get(1).comparisonLocked());
+    }
+
+    @Test
+    void runtimeScreenSnapshotUnlocksReqRowsImmediatelyWhenCraftingCardIsRemovedWithoutReopeningMenu() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(2, Map.of(0, 8L, 1, 3L), null, List.of(MultiLevelEmitterPart.LogicRelation.OR));
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+        menu.cycleCraftingMode(0);
+
+        MultiLevelEmitterScreen.RuntimeScreenState lockedState = MultiLevelEmitterScreen.snapshotState(menu);
+        runtime.setInstalledCards(false, false);
+        MultiLevelEmitterScreen.RuntimeScreenState unlockedState = MultiLevelEmitterScreen.snapshotState(menu);
+
+        assertFalse(lockedState.expressionLocked());
+        assertTrue(lockedState.slots().get(0).thresholdLocked());
+        assertTrue(lockedState.slots().get(0).comparisonLocked());
+        assertFalse(lockedState.slots().get(1).thresholdLocked());
+        assertFalse(lockedState.slots().get(1).comparisonLocked());
+        assertFalse(unlockedState.expressionLocked());
+        assertFalse(unlockedState.slots().get(0).thresholdLocked());
+        assertFalse(unlockedState.slots().get(0).comparisonLocked());
+        assertFalse(unlockedState.slots().get(1).thresholdLocked());
+        assertFalse(unlockedState.slots().get(1).comparisonLocked());
     }
 
     @Test
@@ -376,17 +454,23 @@ class MultiLevelEmitterScreenTest {
         assertTrue(source.contains("CONFIG_PANEL_Y = 95"));
         assertTrue(source.contains("CONFIG_PANEL_WIDTH = 162"));
         assertTrue(source.contains("CONFIG_PANEL_HEIGHT = 34"));
+        assertTrue(source.contains("SLOT_X = 33"));
+        assertTrue(source.contains("THRESHOLD_X = 52"));
+        assertTrue(source.contains("THRESHOLD_INPUT_WIDTH = 32"));
         assertTrue(source.contains("EXPRESSION_LABEL_Y = 22"));
         assertTrue(source.contains("EXPRESSION_INPUT_Y = 32"));
         assertTrue(source.contains("SCROLL_BUTTON_SIZE = 12"));
         assertTrue(source.contains("SCROLL_BUTTON_X = 151"));
         assertTrue(source.contains("SCROLL_UP_BUTTON_Y = ROW_TOP + 4"));
         assertTrue(source.contains("SCROLL_DOWN_BUTTON_Y = ROW_TOP + ROW_HEIGHT - 1"));
-        assertTrue(source.contains("MODE_X = 96"));
-        assertTrue(source.contains("FUZZY_MODE_X = 123"));
+        assertTrue(source.contains("MODE_X = 86"));
+        assertTrue(source.contains("COMPARISON_BUTTON_WIDTH = 22"));
+        assertTrue(source.contains("FUZZY_MODE_X = 111"));
+        assertTrue(source.contains("CRAFTING_MODE_BUTTON_WIDTH = 28"));
         assertTrue(source.contains("FUZZY_MODE_BUTTON_SIZE = 16"));
+        assertTrue(source.contains("ROW_SHADE_RIGHT = 145"));
         assertTrue(source.contains("FUZZY_HIGHLIGHT_COLOR = 0x33D0A146"));
-        assertTrue(source.contains("new ThresholdEditBox(font, 0, 0, 38, 14, row)"));
+        assertTrue(source.contains("new ThresholdEditBox(font, 0, 0, THRESHOLD_INPUT_WIDTH, 14, row)"));
         assertTrue(source.contains("new FuzzyModeButton("));
         assertTrue(source.contains("slot.showFuzzyControl()"));
         assertTrue(source.contains("slot.fuzzyTooltip()"));
@@ -406,6 +490,13 @@ class MultiLevelEmitterScreenTest {
         assertTrue(source.contains("setResponder("));
         assertTrue(source.contains("mouseScrolled(double mouseX, double mouseY, double wheelDelta)"));
         assertTrue(source.contains("isMouseOverConfigPanel(mouseX, mouseY)"));
+        assertTrue(source.contains("ROW_SHADE_RIGHT = 145"));
+        assertTrue(source.contains("SCROLL_BUTTON_X = 151"));
+        assertTrue(source.contains("ROW_SHADE_RIGHT, y + ROW_SHADE_HEIGHT"));
+        assertTrue(source.contains("menu.getSlots(SlotSemantics.CONFIG)"));
+        assertTrue(source.contains("setSlotPosition(slot, SLOT_X, rowBaseY(row))"),
+                "setSlotPosition(slot, SLOT_X, ROW_TOP + row * ROW_HEIGHT)");
+        assertTrue(source.contains("return ROW_TOP + row * ROW_HEIGHT;"));
         assertTrue(source.contains("FittedTextButton"));
         assertTrue(source.contains("drawFittedText("));
         assertTrue(source.contains("drawCenteredFittedText("));
@@ -498,9 +589,15 @@ class MultiLevelEmitterScreenTest {
         assertTrue(source.contains("previousConfiguredSlots"));
         assertTrue(source.contains("lastServerThresholds"));
         assertTrue(source.contains("state.expressionLocked()"));
+        assertTrue(source.contains("expressionInput.active = !expressionLocked;"));
         assertTrue(source.contains("slot.thresholdLocked()"));
         assertTrue(source.contains("slot.comparisonLocked()"));
+        assertTrue(source.contains("slotReferenceButton.active = enabled && !state.expressionLocked();"));
+        assertTrue(source.contains("COLOR_READONLY_INPUT_TEXT = 0x7A7A7A"));
+        assertTrue(source.contains("input.active = enabled && !slot.thresholdLocked();"));
         assertTrue(source.contains("input.setEditable(enabled && !slot.thresholdLocked())"));
+        assertTrue(source.contains("COLOR_INPUT_TEXT = EditBox.DEFAULT_TEXT_COLOR"));
+        assertTrue(source.contains("input.setTextColorUneditable(COLOR_READONLY_INPUT_TEXT)"));
         assertTrue(source.contains("comparisonButton.active = enabled && !slot.comparisonLocked()"));
         assertTrue(source.contains("input.setTooltip(Tooltip.create(state.craftingLockTooltip()))"));
         assertTrue(source.contains("comparisonButton.setTooltip(Tooltip.create(state.craftingLockTooltip()))"));
@@ -553,6 +650,16 @@ class MultiLevelEmitterScreenTest {
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.disabled"));
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.while_crafting"));
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.duplicate_emit_to_craft"));
+        assertTrue(chinese.contains("\\u5df2\\u5b89\\u88c5\\u5408\\u6210\\u5361\\uff1a\\u8868\\u8fbe\\u5f0f\\u4ecd\\u53ef\\u7f16\\u8f91"));
+        assertTrue(chinese.contains("\\u82e5\\u8981\\u4fee\\u6539 REQ/SUP \\u884c\\u7684\\u9608\\u503c\\u6216\\u6bd4\\u8f83\\u65b9\\u5f0f"));
+        assertFalse(chinese.contains(
+                "\"gui.chexsonsaeutils.multi_level_emitter.crafting_lock_helper\": " +
+                        "\"\\u5df2\\u5b89\\u88c5\\u5408\\u6210\\u5361\\uff1aexpression"
+        ));
+        assertFalse(chinese.contains(
+                "\"gui.chexsonsaeutils.multi_level_emitter.crafting_lock_tooltip\": " +
+                        "\"expression \\u4ecd\\u53ef\\u7f16\\u8f91"
+        ));
         assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict"));
         assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_25"));
         assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.disabled"));

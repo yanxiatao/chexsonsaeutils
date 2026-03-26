@@ -344,33 +344,11 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         ICraftingService craftingService = grid.getCraftingService();
         List<MultiLevelEmitterPart.SlotEvaluation> slotResults = new ArrayList<>(configuredItemCount);
         for (int slot = 0; slot < configuredItemCount; slot++) {
-            AEKey key = ensureConfigInventory().getKey(slot);
-            MultiLevelEmitterPart.CraftingMode craftingMode = craftingModeForSlot(slot);
-            if (craftingMode == MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
-                    || craftingMode == MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
-                if (key == null) {
-                    slotResults.add(MultiLevelEmitterPart.SlotEvaluation.inactive());
-                    continue;
-                }
-                slotResults.add(MultiLevelEmitterPart.SlotEvaluation.participating(
-                        craftingService != null && craftingService.isRequesting(key)
-                ));
-                continue;
-            }
-
-            long amount = 0L;
-            if (key != null) {
-                MultiLevelEmitterPart.MatchingMode matchingMode = matchingModeForSlot(slot);
-                amount = matchingMode == MultiLevelEmitterPart.MatchingMode.STRICT
-                        ? inventory.get(key)
-                        : readFuzzyAmount(inventory, key, toFuzzyMode(matchingMode));
-            }
-            long threshold = thresholds.getOrDefault(slot, 1L);
-            MultiLevelEmitterPart.ComparisonMode comparisonMode = slot < comparisonModes.size()
-                    ? comparisonModes.get(slot)
-                    : MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
-            slotResults.add(MultiLevelEmitterPart.SlotEvaluation.participating(
-                    MultiLevelEmitterPart.evaluateComparison(amount, threshold, comparisonMode)
+            slotResults.add(slotEvaluationForGridSlot(
+                    slot,
+                    ensureConfigInventory().getKey(slot),
+                    inventory,
+                    craftingService
             ));
         }
         return List.copyOf(slotResults);
@@ -754,6 +732,31 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         return keys;
     }
 
+    private MultiLevelEmitterPart.SlotEvaluation slotEvaluationForGridSlot(
+            int slot,
+            AEKey key,
+            KeyCounter inventory,
+            ICraftingService craftingService
+    ) {
+        if (key == null) {
+            return MultiLevelEmitterPart.SlotEvaluation.inactive();
+        }
+
+        if (isCraftingExpressionParticipatingSlot(slot)) {
+            return MultiLevelEmitterPart.SlotEvaluation.participating(
+                    craftingService != null && craftingService.isRequesting(key)
+            );
+        }
+
+        return MultiLevelEmitterPart.SlotEvaluation.participating(
+                MultiLevelEmitterPart.evaluateComparison(
+                        readStorageCountedAmount(slot, inventory, key),
+                        thresholds.getOrDefault(slot, 1L),
+                        comparisonModeForSlot(slot)
+                )
+        );
+    }
+
     private List<AEKey> emitWhileCraftingKeys() {
         List<AEKey> keys = new ArrayList<>(configuredItemCount);
         for (int slot = 0; slot < configuredItemCount; slot++) {
@@ -786,6 +789,23 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             }
         }
         return keys;
+    }
+
+    private boolean isCraftingExpressionParticipatingSlot(int slot) {
+        return MultiLevelEmitterPart.isExpressionParticipatingCraftingMode(craftingModeForSlot(slot));
+    }
+
+    private long readStorageCountedAmount(int slot, KeyCounter inventory, AEKey key) {
+        MultiLevelEmitterPart.MatchingMode matchingMode = matchingModeForSlot(slot);
+        return matchingMode == MultiLevelEmitterPart.MatchingMode.STRICT
+                ? inventory.get(key)
+                : readFuzzyAmount(inventory, key, toFuzzyMode(matchingMode));
+    }
+
+    private MultiLevelEmitterPart.ComparisonMode comparisonModeForSlot(int slot) {
+        return slot < comparisonModes.size()
+                ? comparisonModes.get(slot)
+                : MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
     }
 
     private List<Long> readObservedValues(IGrid grid) {

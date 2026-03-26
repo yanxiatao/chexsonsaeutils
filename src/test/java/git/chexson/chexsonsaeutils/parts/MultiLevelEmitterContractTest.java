@@ -188,6 +188,24 @@ class MultiLevelEmitterContractTest {
         assertFalse(result.result());
     }
 
+    @Test
+    void slotEvaluationInactiveRemainsNeutralWhileCraftingRowsStillCountAsParticipants() {
+        MultiLevelEmitterPart.AggregationResult result = MultiLevelEmitterPart.evaluateFinalResultWithParticipation(
+                List.of(
+                        MultiLevelEmitterPart.SlotEvaluation.inactive(),
+                        MultiLevelEmitterPart.SlotEvaluation.participating(false),
+                        MultiLevelEmitterPart.SlotEvaluation.participating(true)
+                ),
+                List.of(
+                        MultiLevelEmitterPart.LogicRelation.OR,
+                        MultiLevelEmitterPart.LogicRelation.OR
+                )
+        );
+
+        assertEquals(2, result.participatingCount());
+        assertTrue(result.result());
+    }
+
     private static CapabilityAwareRuntimePart newCapabilityRuntimePart(boolean fuzzyInstalled, boolean craftingInstalled) {
         try {
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");

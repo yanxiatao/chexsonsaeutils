@@ -180,6 +180,20 @@ class MultiLevelEmitterMenuTest {
     }
 
     @Test
+    void runtimeMenuReflectsCraftingCardAuthorityFlipWithoutRebindingMenu() {
+        CapabilityAwareRuntimePart runtime = (CapabilityAwareRuntimePart) newCapabilityRuntimePart(false, true);
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        assertTrue(menu.hasCraftingCardInstalled());
+
+        runtime.setInstalledCards(false, false);
+        assertFalse(menu.hasCraftingCardInstalled());
+
+        runtime.setInstalledCards(false, true);
+        assertTrue(menu.hasCraftingCardInstalled());
+    }
+
+    @Test
     void runtimeMenuCyclesMatchingModeThroughAuthoritativeRuntimeAction() {
         MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(true, false);
         MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
