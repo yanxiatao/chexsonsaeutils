@@ -69,6 +69,18 @@ public final class MultiLevelEmitterUtils {
         return out;
     }
 
+    public static List<MultiLevelEmitterPart.CraftingMode> readCraftingModesFromNBT(CompoundTag tag, String key) {
+        if (tag == null || key == null || !tag.contains(key, Tag.TAG_LIST)) {
+            return new ArrayList<>();
+        }
+        ListTag list = tag.getList(key, Tag.TAG_STRING);
+        List<MultiLevelEmitterPart.CraftingMode> out = new ArrayList<>(list.size());
+        for (Tag element : list) {
+            out.add(MultiLevelEmitterPart.CraftingMode.fromPersisted(element.getAsString()));
+        }
+        return out;
+    }
+
     public static void writeLogicRelationsToNBT(
             List<MultiLevelEmitterPart.LogicRelation> relations,
             CompoundTag target,
@@ -111,6 +123,22 @@ public final class MultiLevelEmitterUtils {
             for (MultiLevelEmitterPart.MatchingMode mode : modes) {
                 MultiLevelEmitterPart.MatchingMode value =
                         mode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : mode;
+                list.add(StringTag.valueOf(value.name()));
+            }
+        }
+        target.put(key, list);
+    }
+
+    public static void writeCraftingModesToNBT(
+            List<MultiLevelEmitterPart.CraftingMode> modes,
+            CompoundTag target,
+            String key
+    ) {
+        ListTag list = new ListTag();
+        if (modes != null) {
+            for (MultiLevelEmitterPart.CraftingMode mode : modes) {
+                MultiLevelEmitterPart.CraftingMode value =
+                        mode == null ? MultiLevelEmitterPart.CraftingMode.NONE : mode;
                 list.add(StringTag.valueOf(value.name()));
             }
         }

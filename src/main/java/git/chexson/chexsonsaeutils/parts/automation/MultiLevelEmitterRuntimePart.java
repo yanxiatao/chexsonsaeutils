@@ -40,6 +40,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     static final String NBT_REPORTING_VALUES = "reportingValues";
     static final String NBT_COMPARISON_MODES = "comparison_modes";
     static final String NBT_LOGIC_RELATIONS = "logic_relations";
+    static final String NBT_MATCHING_MODES = "matching_modes";
+    static final String NBT_CRAFTING_MODES = "crafting_modes";
     static final String NBT_EXPRESSION_TEXT = "expression_text";
     static final String NBT_EXPRESSION_OWNERSHIP = "expression_ownership";
     public static final int DEFAULT_VISIBLE_SLOT_COUNT = 1;
@@ -52,6 +54,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private Map<Integer, Long> thresholds = new LinkedHashMap<>();
     private List<MultiLevelEmitterPart.ComparisonMode> comparisonModes = List.of();
     private List<MultiLevelEmitterPart.LogicRelation> relations = List.of();
+    private List<MultiLevelEmitterPart.MatchingMode> matchingModes = List.of();
+    private List<MultiLevelEmitterPart.CraftingMode> craftingModes = List.of();
     private String appliedExpressionText = "";
     private MultiLevelEmitterExpressionOwnership expressionOwnership = MultiLevelEmitterExpressionOwnership.AUTO;
     private MultiLevelEmitterExpressionCompileResult expressionCompileResult;
@@ -165,6 +169,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
 
     @Override
     protected void configureWatchers() {
+        reconcileCardModes();
         IStackWatcher storageWatcher = getWatcher(STORAGE_WATCHER_FIELD);
         if (storageWatcher != null) {
             storageWatcher.reset();
@@ -282,6 +287,40 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         return List.copyOf(relations);
     }
 
+    public boolean hasFuzzyCardInstalled() {
+        try {
+            return isUpgradedWith(AEItems.FUZZY_CARD);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public boolean hasCraftingCardInstalled() {
+        try {
+            return isUpgradedWith(AEItems.CRAFTING_CARD);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public MultiLevelEmitterPart.MatchingMode matchingModeForSlot(int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= configuredItemCount) {
+            return MultiLevelEmitterPart.MatchingMode.STRICT;
+        }
+        return slotIndex < matchingModes.size()
+                ? matchingModes.get(slotIndex)
+                : MultiLevelEmitterPart.MatchingMode.STRICT;
+    }
+
+    public MultiLevelEmitterPart.CraftingMode craftingModeForSlot(int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= configuredItemCount) {
+            return MultiLevelEmitterPart.CraftingMode.NONE;
+        }
+        return slotIndex < craftingModes.size()
+                ? craftingModes.get(slotIndex)
+                : MultiLevelEmitterPart.CraftingMode.NONE;
+    }
+
     public String appliedExpressionText() {
         return appliedExpressionText;
     }
@@ -326,6 +365,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             Map<Integer, Long> persistedThresholds,
             List<MultiLevelEmitterPart.ComparisonMode> persistedComparisons,
             List<MultiLevelEmitterPart.LogicRelation> persistedRelations,
+            List<MultiLevelEmitterPart.MatchingMode> persistedMatchingModes,
+            List<MultiLevelEmitterPart.CraftingMode> persistedCraftingModes,
             String persistedExpressionText,
             MultiLevelEmitterExpressionOwnership persistedOwnership,
             boolean refreshRuntimeState
@@ -344,6 +385,20 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         );
         this.relations = List.copyOf(
                 MultiLevelEmitterPart.normalizeRelationsForSlotCount(persistedRelations, normalizedSlotCount)
+        );
+        this.matchingModes = List.copyOf(
+                MultiLevelEmitterPart.normalizeMatchingModesForSlotCount(
+                        persistedMatchingModes,
+                        normalizedSlotCount,
+                        hasFuzzyCardInstalled()
+                )
+        );
+        this.craftingModes = List.copyOf(
+                MultiLevelEmitterPart.normalizeCraftingModesForSlotCount(
+                        persistedCraftingModes,
+                        normalizedSlotCount,
+                        hasCraftingCardInstalled()
+                )
         );
         trimConfigInventoryToConfiguredSlots(normalizedSlotCount);
         synchronizeExpressionState(previousSlotCount, persistedExpressionText, persistedOwnership);
@@ -364,9 +419,25 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 persistedThresholds,
                 persistedComparisons,
                 persistedRelations,
+                matchingModes,
+                craftingModes,
                 appliedExpressionText,
                 expressionOwnership,
                 refreshRuntimeState
+        );
+    }
+
+    private void reconcileCardModes() {
+        applyConfigurationState(
+                configuredItemCount,
+                thresholds,
+                comparisonModes,
+                relations,
+                matchingModes,
+                craftingModes,
+                appliedExpressionText,
+                expressionOwnership,
+                false
         );
     }
 
@@ -376,6 +447,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         MultiLevelEmitterPart.writeThresholdsToNbt(thresholds, data, NBT_REPORTING_VALUES);
         MultiLevelEmitterUtils.writeComparisonModesToNBT(comparisonModes, data, NBT_COMPARISON_MODES);
         MultiLevelEmitterUtils.writeLogicRelationsToNBT(relations, data, NBT_LOGIC_RELATIONS);
+        MultiLevelEmitterUtils.writeMatchingModesToNBT(matchingModes, data, NBT_MATCHING_MODES);
+        MultiLevelEmitterUtils.writeCraftingModesToNBT(craftingModes, data, NBT_CRAFTING_MODES);
         data.putString(NBT_EXPRESSION_TEXT, appliedExpressionText);
         data.putString(NBT_EXPRESSION_OWNERSHIP, expressionOwnership.name());
     }
@@ -386,7 +459,17 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             suppressConfigInventoryCallback = true;
             ensureConfigInventory().clear();
             suppressConfigInventoryCallback = previous;
-            applyConfigurationState(DEFAULT_VISIBLE_SLOT_COUNT, null, null, null, refreshRuntimeState);
+            applyConfigurationState(
+                    DEFAULT_VISIBLE_SLOT_COUNT,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    MultiLevelEmitterExpressionOwnership.AUTO,
+                    refreshRuntimeState
+            );
             return;
         }
         boolean previous = suppressConfigInventoryCallback;
@@ -402,6 +485,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 MultiLevelEmitterPart.readThresholdsFromNbt(data, NBT_REPORTING_VALUES),
                 MultiLevelEmitterUtils.readComparisonModesFromNBT(data, NBT_COMPARISON_MODES),
                 MultiLevelEmitterUtils.readLogicRelationsFromNBT(data, NBT_LOGIC_RELATIONS),
+                MultiLevelEmitterUtils.readMatchingModesFromNBT(data, NBT_MATCHING_MODES),
+                MultiLevelEmitterUtils.readCraftingModesFromNBT(data, NBT_CRAFTING_MODES),
                 readPersistedExpressionText(data),
                 readPersistedExpressionOwnership(data),
                 refreshRuntimeState
@@ -536,7 +621,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
 
     private boolean supportsFuzzyMatching() {
         try {
-            return isUpgradedWith(AEItems.FUZZY_CARD) && getConfigManager().hasSetting(Settings.FUZZY_MODE);
+            return hasFuzzyCardInstalled() && getConfigManager().hasSetting(Settings.FUZZY_MODE);
         } catch (RuntimeException ignored) {
             return false;
         }

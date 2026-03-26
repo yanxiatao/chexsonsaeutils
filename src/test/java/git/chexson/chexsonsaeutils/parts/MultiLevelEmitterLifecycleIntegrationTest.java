@@ -29,6 +29,8 @@ class MultiLevelEmitterLifecycleIntegrationTest {
     private static final String NBT_REPORTING_VALUES = "reportingValues";
     private static final String NBT_COMPARISON_MODES = "comparison_modes";
     private static final String NBT_LOGIC_RELATIONS = "logic_relations";
+    private static final String NBT_MATCHING_MODES = "matching_modes";
+    private static final String NBT_CRAFTING_MODES = "crafting_modes";
 
     @Test
     void emit03FlowUsesDedicatedRuntimePartInsteadOfFallbackBinding() throws IOException {
@@ -267,6 +269,28 @@ class MultiLevelEmitterLifecycleIntegrationTest {
     }
 
     @Test
+    void reloadSnapshotCollapsesStaleCardModesWhenCapabilitiesDisappear() {
+        CompoundTag snapshot = createCardModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.FUZZY,
+                        MultiLevelEmitterPart.MatchingMode.FUZZY
+                ),
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                )
+        );
+
+        MultiLevelEmitterRuntimePart restored = newCapabilityRuntimePart(false, false);
+        readRuntimeSnapshot(restored, snapshot);
+
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restored.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restored.matchingModeForSlot(1));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restored.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restored.craftingModeForSlot(1));
+    }
+
+    @Test
     void configuredSlotCountPersistsAcrossRuntimeSnapshotRoundTrip() throws IOException {
         MultiLevelEmitterRuntimePart beforeRoundTrip = newRuntimePart();
         beforeRoundTrip.applyConfiguration(
@@ -308,6 +332,34 @@ class MultiLevelEmitterLifecycleIntegrationTest {
                 "runtime part must keep the stream snapshot read path");
         assertTrue(runtimeSource.contains("trimConfigInventoryToConfiguredSlots("),
                 "runtime part must keep shrink cleanup on the authoritative runtime path");
+    }
+
+    @Test
+    void streamRoundTripCollapsesStaleCardModesWhenCapabilitiesDisappear() {
+        MultiLevelEmitterRuntimePart beforeStreamSync = newCapabilityRuntimePart(true, true);
+        readRuntimeSnapshot(
+                beforeStreamSync,
+                createCardModeSnapshot(
+                        List.of(
+                                MultiLevelEmitterPart.MatchingMode.FUZZY,
+                                MultiLevelEmitterPart.MatchingMode.STRICT
+                        ),
+                        List.of(
+                                MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT,
+                                MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
+                        )
+                )
+        );
+
+        FriendlyByteBuf stream = new FriendlyByteBuf(Unpooled.buffer());
+        beforeStreamSync.writeToStream(stream);
+
+        MultiLevelEmitterRuntimePart restoredFromStream = newCapabilityRuntimePart(false, false);
+        assertTrue(restoredFromStream.readFromStream(stream));
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restoredFromStream.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restoredFromStream.matchingModeForSlot(1));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restoredFromStream.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restoredFromStream.craftingModeForSlot(1));
     }
 
     private static void assertRoundTripRuntimeState(MultiLevelEmitterRuntimePart runtime) {
@@ -369,6 +421,59 @@ class MultiLevelEmitterLifecycleIntegrationTest {
             return runtime;
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to allocate runtime part test instance", exception);
+        }
+    }
+
+    private static MultiLevelEmitterRuntimePart newCapabilityRuntimePart(boolean fuzzyInstalled, boolean craftingInstalled) {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            Object unsafe = theUnsafeField.get(null);
+            Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
+            CapabilityAwareRuntimePart runtime =
+                    (CapabilityAwareRuntimePart) allocateInstance.invoke(unsafe, CapabilityAwareRuntimePart.class);
+            runtime.setInstalledCards(fuzzyInstalled, craftingInstalled);
+            runtime.applyConfiguration(1, null, null, null);
+            runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
+            return runtime;
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to allocate capability-aware runtime part test instance", exception);
+        }
+    }
+
+    private static CompoundTag createCardModeSnapshot(
+            List<MultiLevelEmitterPart.MatchingMode> matchingModes,
+            List<MultiLevelEmitterPart.CraftingMode> craftingModes
+    ) {
+        CompoundTag snapshot = new CompoundTag();
+        snapshot.putInt(NBT_CONFIGURED_ITEM_COUNT, Math.max(matchingModes.size(), craftingModes.size()));
+        MultiLevelEmitterUtils.writeMatchingModesToNBT(matchingModes, snapshot, NBT_MATCHING_MODES);
+        MultiLevelEmitterUtils.writeCraftingModesToNBT(craftingModes, snapshot, NBT_CRAFTING_MODES);
+        return snapshot;
+    }
+
+    private static final class CapabilityAwareRuntimePart extends MultiLevelEmitterRuntimePart {
+        private boolean fuzzyInstalled;
+        private boolean craftingInstalled;
+
+        private CapabilityAwareRuntimePart() {
+            super(null);
+        }
+
+        void setInstalledCards(boolean fuzzyInstalled, boolean craftingInstalled) {
+            this.fuzzyInstalled = fuzzyInstalled;
+            this.craftingInstalled = craftingInstalled;
+        }
+
+        @Override
+        public boolean hasFuzzyCardInstalled() {
+            return fuzzyInstalled;
+        }
+
+        @Override
+        public boolean hasCraftingCardInstalled() {
+            return craftingInstalled;
         }
     }
 }

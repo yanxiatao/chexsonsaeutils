@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils;
 
+import appeng.api.upgrades.Upgrades;
+import appeng.core.definitions.AEItems;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
@@ -100,6 +102,8 @@ public class Chexsonsaeutils {
     }
 
     private static void registerMultiLevelEmitterBootstrap() {
+        Upgrades.add(AEItems.FUZZY_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1);
+        Upgrades.add(AEItems.CRAFTING_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1);
         MultiLevelEmitterMenu.registerMenuBindings(
                 MULTI_LEVEL_EMITTER_MENU::get,
                 (inventory, networkData) -> MultiLevelEmitterRuntimePart.consumePublishedMenuRuntime()

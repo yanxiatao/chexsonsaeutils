@@ -43,6 +43,10 @@ class MultiLevelEmitterRegistrationTest {
         assertTrue(modSource.contains("ITEMS.register(MultiLevelEmitterItem.id()"), "missing item registration call");
         assertTrue(modSource.contains("event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap)"),
                 "missing common setup bootstrap enqueue");
+        assertTrue(modSource.contains("Upgrades.add(AEItems.FUZZY_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
+                "missing AE2 fuzzy card registration for the multi-level emitter");
+        assertTrue(modSource.contains("Upgrades.add(AEItems.CRAFTING_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
+                "missing AE2 crafting card registration for the multi-level emitter");
         assertTrue(modSource.contains("Chexsonsaeutils.registerMultiLevelEmitterClientBindings()"),
                 "missing client setup binding call");
         assertTrue(modSource.contains("MenuScreens.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new)"),

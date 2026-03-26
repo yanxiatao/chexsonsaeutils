@@ -115,6 +115,20 @@ class MultiLevelEmitterPartTest {
     }
 
     @Test
+    void invalidCraftingMetadataFallsBackToNone() {
+        MultiLevelEmitterPart.CraftingMode parsed =
+                MultiLevelEmitterPart.CraftingMode.fromPersisted("INVALID_MODE");
+        MultiLevelEmitterPart.CraftingMode effective =
+                MultiLevelEmitterPart.resolveCraftingMode(
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        false
+                );
+
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, parsed);
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, effective);
+    }
+
+    @Test
     void configuredSlotEvaluationUsesDeterministicDefaults() {
         Map<Integer, Long> thresholds = MultiLevelEmitterPart.normalizeThresholdsForSlotCount(Map.of(0, 4L), 2);
         List<MultiLevelEmitterPart.ComparisonMode> comparisons =
