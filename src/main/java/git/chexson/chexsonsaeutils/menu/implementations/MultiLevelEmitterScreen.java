@@ -23,6 +23,7 @@ public final class MultiLevelEmitterScreen {
 
     private static final String REGISTRATION_KEY = MultiLevelEmitterItem.SCREEN_BINDING_KEY;
     private static final String FUZZY_MODE_KEY = "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode";
+    private static final String CRAFTING_MODE_KEY = "gui.chexsonsaeutils.multi_level_emitter.crafting_mode";
     private static final Pattern OPERATOR_PATTERN = Pattern.compile("(?i)\\b(?:AND|OR)\\b");
     private static final Pattern SLOT_REFERENCE_PATTERN = Pattern.compile("#\\d+");
     private static final AtomicReference<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> menuType = new AtomicReference<>();
@@ -50,10 +51,16 @@ public final class MultiLevelEmitterScreen {
             long threshold,
             MultiLevelEmitterPart.ComparisonMode comparisonMode,
             MultiLevelEmitterPart.MatchingMode matchingMode,
+            MultiLevelEmitterPart.CraftingMode craftingMode,
             boolean showFuzzyControl,
             boolean emphasizeFuzzyMode,
             String fuzzyShortLabel,
-            Component fuzzyTooltip
+            Component fuzzyTooltip,
+            boolean showCraftingControl,
+            boolean emphasizeCraftingMode,
+            String craftingShortLabel,
+            Component craftingTooltip,
+            boolean duplicateEmitToCraftTarget
     ) {
     }
 
@@ -133,6 +140,12 @@ public final class MultiLevelEmitterScreen {
     public static void toggleMatchingMode(MultiLevelEmitterMenu.RuntimeMenu menu, int slotIndex) {
         if (menu != null) {
             menu.cycleMatchingMode(slotIndex);
+        }
+    }
+
+    public static void toggleCraftingMode(MultiLevelEmitterMenu.RuntimeMenu menu, int slotIndex) {
+        if (menu != null) {
+            menu.cycleCraftingMode(slotIndex);
         }
     }
 
@@ -222,16 +235,47 @@ public final class MultiLevelEmitterScreen {
                 mode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : mode;
         return switch (effective) {
             case STRICT -> "STR";
-            case IGNORE_ALL -> "ALL";
-            case PERCENT_99 -> "99";
-            case PERCENT_75 -> "75";
-            case PERCENT_50 -> "50";
-            case PERCENT_25 -> "25";
+            case IGNORE_ALL -> "*";
+            case PERCENT_99 -> "99%";
+            case PERCENT_75 -> "75%";
+            case PERCENT_50 -> "50%";
+            case PERCENT_25 -> "25%";
         };
     }
 
     public static Component fuzzyTooltip(MultiLevelEmitterPart.MatchingMode mode) {
-        return Component.translatable(FUZZY_MODE_KEY, Component.translatable(fuzzyModeDetailKey(mode)));
+        return Component.translatable(FUZZY_MODE_KEY)
+                .append("\n")
+                .append(Component.translatable(fuzzyModeDetailKey(mode)));
+    }
+
+    public static String craftingShortLabel(MultiLevelEmitterPart.CraftingMode mode) {
+        MultiLevelEmitterPart.CraftingMode effective =
+                mode == null ? MultiLevelEmitterPart.CraftingMode.NONE : mode;
+        return switch (effective) {
+            case NONE -> "OFF";
+            case EMIT_WHILE_CRAFTING -> "REQ";
+            case EMIT_TO_CRAFT -> "SUP";
+        };
+    }
+
+    public static Component craftingTooltip(
+            MultiLevelEmitterPart.CraftingMode mode,
+            boolean marked,
+            boolean duplicateEmitToCraftTarget
+    ) {
+        Component tooltip = Component.translatable(CRAFTING_MODE_KEY, craftingModeDetail(mode));
+        if (!marked) {
+            tooltip = tooltip.copy()
+                    .append("\n")
+                    .append(Component.translatable(CRAFTING_MODE_KEY + ".unmarked_hint"));
+        }
+        if (duplicateEmitToCraftTarget) {
+            tooltip = tooltip.copy()
+                    .append("\n")
+                    .append(Component.translatable(CRAFTING_MODE_KEY + ".duplicate_emit_to_craft"));
+        }
+        return tooltip;
     }
 
     public static MultiLevelEmitterExpressionCompileResult validateExpressionDraft(
@@ -300,21 +344,31 @@ public final class MultiLevelEmitterScreen {
         int markedSlots = menu.markedSlotCount();
         int visibleSlots = menu.visibleSlotCount();
         int totalSlots = menu.totalSlotCapacity();
+        boolean showCraftingControl = menu.hasCraftingCardInstalled();
         List<SlotView> slots = new ArrayList<>(visibleSlots);
         for (int slotIndex = 0; slotIndex < visibleSlots; slotIndex++) {
             MultiLevelEmitterPart.MatchingMode matchingMode = menu.matchingModeForSlot(slotIndex);
+            boolean marked = menu.hasMarkedItem(slotIndex);
+            MultiLevelEmitterPart.CraftingMode craftingMode = menu.craftingModeForSlot(slotIndex);
+            boolean duplicateEmitToCraftTarget = menu.duplicateEmitToCraftTarget(slotIndex);
             slots.add(new SlotView(
                     slotIndex,
                     menu.isSlotEnabled(slotIndex),
                     menu.isSlotConfigured(slotIndex),
-                    menu.hasMarkedItem(slotIndex),
+                    marked,
                     menu.thresholdForSlot(slotIndex),
                     menu.comparisonModeForSlot(slotIndex),
                     matchingMode,
+                    craftingMode,
                     menu.hasFuzzyCardInstalled(),
                     matchingMode != MultiLevelEmitterPart.MatchingMode.STRICT,
                     fuzzyShortLabel(matchingMode),
-                    fuzzyTooltip(matchingMode)
+                    fuzzyTooltip(matchingMode),
+                    showCraftingControl,
+                    showCraftingControl && craftingMode != MultiLevelEmitterPart.CraftingMode.NONE,
+                    craftingShortLabel(craftingMode),
+                    craftingTooltip(craftingMode, marked, duplicateEmitToCraftTarget),
+                    duplicateEmitToCraftTarget
             ));
         }
         return new RuntimeScreenState(
@@ -354,6 +408,16 @@ public final class MultiLevelEmitterScreen {
             case PERCENT_75 -> FUZZY_MODE_KEY + ".percent_75";
             case PERCENT_50 -> FUZZY_MODE_KEY + ".percent_50";
             case PERCENT_25 -> FUZZY_MODE_KEY + ".percent_25";
+        };
+    }
+
+    private static Component craftingModeDetail(MultiLevelEmitterPart.CraftingMode mode) {
+        MultiLevelEmitterPart.CraftingMode effective =
+                mode == null ? MultiLevelEmitterPart.CraftingMode.NONE : mode;
+        return switch (effective) {
+            case NONE -> Component.translatable(CRAFTING_MODE_KEY + ".disabled");
+            case EMIT_WHILE_CRAFTING -> Component.translatable(CRAFTING_MODE_KEY + ".while_crafting");
+            case EMIT_TO_CRAFT -> Component.translatable(CRAFTING_MODE_KEY + ".to_craft");
         };
     }
 

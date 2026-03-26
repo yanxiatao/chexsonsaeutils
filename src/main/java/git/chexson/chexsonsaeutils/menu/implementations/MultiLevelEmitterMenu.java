@@ -2,9 +2,11 @@ package git.chexson.chexsonsaeutils.menu.implementations;
 
 import appeng.menu.locator.MenuLocator;
 import appeng.menu.locator.MenuLocators;
+import appeng.api.upgrades.IUpgradeInventory;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.FakeSlot;
+import appeng.menu.slot.RestrictedInputSlot;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
@@ -40,6 +42,7 @@ public final class MultiLevelEmitterMenu {
     private static final String ACTION_COMMIT_THRESHOLD = "commitThreshold";
     private static final String ACTION_CYCLE_COMPARISON_MODE = "cycleComparisonMode";
     private static final String ACTION_CYCLE_MATCHING_MODE = "cycleMatchingMode";
+    private static final String ACTION_CYCLE_CRAFTING_MODE = "cycleCraftingMode";
     private static final String ACTION_APPLY_EXPRESSION = "applyExpression";
     private static Supplier<MenuType<RuntimeMenu>> menuTypeSupplier;
     private static final AtomicReference<RuntimeBindingResolver> runtimeBindingResolver =
@@ -226,6 +229,8 @@ public final class MultiLevelEmitterMenu {
                     payload -> applyComparisonToggleOnServer(payload.slotIndex()));
             registerClientAction(ACTION_CYCLE_MATCHING_MODE, SlotIndexPayload.class,
                     payload -> applyMatchingModeToggleOnServer(payload.slotIndex()));
+            registerClientAction(ACTION_CYCLE_CRAFTING_MODE, SlotIndexPayload.class,
+                    payload -> applyCraftingModeToggleOnServer(payload.slotIndex()));
             registerClientAction(ACTION_APPLY_EXPRESSION, ExpressionPayload.class, this::applyExpressionOnServer);
 
             if (inventory != null && runtimePart != null) {
@@ -286,6 +291,16 @@ public final class MultiLevelEmitterMenu {
             }
         }
 
+        public void cycleCraftingMode(int slotIndex) {
+            if (runtimePart == null) {
+                return;
+            }
+            runtimePart.cycleCraftingModeFromUi(slotIndex);
+            if (isLiveClientMenu()) {
+                sendClientAction(ACTION_CYCLE_CRAFTING_MODE, new SlotIndexPayload(slotIndex));
+            }
+        }
+
         public void applyExpression(String rawExpression) {
             if (runtimePart == null || !canApplyExpression(rawExpression)) {
                 return;
@@ -314,6 +329,10 @@ public final class MultiLevelEmitterMenu {
 
         public boolean hasCraftingCardInstalled() {
             return runtimePart != null && runtimePart.hasCraftingCardInstalled();
+        }
+
+        public IUpgradeInventory getUpgrades() {
+            return runtimePart == null ? null : runtimePart.getUpgrades();
         }
 
         public int visibleSlotCount() {
@@ -389,7 +408,21 @@ public final class MultiLevelEmitterMenu {
             return runtimePart.craftingModeForSlot(slotIndex);
         }
 
+        public boolean duplicateEmitToCraftTarget(int slotIndex) {
+            return runtimePart != null && runtimePart.hasDuplicateEmitToCraftTarget(slotIndex);
+        }
+
         private void initializeSlots(Inventory inventory, MultiLevelEmitterRuntimePart runtimePart) {
+            IUpgradeInventory upgrades = runtimePart.getUpgrades();
+            for (int upgradeSlotIndex = 0; upgradeSlotIndex < upgrades.size(); upgradeSlotIndex++) {
+                var upgradeSlot = new RestrictedInputSlot(
+                        RestrictedInputSlot.PlacableItemType.UPGRADES,
+                        upgrades,
+                        upgradeSlotIndex
+                );
+                upgradeSlot.setNotDraggable();
+                addSlot(upgradeSlot, SlotSemantics.UPGRADE);
+            }
             var configMenu = runtimePart.getConfig().createMenuWrapper();
             for (int slotIndex = 0; slotIndex < SLOT_CAPACITY; slotIndex++) {
                 addSlot(new FakeSlot(configMenu, slotIndex), SlotSemantics.CONFIG);
@@ -430,6 +463,12 @@ public final class MultiLevelEmitterMenu {
         private void applyMatchingModeToggleOnServer(int slotIndex) {
             if (runtimePart != null) {
                 runtimePart.cycleMatchingModeFromUi(slotIndex);
+            }
+        }
+
+        private void applyCraftingModeToggleOnServer(int slotIndex) {
+            if (runtimePart != null) {
+                runtimePart.cycleCraftingModeFromUi(slotIndex);
             }
         }
 

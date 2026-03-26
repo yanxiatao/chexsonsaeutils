@@ -10,10 +10,14 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -193,6 +197,72 @@ class MultiLevelEmitterMenuTest {
     }
 
     @Test
+    void runtimeMenuCyclesCraftingModeThroughAuthoritativeRuntimeAction() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        menu.cycleCraftingMode(0);
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, runtime.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, menu.craftingModeForSlot(0));
+
+        menu.cycleCraftingMode(0);
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, runtime.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, menu.craftingModeForSlot(0));
+
+        menu.cycleCraftingMode(0);
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, runtime.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, menu.craftingModeForSlot(0));
+
+        menu.cycleCraftingMode(0);
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, runtime.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, menu.craftingModeForSlot(0));
+
+        menu.cycleCraftingMode(7);
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, menu.craftingModeForSlot(7));
+    }
+
+    @Test
+    void reopenedRuntimeMenuRetainsMixedCraftingModesFromAuthoritativeRuntime() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.applyConfiguration(3, null, null, null);
+        MultiLevelEmitterMenu.RuntimeMenu firstMenu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        firstMenu.cycleCraftingMode(0);
+        firstMenu.cycleCraftingMode(1);
+        firstMenu.cycleCraftingMode(1);
+
+        MultiLevelEmitterMenu.RuntimeMenu reopenedMenu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, reopenedMenu.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, reopenedMenu.craftingModeForSlot(1));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, reopenedMenu.craftingModeForSlot(2));
+    }
+
+    @Test
+    void runtimeMenuProjectsDuplicateEmitToCraftTargetFromRuntimeAuthority() {
+        CapabilityAwareRuntimePart runtime = (CapabilityAwareRuntimePart) newCapabilityRuntimePart(false, true);
+        runtime.setDuplicateEmitToCraftSlots(Set.of(1));
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        assertFalse(menu.duplicateEmitToCraftTarget(0));
+        assertTrue(menu.duplicateEmitToCraftTarget(1));
+    }
+
+    @Test
+    void runtimeMenuSourceKeepsUpgradeSlotWiringReachable() throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/git/chexson/chexsonsaeutils/menu/implementations/MultiLevelEmitterMenu.java"
+        ));
+
+        assertTrue(source.contains("private void initializeSlots(Inventory inventory, MultiLevelEmitterRuntimePart runtimePart)"));
+        assertTrue(source.contains("IUpgradeInventory upgrades = runtimePart.getUpgrades();"));
+        assertTrue(source.contains("new RestrictedInputSlot("));
+        assertTrue(source.contains("RestrictedInputSlot.PlacableItemType.UPGRADES"));
+        assertTrue(source.contains("addSlot(upgradeSlot, SlotSemantics.UPGRADE);"));
+        assertTrue(source.contains("addSlot(new FakeSlot(configMenu, slotIndex), SlotSemantics.CONFIG);"));
+    }
+
+    @Test
     void runtimeMenuReopenObservesCollapsedCardModesWithoutCapabilities() {
         MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, false);
         applyCardModeSnapshot(
@@ -276,6 +346,7 @@ class MultiLevelEmitterMenuTest {
     private static final class CapabilityAwareRuntimePart extends MultiLevelEmitterRuntimePart {
         private boolean fuzzyInstalled;
         private boolean craftingInstalled;
+        private Set<Integer> duplicateEmitToCraftSlots = Set.of();
 
         private CapabilityAwareRuntimePart() {
             super(null);
@@ -284,6 +355,15 @@ class MultiLevelEmitterMenuTest {
         void setInstalledCards(boolean fuzzyInstalled, boolean craftingInstalled) {
             this.fuzzyInstalled = fuzzyInstalled;
             this.craftingInstalled = craftingInstalled;
+            if (this.duplicateEmitToCraftSlots == null) {
+                this.duplicateEmitToCraftSlots = Set.of();
+            }
+        }
+
+        void setDuplicateEmitToCraftSlots(Set<Integer> duplicateEmitToCraftSlots) {
+            this.duplicateEmitToCraftSlots = duplicateEmitToCraftSlots == null
+                    ? Set.of()
+                    : new HashSet<>(duplicateEmitToCraftSlots);
         }
 
         @Override
@@ -294,6 +374,11 @@ class MultiLevelEmitterMenuTest {
         @Override
         public boolean hasCraftingCardInstalled() {
             return craftingInstalled;
+        }
+
+        @Override
+        public boolean hasDuplicateEmitToCraftTarget(int slotIndex) {
+            return duplicateEmitToCraftSlots.contains(slotIndex);
         }
     }
 }

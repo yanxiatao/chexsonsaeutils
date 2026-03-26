@@ -5,6 +5,8 @@ import appeng.api.config.RedstoneMode;
 import appeng.api.config.Settings;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IStackWatcher;
+import appeng.api.networking.crafting.ICraftingService;
+import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.parts.IPartItem;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
@@ -28,8 +30,11 @@ import net.minecraft.world.phys.Vec3;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Dedicated runtime type for the MultiLevelEmitter feature path.
@@ -54,7 +59,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private Map<Integer, Long> thresholds = new LinkedHashMap<>();
     private List<MultiLevelEmitterPart.ComparisonMode> comparisonModes = List.of();
     private List<MultiLevelEmitterPart.LogicRelation> relations = List.of();
+    private List<MultiLevelEmitterPart.MatchingMode> requestedMatchingModes = List.of();
     private List<MultiLevelEmitterPart.MatchingMode> matchingModes = List.of();
+    private List<MultiLevelEmitterPart.CraftingMode> requestedCraftingModes = List.of();
     private List<MultiLevelEmitterPart.CraftingMode> craftingModes = List.of();
     private String appliedExpressionText = "";
     private MultiLevelEmitterExpressionOwnership expressionOwnership = MultiLevelEmitterExpressionOwnership.AUTO;
@@ -62,6 +69,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private MultiLevelEmitterExpressionPlan compiledExpressionPlan;
     private RedstoneMode redstoneMode = RedstoneMode.HIGH_SIGNAL;
     private boolean suppressConfigInventoryCallback;
+    private boolean cardCapabilityStateInitialized;
+    private boolean lastKnownFuzzyCardInstalled;
+    private boolean lastKnownCraftingCardInstalled;
 
     public MultiLevelEmitterRuntimePart(IPartItem<?> partItem) {
         super(partItem);
@@ -166,7 +176,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         if (slotIndex < 0 || slotIndex >= configuredItemCount) {
             return;
         }
-        List<MultiLevelEmitterPart.MatchingMode> updatedModes = new ArrayList<>(matchingModes);
+        List<MultiLevelEmitterPart.MatchingMode> updatedModes = new ArrayList<>(requestedMatchingModes);
         MultiLevelEmitterPart.MatchingMode current = updatedModes.get(slotIndex);
         updatedModes.set(slotIndex, MultiLevelEmitterPart.nextMatchingMode(current));
         applyConfigurationState(
@@ -175,7 +185,27 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 comparisonModes,
                 relations,
                 updatedModes,
-                craftingModes,
+                requestedCraftingModes,
+                appliedExpressionText,
+                expressionOwnership,
+                true
+        );
+    }
+
+    public void cycleCraftingModeFromUi(int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= configuredItemCount) {
+            return;
+        }
+        List<MultiLevelEmitterPart.CraftingMode> updatedModes = new ArrayList<>(requestedCraftingModes);
+        MultiLevelEmitterPart.CraftingMode current = updatedModes.get(slotIndex);
+        updatedModes.set(slotIndex, MultiLevelEmitterPart.nextCraftingMode(current));
+        applyConfigurationState(
+                configuredItemCount,
+                thresholds,
+                comparisonModes,
+                relations,
+                requestedMatchingModes,
+                updatedModes,
                 appliedExpressionText,
                 expressionOwnership,
                 true
@@ -193,10 +223,10 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         IStackWatcher storageWatcher = getWatcher(STORAGE_WATCHER_FIELD);
         if (storageWatcher != null) {
             storageWatcher.reset();
-            if (hasMarkedNonStrictMatchingSlot()) {
+            if (hasMarkedNonStrictStorageSlot()) {
                 storageWatcher.setWatchAll(true);
             } else {
-                for (AEKey key : configuredKeys()) {
+                for (AEKey key : storageCountedKeys()) {
                     storageWatcher.add(key);
                 }
             }
@@ -205,9 +235,21 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         IStackWatcher craftingWatcher = getWatcher(CRAFTING_WATCHER_FIELD);
         if (craftingWatcher != null) {
             craftingWatcher.reset();
+            for (AEKey key : requestStateCraftingKeys()) {
+                craftingWatcher.add(key);
+            }
         }
 
+        requestCraftingProviderUpdate();
         refreshRuntimeState(false);
+    }
+
+    @Override
+    public Set<AEKey> getEmitableItems() {
+        if (!hasCraftingCardInstalled()) {
+            return Set.of();
+        }
+        return Set.copyOf(emitToCraftKeys());
     }
 
     @Override
@@ -225,7 +267,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             return false;
         }
 
-        return evaluateConfiguredOutput(readObservedValues(grid), true);
+        return evaluateConfiguredOutput(grid, true);
     }
 
     public void setRedstoneMode(RedstoneMode redstoneMode) {
@@ -249,18 +291,19 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     public boolean evaluateConfiguredOutput(List<Long> observedValues, boolean networkActive) {
         List<Long> normalizedObservedValues =
                 MultiLevelEmitterUtils.normalizeObservedValuesForSlotCount(observedValues, configuredItemCount);
-        List<Boolean> slotResults = MultiLevelEmitterPart.evaluateSlotComparisons(
-                normalizedObservedValues,
-                thresholds,
-                comparisonModes
-        );
-        boolean evaluationResult;
+        List<MultiLevelEmitterPart.SlotEvaluation> slotResults =
+                MultiLevelEmitterPart.evaluateSlotComparisonsWithParticipation(
+                        normalizedObservedValues,
+                        thresholds,
+                        comparisonModes
+                );
+        MultiLevelEmitterPart.AggregationResult evaluationResult;
         if (compiledExpressionPlan != null) {
-            evaluationResult = compiledExpressionPlan.evaluate(slotResults);
+            evaluationResult = compiledExpressionPlan.evaluateParticipating(slotResults);
         } else if (expressionIsInvalid()) {
-            evaluationResult = false;
+            evaluationResult = new MultiLevelEmitterPart.AggregationResult(normalizedObservedValues.size(), false);
         } else {
-            evaluationResult = MultiLevelEmitterPart.evaluateFinalResult(slotResults, relations);
+            evaluationResult = MultiLevelEmitterPart.evaluateFinalResultWithParticipation(slotResults, relations);
         }
         return MultiLevelEmitterPart.resolveEmitterState(
                 networkActive,
@@ -268,6 +311,69 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 evaluationResult,
                 currentRedstoneMode()
         );
+    }
+
+    public boolean evaluateConfiguredOutput(IGrid grid, boolean networkActive) {
+        List<MultiLevelEmitterPart.SlotEvaluation> slotResults = readSlotEvaluations(grid);
+        if (compiledExpressionPlan != null) {
+            return MultiLevelEmitterPart.resolveEmitterState(
+                    networkActive,
+                    configuredItemCount,
+                    compiledExpressionPlan.evaluateParticipating(slotResults),
+                    currentRedstoneMode()
+            );
+        }
+        if (expressionIsInvalid()) {
+            return MultiLevelEmitterPart.resolveEmitterState(
+                    networkActive,
+                    configuredItemCount,
+                    false,
+                    currentRedstoneMode()
+            );
+        }
+        return MultiLevelEmitterPart.resolveEmitterState(
+                networkActive,
+                configuredItemCount,
+                MultiLevelEmitterPart.evaluateFinalResultWithParticipation(slotResults, relations),
+                currentRedstoneMode()
+        );
+    }
+
+    private List<MultiLevelEmitterPart.SlotEvaluation> readSlotEvaluations(IGrid grid) {
+        KeyCounter inventory = grid.getStorageService().getCachedInventory();
+        ICraftingService craftingService = grid.getCraftingService();
+        List<MultiLevelEmitterPart.SlotEvaluation> slotResults = new ArrayList<>(configuredItemCount);
+        for (int slot = 0; slot < configuredItemCount; slot++) {
+            AEKey key = ensureConfigInventory().getKey(slot);
+            MultiLevelEmitterPart.CraftingMode craftingMode = craftingModeForSlot(slot);
+            if (craftingMode == MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
+                    || craftingMode == MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
+                if (key == null) {
+                    slotResults.add(MultiLevelEmitterPart.SlotEvaluation.inactive());
+                    continue;
+                }
+                slotResults.add(MultiLevelEmitterPart.SlotEvaluation.participating(
+                        craftingService != null && craftingService.isRequesting(key)
+                ));
+                continue;
+            }
+
+            long amount = 0L;
+            if (key != null) {
+                MultiLevelEmitterPart.MatchingMode matchingMode = matchingModeForSlot(slot);
+                amount = matchingMode == MultiLevelEmitterPart.MatchingMode.STRICT
+                        ? inventory.get(key)
+                        : readFuzzyAmount(inventory, key, toFuzzyMode(matchingMode));
+            }
+            long threshold = thresholds.getOrDefault(slot, 1L);
+            MultiLevelEmitterPart.ComparisonMode comparisonMode = slot < comparisonModes.size()
+                    ? comparisonModes.get(slot)
+                    : MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
+            slotResults.add(MultiLevelEmitterPart.SlotEvaluation.participating(
+                    MultiLevelEmitterPart.evaluateComparison(amount, threshold, comparisonMode)
+            ));
+        }
+        return List.copyOf(slotResults);
     }
 
     public int configuredItemCount() {
@@ -345,6 +451,31 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 : MultiLevelEmitterPart.CraftingMode.NONE;
     }
 
+    public boolean hasDuplicateEmitToCraftTarget(int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= configuredItemCount) {
+            return false;
+        }
+        if (craftingModeForSlot(slotIndex) != MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
+            return false;
+        }
+        AEKey targetKey = ensureConfigInventory().getKey(slotIndex);
+        if (targetKey == null) {
+            return false;
+        }
+        for (int candidate = 0; candidate < configuredItemCount; candidate++) {
+            if (candidate == slotIndex) {
+                continue;
+            }
+            if (craftingModeForSlot(candidate) != MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
+                continue;
+            }
+            if (Objects.equals(targetKey, ensureConfigInventory().getKey(candidate))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public String appliedExpressionText() {
         return appliedExpressionText;
     }
@@ -410,20 +541,35 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         this.relations = List.copyOf(
                 MultiLevelEmitterPart.normalizeRelationsForSlotCount(persistedRelations, normalizedSlotCount)
         );
+        boolean fuzzyCardInstalled = hasFuzzyCardInstalled();
+        boolean craftingCardInstalled = hasCraftingCardInstalled();
+        this.requestedMatchingModes = List.copyOf(reconcileRequestedMatchingModes(
+                persistedMatchingModes,
+                normalizedSlotCount,
+                fuzzyCardInstalled
+        ));
+        this.requestedCraftingModes = List.copyOf(reconcileRequestedCraftingModes(
+                persistedCraftingModes,
+                normalizedSlotCount,
+                craftingCardInstalled
+        ));
         this.matchingModes = List.copyOf(
                 MultiLevelEmitterPart.normalizeMatchingModesForSlotCount(
-                        persistedMatchingModes,
+                        requestedMatchingModes,
                         normalizedSlotCount,
-                        hasFuzzyCardInstalled()
+                        fuzzyCardInstalled
                 )
         );
         this.craftingModes = List.copyOf(
                 MultiLevelEmitterPart.normalizeCraftingModesForSlotCount(
-                        persistedCraftingModes,
+                        requestedCraftingModes,
                         normalizedSlotCount,
-                        hasCraftingCardInstalled()
+                        craftingCardInstalled
                 )
         );
+        this.cardCapabilityStateInitialized = true;
+        this.lastKnownFuzzyCardInstalled = fuzzyCardInstalled;
+        this.lastKnownCraftingCardInstalled = craftingCardInstalled;
         trimConfigInventoryToConfiguredSlots(normalizedSlotCount);
         synchronizeExpressionState(previousSlotCount, persistedExpressionText, persistedOwnership);
         if (refreshRuntimeState) {
@@ -443,8 +589,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 persistedThresholds,
                 persistedComparisons,
                 persistedRelations,
-                matchingModes,
-                craftingModes,
+                requestedMatchingModes,
+                requestedCraftingModes,
                 appliedExpressionText,
                 expressionOwnership,
                 refreshRuntimeState
@@ -457,8 +603,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 thresholds,
                 comparisonModes,
                 relations,
-                matchingModes,
-                craftingModes,
+                requestedMatchingModes,
+                requestedCraftingModes,
                 appliedExpressionText,
                 expressionOwnership,
                 false
@@ -471,8 +617,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         MultiLevelEmitterPart.writeThresholdsToNbt(thresholds, data, NBT_REPORTING_VALUES);
         MultiLevelEmitterUtils.writeComparisonModesToNBT(comparisonModes, data, NBT_COMPARISON_MODES);
         MultiLevelEmitterUtils.writeLogicRelationsToNBT(relations, data, NBT_LOGIC_RELATIONS);
-        MultiLevelEmitterUtils.writeMatchingModesToNBT(matchingModes, data, NBT_MATCHING_MODES);
-        MultiLevelEmitterUtils.writeCraftingModesToNBT(craftingModes, data, NBT_CRAFTING_MODES);
+        MultiLevelEmitterUtils.writeMatchingModesToNBT(requestedMatchingModes, data, NBT_MATCHING_MODES);
+        MultiLevelEmitterUtils.writeCraftingModesToNBT(requestedCraftingModes, data, NBT_CRAFTING_MODES);
         data.putString(NBT_EXPRESSION_TEXT, appliedExpressionText);
         data.putString(NBT_EXPRESSION_OWNERSHIP, expressionOwnership.name());
     }
@@ -594,9 +740,46 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         markRuntimeStateDirty();
     }
 
-    private List<AEKey> configuredKeys() {
+    private List<AEKey> storageCountedKeys() {
         List<AEKey> keys = new ArrayList<>(configuredItemCount);
         for (int slot = 0; slot < configuredItemCount; slot++) {
+            if (!isStorageCountingSlot(slot)) {
+                continue;
+            }
+            AEKey key = ensureConfigInventory().getKey(slot);
+            if (key != null) {
+                keys.add(key);
+            }
+        }
+        return keys;
+    }
+
+    private List<AEKey> emitWhileCraftingKeys() {
+        List<AEKey> keys = new ArrayList<>(configuredItemCount);
+        for (int slot = 0; slot < configuredItemCount; slot++) {
+            MultiLevelEmitterPart.CraftingMode craftingMode = craftingModeForSlot(slot);
+            if (craftingMode != MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
+                    && craftingMode != MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
+                continue;
+            }
+            AEKey key = ensureConfigInventory().getKey(slot);
+            if (key != null) {
+                keys.add(key);
+            }
+        }
+        return keys;
+    }
+
+    private List<AEKey> requestStateCraftingKeys() {
+        return emitWhileCraftingKeys();
+    }
+
+    private Set<AEKey> emitToCraftKeys() {
+        Set<AEKey> keys = new LinkedHashSet<>(configuredItemCount);
+        for (int slot = 0; slot < configuredItemCount; slot++) {
+            if (craftingModeForSlot(slot) != MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
+                continue;
+            }
             AEKey key = ensureConfigInventory().getKey(slot);
             if (key != null) {
                 keys.add(key);
@@ -624,15 +807,65 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         return observedValues;
     }
 
-    private boolean hasMarkedNonStrictMatchingSlot() {
+    private boolean hasMarkedNonStrictStorageSlot() {
         ConfigInventory config = ensureConfigInventory();
         for (int slot = 0; slot < configuredItemCount; slot++) {
-            if (config.getKey(slot) != null
+            if (isStorageCountingSlot(slot)
+                    && config.getKey(slot) != null
                     && matchingModeForSlot(slot) != MultiLevelEmitterPart.MatchingMode.STRICT) {
                 return true;
             }
         }
         return false;
+    }
+
+    private boolean isStorageCountingSlot(int slot) {
+        return craftingModeForSlot(slot) == MultiLevelEmitterPart.CraftingMode.NONE;
+    }
+
+    private List<MultiLevelEmitterPart.MatchingMode> reconcileRequestedMatchingModes(
+            List<MultiLevelEmitterPart.MatchingMode> persistedMatchingModes,
+            int normalizedSlotCount,
+            boolean fuzzyCardInstalled
+    ) {
+        List<MultiLevelEmitterPart.MatchingMode> requestedModes =
+                new ArrayList<>(MultiLevelEmitterPart.normalizeRequestedMatchingModesForSlotCount(
+                        persistedMatchingModes,
+                        normalizedSlotCount
+                ));
+        if (cardCapabilityStateInitialized && lastKnownFuzzyCardInstalled && !fuzzyCardInstalled) {
+            for (int slot = 0; slot < requestedModes.size(); slot++) {
+                requestedModes.set(slot, MultiLevelEmitterPart.MatchingMode.STRICT);
+            }
+        }
+        return requestedModes;
+    }
+
+    private List<MultiLevelEmitterPart.CraftingMode> reconcileRequestedCraftingModes(
+            List<MultiLevelEmitterPart.CraftingMode> persistedCraftingModes,
+            int normalizedSlotCount,
+            boolean craftingCardInstalled
+    ) {
+        List<MultiLevelEmitterPart.CraftingMode> requestedModes =
+                new ArrayList<>(MultiLevelEmitterPart.normalizeRequestedCraftingModesForSlotCount(
+                        persistedCraftingModes,
+                        normalizedSlotCount
+                ));
+        if (cardCapabilityStateInitialized && lastKnownCraftingCardInstalled && !craftingCardInstalled) {
+            for (int slot = 0; slot < requestedModes.size(); slot++) {
+                requestedModes.set(slot, MultiLevelEmitterPart.CraftingMode.NONE);
+            }
+            return requestedModes;
+        }
+        if (cardCapabilityStateInitialized && !lastKnownCraftingCardInstalled && craftingCardInstalled) {
+            ConfigInventory config = ensureConfigInventory();
+            for (int slot = 0; slot < requestedModes.size(); slot++) {
+                if (requestedModes.get(slot) == MultiLevelEmitterPart.CraftingMode.NONE && config.getKey(slot) != null) {
+                    requestedModes.set(slot, MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING);
+                }
+            }
+        }
+        return requestedModes;
     }
 
     private static long readFuzzyAmount(KeyCounter inventory, AEKey key, FuzzyMode fuzzyMode) {
@@ -663,6 +896,16 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             return redstoneMode;
         }
         return redstoneMode;
+    }
+
+    private void requestCraftingProviderUpdate() {
+        try {
+            if (getMainNode() == null || getMainNode().getNode() == null || getMainNode().getNode().getGrid() == null) {
+                return;
+            }
+            ICraftingProvider.requestUpdate(getMainNode());
+        } catch (RuntimeException ignored) {
+        }
     }
 
     private IStackWatcher getWatcher(Field field) {

@@ -12,6 +12,22 @@ import java.util.Map;
 
 public final class MultiLevelEmitterPart {
 
+    public record SlotEvaluation(boolean participating, boolean result) {
+        public static SlotEvaluation participating(boolean result) {
+            return new SlotEvaluation(true, result);
+        }
+
+        public static SlotEvaluation inactive() {
+            return new SlotEvaluation(false, false);
+        }
+    }
+
+    public record AggregationResult(int participatingCount, boolean result) {
+        public boolean hasParticipatingSlots() {
+            return participatingCount > 0;
+        }
+    }
+
     public enum ComparisonMode {
         GREATER_OR_EQUAL,
         LESS_THAN,
@@ -141,10 +157,20 @@ public final class MultiLevelEmitterPart {
         int normalizedSlotCount = Math.max(0, slotCount);
         List<MatchingMode> modes = new ArrayList<>(normalizedSlotCount);
         for (int slot = 0; slot < normalizedSlotCount; slot++) {
-            MatchingMode requested = persistedModes != null && slot < persistedModes.size()
-                    ? persistedModes.get(slot)
-                    : MatchingMode.STRICT;
+            MatchingMode requested = readRequestedMatchingMode(persistedModes, slot);
             modes.add(resolveMatchingMode(requested, fuzzyCapabilityAvailable));
+        }
+        return modes;
+    }
+
+    public static List<MatchingMode> normalizeRequestedMatchingModesForSlotCount(
+            List<MatchingMode> persistedModes,
+            int slotCount
+    ) {
+        int normalizedSlotCount = Math.max(0, slotCount);
+        List<MatchingMode> modes = new ArrayList<>(normalizedSlotCount);
+        for (int slot = 0; slot < normalizedSlotCount; slot++) {
+            modes.add(readRequestedMatchingMode(persistedModes, slot));
         }
         return modes;
     }
@@ -177,10 +203,20 @@ public final class MultiLevelEmitterPart {
         int normalizedSlotCount = Math.max(0, slotCount);
         List<CraftingMode> modes = new ArrayList<>(normalizedSlotCount);
         for (int slot = 0; slot < normalizedSlotCount; slot++) {
-            CraftingMode requested = persistedModes != null && slot < persistedModes.size()
-                    ? persistedModes.get(slot)
-                    : CraftingMode.NONE;
+            CraftingMode requested = readRequestedCraftingMode(persistedModes, slot);
             modes.add(resolveCraftingMode(requested, craftingCapabilityAvailable));
+        }
+        return modes;
+    }
+
+    public static List<CraftingMode> normalizeRequestedCraftingModesForSlotCount(
+            List<CraftingMode> persistedModes,
+            int slotCount
+    ) {
+        int normalizedSlotCount = Math.max(0, slotCount);
+        List<CraftingMode> modes = new ArrayList<>(normalizedSlotCount);
+        for (int slot = 0; slot < normalizedSlotCount; slot++) {
+            modes.add(readRequestedCraftingMode(persistedModes, slot));
         }
         return modes;
     }
@@ -191,6 +227,15 @@ public final class MultiLevelEmitterPart {
             return CraftingMode.NONE;
         }
         return effective;
+    }
+
+    public static CraftingMode nextCraftingMode(CraftingMode current) {
+        CraftingMode effective = current == null ? CraftingMode.NONE : current;
+        return switch (effective) {
+            case NONE -> CraftingMode.EMIT_WHILE_CRAFTING;
+            case EMIT_WHILE_CRAFTING -> CraftingMode.EMIT_TO_CRAFT;
+            case EMIT_TO_CRAFT -> CraftingMode.NONE;
+        };
     }
 
     public static boolean shouldRecomputeAfterMatchingModeChange(MatchingMode previous, MatchingMode current) {
@@ -210,23 +255,40 @@ public final class MultiLevelEmitterPart {
     }
 
     public static boolean evaluateFinalResult(List<Boolean> slotResults, List<LogicRelation> relations) {
+        return evaluateFinalResultWithParticipation(asParticipatingSlots(slotResults), relations).result();
+    }
+
+    public static AggregationResult evaluateFinalResultWithParticipation(
+            List<SlotEvaluation> slotResults,
+            List<LogicRelation> relations
+    ) {
         if (slotResults == null || slotResults.isEmpty()) {
-            return false;
+            return new AggregationResult(0, false);
         }
 
-        boolean result = Boolean.TRUE.equals(slotResults.get(0));
-        for (int slot = 1; slot < slotResults.size(); slot++) {
+        SlotEvaluation aggregate = SlotEvaluation.inactive();
+        int participatingCount = 0;
+        for (int slot = 0; slot < slotResults.size(); slot++) {
+            SlotEvaluation next = slotResults.get(slot);
+            if (next == null || !next.participating()) {
+                continue;
+            }
+
+            participatingCount++;
+            if (!aggregate.participating()) {
+                aggregate = next;
+                continue;
+            }
+
             LogicRelation relation = relations != null && slot - 1 < relations.size()
                     ? relations.get(slot - 1)
                     : LogicRelation.OR;
-            boolean next = Boolean.TRUE.equals(slotResults.get(slot));
-            if (relation == LogicRelation.AND) {
-                result = result && next;
-            } else {
-                result = result || next;
-            }
+            aggregate = relation == LogicRelation.AND
+                    ? SlotEvaluation.participating(aggregate.result() && next.result())
+                    : SlotEvaluation.participating(aggregate.result() || next.result());
         }
-        return result;
+
+        return new AggregationResult(participatingCount, aggregate.result());
     }
 
     public static boolean evaluateConfiguredSlots(
@@ -235,14 +297,34 @@ public final class MultiLevelEmitterPart {
             List<ComparisonMode> comparisons,
             List<LogicRelation> relations
     ) {
+        return evaluateConfiguredSlotsWithParticipation(actualValues, thresholds, comparisons, relations).result();
+    }
+
+    public static AggregationResult evaluateConfiguredSlotsWithParticipation(
+            List<Long> actualValues,
+            Map<Integer, Long> thresholds,
+            List<ComparisonMode> comparisons,
+            List<LogicRelation> relations
+    ) {
         if (actualValues == null || actualValues.isEmpty()) {
-            return false;
+            return new AggregationResult(0, false);
         }
-        List<Boolean> slotResults = evaluateSlotComparisons(actualValues, thresholds, comparisons);
-        return evaluateFinalResult(slotResults, relations);
+        List<SlotEvaluation> slotResults =
+                evaluateSlotComparisonsWithParticipation(actualValues, thresholds, comparisons);
+        return evaluateFinalResultWithParticipation(slotResults, relations);
     }
 
     public static List<Boolean> evaluateSlotComparisons(
+            List<Long> actualValues,
+            Map<Integer, Long> thresholds,
+            List<ComparisonMode> comparisons
+    ) {
+        return evaluateSlotComparisonsWithParticipation(actualValues, thresholds, comparisons).stream()
+                .map(SlotEvaluation::result)
+                .toList();
+    }
+
+    public static List<SlotEvaluation> evaluateSlotComparisonsWithParticipation(
             List<Long> actualValues,
             Map<Integer, Long> thresholds,
             List<ComparisonMode> comparisons
@@ -252,14 +334,14 @@ public final class MultiLevelEmitterPart {
         }
         Map<Integer, Long> safeThresholds = thresholds == null ? Map.of() : thresholds;
         List<ComparisonMode> safeComparisons = comparisons == null ? List.of() : comparisons;
-        List<Boolean> slotResults = new ArrayList<>(actualValues.size());
+        List<SlotEvaluation> slotResults = new ArrayList<>(actualValues.size());
         for (int slot = 0; slot < actualValues.size(); slot++) {
             long actual = actualValues.get(slot);
             long threshold = sanitizeThreshold(safeThresholds.getOrDefault(slot, 1L));
             ComparisonMode mode = slot < safeComparisons.size()
                     ? safeComparisons.get(slot)
                     : ComparisonMode.GREATER_OR_EQUAL;
-            slotResults.add(evaluateComparison(actual, threshold, mode));
+            slotResults.add(SlotEvaluation.participating(evaluateComparison(actual, threshold, mode)));
         }
         return List.copyOf(slotResults);
     }
@@ -280,7 +362,7 @@ public final class MultiLevelEmitterPart {
         List<ComparisonMode> normalizedComparisons =
                 normalizeComparisonModesForSlotCount(comparisons, configuredItemCount);
         List<LogicRelation> normalizedRelations = normalizeRelationsForSlotCount(relations, configuredItemCount);
-        boolean evaluationResult = evaluateConfiguredSlots(
+        AggregationResult evaluationResult = evaluateConfiguredSlotsWithParticipation(
                 actualValues,
                 normalizedThresholds,
                 normalizedComparisons,
@@ -309,6 +391,17 @@ public final class MultiLevelEmitterPart {
             case HIGH_SIGNAL -> evaluationResult;
             default -> evaluationResult;
         };
+    }
+
+    public static boolean resolveEmitterState(
+            boolean networkActive,
+            int configuredItemCount,
+            AggregationResult evaluationResult,
+            RedstoneMode mode
+    ) {
+        AggregationResult safeResult = evaluationResult == null ? new AggregationResult(0, false) : evaluationResult;
+        int effectiveConfiguredCount = safeResult.hasParticipatingSlots() ? configuredItemCount : 0;
+        return resolveEmitterState(networkActive, effectiveConfiguredCount, safeResult.result(), mode);
     }
 
     public static long sanitizeThreshold(long persistedThreshold) {
@@ -340,5 +433,28 @@ public final class MultiLevelEmitterPart {
             }
         }
         return thresholds;
+    }
+
+    public static List<SlotEvaluation> asParticipatingSlots(List<Boolean> slotResults) {
+        if (slotResults == null || slotResults.isEmpty()) {
+            return List.of();
+        }
+        List<SlotEvaluation> evaluations = new ArrayList<>(slotResults.size());
+        for (Boolean slotResult : slotResults) {
+            evaluations.add(SlotEvaluation.participating(Boolean.TRUE.equals(slotResult)));
+        }
+        return List.copyOf(evaluations);
+    }
+
+    private static MatchingMode readRequestedMatchingMode(List<MatchingMode> persistedModes, int slot) {
+        return persistedModes != null && slot < persistedModes.size()
+                ? persistedModes.get(slot)
+                : MatchingMode.STRICT;
+    }
+
+    private static CraftingMode readRequestedCraftingMode(List<CraftingMode> persistedModes, int slot) {
+        return persistedModes != null && slot < persistedModes.size()
+                ? persistedModes.get(slot)
+                : CraftingMode.NONE;
     }
 }

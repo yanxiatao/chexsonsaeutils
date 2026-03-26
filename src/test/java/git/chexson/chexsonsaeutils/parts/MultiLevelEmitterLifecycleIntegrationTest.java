@@ -1,14 +1,22 @@
 package git.chexson.chexsonsaeutils.parts;
 
 import appeng.api.config.RedstoneMode;
+import appeng.api.stacks.AEKey;
+import appeng.api.stacks.AEKeyType;
+import appeng.api.stacks.GenericStack;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import io.netty.buffer.Unpooled;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -18,6 +26,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -269,7 +279,7 @@ class MultiLevelEmitterLifecycleIntegrationTest {
     }
 
     @Test
-    void reloadSnapshotCollapsesStaleCardModesWhenCapabilitiesDisappear() {
+    void reloadSnapshotPreservesRequestedCardModesUntilActualRemoval() {
         CompoundTag snapshot = createCardModeSnapshot(
                 List.of(
                         MultiLevelEmitterPart.MatchingMode.IGNORE_ALL,
@@ -283,10 +293,40 @@ class MultiLevelEmitterLifecycleIntegrationTest {
 
         MultiLevelEmitterRuntimePart restored = newCapabilityRuntimePart(false, false);
         readRuntimeSnapshot(restored, snapshot);
+        setConfiguredKey(restored, 1, new DummyKey("target", "stone", 0, 0));
 
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restored.matchingModeForSlot(0));
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restored.matchingModeForSlot(1));
         assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restored.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restored.craftingModeForSlot(1));
+        assertTrue(restored.getEmitableItems().isEmpty());
+
+        CompoundTag preservedSnapshot = new CompoundTag();
+        writeRuntimeSnapshot(restored, preservedSnapshot);
+        assertEquals(
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.IGNORE_ALL,
+                        MultiLevelEmitterPart.MatchingMode.PERCENT_75
+                ),
+                MultiLevelEmitterUtils.readMatchingModesFromNBT(preservedSnapshot, NBT_MATCHING_MODES)
+        );
+        assertEquals(
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                ),
+                MultiLevelEmitterUtils.readCraftingModesFromNBT(preservedSnapshot, NBT_CRAFTING_MODES)
+        );
+
+        CapabilityAwareRuntimePart capabilityAware = (CapabilityAwareRuntimePart) restored;
+        capabilityAware.setInstalledCards(true, true);
+        reconcileCardModes(capabilityAware);
+        assertEquals(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL, restored.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, restored.craftingModeForSlot(1));
+
+        capabilityAware.setInstalledCards(false, false);
+        reconcileCardModes(capabilityAware);
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restored.matchingModeForSlot(0));
         assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restored.craftingModeForSlot(1));
     }
 
@@ -335,7 +375,7 @@ class MultiLevelEmitterLifecycleIntegrationTest {
     }
 
     @Test
-    void streamRoundTripCollapsesStaleCardModesWhenCapabilitiesDisappear() {
+    void streamRoundTripPreservesRequestedCardModesUntilActualRemoval() {
         MultiLevelEmitterRuntimePart beforeStreamSync = newCapabilityRuntimePart(true, true);
         readRuntimeSnapshot(
                 beforeStreamSync,
@@ -356,10 +396,102 @@ class MultiLevelEmitterLifecycleIntegrationTest {
 
         MultiLevelEmitterRuntimePart restoredFromStream = newCapabilityRuntimePart(false, false);
         assertTrue(restoredFromStream.readFromStream(stream));
+        setConfiguredKey(restoredFromStream, 0, new DummyKey("target", "stream", 0, 0));
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restoredFromStream.matchingModeForSlot(0));
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restoredFromStream.matchingModeForSlot(1));
         assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restoredFromStream.craftingModeForSlot(0));
         assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restoredFromStream.craftingModeForSlot(1));
+        assertTrue(restoredFromStream.getEmitableItems().isEmpty());
+
+        CompoundTag preservedSnapshot = new CompoundTag();
+        writeRuntimeSnapshot(restoredFromStream, preservedSnapshot);
+        assertEquals(
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.IGNORE_ALL,
+                        MultiLevelEmitterPart.MatchingMode.STRICT
+                ),
+                MultiLevelEmitterUtils.readMatchingModesFromNBT(preservedSnapshot, NBT_MATCHING_MODES)
+        );
+        assertEquals(
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
+                ),
+                MultiLevelEmitterUtils.readCraftingModesFromNBT(preservedSnapshot, NBT_CRAFTING_MODES)
+        );
+
+        CapabilityAwareRuntimePart capabilityAware = (CapabilityAwareRuntimePart) restoredFromStream;
+        capabilityAware.setInstalledCards(true, true);
+        reconcileCardModes(capabilityAware);
+        assertEquals(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL, restoredFromStream.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, restoredFromStream.craftingModeForSlot(1));
+
+        capabilityAware.setInstalledCards(false, false);
+        reconcileCardModes(capabilityAware);
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, restoredFromStream.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restoredFromStream.craftingModeForSlot(1));
+    }
+
+    @Test
+    void mixedCraftingModesPersistAcrossSnapshotAndStreamRoundTrip() {
+        MultiLevelEmitterRuntimePart beforeRoundTrip = newCapabilityRuntimePart(false, true);
+        beforeRoundTrip.applyConfiguration(
+                3,
+                Map.of(0, 5L, 1, 1L, 2, 1L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(
+                        MultiLevelEmitterPart.LogicRelation.AND,
+                        MultiLevelEmitterPart.LogicRelation.AND
+                )
+        );
+        readRuntimeSnapshot(
+                beforeRoundTrip,
+                createCardModeSnapshot(
+                        List.of(
+                                MultiLevelEmitterPart.MatchingMode.STRICT,
+                                MultiLevelEmitterPart.MatchingMode.STRICT,
+                                MultiLevelEmitterPart.MatchingMode.STRICT
+                        ),
+                        List.of(
+                                MultiLevelEmitterPart.CraftingMode.NONE,
+                                MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                                MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                        )
+                )
+        );
+
+        CompoundTag snapshot = new CompoundTag();
+        writeRuntimeSnapshot(beforeRoundTrip, snapshot);
+        MultiLevelEmitterRuntimePart restoredFromSnapshot = newCapabilityRuntimePart(false, true);
+        readRuntimeSnapshot(restoredFromSnapshot, snapshot);
+
+        FriendlyByteBuf stream = new FriendlyByteBuf(Unpooled.buffer());
+        beforeRoundTrip.writeToStream(stream);
+        MultiLevelEmitterRuntimePart restoredFromStream = newCapabilityRuntimePart(false, true);
+        assertTrue(restoredFromStream.readFromStream(stream));
+
+        DummyKey providerKey = new DummyKey("crafting", "plate", 0, 0);
+        setConfiguredKey(restoredFromSnapshot, 0, new DummyKey("stored", "ingot", 0, 0));
+        setConfiguredKey(restoredFromSnapshot, 1, new DummyKey("crafting", "gear", 0, 0));
+        setConfiguredKey(restoredFromSnapshot, 2, providerKey);
+        setConfiguredKey(restoredFromStream, 0, new DummyKey("stored", "ingot", 0, 0));
+        setConfiguredKey(restoredFromStream, 1, new DummyKey("crafting", "gear", 0, 0));
+        setConfiguredKey(restoredFromStream, 2, providerKey);
+
+        assertMixedCraftingRoundTripState(restoredFromSnapshot, providerKey);
+        assertMixedCraftingRoundTripState(restoredFromStream, providerKey);
+
+        MultiLevelEmitterMenu.RuntimeMenu reopenedMenu =
+                MultiLevelEmitterMenuTestHarness.detachedForRuntime(restoredFromStream);
+        MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(reopenedMenu);
+        assertTrue(state.slots().get(0).showCraftingControl());
+        assertEquals("OFF", state.slots().get(0).craftingShortLabel());
+        assertEquals("REQ", state.slots().get(1).craftingShortLabel());
+        assertEquals("SUP", state.slots().get(2).craftingShortLabel());
     }
 
     private static void assertRoundTripRuntimeState(MultiLevelEmitterRuntimePart runtime) {
@@ -381,6 +513,14 @@ class MultiLevelEmitterLifecycleIntegrationTest {
                 runtime.relations()
         );
         assertEquals("#1 AND (#2 OR #3)", runtime.appliedExpressionText());
+    }
+
+    private static void assertMixedCraftingRoundTripState(MultiLevelEmitterRuntimePart runtime, AEKey providerKey) {
+        assertEquals(3, runtime.configuredItemCount());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, runtime.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, runtime.craftingModeForSlot(1));
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, runtime.craftingModeForSlot(2));
+        assertEquals(Set.of(providerKey), runtime.getEmitableItems());
     }
 
     private static void writeRuntimeSnapshot(MultiLevelEmitterRuntimePart runtime, CompoundTag snapshot) {
@@ -405,6 +545,20 @@ class MultiLevelEmitterLifecycleIntegrationTest {
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to read runtime snapshot", exception);
         }
+    }
+
+    private static void reconcileCardModes(MultiLevelEmitterRuntimePart runtime) {
+        try {
+            Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod("reconcileCardModes");
+            method.setAccessible(true);
+            method.invoke(runtime);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to reconcile card modes", exception);
+        }
+    }
+
+    private static void setConfiguredKey(MultiLevelEmitterRuntimePart runtime, int slot, AEKey key) {
+        runtime.getConfig().setStack(slot, key == null ? null : new GenericStack(key, 1));
     }
 
     private static MultiLevelEmitterRuntimePart newRuntimePart() {
@@ -474,6 +628,95 @@ class MultiLevelEmitterLifecycleIntegrationTest {
         @Override
         public boolean hasCraftingCardInstalled() {
             return craftingInstalled;
+        }
+    }
+
+    private static final class DummyKeyType extends AEKeyType {
+        private static final DummyKeyType INSTANCE = new DummyKeyType();
+
+        private DummyKeyType() {
+            super(Objects.requireNonNull(ResourceLocation.tryParse("chexsonsaeutils:test")),
+                    DummyKey.class,
+                    Component.literal("Test"));
+        }
+
+        @Override
+        public AEKey readFromPacket(FriendlyByteBuf input) {
+            return null;
+        }
+
+        @Override
+        public AEKey loadKeyFromTag(CompoundTag tag) {
+            return null;
+        }
+    }
+
+    private static final class DummyKey extends AEKey {
+        private final String primaryKey;
+        private final String variantId;
+        private final int fuzzyValue;
+        private final int fuzzyMaxValue;
+
+        private DummyKey(String primaryKey, String variantId, int fuzzyValue, int fuzzyMaxValue) {
+            this.primaryKey = primaryKey;
+            this.variantId = variantId;
+            this.fuzzyValue = fuzzyValue;
+            this.fuzzyMaxValue = fuzzyMaxValue;
+        }
+
+        @Override
+        public AEKeyType getType() {
+            return DummyKeyType.INSTANCE;
+        }
+
+        @Override
+        public AEKey dropSecondary() {
+            return this;
+        }
+
+        @Override
+        public CompoundTag toTag() {
+            CompoundTag tag = new CompoundTag();
+            tag.putString("primary", primaryKey);
+            tag.putString("variant", variantId);
+            tag.putInt("fuzzyValue", fuzzyValue);
+            tag.putInt("fuzzyMaxValue", fuzzyMaxValue);
+            return tag;
+        }
+
+        @Override
+        public Object getPrimaryKey() {
+            return primaryKey;
+        }
+
+        @Override
+        public int getFuzzySearchValue() {
+            return fuzzyValue;
+        }
+
+        @Override
+        public int getFuzzySearchMaxValue() {
+            return fuzzyMaxValue;
+        }
+
+        @Override
+        public ResourceLocation getId() {
+            return Objects.requireNonNull(ResourceLocation.tryParse(
+                    "chexsonsaeutils:" + primaryKey + "_" + variantId
+            ));
+        }
+
+        @Override
+        public void writeToPacket(FriendlyByteBuf data) {
+        }
+
+        @Override
+        protected Component computeDisplayName() {
+            return Component.literal(primaryKey + ":" + variantId);
+        }
+
+        @Override
+        public void addDrops(long amount, List<ItemStack> drops, Level level, BlockPos pos) {
         }
     }
 }

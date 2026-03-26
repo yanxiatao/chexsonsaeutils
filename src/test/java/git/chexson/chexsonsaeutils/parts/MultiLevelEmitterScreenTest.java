@@ -9,7 +9,7 @@ import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -47,11 +47,11 @@ class MultiLevelEmitterScreenTest {
     @Test
     void fuzzyShortLabelsMatchExactAe2ModeCycleContract() {
         assertEquals("STR", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.STRICT));
-        assertEquals("ALL", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL));
-        assertEquals("99", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_99));
-        assertEquals("75", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_75));
-        assertEquals("50", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_50));
-        assertEquals("25", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_25));
+        assertEquals("*", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL));
+        assertEquals("99%", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_99));
+        assertEquals("75%", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_75));
+        assertEquals("50%", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_50));
+        assertEquals("25%", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_25));
     }
 
     @Test
@@ -111,6 +111,16 @@ class MultiLevelEmitterScreenTest {
     }
 
     @Test
+    void toggleCraftingModeDelegatesToMenuAuthority() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        MultiLevelEmitterScreen.toggleCraftingMode(menu, 0);
+
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, menu.craftingModeForSlot(0));
+    }
+
+    @Test
     void runtimeScreenSnapshotPreservesSavedFuzzyModesForUnmarkedSlots() {
         MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(true);
         applyMatchingModeSnapshot(
@@ -130,11 +140,11 @@ class MultiLevelEmitterScreenTest {
         assertEquals(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL, first.matchingMode());
         assertTrue(first.showFuzzyControl());
         assertTrue(first.emphasizeFuzzyMode());
-        assertEquals("ALL", first.fuzzyShortLabel());
+        assertEquals("*", first.fuzzyShortLabel());
         assertFuzzyTooltip(first.fuzzyTooltip(), "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.ignore_all");
         assertEquals(MultiLevelEmitterPart.MatchingMode.PERCENT_75, second.matchingMode());
         assertTrue(second.emphasizeFuzzyMode());
-        assertEquals("75", second.fuzzyShortLabel());
+        assertEquals("75%", second.fuzzyShortLabel());
         assertFuzzyTooltip(second.fuzzyTooltip(), "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_75");
     }
 
@@ -152,6 +162,129 @@ class MultiLevelEmitterScreenTest {
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, slot.matchingMode());
         assertEquals("STR", slot.fuzzyShortLabel());
         assertFuzzyTooltip(slot.fuzzyTooltip(), "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict");
+    }
+
+    @Test
+    void craftingShortLabelsMatchCompactRuntimeContract() {
+        assertEquals("OFF", MultiLevelEmitterScreen.craftingShortLabel(MultiLevelEmitterPart.CraftingMode.NONE));
+        assertEquals("REQ", MultiLevelEmitterScreen.craftingShortLabel(
+                MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
+        ));
+        assertEquals("SUP", MultiLevelEmitterScreen.craftingShortLabel(
+                MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+        ));
+    }
+
+    @Test
+    void runtimeScreenSnapshotProjectsCraftingModeStateAndHints() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(false, true);
+        runtime.setDuplicateEmitToCraftSlots(List.of(2));
+        applyCardModeSnapshot(
+                runtime,
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.STRICT,
+                        MultiLevelEmitterPart.MatchingMode.STRICT,
+                        MultiLevelEmitterPart.MatchingMode.STRICT
+                ),
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.NONE,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                )
+        );
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(menu);
+        MultiLevelEmitterScreen.SlotView off = state.slots().get(0);
+        MultiLevelEmitterScreen.SlotView req = state.slots().get(1);
+        MultiLevelEmitterScreen.SlotView sup = state.slots().get(2);
+
+        assertTrue(off.showCraftingControl());
+        assertFalse(off.emphasizeCraftingMode());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, off.craftingMode());
+        assertEquals("OFF", off.craftingShortLabel());
+        assertFalse(off.duplicateEmitToCraftTarget());
+        assertCraftingTooltipContains(
+                off.craftingTooltip(),
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.disabled",
+                true,
+                false
+        );
+
+        assertTrue(req.showCraftingControl());
+        assertTrue(req.emphasizeCraftingMode());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, req.craftingMode());
+        assertEquals("REQ", req.craftingShortLabel());
+        assertFalse(req.duplicateEmitToCraftTarget());
+        assertCraftingTooltipContains(
+                req.craftingTooltip(),
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.while_crafting",
+                true,
+                false
+        );
+
+        assertTrue(sup.showCraftingControl());
+        assertTrue(sup.emphasizeCraftingMode());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, sup.craftingMode());
+        assertEquals("SUP", sup.craftingShortLabel());
+        assertTrue(sup.duplicateEmitToCraftTarget());
+        assertCraftingTooltipContains(
+                sup.craftingTooltip(),
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.to_craft",
+                true,
+                true
+        );
+    }
+
+    @Test
+    void runtimeScreenSnapshotHidesCraftingControlsWhenCraftingCardMissing() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, false);
+        applyCardModeSnapshot(
+                runtime,
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.STRICT,
+                        MultiLevelEmitterPart.MatchingMode.STRICT
+                ),
+                List.of(
+                        MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                        MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                )
+        );
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(menu);
+        MultiLevelEmitterScreen.SlotView first = state.slots().get(0);
+        MultiLevelEmitterScreen.SlotView second = state.slots().get(1);
+
+        assertFalse(first.showCraftingControl());
+        assertFalse(first.emphasizeCraftingMode());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, first.craftingMode());
+        assertEquals("OFF", first.craftingShortLabel());
+        assertTrue(first.craftingTooltip().toString().contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode"));
+        assertTrue(first.craftingTooltip().toString().contains(
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.disabled"
+        ));
+        assertTrue(first.craftingTooltip().toString().contains(
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.unmarked_hint"
+        ));
+        assertFalse(first.craftingTooltip().toString().contains(
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.duplicate_emit_to_craft"
+        ));
+
+        assertFalse(second.showCraftingControl());
+        assertFalse(second.emphasizeCraftingMode());
+        assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, second.craftingMode());
+        assertEquals("OFF", second.craftingShortLabel());
+        assertTrue(second.craftingTooltip().toString().contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode"));
+        assertTrue(second.craftingTooltip().toString().contains(
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.disabled"
+        ));
+        assertTrue(second.craftingTooltip().toString().contains(
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.unmarked_hint"
+        ));
+        assertFalse(second.craftingTooltip().toString().contains(
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.duplicate_emit_to_craft"
+        ));
     }
 
     @Test
@@ -218,11 +351,22 @@ class MultiLevelEmitterScreenTest {
         assertTrue(source.contains("SCROLL_DOWN_BUTTON_Y = ROW_TOP + ROW_HEIGHT - 1"));
         assertTrue(source.contains("MODE_X = 96"));
         assertTrue(source.contains("FUZZY_MODE_X = 123"));
+        assertTrue(source.contains("FUZZY_MODE_BUTTON_SIZE = 16"));
         assertTrue(source.contains("FUZZY_HIGHLIGHT_COLOR = 0x33D0A146"));
         assertTrue(source.contains("new ThresholdEditBox(font, 0, 0, 38, 14, row)"));
-        assertTrue(source.contains("0, 0, 24, 14"));
+        assertTrue(source.contains("new FuzzyModeButton("));
         assertTrue(source.contains("slot.showFuzzyControl()"));
         assertTrue(source.contains("slot.fuzzyTooltip()"));
+        assertTrue(source.contains("fuzzyModeButton.setMatchingMode(slot.matchingMode())"));
+        assertTrue(source.contains("private final class FuzzyModeButton extends Button"));
+        assertTrue(source.contains("Icon.TOOLBAR_BUTTON_BACKGROUND"));
+        assertTrue(source.contains("Icon.FUZZY_IGNORE"));
+        assertTrue(source.contains("Icon.FUZZY_PERCENT_25"));
+        assertTrue(source.contains("craftingModeButtons"));
+        assertTrue(source.contains("toggleCraftingMode"));
+        assertTrue(source.contains("slot.showCraftingControl()"));
+        assertTrue(source.contains("slot.craftingTooltip()"));
+        assertTrue(source.contains("duplicateEmitToCraftTarget()"));
         assertTrue(source.contains("gui.chexsonsaeutils.multi_level_emitter.apply_expression"));
         assertTrue(source.contains("gui.chexsonsaeutils.multi_level_emitter.format_expression"));
         assertTrue(source.contains("setFormatter("));
@@ -323,6 +467,20 @@ class MultiLevelEmitterScreenTest {
     }
 
     @Test
+    void runtimeScreenSourceKeepsUpgradePanelReachable() throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
+        ));
+
+        assertTrue(source.contains("new UpgradesPanel("));
+        assertTrue(source.contains("menu.getSlots(SlotSemantics.UPGRADE)"));
+        assertTrue(source.contains("this::getCompatibleUpgrades"));
+        assertTrue(source.contains("private List<Component> getCompatibleUpgrades()"));
+        assertTrue(source.contains("menu.getUpgrades()"));
+        assertTrue(source.contains("Upgrades.getTooltipLinesForMachine(upgrades.getUpgradableItem())"));
+    }
+
+    @Test
     void runtimeScreenSourceResetsLocalSessionStateOnInit() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
@@ -343,8 +501,14 @@ class MultiLevelEmitterScreenTest {
         assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.slot_layout_changed"));
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict"));
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_25"));
+        assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.disabled"));
+        assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.while_crafting"));
+        assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.duplicate_emit_to_craft"));
         assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict"));
         assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_25"));
+        assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.disabled"));
+        assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.while_crafting"));
+        assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.duplicate_emit_to_craft"));
     }
 
     private static MultiLevelEmitterRuntimePart newRuntimePart() {
@@ -365,6 +529,10 @@ class MultiLevelEmitterScreenTest {
     }
 
     private static MultiLevelEmitterRuntimePart newCapabilityRuntimePart(boolean fuzzyInstalled) {
+        return newCapabilityRuntimePart(fuzzyInstalled, false);
+    }
+
+    private static CapabilityAwareRuntimePart newCapabilityRuntimePart(boolean fuzzyInstalled, boolean craftingInstalled) {
         try {
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
             Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
@@ -373,7 +541,7 @@ class MultiLevelEmitterScreenTest {
             Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
             CapabilityAwareRuntimePart runtime =
                     (CapabilityAwareRuntimePart) allocateInstance.invoke(unsafe, CapabilityAwareRuntimePart.class);
-            runtime.setInstalledCards(fuzzyInstalled);
+            runtime.setInstalledCards(fuzzyInstalled, craftingInstalled);
             runtime.applyConfiguration(1, null, null, null);
             runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
             return runtime;
@@ -392,6 +560,18 @@ class MultiLevelEmitterScreenTest {
         readRuntimeSnapshot(runtime, snapshot);
     }
 
+    private static void applyCardModeSnapshot(
+            MultiLevelEmitterRuntimePart runtime,
+            List<MultiLevelEmitterPart.MatchingMode> matchingModes,
+            List<MultiLevelEmitterPart.CraftingMode> craftingModes
+    ) {
+        CompoundTag snapshot = new CompoundTag();
+        snapshot.putInt("configured_item_count", Math.max(matchingModes.size(), craftingModes.size()));
+        MultiLevelEmitterUtils.writeMatchingModesToNBT(matchingModes, snapshot, "matching_modes");
+        MultiLevelEmitterUtils.writeCraftingModesToNBT(craftingModes, snapshot, "crafting_modes");
+        readRuntimeSnapshot(runtime, snapshot);
+    }
+
     private static void readRuntimeSnapshot(MultiLevelEmitterRuntimePart runtime, CompoundTag snapshot) {
         try {
             Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod(
@@ -407,31 +587,64 @@ class MultiLevelEmitterScreenTest {
     }
 
     private static void assertFuzzyTooltip(net.minecraft.network.chat.Component tooltip, String expectedModeKey) {
-        assertTrue(tooltip.getContents() instanceof TranslatableContents);
-        TranslatableContents wrapper = (TranslatableContents) tooltip.getContents();
-        assertEquals("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode", wrapper.getKey());
-        assertEquals(1, wrapper.getArgs().length);
-        assertTrue(wrapper.getArgs()[0] instanceof net.minecraft.network.chat.Component);
-        net.minecraft.network.chat.Component nested = (net.minecraft.network.chat.Component) wrapper.getArgs()[0];
-        assertTrue(nested.getContents() instanceof TranslatableContents);
-        TranslatableContents detail = (TranslatableContents) nested.getContents();
-        assertEquals(expectedModeKey, detail.getKey());
+        String rendered = tooltip.toString();
+        assertTrue(rendered.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode"));
+        assertTrue(rendered.contains(expectedModeKey));
+    }
+
+    private static void assertCraftingTooltipContains(
+            Component tooltip,
+            String expectedModeKey,
+            boolean expectUnmarkedHint,
+            boolean expectDuplicateHint
+    ) {
+        String rendered = tooltip.toString();
+        assertTrue(rendered.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode"));
+        assertTrue(rendered.contains(expectedModeKey));
+        assertEquals(expectUnmarkedHint, rendered.contains(
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.unmarked_hint"
+        ));
+        assertEquals(expectDuplicateHint, rendered.contains(
+                "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.duplicate_emit_to_craft"
+        ));
     }
 
     private static final class CapabilityAwareRuntimePart extends MultiLevelEmitterRuntimePart {
         private boolean fuzzyInstalled;
+        private boolean craftingInstalled;
+        private List<Integer> duplicateEmitToCraftSlots = List.of();
 
         private CapabilityAwareRuntimePart() {
             super(null);
         }
 
-        void setInstalledCards(boolean fuzzyInstalled) {
+        void setInstalledCards(boolean fuzzyInstalled, boolean craftingInstalled) {
             this.fuzzyInstalled = fuzzyInstalled;
+            this.craftingInstalled = craftingInstalled;
+            if (this.duplicateEmitToCraftSlots == null) {
+                this.duplicateEmitToCraftSlots = List.of();
+            }
+        }
+
+        void setDuplicateEmitToCraftSlots(List<Integer> duplicateEmitToCraftSlots) {
+            this.duplicateEmitToCraftSlots = duplicateEmitToCraftSlots == null
+                    ? List.of()
+                    : List.copyOf(duplicateEmitToCraftSlots);
         }
 
         @Override
         public boolean hasFuzzyCardInstalled() {
             return fuzzyInstalled;
+        }
+
+        @Override
+        public boolean hasCraftingCardInstalled() {
+            return craftingInstalled;
+        }
+
+        @Override
+        public boolean hasDuplicateEmitToCraftTarget(int slotIndex) {
+            return duplicateEmitToCraftSlots.contains(slotIndex);
         }
     }
 }
