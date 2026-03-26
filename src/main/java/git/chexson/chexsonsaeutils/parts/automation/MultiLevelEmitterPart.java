@@ -7,6 +7,7 @@ import net.minecraft.nbt.Tag;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class MultiLevelEmitterPart {
@@ -47,14 +48,22 @@ public final class MultiLevelEmitterPart {
 
     public enum MatchingMode {
         STRICT,
-        FUZZY;
+        IGNORE_ALL,
+        PERCENT_99,
+        PERCENT_75,
+        PERCENT_50,
+        PERCENT_25;
 
         public static MatchingMode fromPersisted(String value) {
             if (value == null || value.isBlank()) {
                 return STRICT;
             }
+            String normalizedValue = value.trim().toUpperCase(Locale.ROOT);
+            if ("FUZZY".equals(normalizedValue)) {
+                return IGNORE_ALL;
+            }
             try {
-                return MatchingMode.valueOf(value.trim().toUpperCase());
+                return MatchingMode.valueOf(normalizedValue);
             } catch (IllegalArgumentException ignored) {
                 return STRICT;
             }
@@ -142,10 +151,22 @@ public final class MultiLevelEmitterPart {
 
     public static MatchingMode resolveMatchingMode(MatchingMode requested, boolean fuzzyCapabilityAvailable) {
         MatchingMode effective = requested == null ? MatchingMode.STRICT : requested;
-        if (effective == MatchingMode.FUZZY && !fuzzyCapabilityAvailable) {
+        if (effective != MatchingMode.STRICT && !fuzzyCapabilityAvailable) {
             return MatchingMode.STRICT;
         }
         return effective;
+    }
+
+    public static MatchingMode nextMatchingMode(MatchingMode current) {
+        MatchingMode effective = current == null ? MatchingMode.STRICT : current;
+        return switch (effective) {
+            case STRICT -> MatchingMode.IGNORE_ALL;
+            case IGNORE_ALL -> MatchingMode.PERCENT_99;
+            case PERCENT_99 -> MatchingMode.PERCENT_75;
+            case PERCENT_75 -> MatchingMode.PERCENT_50;
+            case PERCENT_50 -> MatchingMode.PERCENT_25;
+            case PERCENT_25 -> MatchingMode.STRICT;
+        };
     }
 
     public static List<CraftingMode> normalizeCraftingModesForSlotCount(

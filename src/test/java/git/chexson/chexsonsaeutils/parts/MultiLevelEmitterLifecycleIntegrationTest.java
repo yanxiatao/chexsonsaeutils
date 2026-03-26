@@ -154,7 +154,7 @@ class MultiLevelEmitterLifecycleIntegrationTest {
         MultiLevelEmitterPart.MatchingMode invalid =
                 MultiLevelEmitterPart.MatchingMode.fromPersisted("UNKNOWN");
 
-        assertTrue(fuzzy == MultiLevelEmitterPart.MatchingMode.FUZZY);
+        assertTrue(fuzzy == MultiLevelEmitterPart.MatchingMode.IGNORE_ALL);
         assertTrue(invalid == MultiLevelEmitterPart.MatchingMode.STRICT);
     }
 
@@ -162,7 +162,7 @@ class MultiLevelEmitterLifecycleIntegrationTest {
     void strictFuzzyToggleCanTriggerImmediateRecompute() {
         boolean changed = MultiLevelEmitterPart.shouldRecomputeAfterMatchingModeChange(
                 MultiLevelEmitterPart.MatchingMode.STRICT,
-                MultiLevelEmitterPart.MatchingMode.FUZZY
+                MultiLevelEmitterPart.MatchingMode.IGNORE_ALL
         );
         boolean unchanged = MultiLevelEmitterPart.shouldRecomputeAfterMatchingModeChange(
                 MultiLevelEmitterPart.MatchingMode.STRICT,
@@ -272,8 +272,8 @@ class MultiLevelEmitterLifecycleIntegrationTest {
     void reloadSnapshotCollapsesStaleCardModesWhenCapabilitiesDisappear() {
         CompoundTag snapshot = createCardModeSnapshot(
                 List.of(
-                        MultiLevelEmitterPart.MatchingMode.FUZZY,
-                        MultiLevelEmitterPart.MatchingMode.FUZZY
+                        MultiLevelEmitterPart.MatchingMode.IGNORE_ALL,
+                        MultiLevelEmitterPart.MatchingMode.PERCENT_75
                 ),
                 List.of(
                         MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
@@ -341,7 +341,7 @@ class MultiLevelEmitterLifecycleIntegrationTest {
                 beforeStreamSync,
                 createCardModeSnapshot(
                         List.of(
-                                MultiLevelEmitterPart.MatchingMode.FUZZY,
+                                MultiLevelEmitterPart.MatchingMode.IGNORE_ALL,
                                 MultiLevelEmitterPart.MatchingMode.STRICT
                         ),
                         List.of(

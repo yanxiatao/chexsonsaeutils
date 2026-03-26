@@ -162,6 +162,26 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         applyConfiguration(configuredItemCount, thresholds, updatedModes, relations);
     }
 
+    public void cycleMatchingModeFromUi(int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= configuredItemCount) {
+            return;
+        }
+        List<MultiLevelEmitterPart.MatchingMode> updatedModes = new ArrayList<>(matchingModes);
+        MultiLevelEmitterPart.MatchingMode current = updatedModes.get(slotIndex);
+        updatedModes.set(slotIndex, MultiLevelEmitterPart.nextMatchingMode(current));
+        applyConfigurationState(
+                configuredItemCount,
+                thresholds,
+                comparisonModes,
+                relations,
+                updatedModes,
+                craftingModes,
+                appliedExpressionText,
+                expressionOwnership,
+                true
+        );
+    }
+
     @Override
     public ConfigInventory getConfig() {
         return ensureConfigInventory();
@@ -173,8 +193,12 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         IStackWatcher storageWatcher = getWatcher(STORAGE_WATCHER_FIELD);
         if (storageWatcher != null) {
             storageWatcher.reset();
-            for (AEKey key : configuredKeys()) {
-                storageWatcher.add(key);
+            if (hasMarkedNonStrictMatchingSlot()) {
+                storageWatcher.setWatchAll(true);
+            } else {
+                for (AEKey key : configuredKeys()) {
+                    storageWatcher.add(key);
+                }
             }
         }
 
@@ -584,10 +608,6 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private List<Long> readObservedValues(IGrid grid) {
         KeyCounter inventory = grid.getStorageService().getCachedInventory();
         List<Long> observedValues = new ArrayList<>(configuredItemCount);
-        boolean fuzzyEnabled = supportsFuzzyMatching();
-        FuzzyMode fuzzyMode = fuzzyEnabled
-                ? getConfigManager().getSetting(Settings.FUZZY_MODE)
-                : FuzzyMode.IGNORE_ALL;
         for (int slot = 0; slot < configuredItemCount; slot++) {
             AEKey key = ensureConfigInventory().getKey(slot);
             if (key == null) {
@@ -595,17 +615,43 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 continue;
             }
 
-            long amount = 0L;
-            if (fuzzyEnabled) {
-                for (var entry : inventory.findFuzzy(key, fuzzyMode)) {
-                    amount += entry.getLongValue();
-                }
-            } else {
-                amount = inventory.get(key);
-            }
+            MultiLevelEmitterPart.MatchingMode matchingMode = matchingModeForSlot(slot);
+            long amount = matchingMode == MultiLevelEmitterPart.MatchingMode.STRICT
+                    ? inventory.get(key)
+                    : readFuzzyAmount(inventory, key, toFuzzyMode(matchingMode));
             observedValues.add(amount);
         }
         return observedValues;
+    }
+
+    private boolean hasMarkedNonStrictMatchingSlot() {
+        ConfigInventory config = ensureConfigInventory();
+        for (int slot = 0; slot < configuredItemCount; slot++) {
+            if (config.getKey(slot) != null
+                    && matchingModeForSlot(slot) != MultiLevelEmitterPart.MatchingMode.STRICT) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static long readFuzzyAmount(KeyCounter inventory, AEKey key, FuzzyMode fuzzyMode) {
+        long amount = 0L;
+        for (var entry : inventory.findFuzzy(key, fuzzyMode)) {
+            amount += entry.getLongValue();
+        }
+        return amount;
+    }
+
+    private static FuzzyMode toFuzzyMode(MultiLevelEmitterPart.MatchingMode matchingMode) {
+        return switch (matchingMode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : matchingMode) {
+            case STRICT -> throw new IllegalArgumentException("STRICT does not map to an AE2 fuzzy mode");
+            case IGNORE_ALL -> FuzzyMode.IGNORE_ALL;
+            case PERCENT_99 -> FuzzyMode.PERCENT_99;
+            case PERCENT_75 -> FuzzyMode.PERCENT_75;
+            case PERCENT_50 -> FuzzyMode.PERCENT_50;
+            case PERCENT_25 -> FuzzyMode.PERCENT_25;
+        };
     }
 
     private RedstoneMode currentRedstoneMode() {
@@ -617,14 +663,6 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             return redstoneMode;
         }
         return redstoneMode;
-    }
-
-    private boolean supportsFuzzyMatching() {
-        try {
-            return hasFuzzyCardInstalled() && getConfigManager().hasSetting(Settings.FUZZY_MODE);
-        } catch (RuntimeException ignored) {
-            return false;
-        }
     }
 
     private IStackWatcher getWatcher(Field field) {

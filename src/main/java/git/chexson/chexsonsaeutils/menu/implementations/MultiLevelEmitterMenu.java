@@ -39,6 +39,7 @@ public final class MultiLevelEmitterMenu {
     private static final String ACTION_SET_CONFIGURED_SLOT_COUNT = "setConfiguredSlotCount";
     private static final String ACTION_COMMIT_THRESHOLD = "commitThreshold";
     private static final String ACTION_CYCLE_COMPARISON_MODE = "cycleComparisonMode";
+    private static final String ACTION_CYCLE_MATCHING_MODE = "cycleMatchingMode";
     private static final String ACTION_APPLY_EXPRESSION = "applyExpression";
     private static Supplier<MenuType<RuntimeMenu>> menuTypeSupplier;
     private static final AtomicReference<RuntimeBindingResolver> runtimeBindingResolver =
@@ -223,6 +224,8 @@ public final class MultiLevelEmitterMenu {
             registerClientAction(ACTION_COMMIT_THRESHOLD, ThresholdPayload.class, this::applyThresholdCommitOnServer);
             registerClientAction(ACTION_CYCLE_COMPARISON_MODE, SlotIndexPayload.class,
                     payload -> applyComparisonToggleOnServer(payload.slotIndex()));
+            registerClientAction(ACTION_CYCLE_MATCHING_MODE, SlotIndexPayload.class,
+                    payload -> applyMatchingModeToggleOnServer(payload.slotIndex()));
             registerClientAction(ACTION_APPLY_EXPRESSION, ExpressionPayload.class, this::applyExpressionOnServer);
 
             if (inventory != null && runtimePart != null) {
@@ -270,6 +273,16 @@ public final class MultiLevelEmitterMenu {
             runtimePart.cycleComparisonModeFromUi(slotIndex);
             if (isLiveClientMenu()) {
                 sendClientAction(ACTION_CYCLE_COMPARISON_MODE, new SlotIndexPayload(slotIndex));
+            }
+        }
+
+        public void cycleMatchingMode(int slotIndex) {
+            if (runtimePart == null) {
+                return;
+            }
+            runtimePart.cycleMatchingModeFromUi(slotIndex);
+            if (isLiveClientMenu()) {
+                sendClientAction(ACTION_CYCLE_MATCHING_MODE, new SlotIndexPayload(slotIndex));
             }
         }
 
@@ -411,6 +424,12 @@ public final class MultiLevelEmitterMenu {
         private void applyComparisonToggleOnServer(int slotIndex) {
             if (runtimePart != null) {
                 runtimePart.cycleComparisonModeFromUi(slotIndex);
+            }
+        }
+
+        private void applyMatchingModeToggleOnServer(int slotIndex) {
+            if (runtimePart != null) {
+                runtimePart.cycleMatchingModeFromUi(slotIndex);
             }
         }
 

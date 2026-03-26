@@ -7,6 +7,7 @@ import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitter
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionFormatter;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.MenuType;
 
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import java.util.regex.Pattern;
 public final class MultiLevelEmitterScreen {
 
     private static final String REGISTRATION_KEY = MultiLevelEmitterItem.SCREEN_BINDING_KEY;
+    private static final String FUZZY_MODE_KEY = "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode";
     private static final Pattern OPERATOR_PATTERN = Pattern.compile("(?i)\\b(?:AND|OR)\\b");
     private static final Pattern SLOT_REFERENCE_PATTERN = Pattern.compile("#\\d+");
     private static final AtomicReference<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> menuType = new AtomicReference<>();
@@ -46,7 +48,12 @@ public final class MultiLevelEmitterScreen {
             boolean configured,
             boolean marked,
             long threshold,
-            MultiLevelEmitterPart.ComparisonMode comparisonMode
+            MultiLevelEmitterPart.ComparisonMode comparisonMode,
+            MultiLevelEmitterPart.MatchingMode matchingMode,
+            boolean showFuzzyControl,
+            boolean emphasizeFuzzyMode,
+            String fuzzyShortLabel,
+            Component fuzzyTooltip
     ) {
     }
 
@@ -120,6 +127,12 @@ public final class MultiLevelEmitterScreen {
     public static void toggleComparisonMode(MultiLevelEmitterMenu.RuntimeMenu menu, int slotIndex) {
         if (menu != null) {
             menu.cycleComparisonMode(slotIndex);
+        }
+    }
+
+    public static void toggleMatchingMode(MultiLevelEmitterMenu.RuntimeMenu menu, int slotIndex) {
+        if (menu != null) {
+            menu.cycleMatchingMode(slotIndex);
         }
     }
 
@@ -204,6 +217,23 @@ public final class MultiLevelEmitterScreen {
         };
     }
 
+    public static String fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode mode) {
+        MultiLevelEmitterPart.MatchingMode effective =
+                mode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : mode;
+        return switch (effective) {
+            case STRICT -> "STR";
+            case IGNORE_ALL -> "ALL";
+            case PERCENT_99 -> "99";
+            case PERCENT_75 -> "75";
+            case PERCENT_50 -> "50";
+            case PERCENT_25 -> "25";
+        };
+    }
+
+    public static Component fuzzyTooltip(MultiLevelEmitterPart.MatchingMode mode) {
+        return Component.translatable(FUZZY_MODE_KEY, Component.translatable(fuzzyModeDetailKey(mode)));
+    }
+
     public static MultiLevelEmitterExpressionCompileResult validateExpressionDraft(
             String rawText,
             int configuredSlots,
@@ -272,13 +302,19 @@ public final class MultiLevelEmitterScreen {
         int totalSlots = menu.totalSlotCapacity();
         List<SlotView> slots = new ArrayList<>(visibleSlots);
         for (int slotIndex = 0; slotIndex < visibleSlots; slotIndex++) {
+            MultiLevelEmitterPart.MatchingMode matchingMode = menu.matchingModeForSlot(slotIndex);
             slots.add(new SlotView(
                     slotIndex,
                     menu.isSlotEnabled(slotIndex),
                     menu.isSlotConfigured(slotIndex),
                     menu.hasMarkedItem(slotIndex),
                     menu.thresholdForSlot(slotIndex),
-                    menu.comparisonModeForSlot(slotIndex)
+                    menu.comparisonModeForSlot(slotIndex),
+                    matchingMode,
+                    menu.hasFuzzyCardInstalled(),
+                    matchingMode != MultiLevelEmitterPart.MatchingMode.STRICT,
+                    fuzzyShortLabel(matchingMode),
+                    fuzzyTooltip(matchingMode)
             ));
         }
         return new RuntimeScreenState(
@@ -306,6 +342,19 @@ public final class MultiLevelEmitterScreen {
         int safeConfigured = Math.max(0, configured);
         int safeTotal = Math.max(0, total);
         return safeConfigured + "/" + safeTotal;
+    }
+
+    private static String fuzzyModeDetailKey(MultiLevelEmitterPart.MatchingMode mode) {
+        MultiLevelEmitterPart.MatchingMode effective =
+                mode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : mode;
+        return switch (effective) {
+            case STRICT -> FUZZY_MODE_KEY + ".strict";
+            case IGNORE_ALL -> FUZZY_MODE_KEY + ".ignore_all";
+            case PERCENT_99 -> FUZZY_MODE_KEY + ".percent_99";
+            case PERCENT_75 -> FUZZY_MODE_KEY + ".percent_75";
+            case PERCENT_50 -> FUZZY_MODE_KEY + ".percent_50";
+            case PERCENT_25 -> FUZZY_MODE_KEY + ".percent_25";
+        };
     }
 
     private static String normalizeOperator(String operator) {

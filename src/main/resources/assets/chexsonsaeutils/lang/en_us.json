@@ -1,6 +1,6 @@
 {
-  "item.chexsonsaeutils.multi_level_emitter": "Multi-Level Emitter",
-  "gui.chexsonsaeutils.multi_slot_emitter": "Multi-Slot Emitter",
+  "item.chexsonsaeutils.multi_level_emitter": "ME Multi-Level Emitter",
+  "gui.chexsonsaeutils.multi_slot_emitter": "ME Multi-Slot Emitter",
   "itemGroup.chexsonsaeutils": "Chexson's ae utils",
   "gui.chexsonsaeutils.multi_level_emitter.expression": "Expression",
   "gui.chexsonsaeutils.multi_level_emitter.expression_hint": "#1 OR (#2 AND #3)",
@@ -23,6 +23,13 @@
   "gui.chexsonsaeutils.multi_level_emitter.slot_layout_changed": "Slot layout changed. Draft reset to server value.",
   "gui.chexsonsaeutils.multi_level_emitter.normalize_expression_spacing": "Normalize expression spacing",
   "gui.chexsonsaeutils.multi_level_emitter.save_expression": "Save this expression",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode": "Fuzzy: %s",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict": "Strict",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.ignore_all": "Ignore All",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_99": "99%",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_75": "75%",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_50": "50%",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_25": "25%",
   "gui.chexsonsaeutils.crafting_mode.default": "Default",
   "gui.chexsonsaeutils.crafting_mode.ignore_missing": "Ignore Missing",
   "gui.chexsonsaeutils.crafting_status.waiting": "Waiting: %s"

@@ -75,7 +75,8 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
     private static final int SLOT_CHIP_X = 13;
     private static final int SLOT_X = 33;
     private static final int THRESHOLD_X = 55;
-    private static final int MODE_X = 113;
+    private static final int MODE_X = 96;
+    private static final int FUZZY_MODE_X = 123;
     private static final int HIDDEN_SLOT_X = -10_000;
     private static final int HIDDEN_SLOT_Y = -10_000;
     private static final int EXPRESSION_LABEL_Y = 22;
@@ -86,7 +87,8 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
     private static final int MARKED_STATUS_Y = 7;
     private static final int MARKED_STATUS_WIDTH = 28;
     private static final int ROW_SHADE_LEFT = 7;
-    private static final int ROW_SHADE_RIGHT = 138;
+    private static final int ROW_SHADE_RIGHT = 148;
+    private static final int FUZZY_HIGHLIGHT_COLOR = 0x33D0A146;
     private static final int SCROLL_BUTTON_SIZE = 12;
     private static final int SCROLL_BUTTON_X = 151;
     private static final int SCROLL_UP_BUTTON_Y = ROW_TOP + 4;
@@ -97,6 +99,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
 
     private final List<ThresholdEditBox> thresholdInputs = new ArrayList<>();
     private final List<Button> comparisonButtons = new ArrayList<>();
+    private final List<FittedTextButton> fuzzyModeButtons = new ArrayList<>();
     private final List<Button> slotReferenceButtons = new ArrayList<>();
     private Button addSlotButton;
     private Button removeSlotButton;
@@ -141,6 +144,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
         super.init();
         thresholdInputs.clear();
         comparisonButtons.clear();
+        fuzzyModeButtons.clear();
         slotReferenceButtons.clear();
         resetLocalUiState();
 
@@ -265,7 +269,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             addRenderableWidget(slotReferenceButton);
             slotReferenceButtons.add(slotReferenceButton);
 
-            ThresholdEditBox thresholdInput = new ThresholdEditBox(font, 0, 0, 52, 14, row);
+            ThresholdEditBox thresholdInput = new ThresholdEditBox(font, 0, 0, 38, 14, row);
             thresholdInput.setMaxLength(12);
             thresholdInput.setBordered(true);
             thresholdInput.setFilter(value -> value.isEmpty() || value.matches("\\d{0,12}"));
@@ -282,9 +286,29 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                 button.setMessage(Component.literal(
                         MultiLevelEmitterScreen.comparisonModeLabel(menu.comparisonModeForSlot(slotIndex))
                 ));
-            }).bounds(0, 0, 28, 14).build();
+            }).bounds(0, 0, 24, 14).build();
             addRenderableWidget(comparisonButton);
             comparisonButtons.add(comparisonButton);
+
+            FittedTextButton fuzzyModeButton = new FittedTextButton(
+                    0,
+                    0,
+                    24,
+                    14,
+                    Component.literal("STR"),
+                    button -> {
+                        int slotIndex = rowToSlotIndex(rowIndex);
+                        if (!menu.isSlotConfigured(slotIndex)) {
+                            return;
+                        }
+                        MultiLevelEmitterScreen.toggleMatchingMode(menu, slotIndex);
+                    },
+                    0.9f,
+                    0.62f,
+                    Tooltip.create(Component.empty())
+            );
+            addRenderableWidget(fuzzyModeButton);
+            fuzzyModeButtons.add(fuzzyModeButton);
         }
 
         syncLayoutFromMenu();
@@ -327,6 +351,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
     @Override
     public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY, float partialTicks) {
         super.drawBG(guiGraphics, offsetX, offsetY, mouseX, mouseY, partialTicks);
+        MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(menu);
 
         for (int row = 0; row < MAX_RENDERED_ROWS; row++) {
             int slotIndex = rowToSlotIndex(row);
@@ -342,6 +367,8 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                 if (color != 0) {
                     guiGraphics.fill(offsetX + ROW_SHADE_LEFT, y, offsetX + ROW_SHADE_RIGHT, y + 18, color);
                 }
+            } else if (slotIndex < state.slots().size() && state.slots().get(slotIndex).emphasizeFuzzyMode()) {
+                guiGraphics.fill(offsetX + ROW_SHADE_LEFT, y, offsetX + ROW_SHADE_RIGHT, y + 18, FUZZY_HIGHLIGHT_COLOR);
             }
         }
     }
@@ -436,6 +463,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             Button slotReferenceButton = slotReferenceButtons.get(row);
             ThresholdEditBox input = thresholdInputs.get(row);
             Button comparisonButton = comparisonButtons.get(row);
+            FittedTextButton fuzzyModeButton = fuzzyModeButtons.get(row);
             boolean rowVisible = row < visibleRows;
             if (!rowVisible) {
                 slotReferenceButton.visible = false;
@@ -447,6 +475,9 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                 comparisonButton.visible = false;
                 comparisonButton.active = false;
                 comparisonButton.setPosition(HIDDEN_SLOT_X, HIDDEN_SLOT_Y);
+                fuzzyModeButton.visible = false;
+                fuzzyModeButton.active = false;
+                fuzzyModeButton.setPosition(HIDDEN_SLOT_X, HIDDEN_SLOT_Y);
                 continue;
             }
 
@@ -484,6 +515,13 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             comparisonButton.setMessage(Component.literal(
                     MultiLevelEmitterScreen.comparisonModeLabel(slot.comparisonMode())
             ));
+
+            fuzzyModeButton.visible = slot.showFuzzyControl();
+            fuzzyModeButton.active = enabled && slot.showFuzzyControl();
+            fuzzyModeButton.setPosition(leftPos + FUZZY_MODE_X, y);
+            fuzzyModeButton.setMessage(Component.literal(slot.fuzzyShortLabel()));
+            fuzzyModeButton.setTooltip(Tooltip.create(slot.fuzzyTooltip()));
+            fuzzyModeButton.setTextColorOverride(slot.emphasizeFuzzyMode() ? COLOR_WARNING : -1);
         }
     }
 
@@ -837,6 +875,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
 
         private final float preferredScale;
         private final float minimumScale;
+        private int textColorOverride = -1;
 
         private FittedTextButton(
                 int x,
@@ -865,10 +904,14 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                     getY(),
                     getWidth() - 4,
                     getHeight(),
-                    color,
+                    textColorOverride >= 0 ? textColorOverride : color,
                     preferredScale,
                     minimumScale
             );
+        }
+
+        private void setTextColorOverride(int textColorOverride) {
+            this.textColorOverride = textColorOverride;
         }
     }
 
