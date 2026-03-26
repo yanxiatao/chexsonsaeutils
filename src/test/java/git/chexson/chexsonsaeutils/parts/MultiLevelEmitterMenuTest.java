@@ -156,7 +156,7 @@ class MultiLevelEmitterMenuTest {
         applyCardModeSnapshot(
                 runtime,
                 List.of(
-                        MultiLevelEmitterPart.MatchingMode.FUZZY,
+                        MultiLevelEmitterPart.MatchingMode.IGNORE_ALL,
                         MultiLevelEmitterPart.MatchingMode.STRICT
                 ),
                 List.of(
@@ -169,10 +169,27 @@ class MultiLevelEmitterMenuTest {
 
         assertTrue(menu.hasFuzzyCardInstalled());
         assertTrue(menu.hasCraftingCardInstalled());
-        assertEquals(MultiLevelEmitterPart.MatchingMode.FUZZY, menu.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL, menu.matchingModeForSlot(0));
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, menu.matchingModeForSlot(1));
         assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, menu.craftingModeForSlot(0));
         assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, menu.craftingModeForSlot(1));
+    }
+
+    @Test
+    void runtimeMenuCyclesMatchingModeThroughAuthoritativeRuntimeAction() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(true, false);
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        menu.cycleMatchingMode(0);
+        assertEquals(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL, runtime.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL, menu.matchingModeForSlot(0));
+
+        menu.cycleMatchingMode(0);
+        assertEquals(MultiLevelEmitterPart.MatchingMode.PERCENT_99, runtime.matchingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.MatchingMode.PERCENT_99, menu.matchingModeForSlot(0));
+
+        menu.cycleMatchingMode(7);
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, menu.matchingModeForSlot(7));
     }
 
     @Test
@@ -180,7 +197,7 @@ class MultiLevelEmitterMenuTest {
         MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false, false);
         applyCardModeSnapshot(
                 runtime,
-                List.of(MultiLevelEmitterPart.MatchingMode.FUZZY),
+                List.of(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL),
                 List.of(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT)
         );
 
@@ -190,6 +207,7 @@ class MultiLevelEmitterMenuTest {
         assertFalse(menu.hasCraftingCardInstalled());
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, menu.matchingModeForSlot(0));
         assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, menu.craftingModeForSlot(0));
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, menu.matchingModeForSlot(-1));
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, menu.matchingModeForSlot(3));
         assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, menu.craftingModeForSlot(3));
     }

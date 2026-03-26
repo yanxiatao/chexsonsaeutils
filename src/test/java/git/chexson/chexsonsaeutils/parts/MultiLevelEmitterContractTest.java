@@ -24,7 +24,7 @@ class MultiLevelEmitterContractTest {
 
     @Test
     void fuzzyFallsBackToStrictWhenCapabilityMissing() {
-        MultiLevelEmitterPart.MatchingMode requested = MultiLevelEmitterPart.MatchingMode.FUZZY;
+        MultiLevelEmitterPart.MatchingMode requested = MultiLevelEmitterPart.MatchingMode.IGNORE_ALL;
         MultiLevelEmitterPart.MatchingMode effective =
                 MultiLevelEmitterPart.resolveMatchingMode(requested, false);
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, effective);
@@ -35,9 +35,9 @@ class MultiLevelEmitterContractTest {
         List<MultiLevelEmitterPart.MatchingMode> normalized =
                 MultiLevelEmitterPart.normalizeMatchingModesForSlotCount(
                         List.of(
-                                MultiLevelEmitterPart.MatchingMode.FUZZY,
+                                MultiLevelEmitterPart.MatchingMode.IGNORE_ALL,
                                 MultiLevelEmitterPart.MatchingMode.STRICT,
-                                MultiLevelEmitterPart.MatchingMode.FUZZY
+                                MultiLevelEmitterPart.MatchingMode.PERCENT_75
                         ),
                         3,
                         false
@@ -52,7 +52,7 @@ class MultiLevelEmitterContractTest {
     void matchingModeChangeTriggersRecompute() {
         assertTrue(MultiLevelEmitterPart.shouldRecomputeAfterMatchingModeChange(
                 MultiLevelEmitterPart.MatchingMode.STRICT,
-                MultiLevelEmitterPart.MatchingMode.FUZZY));
+                MultiLevelEmitterPart.MatchingMode.IGNORE_ALL));
         assertFalse(MultiLevelEmitterPart.shouldRecomputeAfterMatchingModeChange(
                 MultiLevelEmitterPart.MatchingMode.STRICT,
                 MultiLevelEmitterPart.MatchingMode.STRICT));

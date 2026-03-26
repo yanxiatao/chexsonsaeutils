@@ -1,6 +1,6 @@
 {
-  "item.chexsonsaeutils.multi_level_emitter": "\u591a\u69fd\u53d1\u4fe1\u5668",
-  "gui.chexsonsaeutils.multi_slot_emitter": "\u591a\u69fd\u53d1\u4fe1\u5668",
+  "item.chexsonsaeutils.multi_level_emitter": "ME\u591a\u69fd\u53d1\u4fe1\u5668",
+  "gui.chexsonsaeutils.multi_slot_emitter": "ME\u591a\u69fd\u53d1\u4fe1\u5668",
   "itemGroup.chexsonsaeutils": "chexson \u7684 ae \u5de5\u5177",
   "gui.chexsonsaeutils.multi_level_emitter.expression": "\u8868\u8fbe\u5f0f",
   "gui.chexsonsaeutils.multi_level_emitter.expression_hint": "#1 OR (#2 AND #3)",
@@ -23,6 +23,13 @@
   "gui.chexsonsaeutils.multi_level_emitter.slot_layout_changed": "\u69fd\u4f4d\u5e03\u5c40\u5df2\u53d8\u5316\uff0c\u8349\u7a3f\u5df2\u91cd\u7f6e\u4e3a\u670d\u52a1\u5668\u503c\u3002",
   "gui.chexsonsaeutils.multi_level_emitter.normalize_expression_spacing": "\u89c4\u8303\u8868\u8fbe\u5f0f\u7a7a\u683c",
   "gui.chexsonsaeutils.multi_level_emitter.save_expression": "\u4fdd\u5b58\u5f53\u524d\u8868\u8fbe\u5f0f",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode": "\u6a21\u7cca\uff1a%s",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict": "\u4e25\u683c",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.ignore_all": "\u5168\u90e8\u5ffd\u7565",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_99": "99%",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_75": "75%",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_50": "50%",
+  "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_25": "25%",
   "gui.chexsonsaeutils.crafting_mode.default": "\u9ed8\u8ba4",
   "gui.chexsonsaeutils.crafting_mode.ignore_missing": "\u5ffd\u7565\u7f3a\u6599",
   "gui.chexsonsaeutils.crafting_status.waiting": "\u7b49\u5019\u6570\u91cf\uff1a%s"

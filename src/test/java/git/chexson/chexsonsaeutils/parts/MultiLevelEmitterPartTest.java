@@ -14,6 +14,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MultiLevelEmitterPartTest {
@@ -104,12 +105,39 @@ class MultiLevelEmitterPartTest {
     }
 
     @Test
-    void invalidFuzzyMetadataFallsBackToStrict() {
+    void matchingModeCycleFollowsAe2AlignedOrder() {
+        List<MultiLevelEmitterPart.MatchingMode> actualCycle = List.of(
+                MultiLevelEmitterPart.nextMatchingMode(MultiLevelEmitterPart.MatchingMode.STRICT),
+                MultiLevelEmitterPart.nextMatchingMode(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL),
+                MultiLevelEmitterPart.nextMatchingMode(MultiLevelEmitterPart.MatchingMode.PERCENT_99),
+                MultiLevelEmitterPart.nextMatchingMode(MultiLevelEmitterPart.MatchingMode.PERCENT_75),
+                MultiLevelEmitterPart.nextMatchingMode(MultiLevelEmitterPart.MatchingMode.PERCENT_50),
+                MultiLevelEmitterPart.nextMatchingMode(MultiLevelEmitterPart.MatchingMode.PERCENT_25)
+        );
+
+        assertIterableEquals(
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.IGNORE_ALL,
+                        MultiLevelEmitterPart.MatchingMode.PERCENT_99,
+                        MultiLevelEmitterPart.MatchingMode.PERCENT_75,
+                        MultiLevelEmitterPart.MatchingMode.PERCENT_50,
+                        MultiLevelEmitterPart.MatchingMode.PERCENT_25,
+                        MultiLevelEmitterPart.MatchingMode.STRICT
+                ),
+                actualCycle
+        );
+    }
+
+    @Test
+    void legacyAndInvalidMatchingMetadataResolveSafely() {
+        MultiLevelEmitterPart.MatchingMode migrated =
+                MultiLevelEmitterPart.MatchingMode.fromPersisted("FUZZY");
         MultiLevelEmitterPart.MatchingMode parsed =
                 MultiLevelEmitterPart.MatchingMode.fromPersisted("INVALID_MODE");
         MultiLevelEmitterPart.MatchingMode effective =
-                MultiLevelEmitterPart.resolveMatchingMode(MultiLevelEmitterPart.MatchingMode.FUZZY, false);
+                MultiLevelEmitterPart.resolveMatchingMode(MultiLevelEmitterPart.MatchingMode.PERCENT_50, false);
 
+        assertEquals(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL, migrated);
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, parsed);
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, effective);
     }

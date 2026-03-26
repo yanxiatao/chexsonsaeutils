@@ -5,8 +5,11 @@ import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
+import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -39,6 +42,16 @@ class MultiLevelEmitterScreenTest {
     @Test
     void strictFuzzyTogglePreservesThresholdValue() {
         assertEquals(64L, MultiLevelEmitterScreen.preserveThresholdOnMatchingModeToggle(64L));
+    }
+
+    @Test
+    void fuzzyShortLabelsMatchExactAe2ModeCycleContract() {
+        assertEquals("STR", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.STRICT));
+        assertEquals("ALL", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL));
+        assertEquals("99", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_99));
+        assertEquals("75", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_75));
+        assertEquals("50", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_50));
+        assertEquals("25", MultiLevelEmitterScreen.fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode.PERCENT_25));
     }
 
     @Test
@@ -88,6 +101,60 @@ class MultiLevelEmitterScreenTest {
     }
 
     @Test
+    void toggleMatchingModeDelegatesToMenuAuthority() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(true);
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        MultiLevelEmitterScreen.toggleMatchingMode(menu, 0);
+
+        assertEquals(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL, menu.matchingModeForSlot(0));
+    }
+
+    @Test
+    void runtimeScreenSnapshotPreservesSavedFuzzyModesForUnmarkedSlots() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(true);
+        applyMatchingModeSnapshot(
+                runtime,
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.IGNORE_ALL,
+                        MultiLevelEmitterPart.MatchingMode.PERCENT_75
+                )
+        );
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(menu);
+        MultiLevelEmitterScreen.SlotView first = state.slots().get(0);
+        MultiLevelEmitterScreen.SlotView second = state.slots().get(1);
+
+        assertEquals(0, state.markedSlots());
+        assertEquals(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL, first.matchingMode());
+        assertTrue(first.showFuzzyControl());
+        assertTrue(first.emphasizeFuzzyMode());
+        assertEquals("ALL", first.fuzzyShortLabel());
+        assertFuzzyTooltip(first.fuzzyTooltip(), "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.ignore_all");
+        assertEquals(MultiLevelEmitterPart.MatchingMode.PERCENT_75, second.matchingMode());
+        assertTrue(second.emphasizeFuzzyMode());
+        assertEquals("75", second.fuzzyShortLabel());
+        assertFuzzyTooltip(second.fuzzyTooltip(), "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_75");
+    }
+
+    @Test
+    void runtimeScreenSnapshotHidesFuzzyControlsWhenCardMissing() {
+        MultiLevelEmitterRuntimePart runtime = newCapabilityRuntimePart(false);
+        applyMatchingModeSnapshot(runtime, List.of(MultiLevelEmitterPart.MatchingMode.IGNORE_ALL));
+        MultiLevelEmitterMenu.RuntimeMenu menu = MultiLevelEmitterMenuTestHarness.detachedForRuntime(runtime);
+
+        MultiLevelEmitterScreen.RuntimeScreenState state = MultiLevelEmitterScreen.snapshotState(menu);
+        MultiLevelEmitterScreen.SlotView slot = state.slots().get(0);
+
+        assertFalse(slot.showFuzzyControl());
+        assertFalse(slot.emphasizeFuzzyMode());
+        assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, slot.matchingMode());
+        assertEquals("STR", slot.fuzzyShortLabel());
+        assertFuzzyTooltip(slot.fuzzyTooltip(), "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict");
+    }
+
+    @Test
     void validateExpressionDraftDelegatesToSharedCompiler() {
         var expected = MultiLevelEmitterExpressionCompiler.compile("#1 OR #2", 2, slotIndex -> slotIndex == 0);
         var actual = MultiLevelEmitterScreen.validateExpressionDraft("#1 OR #2", 2, slotIndex -> slotIndex == 0);
@@ -128,6 +195,7 @@ class MultiLevelEmitterScreenTest {
 
         assertTrue(source.contains("ThresholdEditBox"));
         assertTrue(source.contains("Button.builder"));
+        assertTrue(source.contains("fuzzyModeButtons"));
         assertTrue(source.contains("snapshotState(menu)"));
         assertTrue(source.contains("extends AEBaseScreen"));
         assertTrue(source.contains("MAX_RENDERED_ROWS = 2"));
@@ -148,6 +216,13 @@ class MultiLevelEmitterScreenTest {
         assertTrue(source.contains("SCROLL_BUTTON_X = 151"));
         assertTrue(source.contains("SCROLL_UP_BUTTON_Y = ROW_TOP + 4"));
         assertTrue(source.contains("SCROLL_DOWN_BUTTON_Y = ROW_TOP + ROW_HEIGHT - 1"));
+        assertTrue(source.contains("MODE_X = 96"));
+        assertTrue(source.contains("FUZZY_MODE_X = 123"));
+        assertTrue(source.contains("FUZZY_HIGHLIGHT_COLOR = 0x33D0A146"));
+        assertTrue(source.contains("new ThresholdEditBox(font, 0, 0, 38, 14, row)"));
+        assertTrue(source.contains("0, 0, 24, 14"));
+        assertTrue(source.contains("slot.showFuzzyControl()"));
+        assertTrue(source.contains("slot.fuzzyTooltip()"));
         assertTrue(source.contains("gui.chexsonsaeutils.multi_level_emitter.apply_expression"));
         assertTrue(source.contains("gui.chexsonsaeutils.multi_level_emitter.format_expression"));
         assertTrue(source.contains("setFormatter("));
@@ -174,6 +249,9 @@ class MultiLevelEmitterScreenTest {
         assertTrue(source.contains("findField(Slot.class, \"f_40220_\")"));
         assertTrue(source.contains("findField(Slot.class, \"f_40221_\")"));
         assertTrue(source.contains("findField(EditBox.class, \"f_94102_\")"));
+        assertFalse(source.contains("UpgradeableScreen"));
+        assertFalse(source.contains("ServerSettingToggleButton"));
+        assertFalse(source.contains("Settings.FUZZY_MODE"));
         assertFalse(source.contains("EMPTY_HINT = Component.literal(\"No item marked\")"));
         assertFalse(source.contains("AND is evaluated before OR. Use parentheses to group."));
         assertFalse(source.contains("Emitter configuration UI is active."));
@@ -263,6 +341,10 @@ class MultiLevelEmitterScreenTest {
 
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.slot_layout_changed"));
         assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.slot_layout_changed"));
+        assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict"));
+        assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_25"));
+        assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.strict"));
+        assertTrue(chinese.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode.percent_25"));
     }
 
     private static MultiLevelEmitterRuntimePart newRuntimePart() {
@@ -279,6 +361,77 @@ class MultiLevelEmitterScreenTest {
             return runtime;
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to allocate runtime part test instance", exception);
+        }
+    }
+
+    private static MultiLevelEmitterRuntimePart newCapabilityRuntimePart(boolean fuzzyInstalled) {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            Object unsafe = theUnsafeField.get(null);
+            Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
+            CapabilityAwareRuntimePart runtime =
+                    (CapabilityAwareRuntimePart) allocateInstance.invoke(unsafe, CapabilityAwareRuntimePart.class);
+            runtime.setInstalledCards(fuzzyInstalled);
+            runtime.applyConfiguration(1, null, null, null);
+            runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
+            return runtime;
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to allocate capability-aware runtime part test instance", exception);
+        }
+    }
+
+    private static void applyMatchingModeSnapshot(
+            MultiLevelEmitterRuntimePart runtime,
+            List<MultiLevelEmitterPart.MatchingMode> matchingModes
+    ) {
+        CompoundTag snapshot = new CompoundTag();
+        snapshot.putInt("configured_item_count", matchingModes.size());
+        MultiLevelEmitterUtils.writeMatchingModesToNBT(matchingModes, snapshot, "matching_modes");
+        readRuntimeSnapshot(runtime, snapshot);
+    }
+
+    private static void readRuntimeSnapshot(MultiLevelEmitterRuntimePart runtime, CompoundTag snapshot) {
+        try {
+            Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod(
+                    "readRuntimeSnapshot",
+                    CompoundTag.class,
+                    boolean.class
+            );
+            method.setAccessible(true);
+            method.invoke(runtime, snapshot, false);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to read runtime snapshot for screen test instance", exception);
+        }
+    }
+
+    private static void assertFuzzyTooltip(net.minecraft.network.chat.Component tooltip, String expectedModeKey) {
+        assertTrue(tooltip.getContents() instanceof TranslatableContents);
+        TranslatableContents wrapper = (TranslatableContents) tooltip.getContents();
+        assertEquals("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode", wrapper.getKey());
+        assertEquals(1, wrapper.getArgs().length);
+        assertTrue(wrapper.getArgs()[0] instanceof net.minecraft.network.chat.Component);
+        net.minecraft.network.chat.Component nested = (net.minecraft.network.chat.Component) wrapper.getArgs()[0];
+        assertTrue(nested.getContents() instanceof TranslatableContents);
+        TranslatableContents detail = (TranslatableContents) nested.getContents();
+        assertEquals(expectedModeKey, detail.getKey());
+    }
+
+    private static final class CapabilityAwareRuntimePart extends MultiLevelEmitterRuntimePart {
+        private boolean fuzzyInstalled;
+
+        private CapabilityAwareRuntimePart() {
+            super(null);
+        }
+
+        void setInstalledCards(boolean fuzzyInstalled) {
+            this.fuzzyInstalled = fuzzyInstalled;
+        }
+
+        @Override
+        public boolean hasFuzzyCardInstalled() {
+            return fuzzyInstalled;
         }
     }
 }

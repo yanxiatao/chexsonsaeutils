@@ -1,22 +1,37 @@
 package git.chexson.chexsonsaeutils.parts;
 
+import appeng.api.networking.IGrid;
+import appeng.api.networking.IStackWatcher;
+import appeng.api.networking.storage.IStorageService;
+import appeng.api.stacks.AEKey;
+import appeng.api.stacks.AEKeyType;
+import appeng.api.stacks.GenericStack;
+import appeng.api.stacks.KeyCounter;
 import appeng.api.config.RedstoneMode;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
-import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -27,6 +42,7 @@ class MultiLevelEmitterIntegrationTest {
     private static final String NBT_REPORTING_VALUES = "reportingValues";
     private static final String NBT_COMPARISON_MODES = "comparison_modes";
     private static final String NBT_LOGIC_RELATIONS = "logic_relations";
+    private static final String NBT_MATCHING_MODES = "matching_modes";
 
     @Test
     void runtimePathIsAnchoredAndRejectsPassThroughRegression() throws IOException {
@@ -45,6 +61,8 @@ class MultiLevelEmitterIntegrationTest {
                 "runtime part must expose a concrete evaluation entry point");
         assertTrue(runtimeSource.contains("MultiLevelEmitterPart.evaluateSlotComparisons"),
                 "runtime part must execute MultiLevelEmitter slot evaluation logic directly");
+        assertTrue(runtimeSource.contains("findFuzzy("),
+                "runtime part must aggregate fuzzy slots through KeyCounter.findFuzzy(...)");
     }
 
     @Test
@@ -201,6 +219,112 @@ class MultiLevelEmitterIntegrationTest {
         assertTrue(runtime.evaluateConfiguredOutput(List.of(4L, 2L), true));
     }
 
+    @Test
+    void readObservedValuesMixesStrictAndPerSlotFuzzyAggregation() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(true);
+        runtime.applyConfiguration(
+                2,
+                Map.of(0, 1L, 1, 1L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(MultiLevelEmitterPart.LogicRelation.AND)
+        );
+        readRuntimeSnapshot(runtime, createMatchingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.STRICT,
+                        MultiLevelEmitterPart.MatchingMode.PERCENT_75
+                )
+        ));
+
+        DummyKey strictKey = new DummyKey("strict", "strict", 0, 0);
+        DummyKey fuzzyFilter = new DummyKey("durable", "filter", 10, 100);
+        DummyKey fuzzySibling = new DummyKey("durable", "sibling", 15, 100);
+        DummyKey fuzzyExcluded = new DummyKey("durable", "excluded", 80, 100);
+
+        setConfiguredKey(runtime, 0, strictKey);
+        setConfiguredKey(runtime, 1, fuzzyFilter);
+
+        KeyCounter inventory = new KeyCounter();
+        inventory.add(strictKey, 3L);
+        inventory.add(fuzzyFilter, 5L);
+        inventory.add(fuzzySibling, 7L);
+        inventory.add(fuzzyExcluded, 11L);
+
+        assertEquals(List.of(3L, 12L), readObservedValues(runtime, gridWithInventory(inventory)));
+    }
+
+    @Test
+    void readObservedValuesKeepsEmptyPreconfiguredFuzzySlotsInert() {
+        CapabilityAwareRuntimePart runtime = newCapabilityRuntimePart(true);
+        runtime.applyConfiguration(
+                2,
+                Map.of(0, 1L, 1, 1L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(MultiLevelEmitterPart.LogicRelation.AND)
+        );
+        readRuntimeSnapshot(runtime, createMatchingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.STRICT,
+                        MultiLevelEmitterPart.MatchingMode.IGNORE_ALL
+                )
+        ));
+
+        DummyKey strictKey = new DummyKey("strict", "strict", 0, 0);
+        DummyKey fuzzyCandidate = new DummyKey("durable", "candidate", 20, 100);
+
+        setConfiguredKey(runtime, 0, strictKey);
+
+        KeyCounter inventory = new KeyCounter();
+        inventory.add(strictKey, 4L);
+        inventory.add(fuzzyCandidate, 99L);
+
+        assertEquals(List.of(4L, 0L), readObservedValues(runtime, gridWithInventory(inventory)));
+    }
+
+    @Test
+    void configureWatchersOnlyWatchesAllForMarkedNonStrictSlots() {
+        WatcherAwareRuntimePart runtime = newWatcherAwareRuntimePart(true);
+        runtime.applyConfiguration(
+                2,
+                Map.of(0, 1L, 1, 1L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(MultiLevelEmitterPart.LogicRelation.AND)
+        );
+        readRuntimeSnapshot(runtime, createMatchingModeSnapshot(
+                List.of(
+                        MultiLevelEmitterPart.MatchingMode.STRICT,
+                        MultiLevelEmitterPart.MatchingMode.PERCENT_50
+                )
+        ));
+
+        DummyKey strictKey = new DummyKey("strict", "strict", 0, 0);
+        DummyKey fuzzyKey = new DummyKey("durable", "filter", 45, 100);
+        setConfiguredKey(runtime, 0, strictKey);
+
+        RecordingStackWatcher storageWatcher = new RecordingStackWatcher();
+        RecordingStackWatcher craftingWatcher = new RecordingStackWatcher();
+        attachWatchers(runtime, storageWatcher, craftingWatcher);
+
+        runtime.invokeConfigureWatchers();
+
+        assertFalse(storageWatcher.watchAll);
+        assertEquals(Set.of(strictKey), storageWatcher.addedKeys);
+
+        setConfiguredKey(runtime, 1, fuzzyKey);
+        runtime.invokeConfigureWatchers();
+
+        assertTrue(storageWatcher.watchAll);
+        assertTrue(storageWatcher.addedKeys.isEmpty());
+    }
+
     private static MultiLevelEmitterRuntimePart newRuntimePart() {
         try {
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
@@ -215,6 +339,311 @@ class MultiLevelEmitterIntegrationTest {
             return runtime;
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to allocate runtime part test instance", exception);
+        }
+    }
+
+    private static CapabilityAwareRuntimePart newCapabilityRuntimePart(boolean fuzzyInstalled) {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            Object unsafe = theUnsafeField.get(null);
+            Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
+            CapabilityAwareRuntimePart runtime =
+                    (CapabilityAwareRuntimePart) allocateInstance.invoke(unsafe, CapabilityAwareRuntimePart.class);
+            runtime.setInstalledCards(fuzzyInstalled);
+            runtime.applyConfiguration(1, null, null, null);
+            runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
+            return runtime;
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to allocate capability-aware runtime part test instance", exception);
+        }
+    }
+
+    private static WatcherAwareRuntimePart newWatcherAwareRuntimePart(boolean fuzzyInstalled) {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            Object unsafe = theUnsafeField.get(null);
+            Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
+            WatcherAwareRuntimePart runtime =
+                    (WatcherAwareRuntimePart) allocateInstance.invoke(unsafe, WatcherAwareRuntimePart.class);
+            runtime.setInstalledCards(fuzzyInstalled);
+            runtime.applyConfiguration(1, null, null, null);
+            runtime.setRedstoneMode(RedstoneMode.HIGH_SIGNAL);
+            return runtime;
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to allocate watcher-aware runtime part test instance", exception);
+        }
+    }
+
+    private static List<Long> readObservedValues(MultiLevelEmitterRuntimePart runtime, IGrid grid) {
+        try {
+            Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod("readObservedValues", IGrid.class);
+            method.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            List<Long> observed = (List<Long>) method.invoke(runtime, grid);
+            return observed;
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to read observed values", exception);
+        }
+    }
+
+    private static void readRuntimeSnapshot(MultiLevelEmitterRuntimePart runtime, CompoundTag snapshot) {
+        try {
+            Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod(
+                    "readRuntimeSnapshot",
+                    CompoundTag.class,
+                    boolean.class
+            );
+            method.setAccessible(true);
+            method.invoke(runtime, snapshot, false);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to read runtime snapshot for integration test instance", exception);
+        }
+    }
+
+    private static CompoundTag createMatchingModeSnapshot(List<MultiLevelEmitterPart.MatchingMode> matchingModes) {
+        CompoundTag snapshot = new CompoundTag();
+        snapshot.putInt(NBT_CONFIGURED_ITEM_COUNT, matchingModes.size());
+        MultiLevelEmitterUtils.writeMatchingModesToNBT(matchingModes, snapshot, NBT_MATCHING_MODES);
+        return snapshot;
+    }
+
+    private static void setConfiguredKey(MultiLevelEmitterRuntimePart runtime, int slot, AEKey key) {
+        runtime.getConfig().setStack(slot, key == null ? null : new GenericStack(key, 1));
+    }
+
+    private static void attachWatchers(
+            MultiLevelEmitterRuntimePart runtime,
+            RecordingStackWatcher storageWatcher,
+            RecordingStackWatcher craftingWatcher
+    ) {
+        try {
+            Field storageWatcherField =
+                    MultiLevelEmitterRuntimePart.class.getSuperclass().getDeclaredField("storageWatcher");
+            storageWatcherField.setAccessible(true);
+            storageWatcherField.set(runtime, storageWatcher);
+
+            Field craftingWatcherField =
+                    MultiLevelEmitterRuntimePart.class.getSuperclass().getDeclaredField("craftingWatcher");
+            craftingWatcherField.setAccessible(true);
+            craftingWatcherField.set(runtime, craftingWatcher);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to attach watcher test doubles", exception);
+        }
+    }
+
+    private static IGrid gridWithInventory(KeyCounter inventory) {
+        IStorageService storageService = (IStorageService) Proxy.newProxyInstance(
+                IStorageService.class.getClassLoader(),
+                new Class<?>[]{IStorageService.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getCachedInventory" -> inventory;
+                    case "getInventory" -> null;
+                    default -> defaultValue(method.getReturnType());
+                }
+        );
+        return (IGrid) Proxy.newProxyInstance(
+                IGrid.class.getClassLoader(),
+                new Class<?>[]{IGrid.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getStorageService" -> storageService;
+                    default -> defaultValue(method.getReturnType());
+                }
+        );
+    }
+
+    private static Object defaultValue(Class<?> returnType) {
+        if (!returnType.isPrimitive()) {
+            return null;
+        }
+        if (returnType == boolean.class) {
+            return false;
+        }
+        if (returnType == byte.class) {
+            return (byte) 0;
+        }
+        if (returnType == short.class) {
+            return (short) 0;
+        }
+        if (returnType == int.class) {
+            return 0;
+        }
+        if (returnType == long.class) {
+            return 0L;
+        }
+        if (returnType == float.class) {
+            return 0F;
+        }
+        if (returnType == double.class) {
+            return 0D;
+        }
+        if (returnType == char.class) {
+            return '\0';
+        }
+        return null;
+    }
+
+    private static class CapabilityAwareRuntimePart extends MultiLevelEmitterRuntimePart {
+        private boolean fuzzyInstalled;
+
+        private CapabilityAwareRuntimePart() {
+            super(null);
+        }
+
+        void setInstalledCards(boolean fuzzyInstalled) {
+            this.fuzzyInstalled = fuzzyInstalled;
+        }
+
+        @Override
+        public boolean hasFuzzyCardInstalled() {
+            return fuzzyInstalled;
+        }
+    }
+
+    private static final class WatcherAwareRuntimePart extends CapabilityAwareRuntimePart {
+        private WatcherAwareRuntimePart() {
+            super();
+        }
+
+        void invokeConfigureWatchers() {
+            super.configureWatchers();
+        }
+    }
+
+    private static final class RecordingStackWatcher implements IStackWatcher {
+        private boolean watchAll;
+        private final java.util.LinkedHashSet<AEKey> addedKeys = new java.util.LinkedHashSet<>();
+
+        @Override
+        public void setWatchAll(boolean watchAll) {
+            this.watchAll = watchAll;
+        }
+
+        @Override
+        public void add(AEKey stack) {
+            addedKeys.add(stack);
+        }
+
+        @Override
+        public void remove(AEKey stack) {
+            addedKeys.remove(stack);
+        }
+
+        @Override
+        public void reset() {
+            watchAll = false;
+            addedKeys.clear();
+        }
+    }
+
+    private static final class DummyKeyType extends AEKeyType {
+        private static final DummyKeyType INSTANCE = new DummyKeyType();
+
+        private DummyKeyType() {
+            super(Objects.requireNonNull(ResourceLocation.tryParse("chexsonsaeutils:test")),
+                    DummyKey.class,
+                    Component.literal("Test"));
+        }
+
+        @Override
+        public AEKey readFromPacket(FriendlyByteBuf input) {
+            return null;
+        }
+
+        @Override
+        public AEKey loadKeyFromTag(CompoundTag tag) {
+            return null;
+        }
+    }
+
+    private static final class DummyKey extends AEKey {
+        private final String primaryKey;
+        private final String variantId;
+        private final int fuzzyValue;
+        private final int fuzzyMaxValue;
+
+        private DummyKey(String primaryKey, String variantId, int fuzzyValue, int fuzzyMaxValue) {
+            this.primaryKey = primaryKey;
+            this.variantId = variantId;
+            this.fuzzyValue = fuzzyValue;
+            this.fuzzyMaxValue = fuzzyMaxValue;
+        }
+
+        @Override
+        public AEKeyType getType() {
+            return DummyKeyType.INSTANCE;
+        }
+
+        @Override
+        public AEKey dropSecondary() {
+            return this;
+        }
+
+        @Override
+        public CompoundTag toTag() {
+            CompoundTag tag = new CompoundTag();
+            tag.putString("primary", primaryKey);
+            tag.putString("variant", variantId);
+            tag.putInt("fuzzyValue", fuzzyValue);
+            tag.putInt("fuzzyMaxValue", fuzzyMaxValue);
+            return tag;
+        }
+
+        @Override
+        public Object getPrimaryKey() {
+            return primaryKey;
+        }
+
+        @Override
+        public int getFuzzySearchValue() {
+            return fuzzyValue;
+        }
+
+        @Override
+        public int getFuzzySearchMaxValue() {
+            return fuzzyMaxValue;
+        }
+
+        @Override
+        public ResourceLocation getId() {
+            return Objects.requireNonNull(ResourceLocation.tryParse(
+                    "chexsonsaeutils:" + primaryKey + "_" + variantId
+            ));
+        }
+
+        @Override
+        public void writeToPacket(FriendlyByteBuf data) {
+        }
+
+        @Override
+        protected Component computeDisplayName() {
+            return Component.literal(primaryKey + ":" + variantId);
+        }
+
+        @Override
+        public void addDrops(long amount, List<ItemStack> drops, Level level, BlockPos pos) {
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof DummyKey dummyKey)) {
+                return false;
+            }
+            return fuzzyValue == dummyKey.fuzzyValue
+                    && fuzzyMaxValue == dummyKey.fuzzyMaxValue
+                    && Objects.equals(primaryKey, dummyKey.primaryKey)
+                    && Objects.equals(variantId, dummyKey.variantId);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(primaryKey, variantId, fuzzyValue, fuzzyMaxValue);
         }
     }
 }

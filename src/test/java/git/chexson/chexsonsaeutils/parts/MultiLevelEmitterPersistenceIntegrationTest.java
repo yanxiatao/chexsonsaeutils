@@ -26,7 +26,7 @@ class MultiLevelEmitterPersistenceIntegrationTest {
         List<MultiLevelEmitterPart.LogicRelation> relations = List.of(MultiLevelEmitterPart.LogicRelation.OR);
         List<MultiLevelEmitterPart.MatchingMode> matching = List.of(
                 MultiLevelEmitterPart.MatchingMode.STRICT,
-                MultiLevelEmitterPart.MatchingMode.FUZZY
+                MultiLevelEmitterPart.MatchingMode.IGNORE_ALL
         );
 
         MultiLevelEmitterPart.writeThresholdsToNbt(thresholds, root, "reportingValues");
@@ -52,7 +52,7 @@ class MultiLevelEmitterPersistenceIntegrationTest {
     void matchingAndCraftingModesRoundTripIsStable() {
         CompoundTag root = new CompoundTag();
         List<MultiLevelEmitterPart.MatchingMode> matching = List.of(
-                MultiLevelEmitterPart.MatchingMode.FUZZY,
+                MultiLevelEmitterPart.MatchingMode.PERCENT_50,
                 MultiLevelEmitterPart.MatchingMode.STRICT
         );
         List<MultiLevelEmitterPart.CraftingMode> crafting = List.of(
@@ -82,7 +82,7 @@ class MultiLevelEmitterPersistenceIntegrationTest {
                 MultiLevelEmitterPart.resolveMatchingMode(parsed, false);
 
         assertEquals(MultiLevelEmitterPart.MatchingMode.STRICT, effective);
-        assertTrue(effective != MultiLevelEmitterPart.MatchingMode.FUZZY);
+        assertTrue(effective != MultiLevelEmitterPart.MatchingMode.IGNORE_ALL);
     }
 
     @Test
