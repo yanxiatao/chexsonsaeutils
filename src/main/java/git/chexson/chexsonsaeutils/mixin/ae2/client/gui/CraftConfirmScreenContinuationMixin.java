@@ -56,7 +56,9 @@ public abstract class CraftConfirmScreenContinuationMixin extends AEBaseScreen<C
 
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$updateContinuationModeState(CallbackInfo ci) {
-        if (chexsonsaeutils$continuationModeButton == null) {
+        if (chexsonsaeutils$continuationModeButton == null
+                || !renderables.contains(chexsonsaeutils$continuationModeButton)
+                || !children().contains(chexsonsaeutils$continuationModeButton)) {
             chexsonsaeutils$continuationModeButton = addRenderableWidget(
                     Button.builder(chexsonsaeutils$getModeLabel(CraftingContinuationMode.defaultMode()),
                                     button -> chexsonsaeutils$cycleContinuationMode())
