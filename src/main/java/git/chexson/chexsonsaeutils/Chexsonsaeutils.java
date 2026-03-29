@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils;
 
+import appeng.api.crafting.PatternDetailsHelper;
+import appeng.api.crafting.IPatternDetailsDecoder;
 import appeng.api.upgrades.Upgrades;
 import appeng.core.definitions.AEItems;
 import com.mojang.logging.LogUtils;
@@ -7,6 +9,8 @@ import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterR
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
+import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacementDecoder;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import net.minecraft.client.gui.screens.MenuScreens;
@@ -30,6 +34,8 @@ import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 import org.slf4j.Logger;
+
+import java.util.List;
 
 @Mod(Chexsonsaeutils.MODID)
 public class Chexsonsaeutils {
@@ -71,6 +77,7 @@ public class Chexsonsaeutils {
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap);
+        event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
     }
 
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
@@ -116,6 +123,13 @@ public class Chexsonsaeutils {
                 screenBindingKey(),
                 MultiLevelEmitterMenu.hasRegisteredMenuBindings()
         );
+    }
+
+    private static void registerProcessingPatternReplacementDecoder() {
+        IPatternDetailsDecoder decoder = new ProcessingPatternReplacementDecoder();
+        List<IPatternDetailsDecoder> decoders = PatternDetailsHelperAccessor.chexsonsaeutils$getDecoders();
+        decoders.removeIf(existingDecoder -> existingDecoder.getClass() == decoder.getClass());
+        decoders.add(0, decoder);
     }
 
     private static void registerMultiLevelEmitterClientBindings() {

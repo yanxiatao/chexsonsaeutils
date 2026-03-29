@@ -34,11 +34,13 @@ class MultiLevelEmitterRegistrationTest {
                 "git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
         ));
         String itemModel = readUtf8(resourcePath("assets/chexsonsaeutils/models/item/multi_level_emitter.json"));
+        String recipe = readUtf8(resourcePath("data/chexsonsaeutils/recipes/network/parts/multi_level_emitter.json"));
+        String recipeAdvancement = readUtf8(resourcePath(
+                "data/chexsonsaeutils/advancements/recipes/network/parts/multi_level_emitter.json"
+        ));
         JsonObject enUs = readLang(resourcePath("assets/chexsonsaeutils/lang/en_us.json"));
         JsonObject zhCn = readLang(resourcePath("assets/chexsonsaeutils/lang/zh_cn.json"));
         String gradleProperties = readUtf8(Path.of("gradle.properties"));
-        Path itemTexture = resourcePath("assets/chexsonsaeutils/textures/item/multi_level_emitter.png");
-
         assertTrue(modSource.contains("MULTI_LEVEL_EMITTER_ITEM"), "missing emitter RegistryObject");
         assertTrue(modSource.contains("ITEMS.register(MultiLevelEmitterItem.id()"), "missing item registration call");
         assertTrue(modSource.contains("event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap)"),
@@ -55,12 +57,22 @@ class MultiLevelEmitterRegistrationTest {
                 "client setup must not be registered twice");
         assertTrue(screenSource.contains("extends AEBaseScreen<MultiLevelEmitterMenu.RuntimeMenu>"),
                 "runtime screen must create a real client screen for the custom menu");
-        assertTrue(itemModel.contains("\"parent\": \"minecraft:item/generated\""),
-                "item model must provide a generated inventory model");
-        assertTrue(itemModel.contains("chexsonsaeutils:item/multi_level_emitter"),
-                "item model must reference the mod texture");
-        assertTrue(Files.exists(itemTexture) && Files.size(itemTexture) > 0,
-                "item texture must exist");
+        assertTrue(itemModel.contains("\"parent\": \"ae2:item/level_emitter\""),
+                "item model must directly reuse the AE2 level emitter model");
+        assertFalse(Files.exists(Path.of("src/main/resources/assets/chexsonsaeutils/textures/item/multi_level_emitter.png")),
+                "multi-level emitter should not keep a copied local texture when directly reusing the AE2 asset");
+        assertTrue(recipe.contains("\"ae2:level_emitter\""),
+                "recipe must upgrade from the AE2 level emitter");
+        assertTrue(recipe.contains("\"ae2:logic_processor\""),
+                "recipe must include logic processing for multi-slot behavior");
+        assertTrue(recipe.contains("\"ae2:engineering_processor\""),
+                "recipe must include engineering processing for the upgraded emitter");
+        assertTrue(recipe.contains("\"chexsonsaeutils:multi_level_emitter\""),
+                "recipe must output the multi-level emitter");
+        assertTrue(recipeAdvancement.contains("\"chexsonsaeutils:network/parts/multi_level_emitter\""),
+                "recipe advancement must unlock the multi-level emitter recipe");
+        assertTrue(recipeAdvancement.contains("\"ae2:level_emitter\""),
+                "recipe advancement must trigger from obtaining the AE2 level emitter");
         assertTrue(enUs.has("item.chexsonsaeutils.multi_level_emitter"),
                 "English translations must include the emitter item name");
         assertTrue(zhCn.has("item.chexsonsaeutils.multi_level_emitter"),
