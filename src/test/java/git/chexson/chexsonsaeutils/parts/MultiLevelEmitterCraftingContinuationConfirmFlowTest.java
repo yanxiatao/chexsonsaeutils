@@ -59,6 +59,13 @@ class MultiLevelEmitterCraftingContinuationConfirmFlowTest {
     }
 
     @Test
+    void rebuildsIgnoreMissingButtonAfterScreenInit() throws IOException {
+        assertContains(SCREEN_MIXIN, "@Inject(method = \"init\", at = @At(\"HEAD\"))");
+        assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton = null;");
+        assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton == null");
+    }
+
+    @Test
     void sharesModeWithinCurrentConfirm() throws IOException {
         assertContains(SCREEN_MIXIN, "CraftingContinuationSubmitBridge.setConfirmMode(menu");
         assertContains(SCREEN_MIXIN, "CraftingContinuationSubmitBridge.getConfirmMode(menu)");
