@@ -70,6 +70,11 @@ public abstract class CraftConfirmScreenContinuationMixin extends AEBaseScreen<C
 
         CraftConfirmMenu menu = getMenu();
         CraftingContinuationMode mode = CraftingContinuationSubmitBridge.getConfirmMode(menu);
+        chexsonsaeutils$continuationModeButton.setX(
+                start.getX() - chexsonsaeutils$modeButtonWidth - chexsonsaeutils$modeButtonGap);
+        chexsonsaeutils$continuationModeButton.setY(start.getY());
+        chexsonsaeutils$continuationModeButton.setWidth(chexsonsaeutils$modeButtonWidth);
+        chexsonsaeutils$continuationModeButton.setHeight(start.getHeight());
         chexsonsaeutils$continuationModeButton.setMessage(chexsonsaeutils$getModeLabel(mode));
         chexsonsaeutils$continuationModeButton.visible = true;
         chexsonsaeutils$continuationModeButton.active = true;
