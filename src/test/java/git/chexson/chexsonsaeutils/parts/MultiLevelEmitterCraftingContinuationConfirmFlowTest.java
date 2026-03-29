@@ -63,6 +63,8 @@ class MultiLevelEmitterCraftingContinuationConfirmFlowTest {
         assertContains(SCREEN_MIXIN, "@Inject(method = \"init\", at = @At(\"HEAD\"))");
         assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton = null;");
         assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton == null");
+        assertContains(SCREEN_MIXIN, "!renderables.contains(chexsonsaeutils$continuationModeButton)");
+        assertContains(SCREEN_MIXIN, "!children().contains(chexsonsaeutils$continuationModeButton)");
         assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton.setX(");
         assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton.setY(start.getY())");
     }
