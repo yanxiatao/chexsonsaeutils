@@ -40,5 +40,15 @@
   "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.duplicate_emit_to_craft": "Another slot already exposes this target for Emit to Craft.",
   "gui.chexsonsaeutils.crafting_mode.default": "Default",
   "gui.chexsonsaeutils.crafting_mode.ignore_missing": "Ignore Missing",
-  "gui.chexsonsaeutils.crafting_status.waiting": "Waiting: %s"
+  "gui.chexsonsaeutils.crafting_status.waiting": "Waiting: %s",
+  "gui.chexsonsaeutils.processing_pattern_rule.title": "Processing Input Rule",
+  "gui.chexsonsaeutils.processing_pattern_rule.grouped_content": "Tag Groups & Explicit Picks",
+  "gui.chexsonsaeutils.processing_pattern_rule.interaction_hint": "Checkbox = tag, icon = single item",
+  "gui.chexsonsaeutils.processing_pattern_rule.selected_summary": "Tags: %s  Items: %s",
+  "gui.chexsonsaeutils.processing_pattern_rule.empty": "No shared item tags found",
+  "gui.chexsonsaeutils.processing_pattern_rule.save": "Save Rule",
+  "gui.chexsonsaeutils.processing_pattern_rule.clear": "Clear Rule",
+  "gui.chexsonsaeutils.processing_pattern_rule.status.not_configured": "Not Configured",
+  "gui.chexsonsaeutils.processing_pattern_rule.status.configured": "Configured",
+  "gui.chexsonsaeutils.processing_pattern_rule.status.partially_invalid": "Partially Invalid"
 }

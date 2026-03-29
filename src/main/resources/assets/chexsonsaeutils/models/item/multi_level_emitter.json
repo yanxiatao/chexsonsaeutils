@@ -1,6 +1,3 @@
 {
-  "parent": "minecraft:item/generated",
-  "textures": {
-    "layer0": "chexsonsaeutils:item/multi_level_emitter"
-  }
+  "parent": "ae2:item/level_emitter"
 }

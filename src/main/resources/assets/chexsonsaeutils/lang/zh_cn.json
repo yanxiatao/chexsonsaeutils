@@ -40,5 +40,15 @@
   "gui.chexsonsaeutils.multi_level_emitter.crafting_mode.duplicate_emit_to_craft": "\u53e6\u4e00\u4e2a\u69fd\u4f4d\u5df2\u7ecf\u5c06\u6b64\u76ee\u6807\u66b4\u9732\u4e3a\u53ef\u5408\u6210\u8865\u8d27\u3002",
   "gui.chexsonsaeutils.crafting_mode.default": "\u9ed8\u8ba4",
   "gui.chexsonsaeutils.crafting_mode.ignore_missing": "\u5ffd\u7565\u7f3a\u6599",
-  "gui.chexsonsaeutils.crafting_status.waiting": "\u7b49\u5019\u6570\u91cf\uff1a%s"
+  "gui.chexsonsaeutils.crafting_status.waiting": "\u7b49\u5019\u6570\u91cf\uff1a%s",
+  "gui.chexsonsaeutils.processing_pattern_rule.title": "\u5904\u7406\u8f93\u5165\u89c4\u5219",
+  "gui.chexsonsaeutils.processing_pattern_rule.grouped_content": "\u6807\u7b7e\u5206\u7ec4\u4e0e\u663e\u5f0f\u9009\u62e9",
+  "gui.chexsonsaeutils.processing_pattern_rule.interaction_hint": "\u52fe\u9009\u6846=\u6574\u7ec4\u6807\u7b7e\uff0c\u56fe\u6807=\u5355\u4e2a\u7269\u54c1",
+  "gui.chexsonsaeutils.processing_pattern_rule.selected_summary": "\u6807\u7b7e\uff1a%s  \u7269\u54c1\uff1a%s",
+  "gui.chexsonsaeutils.processing_pattern_rule.empty": "\u5f53\u524d\u539f\u6599\u6ca1\u6709\u53ef\u5171\u4eab\u7684\u7269\u54c1\u6807\u7b7e",
+  "gui.chexsonsaeutils.processing_pattern_rule.save": "\u4fdd\u5b58\u89c4\u5219",
+  "gui.chexsonsaeutils.processing_pattern_rule.clear": "\u6e05\u9664\u89c4\u5219",
+  "gui.chexsonsaeutils.processing_pattern_rule.status.not_configured": "\u672a\u914d\u7f6e",
+  "gui.chexsonsaeutils.processing_pattern_rule.status.configured": "\u5df2\u914d\u7f6e",
+  "gui.chexsonsaeutils.processing_pattern_rule.status.partially_invalid": "\u90e8\u5206\u5931\u6548"
 }
