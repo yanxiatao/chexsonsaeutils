@@ -49,6 +49,11 @@ public abstract class CraftConfirmScreenContinuationMixin extends AEBaseScreen<C
         super(menu, playerInventory, title, style);
     }
 
+    @Inject(method = "init", at = @At("HEAD"))
+    private void chexsonsaeutils$resetContinuationButtonOnInit(CallbackInfo ci) {
+        chexsonsaeutils$continuationModeButton = null;
+    }
+
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$updateContinuationModeState(CallbackInfo ci) {
         if (chexsonsaeutils$continuationModeButton == null) {
