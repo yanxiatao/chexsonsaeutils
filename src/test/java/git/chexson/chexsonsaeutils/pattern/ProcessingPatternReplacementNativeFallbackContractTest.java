@@ -13,6 +13,7 @@ import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.assert
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.assertDoesNotContain;
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.javaSource;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class ProcessingPatternReplacementNativeFallbackContractTest {
 
@@ -35,6 +36,12 @@ class ProcessingPatternReplacementNativeFallbackContractTest {
             "git/chexson/chexsonsaeutils/mixin/ae2/menu/PatternEncodingTermMenuRuleMixin.java");
     private static final Path SCREEN_MIXIN_SOURCE = javaSource(
             "git/chexson/chexsonsaeutils/mixin/ae2/client/gui/PatternEncodingTermScreenRuleMixin.java");
+    private static final Path MAIN_CLASS = javaSource(
+            "git/chexson/chexsonsaeutils/Chexsonsaeutils.java");
+    private static final Path FEATURE_GATE_SOURCE = javaSource(
+            "git/chexson/chexsonsaeutils/config/ProcessingPatternReplacementFeatureGate.java");
+    private static final Path MIXIN_PLUGIN_SOURCE = javaSource(
+            "git/chexson/chexsonsaeutils/mixin/ae2/ChexsonsaeutilsMixinPlugin.java");
 
     @Test
     void disabledModeSkipsReplacementTerminalAndRuntimeMixins() throws Exception {
@@ -78,6 +85,11 @@ class ProcessingPatternReplacementNativeFallbackContractTest {
         });
 
         assertDisabledModeUsesStartupGateInsteadOfInlineFallback();
+    }
+
+    @Test
+    void disabledModeKeepsDecoderAndMetadataWritebackOutOfNativePath() {
+        fail("Pending decoder and inert metadata contract assertions");
     }
 
     private static void assertDisabledModeUsesStartupGateInsteadOfInlineFallback() throws IOException {
