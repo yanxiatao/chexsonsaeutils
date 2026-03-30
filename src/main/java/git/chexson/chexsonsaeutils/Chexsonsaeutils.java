@@ -7,6 +7,7 @@ import appeng.core.definitions.AEItems;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.ProcessingPatternReplacementFeatureGate;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
@@ -77,7 +78,9 @@ public class Chexsonsaeutils {
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap);
-        event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
+        if (ProcessingPatternReplacementFeatureGate.isEnabledAtStartup()) {
+            event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
+        }
     }
 
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)

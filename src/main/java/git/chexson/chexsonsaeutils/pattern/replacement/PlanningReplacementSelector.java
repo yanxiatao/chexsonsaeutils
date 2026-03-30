@@ -16,6 +16,7 @@ public final class PlanningReplacementSelector {
 
     public static @Nullable AEKey selectPlanningStack(
             IPatternDetails.IInput input,
+            long requestedAmount,
             @Nullable Level level,
             BiPredicate<AEKey, Long> hasSufficientAmount,
             Predicate<AEKey> canEmitFor,
@@ -26,7 +27,7 @@ public final class PlanningReplacementSelector {
         GenericStack primaryInput = possibleInputs[0];
         AEKey primaryKey = primaryInput.what();
         long multiplier = input.getMultiplier();
-        if (hasSufficientAmount.test(primaryKey, primaryInput.amount() * multiplier)) {
+        if (hasSufficientAmount.test(primaryKey, primaryInput.amount() * multiplier * requestedAmount)) {
             return primaryKey;
         }
 
@@ -38,7 +39,7 @@ public final class PlanningReplacementSelector {
             }
 
             AEKey possibleKey = possibleInput.what();
-            if (hasSufficientAmount.test(possibleKey, possibleInput.amount() * multiplier)) {
+            if (hasSufficientAmount.test(possibleKey, possibleInput.amount() * multiplier * requestedAmount)) {
                 return possibleKey;
             }
         }
