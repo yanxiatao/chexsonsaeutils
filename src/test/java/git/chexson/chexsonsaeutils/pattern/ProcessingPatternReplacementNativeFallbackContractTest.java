@@ -13,7 +13,6 @@ import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.assert
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.assertDoesNotContain;
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.javaSource;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.fail;
 
 class ProcessingPatternReplacementNativeFallbackContractTest {
 
@@ -88,8 +87,14 @@ class ProcessingPatternReplacementNativeFallbackContractTest {
     }
 
     @Test
-    void disabledModeKeepsDecoderAndMetadataWritebackOutOfNativePath() {
-        fail("Pending decoder and inert metadata contract assertions");
+    void disabledModeKeepsDecoderAndMetadataWritebackOutOfNativePath() throws IOException {
+        assertContains(MAIN_CLASS, "if (ProcessingPatternReplacementFeatureGate.isEnabledAtStartup()) {");
+        assertContains(MAIN_CLASS, "event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);");
+        assertDoesNotContain(MAIN_CLASS, "writeRules(");
+        assertDoesNotContain(FEATURE_GATE_SOURCE, "writeRules(");
+        assertDoesNotContain(MIXIN_PLUGIN_SOURCE, "writeRules(");
+        assertContains(MENU_MIXIN_SOURCE, ".restoreRuleDraft(");
+        assertContains(MENU_MIXIN_SOURCE, ".restoreRuleStatus(");
     }
 
     private static void assertDisabledModeUsesStartupGateInsteadOfInlineFallback() throws IOException {
