@@ -13,13 +13,31 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(value = CraftingTreeProcess.class, remap = false)
 public abstract class CraftingTreeProcessReplacementMixin {
     @Shadow(remap = false)
     @Final
     IPatternDetails details;
+
+    @Shadow(remap = false)
+    private boolean limitQty;
+
+    @Inject(method = "<init>", at = @At("TAIL"), remap = false)
+    private void chexsonsaeutils$forceReplacementAwarePatternsToRunOneGroupAtATime(
+            ICraftingService cc,
+            CraftingCalculation job,
+            IPatternDetails details,
+            CraftingTreeNode craftingTreeNode,
+            CallbackInfo ci
+    ) {
+        if (this.details instanceof ReplacementAwareProcessingPattern) {
+            this.limitQty = true;
+        }
+    }
 
     @Redirect(
             method = "<init>",
@@ -49,6 +67,7 @@ public abstract class CraftingTreeProcessReplacementMixin {
         var simulationInventory = ((CraftingCalculationAccessor) job).chexsonsaeutils$getNetworkInv();
         AEKey replacement = PlanningReplacementSelector.selectPlanningStack(
                 input,
+                amount,
                 null,
                 (candidate, requiredAmount) -> simulationInventory.extract(candidate, requiredAmount, Actionable.SIMULATE) >= requiredAmount,
                 cc::canEmitFor,

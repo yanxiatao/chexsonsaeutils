@@ -8,6 +8,7 @@ import appeng.api.stacks.GenericStack;
 import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.ICraftingInventory;
+import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementGroupTemplateSelector;
 import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -111,17 +112,13 @@ public abstract class CraftingTreeNodeReplacementMixin {
             return getValidItemTemplates(inventory);
         }
 
-        for (GenericStack possibleInput : this.parentInput.getPossibleInputs()) {
-            if (!this.what.matches(possibleInput)) {
-                continue;
-            }
-
-            long requiredAmount = possibleInput.amount() * this.chexsonsaeutils$currentRequestedAmount;
-            if (inventory.extract(this.what, requiredAmount, Actionable.SIMULATE) < requiredAmount) {
-                return getValidItemTemplates(inventory);
-            }
-
-            return List.of(new InputTemplate(this.what, possibleInput.amount()));
+        List<InputTemplate> groupedTemplates = ReplacementGroupTemplateSelector.selectTemplates(
+                this.parentInput,
+                this.chexsonsaeutils$currentRequestedAmount,
+                (candidate, requiredAmount) -> inventory.extract(candidate, requiredAmount, Actionable.SIMULATE) >= requiredAmount
+        );
+        if (!groupedTemplates.isEmpty()) {
+            return groupedTemplates;
         }
 
         return getValidItemTemplates(inventory);
