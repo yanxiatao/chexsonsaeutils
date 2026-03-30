@@ -232,8 +232,12 @@ class PatternTerminalRuleMenuTest {
     @Test
     void phaseFourRegressionSuiteCoversTerminalStateAndExecutionBoundary() throws IOException {
         assertContains(EXECUTION_TEST, "pushInputsToExternalInventoryRejectsIrrelevantCandidates");
-        assertContains(PLANNING_TEST, "planningSelectorNeverReturnsIrrelevantCandidate");
+        assertContains(PLANNING_TEST, "planningSelectorRejectsReplacementWhenItCannotCoverRequestedGroups");
         assertContains(PLANNING_TEST, "planningMixinsRespectReplacementAwarePossibleInputs");
+        assertContains(Path.of(
+                        "src", "test", "java", "git", "chexson", "chexsonsaeutils", "pattern",
+                        "ProcessingPatternReplacementNativeFallbackContractTest.java"),
+                "disabledModeSkipsReplacementTerminalAndRuntimeMixins");
         assertContains(PATTERN_ENCODING_TERM_SCREEN_RULE_MIXIN, "ProcessingSlotRuleVisualState.PARTIALLY_INVALID");
         assertContains(Path.of(
                         "src", "test", "java", "git", "chexson", "chexsonsaeutils", "pattern",
