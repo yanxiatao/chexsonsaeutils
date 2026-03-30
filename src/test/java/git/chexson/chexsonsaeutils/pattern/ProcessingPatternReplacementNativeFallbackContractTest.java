@@ -1,0 +1,59 @@
+package git.chexson.chexsonsaeutils.pattern;
+
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.nio.file.Path;
+
+import static git.chexson.chexsonsaeutils.support.ContinuationConfigTestSupport.withStartupConfigDir;
+import static git.chexson.chexsonsaeutils.support.ContinuationConfigTestSupport.writeCommonConfig;
+import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.javaSource;
+import static org.junit.jupiter.api.Assertions.fail;
+
+class ProcessingPatternReplacementNativeFallbackContractTest {
+
+    private static final String MIXIN_PLUGIN_CLASS =
+            "git.chexson.chexsonsaeutils.mixin.ae2.ChexsonsaeutilsMixinPlugin";
+    private static final String REPLACEMENT_MENU_MIXIN =
+            "git.chexson.chexsonsaeutils.mixin.ae2.menu.PatternEncodingTermMenuRuleMixin";
+    private static final String REPLACEMENT_SCREEN_MIXIN =
+            "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.PatternEncodingTermScreenRuleMixin";
+    private static final String PATTERN_DETAILS_ACCESSOR =
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor";
+    private static final String CRAFTING_CALCULATION_ACCESSOR =
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCalculationAccessor";
+    private static final String CRAFTING_TREE_PROCESS_MIXIN =
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessReplacementMixin";
+    private static final String CRAFTING_TREE_NODE_MIXIN =
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeReplacementMixin";
+
+    private static final Path MENU_MIXIN_SOURCE = javaSource(
+            "git/chexson/chexsonsaeutils/mixin/ae2/menu/PatternEncodingTermMenuRuleMixin.java");
+    private static final Path SCREEN_MIXIN_SOURCE = javaSource(
+            "git/chexson/chexsonsaeutils/mixin/ae2/client/gui/PatternEncodingTermScreenRuleMixin.java");
+
+    @Test
+    void disabledModeSkipsReplacementTerminalAndRuntimeMixins() throws Exception {
+        Path configDir = writeCommonConfig(
+                "replacement-native-fallback",
+                "processingPatternReplacementEnabled = false"
+        ).getParent();
+        Object plugin = instantiatePlugin();
+
+        withStartupConfigDir(configDir, () -> fail("Pending disabled fallback assertions"));
+    }
+
+    private static Object instantiatePlugin() throws ReflectiveOperationException {
+        Class<?> pluginClass = Class.forName(MIXIN_PLUGIN_CLASS);
+        Constructor<?> constructor = pluginClass.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        return constructor.newInstance();
+    }
+
+    private static boolean shouldApplyMixin(Object plugin, String targetClassName, String mixinClassName)
+            throws ReflectiveOperationException {
+        Method shouldApplyMixin = plugin.getClass().getMethod("shouldApplyMixin", String.class, String.class);
+        return (Boolean) shouldApplyMixin.invoke(plugin, targetClassName, mixinClassName);
+    }
+}
