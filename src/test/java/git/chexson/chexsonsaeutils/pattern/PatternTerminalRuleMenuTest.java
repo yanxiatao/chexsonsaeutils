@@ -37,6 +37,9 @@ class PatternTerminalRuleMenuTest {
     private static final Path PLANNING_TEST = Path.of(
             "src", "test", "java", "git", "chexson", "chexsonsaeutils", "pattern",
             "ProcessingPatternReplacementPlanningTest.java");
+    private static final Path NATIVE_FALLBACK_CONTRACT_TEST = Path.of(
+            "src", "test", "java", "git", "chexson", "chexsonsaeutils", "pattern",
+            "ProcessingPatternReplacementNativeFallbackContractTest.java");
     private static final Path PROCESSING_PATTERN_REPLACEMENT_JSON = resourcePath(
             "assets/ae2/screens/processing_pattern_replacement.json");
     private static final Path EN_US = resourcePath("assets/chexsonsaeutils/lang/en_us.json");
@@ -232,8 +235,10 @@ class PatternTerminalRuleMenuTest {
     @Test
     void phaseFourRegressionSuiteCoversTerminalStateAndExecutionBoundary() throws IOException {
         assertContains(EXECUTION_TEST, "pushInputsToExternalInventoryRejectsIrrelevantCandidates");
-        assertContains(PLANNING_TEST, "planningSelectorNeverReturnsIrrelevantCandidate");
+        assertContains(PLANNING_TEST, "planningSelectorRejectsReplacementWhenItCannotCoverRequestedGroups");
         assertContains(PLANNING_TEST, "planningMixinsRespectReplacementAwarePossibleInputs");
+        assertContains(NATIVE_FALLBACK_CONTRACT_TEST, "disabledModeSkipsReplacementTerminalAndRuntimeMixins");
+        assertContains(NATIVE_FALLBACK_CONTRACT_TEST, "disabledModeKeepsDecoderAndMetadataWritebackOutOfNativePath");
         assertContains(PATTERN_ENCODING_TERM_SCREEN_RULE_MIXIN, "ProcessingSlotRuleVisualState.PARTIALLY_INVALID");
         assertContains(Path.of(
                         "src", "test", "java", "git", "chexson", "chexsonsaeutils", "pattern",

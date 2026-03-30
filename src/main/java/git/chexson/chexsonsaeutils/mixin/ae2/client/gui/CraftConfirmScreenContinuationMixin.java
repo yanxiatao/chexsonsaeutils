@@ -49,9 +49,16 @@ public abstract class CraftConfirmScreenContinuationMixin extends AEBaseScreen<C
         super(menu, playerInventory, title, style);
     }
 
+    @Inject(method = "init", at = @At("HEAD"))
+    private void chexsonsaeutils$resetContinuationButtonOnInit(CallbackInfo ci) {
+        chexsonsaeutils$continuationModeButton = null;
+    }
+
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$updateContinuationModeState(CallbackInfo ci) {
-        if (chexsonsaeutils$continuationModeButton == null) {
+        if (chexsonsaeutils$continuationModeButton == null
+                || !renderables.contains(chexsonsaeutils$continuationModeButton)
+                || !children().contains(chexsonsaeutils$continuationModeButton)) {
             chexsonsaeutils$continuationModeButton = addRenderableWidget(
                     Button.builder(chexsonsaeutils$getModeLabel(CraftingContinuationMode.defaultMode()),
                                     button -> chexsonsaeutils$cycleContinuationMode())
@@ -65,6 +72,11 @@ public abstract class CraftConfirmScreenContinuationMixin extends AEBaseScreen<C
 
         CraftConfirmMenu menu = getMenu();
         CraftingContinuationMode mode = CraftingContinuationSubmitBridge.getConfirmMode(menu);
+        chexsonsaeutils$continuationModeButton.setX(
+                start.getX() - chexsonsaeutils$modeButtonWidth - chexsonsaeutils$modeButtonGap);
+        chexsonsaeutils$continuationModeButton.setY(start.getY());
+        chexsonsaeutils$continuationModeButton.setWidth(chexsonsaeutils$modeButtonWidth);
+        chexsonsaeutils$continuationModeButton.setHeight(start.getHeight());
         chexsonsaeutils$continuationModeButton.setMessage(chexsonsaeutils$getModeLabel(mode));
         chexsonsaeutils$continuationModeButton.visible = true;
         chexsonsaeutils$continuationModeButton.active = true;
