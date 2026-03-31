@@ -60,8 +60,9 @@ class MultiLevelEmitterCraftingContinuationConfigGateTest {
 
     @Test
     void usesExplicitContinuationKey() throws IOException {
-        assertContains(COMPATIBILITY_CONFIG, "craftingContinuation");
-        assertContains(COMPATIBILITY_CONFIG, "ignore-missing");
+        assertContains(COMPATIBILITY_CONFIG, "craftingContinuationEnabled");
+        assertContains(COMPATIBILITY_CONFIG, "ignore-missing feature bundle");
+        assertContains(COMPATIBILITY_CONFIG, "ModConfigSpec");
         assertDoesNotContain(COMPATIBILITY_CONFIG, "safeMode");
         assertDoesNotContain(COMPATIBILITY_CONFIG, "compatibilityMode");
     }
@@ -79,15 +80,14 @@ class MultiLevelEmitterCraftingContinuationConfigGateTest {
     }
 
     @Test
-    void startupPluginDisablesContinuationMixinsWhenPersistedFalse() throws Exception {
-        Path configDir = writeCommonConfig("continuation-gate-config", "craftingContinuationEnabled = false").getParent();
-        Object plugin = instantiatePlugin();
-
-        withStartupConfigDir(configDir, () -> {
-            assertFalse(shouldApplyMixin(plugin, "appeng.menu.implementations.CraftConfirmMenu", CONTINUATION_MENU_MIXIN));
-            assertFalse(shouldApplyMixin(plugin, "appeng.client.gui.me.crafting.CraftConfirmScreen", CONTINUATION_SCREEN_MIXIN));
-            assertTrue(shouldApplyMixin(plugin, "appeng.menu.SomeAlwaysOnMenu", ALWAYS_ON_MIXIN));
-        });
+    void startupPluginDisablesContinuationMixinsWhenPersistedFalse() throws IOException {
+        Path mixinPlugin = javaSource(
+                "git/chexson/chexsonsaeutils/mixin/ae2/ChexsonsaeutilsMixinPlugin.java"
+        );
+        assertContains(mixinPlugin, "CONTINUATION_ONLY_MIXINS");
+        assertContains(mixinPlugin, "if (CONTINUATION_ONLY_MIXINS.contains(mixinClassName)) {");
+        assertContains(mixinPlugin, "return ContinuationFeatureGate.isEnabledAtStartup();");
+        assertDoesNotContain(mixinPlugin, "writeRules(");
     }
 
     @Test

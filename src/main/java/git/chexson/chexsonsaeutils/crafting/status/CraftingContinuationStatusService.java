@@ -493,7 +493,7 @@ public final class CraftingContinuationStatusService {
     }
 
     public static String encodeKeyForSync(@Nullable AEKey key) {
-        return key == null ? "" : key.toTagGeneric().toString();
+        return key == null ? "" : key.toString();
     }
 
     public interface SelectedCpuDetailHost {

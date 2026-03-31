@@ -1,15 +1,15 @@
 package git.chexson.chexsonsaeutils.config;
 
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 public final class ChexsonsaeutilsCompatibilityConfig {
 
-    public static final ForgeConfigSpec SPEC;
-    public static final ForgeConfigSpec.BooleanValue CRAFTING_CONTINUATION_ENABLED;
-    public static final ForgeConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
+    public static final ModConfigSpec SPEC;
+    public static final ModConfigSpec.BooleanValue CRAFTING_CONTINUATION_ENABLED;
+    public static final ModConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
 
     static {
-        ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
+        ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
         CRAFTING_CONTINUATION_ENABLED = builder
                 .comment("Disable the AE2 crafting continuation / ignore-missing feature bundle. Takes effect after restart.")
                 .define("craftingContinuationEnabled", true);

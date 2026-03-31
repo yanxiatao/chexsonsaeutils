@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.pattern.replacement;
 
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -7,6 +8,7 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -47,7 +49,7 @@ public class ProcessingPatternReplacementPersistence {
     public boolean hasReplacementMetadata(ItemStack patternStack) {
         return patternStack != null
                 && !patternStack.isEmpty()
-                && hasReplacementMetadata(patternStack.getTag());
+                && hasReplacementMetadata(getPatternTag(patternStack));
     }
 
     public boolean hasReplacementMetadata(@Nullable CompoundTag patternTag) {
@@ -59,7 +61,7 @@ public class ProcessingPatternReplacementPersistence {
             return;
         }
 
-        writeRules(patternStack.getOrCreateTag(), rules);
+        CustomData.update(DataComponents.CUSTOM_DATA, patternStack, patternTag -> writeRules(patternTag, rules));
     }
 
     public void writeRules(CompoundTag patternTag, Collection<ProcessingPatternSlotReplacementRule> rules) {
@@ -98,7 +100,7 @@ public class ProcessingPatternReplacementPersistence {
             return List.of();
         }
 
-        return readRules(patternStack.getTag());
+        return readRules(getPatternTag(patternStack));
     }
 
     public List<ProcessingPatternSlotReplacementRule> readRules(@Nullable CompoundTag patternTag) {
@@ -145,7 +147,7 @@ public class ProcessingPatternReplacementPersistence {
         }
 
         return restoreRule(
-                patternStack.getTag(),
+                getPatternTag(patternStack),
                 slotIndex,
                 currentSourceItemId,
                 tagService.extractSourceTagIds(sourceStack)
@@ -194,7 +196,7 @@ public class ProcessingPatternReplacementPersistence {
         }
 
         return restoreRuleStatus(
-                patternStack == null ? null : patternStack.getTag(),
+                getPatternTag(patternStack),
                 slotIndex,
                 currentSourceItemId,
                 tagService.extractSourceTagIds(sourceStack)
@@ -261,7 +263,7 @@ public class ProcessingPatternReplacementPersistence {
         }
 
         return restoreRuleDraft(
-                patternStack == null ? null : patternStack.getTag(),
+                getPatternTag(patternStack),
                 slotIndex,
                 currentSourceItemId,
                 tagService.extractSourceTagIds(sourceStack)
@@ -352,5 +354,13 @@ public class ProcessingPatternReplacementPersistence {
             }
         }
         return Collections.unmodifiableSet(ids);
+    }
+
+    private static @Nullable CompoundTag getPatternTag(@Nullable ItemStack patternStack) {
+        if (patternStack == null || patternStack.isEmpty()) {
+            return null;
+        }
+        CustomData customData = patternStack.get(DataComponents.CUSTOM_DATA);
+        return customData == null ? null : customData.copyTag();
     }
 }

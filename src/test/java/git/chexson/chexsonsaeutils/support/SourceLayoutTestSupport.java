@@ -12,14 +12,19 @@ import java.util.List;
 
 public final class SourceLayoutTestSupport {
 
-    private static final Path JAVA_MAIN = Path.of("src", "main", "java");
-    private static final Path RESOURCES_MAIN = Path.of("src", "main", "resources");
+    private static final Path PROJECT_ROOT = locateProjectRoot();
+    private static final Path JAVA_MAIN = PROJECT_ROOT.resolve(Path.of("src", "main", "java"));
+    private static final Path RESOURCES_MAIN = PROJECT_ROOT.resolve(Path.of("src", "main", "resources"));
 
     private SourceLayoutTestSupport() {
     }
 
     public static String readUtf8(Path path) throws IOException {
-        return Files.readString(path, StandardCharsets.UTF_8);
+        return Files.readString(resolve(path), StandardCharsets.UTF_8);
+    }
+
+    public static Path projectPath(String... segments) {
+        return PROJECT_ROOT.resolve(Path.of("", segments));
     }
 
     public static Path javaSource(String... relativeCandidates) {
@@ -46,22 +51,42 @@ public final class SourceLayoutTestSupport {
     }
 
     public static void assertContains(Path path, String expectedSnippet) throws IOException {
-        Assertions.assertTrue(Files.exists(path), () -> "Expected file to exist: " + path);
-        String content = readUtf8(path);
+        Path resolved = resolve(path);
+        Assertions.assertTrue(Files.exists(resolved), () -> "Expected file to exist: " + resolved);
+        String content = readUtf8(resolved);
         Assertions.assertTrue(content.contains(expectedSnippet),
-                () -> "Expected " + path + " to contain: " + expectedSnippet);
+                () -> "Expected " + resolved + " to contain: " + expectedSnippet);
     }
 
     public static void assertDoesNotContain(Path path, String unexpectedSnippet) throws IOException {
-        Assertions.assertTrue(Files.exists(path), () -> "Expected file to exist: " + path);
-        String content = readUtf8(path);
+        Path resolved = resolve(path);
+        Assertions.assertTrue(Files.exists(resolved), () -> "Expected file to exist: " + resolved);
+        String content = readUtf8(resolved);
         Assertions.assertFalse(content.contains(unexpectedSnippet),
-                () -> "Expected " + path + " to not contain: " + unexpectedSnippet);
+                () -> "Expected " + resolved + " to not contain: " + unexpectedSnippet);
     }
 
     private static Path[] resolveCandidates(Path root, String... relativeCandidates) {
         return Arrays.stream(relativeCandidates)
                 .map(candidate -> root.resolve(Path.of(candidate)))
                 .toArray(Path[]::new);
+    }
+
+    private static Path resolve(Path path) {
+        if (path.isAbsolute()) {
+            return path;
+        }
+        return PROJECT_ROOT.resolve(path).normalize();
+    }
+
+    private static Path locateProjectRoot() {
+        Path current = Path.of("").toAbsolutePath().normalize();
+        while (current != null) {
+            if (Files.exists(current.resolve("build.gradle")) && Files.exists(current.resolve("src"))) {
+                return current;
+            }
+            current = current.getParent();
+        }
+        throw new IllegalStateException("Unable to locate project root from current working directory");
     }
 }

@@ -28,7 +28,7 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
-import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
+import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import org.lwjgl.glfw.GLFW;
 
 import java.lang.reflect.Field;
@@ -360,19 +360,16 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
     @Override
     public void containerTick() {
         super.containerTick();
-        if (expressionInput != null) {
-            expressionInput.tick();
-        }
         syncLayoutFromMenu();
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double wheelDelta) {
-        if (wheelDelta != 0
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalDelta, double verticalDelta) {
+        if (verticalDelta != 0
                 && isMouseOverConfigPanel(mouseX, mouseY)
                 && maxScrollOffset(menu.visibleSlotCount()) > 0) {
             int previousOffset = scrollOffset;
-            if (wheelDelta > 0) {
+            if (verticalDelta > 0) {
                 scrollOffset = Math.max(0, scrollOffset - 1);
             } else {
                 scrollOffset = Math.min(maxScrollOffset(menu.visibleSlotCount()), scrollOffset + 1);
@@ -382,7 +379,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                 return true;
             }
         }
-        return super.mouseScrolled(mouseX, mouseY, wheelDelta);
+        return super.mouseScrolled(mouseX, mouseY, horizontalDelta, verticalDelta);
     }
 
     @Override
@@ -601,7 +598,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
                 input.setTooltip(Tooltip.create(state.craftingLockTooltip()));
                 if (input.isFocused()) {
                     input.setFocused(false);
-                    clearFocus();
+                    clearScreenFocus();
                 }
             } else {
                 input.setTooltip(null);
@@ -836,7 +833,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
         helperStatus = PRECEDENCE_HINT;
         helperStatusColor = COLOR_HELPER;
         lastServerThresholds.clear();
-        clearFocus();
+        clearScreenFocus();
     }
 
     private long previousServerThresholdFor(int slotIndex, long fallbackThreshold) {
@@ -853,7 +850,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
         previousConfiguredSlots = state.configuredSlots();
     }
 
-    private void clearFocus() {
+    private void clearScreenFocus() {
         setFocused(null);
     }
 

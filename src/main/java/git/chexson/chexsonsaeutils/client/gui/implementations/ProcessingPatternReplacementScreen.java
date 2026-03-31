@@ -164,12 +164,12 @@ public final class ProcessingPatternReplacementScreen<C extends PatternEncodingT
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalDelta, double verticalDelta) {
         Point relativeMouse = relativeMouse(mouseX, mouseY);
-        if (isInGroupedContent(relativeMouse) && groupedScrollbar.onMouseWheel(relativeMouse, delta)) {
+        if (isInGroupedContent(relativeMouse) && groupedScrollbar.onMouseWheel(relativeMouse, verticalDelta)) {
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, delta);
+        return super.mouseScrolled(mouseX, mouseY, horizontalDelta, verticalDelta);
     }
 
     @Override

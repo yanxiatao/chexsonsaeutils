@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.javaSource;
+import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.projectPath;
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.readUtf8;
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.resourcePath;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,20 +30,26 @@ class RepositoryStructureContractTest {
         String buildGradle = readUtf8(Path.of("build.gradle"));
         String mixinsConfig = readUtf8(resourcePath("chexsonsaeutils.mixins.json"));
 
-        assertTrue(buildGradle.contains("accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')"),
-                "build.gradle must keep the access transformer path stable");
+        assertTrue(buildGradle.contains("id 'net.neoforged.moddev' version '2.0.141'"),
+                "build.gradle must keep the NeoForge ModDevGradle baseline");
         assertTrue(buildGradle.contains("sourceSets.main.resources { srcDir 'src/generated/resources' }"),
                 "build.gradle must keep the generated resources source-set wiring");
-        assertTrue(buildGradle.contains("add sourceSets.main, \"${mod_id}.refmap.json\""),
-                "build.gradle must keep main source-set refmap wiring");
-        assertTrue(buildGradle.contains("config \"${mod_id}.mixins.json\""),
-                "build.gradle must keep the mixin config wiring");
+        assertTrue(buildGradle.contains("from 'src/main/templates'"),
+                "build.gradle must keep metadata generation sourced from templates");
+        assertTrue(buildGradle.contains("filesMatching('META-INF/neoforge.mods.toml')"),
+                "build.gradle must keep the NeoForge metadata expansion wiring");
         assertTrue(buildGradle.contains("useJUnitPlatform()"),
                 "build.gradle must keep JUnit 5 test execution");
+        assertFalse(buildGradle.contains("accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')"),
+                "build.gradle must not regress to the legacy Forge access transformer baseline");
         assertTrue(mixinsConfig.contains("\"refmap\": \"chexsonsaeutils.refmap.json\""),
                 "mixin config must keep the refmap name stable");
         assertTrue(mixinsConfig.contains("\"package\": \"git.chexson.chexsonsaeutils.mixin\""),
                 "mixin config must keep the mixin package root stable");
+        assertTrue(Files.exists(projectPath("src", "main", "templates", "META-INF", "neoforge.mods.toml")),
+                "NeoForge metadata must come from src/main/templates/META-INF/neoforge.mods.toml");
+        assertFalse(Files.exists(projectPath("src", "main", "resources", "META-INF", "mods.toml")),
+                "legacy Forge mods.toml must stay removed");
         assertTrue(Files.exists(resourcePath("assets/ae2/screens/multi_level_emitter.json")),
                 "AE2 screen resource path must stay stable");
     }
@@ -87,7 +94,9 @@ class RepositoryStructureContractTest {
     }
 
     private static void assertCurrentPath(Path currentPath, Path legacyPath) {
-        assertTrue(Files.exists(currentPath), () -> "Expected current path to exist: " + currentPath);
-        assertFalse(Files.exists(legacyPath), () -> "Legacy path must stay removed: " + legacyPath);
+        Path resolvedCurrent = projectPath(currentPath.toString());
+        Path resolvedLegacy = projectPath(legacyPath.toString());
+        assertTrue(Files.exists(resolvedCurrent), () -> "Expected current path to exist: " + resolvedCurrent);
+        assertFalse(Files.exists(resolvedLegacy), () -> "Legacy path must stay removed: " + resolvedLegacy);
     }
 }
