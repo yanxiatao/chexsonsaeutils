@@ -128,6 +128,8 @@ tasks.named('test', Test).configure {
     // Phase 02 restores an emitter-focused regression slice without reopening the whole repository corpus.
     filter {
         includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterRegistrationTest'
+        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterPlacementIntegrationTest'
+        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterLifecycleIntegrationTest'
         includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterPartTest'
         includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterPersistenceIntegrationTest'
         includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterMenuTest'

@@ -9,6 +9,7 @@ import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import git.chexson.chexsonsaeutils.support.TestKeySupport.DummyKey;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 
@@ -518,9 +519,13 @@ class MultiLevelEmitterLifecycleIntegrationTest {
 
     private static void writeRuntimeSnapshot(MultiLevelEmitterRuntimePart runtime, CompoundTag snapshot) {
         try {
-            Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod("writeRuntimeSnapshot", CompoundTag.class);
+            Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod(
+                    "writeRuntimeSnapshot",
+                    CompoundTag.class,
+                    net.minecraft.core.HolderLookup.Provider.class
+            );
             method.setAccessible(true);
-            method.invoke(runtime, snapshot);
+            method.invoke(runtime, snapshot, RegistryAccess.EMPTY);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to write runtime snapshot", exception);
         }
@@ -531,10 +536,11 @@ class MultiLevelEmitterLifecycleIntegrationTest {
             Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod(
                     "readRuntimeSnapshot",
                     CompoundTag.class,
+                    net.minecraft.core.HolderLookup.Provider.class,
                     boolean.class
             );
             method.setAccessible(true);
-            method.invoke(runtime, snapshot, false);
+            method.invoke(runtime, snapshot, RegistryAccess.EMPTY, false);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to read runtime snapshot", exception);
         }
