@@ -1,7 +1,7 @@
 package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 
 import appeng.api.stacks.AEKey;
-import appeng.core.sync.packets.CraftingJobStatusPacket;
+import appeng.core.network.clientbound.CraftingJobStatusPacket;
 import appeng.crafting.execution.CraftingCpuLogic;
 import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;

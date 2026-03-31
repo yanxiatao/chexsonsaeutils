@@ -78,10 +78,10 @@ public class ReplacementAwareProcessingPattern extends AEProcessingPattern {
             }
         }
 
-        GenericStack[] sparseInputs = getSparseInputs();
+        List<GenericStack> sparseInputs = getSparseInputs();
         for (int inputIndex = 0; inputIndex < nonEmptySparseSlots.length; inputIndex++) {
             int sparseSlot = nonEmptySparseSlots[inputIndex];
-            GenericStack sparseInput = sparseInputs[sparseSlot];
+            GenericStack sparseInput = sparseInputs.get(sparseSlot);
             if (sparseInput == null) {
                 continue;
             }
@@ -125,9 +125,9 @@ public class ReplacementAwareProcessingPattern extends AEProcessingPattern {
 
     private IPatternDetails.IInput[] buildInputs() {
         List<IPatternDetails.IInput> inputs = new ArrayList<>();
-        GenericStack[] sparseInputs = getSparseInputs();
+        List<GenericStack> sparseInputs = getSparseInputs();
         for (int sparseSlot : nonEmptySparseSlots) {
-            inputs.add(buildInputForSlot(sparseSlot, sparseInputs[sparseSlot]));
+            inputs.add(buildInputForSlot(sparseSlot, sparseInputs.get(sparseSlot)));
         }
         return inputs.toArray(IPatternDetails.IInput[]::new);
     }
@@ -184,10 +184,10 @@ public class ReplacementAwareProcessingPattern extends AEProcessingPattern {
         return Map.copyOf(indexedRules);
     }
 
-    private static int[] collectNonEmptySparseSlots(GenericStack[] sparseInputs) {
+    private static int[] collectNonEmptySparseSlots(List<GenericStack> sparseInputs) {
         List<Integer> nonEmptySlots = new ArrayList<>();
-        for (int slotIndex = 0; slotIndex < sparseInputs.length; slotIndex++) {
-            if (sparseInputs[slotIndex] != null) {
+        for (int slotIndex = 0; slotIndex < sparseInputs.size(); slotIndex++) {
+            if (sparseInputs.get(slotIndex) != null) {
                 nonEmptySlots.add(slotIndex);
             }
         }

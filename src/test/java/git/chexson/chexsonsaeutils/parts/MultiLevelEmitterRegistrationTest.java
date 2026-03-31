@@ -45,14 +45,20 @@ class MultiLevelEmitterRegistrationTest {
         assertTrue(modSource.contains("ITEMS.register(MultiLevelEmitterItem.id()"), "missing item registration call");
         assertTrue(modSource.contains("event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap)"),
                 "missing common setup bootstrap enqueue");
+        assertTrue(modSource.contains("RegisterMenuScreensEvent"),
+                "missing NeoForge menu screen registration event anchor");
+        assertTrue(modSource.contains("IMenuTypeExtension.create(MultiLevelEmitterMenu.RuntimeMenu::fromNetwork)"),
+                "missing NeoForge menu type extension factory");
         assertTrue(modSource.contains("Upgrades.add(AEItems.FUZZY_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
                 "missing AE2 fuzzy card registration for the multi-level emitter");
         assertTrue(modSource.contains("Upgrades.add(AEItems.CRAFTING_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
                 "missing AE2 crafting card registration for the multi-level emitter");
         assertTrue(modSource.contains("Chexsonsaeutils.registerMultiLevelEmitterClientBindings()"),
                 "missing client setup binding call");
-        assertTrue(modSource.contains("MenuScreens.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new)"),
-                "missing client screen registration for the custom MultiLevelEmitter menu");
+        assertTrue(modSource.contains("event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new)"),
+                "missing NeoForge client screen registration for the custom MultiLevelEmitter menu");
+        assertFalse(modSource.contains("FMLClientSetupEvent"),
+                "client registration must not regress to the legacy Forge client setup event");
         assertFalse(modSource.contains("modEventBus.addListener(ClientModEvents::onClientSetup)"),
                 "client setup must not be registered twice");
         assertTrue(screenSource.contains("extends AEBaseScreen<MultiLevelEmitterMenu.RuntimeMenu>"),

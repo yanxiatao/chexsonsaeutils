@@ -2,19 +2,14 @@ package git.chexson.chexsonsaeutils.pattern;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
-import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternSlotReplacementRule;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleValidation;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotTagService;
 import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
-import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.chat.Component;
+import git.chexson.chexsonsaeutils.support.TestKeySupport.DummyKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.Test;
 
@@ -27,7 +22,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.assertContains;
@@ -298,87 +292,4 @@ class ProcessingPatternReplacementExecutionTest {
         }
     }
 
-    private static final class DummyKeyType extends AEKeyType {
-        private static final DummyKeyType INSTANCE = new DummyKeyType();
-
-        private DummyKeyType() {
-            super(Objects.requireNonNull(ResourceLocation.tryParse("chexsonsaeutils:execution-test")),
-                    DummyKey.class,
-                    Component.literal("ExecutionTest"));
-        }
-
-        @Override
-        public AEKey readFromPacket(FriendlyByteBuf input) {
-            return null;
-        }
-
-        @Override
-        public AEKey loadKeyFromTag(CompoundTag tag) {
-            return null;
-        }
-    }
-
-    private static final class DummyKey extends AEKey {
-        private final String id;
-
-        private DummyKey(String id) {
-            this.id = id;
-        }
-
-        @Override
-        public AEKeyType getType() {
-            return DummyKeyType.INSTANCE;
-        }
-
-        @Override
-        public AEKey dropSecondary() {
-            return this;
-        }
-
-        @Override
-        public CompoundTag toTag() {
-            CompoundTag tag = new CompoundTag();
-            tag.putString("id", id);
-            return tag;
-        }
-
-        @Override
-        public Object getPrimaryKey() {
-            return id;
-        }
-
-        @Override
-        public ResourceLocation getId() {
-            return Objects.requireNonNull(ResourceLocation.tryParse("chexsonsaeutils:" + id));
-        }
-
-        @Override
-        public void writeToPacket(FriendlyByteBuf data) {
-        }
-
-        @Override
-        protected Component computeDisplayName() {
-            return Component.literal(id);
-        }
-
-        @Override
-        public void addDrops(long amount, List<ItemStack> drops, Level level, BlockPos pos) {
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            if (this == other) {
-                return true;
-            }
-            if (!(other instanceof DummyKey dummyKey)) {
-                return false;
-            }
-            return Objects.equals(id, dummyKey.id);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(id);
-        }
-    }
 }

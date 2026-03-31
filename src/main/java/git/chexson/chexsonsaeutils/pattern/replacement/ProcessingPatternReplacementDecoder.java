@@ -3,9 +3,11 @@ package git.chexson.chexsonsaeutils.pattern.replacement;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.IPatternDetailsDecoder;
 import appeng.api.stacks.AEItemKey;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
@@ -46,27 +48,28 @@ public class ProcessingPatternReplacementDecoder implements IPatternDetailsDecod
         return stack != null
                 && !stack.isEmpty()
                 && persistence.hasReplacementMetadata(stack)
-                && hasProcessingPatternPayload(stack.getTag());
+                && hasProcessingPatternPayload(getPatternTag(stack));
     }
 
     @Override
     public @Nullable IPatternDetails decodePattern(AEItemKey definition, Level level) {
+        CompoundTag patternTag = getPatternTag(definition);
         if (definition == null
-                || !persistence.hasReplacementMetadata(definition.getTag())
-                || !hasProcessingPatternPayload(definition.getTag())) {
+                || !persistence.hasReplacementMetadata(patternTag)
+                || !hasProcessingPatternPayload(patternTag)) {
             return null;
         }
 
         return new ReplacementAwareProcessingPattern(
                 definition,
-                persistence.readRules(definition.getTag()),
+                persistence.readRules(patternTag),
                 tagService,
                 validation
         );
     }
 
     @Override
-    public @Nullable IPatternDetails decodePattern(ItemStack stack, Level level, boolean recursive) {
+    public @Nullable IPatternDetails decodePattern(ItemStack stack, Level level) {
         if (!isEncodedPattern(stack)) {
             return null;
         }
@@ -79,5 +82,21 @@ public class ProcessingPatternReplacementDecoder implements IPatternDetailsDecod
         return patternTag != null
                 && patternTag.contains(INPUTS_TAG, Tag.TAG_LIST)
                 && patternTag.contains(OUTPUTS_TAG, Tag.TAG_LIST);
+    }
+
+    private static @Nullable CompoundTag getPatternTag(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
+        return customData == null ? null : customData.copyTag();
+    }
+
+    private static @Nullable CompoundTag getPatternTag(AEItemKey definition) {
+        if (definition == null) {
+            return null;
+        }
+        CustomData customData = definition.get(DataComponents.CUSTOM_DATA);
+        return customData == null ? null : customData.copyTag();
     }
 }

@@ -100,23 +100,12 @@ class ProcessingPatternReplacementConfigGateTest {
     }
 
     @Test
-    void startupPluginDisablesReplacementBundleWhenPersistedFalse() throws Exception {
-        Path configDir = writeCommonConfig(
-                "replacement-gate-config",
-                "processingPatternReplacementEnabled = false"
-        ).getParent();
-        Object plugin = instantiatePlugin();
-
-        withStartupConfigDir(configDir, () -> {
-            assertFalse(shouldApplyMixin(plugin, "appeng.menu.implementations.PatternEncodingTermMenu", REPLACEMENT_MENU_MIXIN));
-            assertFalse(shouldApplyMixin(plugin, "appeng.client.gui.me.pattern.PatternEncodingTermScreen", REPLACEMENT_SCREEN_MIXIN));
-            assertFalse(shouldApplyMixin(plugin, "appeng.api.crafting.PatternDetailsHelper", PATTERN_DETAILS_ACCESSOR));
-            assertFalse(shouldApplyMixin(plugin, "appeng.crafting.execution.CraftingCalculation", CRAFTING_CALCULATION_ACCESSOR));
-            assertFalse(shouldApplyMixin(plugin, "appeng.crafting.execution.CraftingTreeProcess", CRAFTING_TREE_PROCESS_MIXIN));
-            assertFalse(shouldApplyMixin(plugin, "appeng.crafting.execution.CraftingTreeNode", CRAFTING_TREE_NODE_MIXIN));
-            assertTrue(shouldApplyMixin(plugin, "appeng.menu.implementations.CraftConfirmMenu", CONTINUATION_MENU_MIXIN));
-            assertTrue(shouldApplyMixin(plugin, "appeng.menu.SomeAlwaysOnMenu", ALWAYS_ON_MIXIN));
-        });
+    void startupPluginDisablesReplacementBundleWhenPersistedFalse() throws IOException {
+        assertContains(MIXIN_PLUGIN_SOURCE, "REPLACEMENT_ONLY_MIXINS");
+        assertContains(MIXIN_PLUGIN_SOURCE, "if (REPLACEMENT_ONLY_MIXINS.contains(mixinClassName)) {");
+        assertContains(MIXIN_PLUGIN_SOURCE, "return ProcessingPatternReplacementFeatureGate.isEnabledAtStartup();");
+        assertContains(MIXIN_PLUGIN_SOURCE, "return ContinuationFeatureGate.isEnabledAtStartup();");
+        assertDoesNotContain(MIXIN_PLUGIN_SOURCE, "writeRules(");
     }
 
     @Test

@@ -10,7 +10,7 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.KeyCounter;
 import appeng.core.AELog;
-import appeng.core.sync.packets.CraftingJobStatusPacket;
+import appeng.core.network.clientbound.CraftingJobStatusPacket;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.execution.CraftingCpuLogic;
