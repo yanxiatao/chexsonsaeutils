@@ -2,24 +2,17 @@ package git.chexson.chexsonsaeutils.parts;
 
 import appeng.api.config.RedstoneMode;
 import appeng.api.stacks.AEKey;
-import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.GenericStack;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompileResult;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
+import git.chexson.chexsonsaeutils.support.TestKeySupport.DummyKey;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -259,95 +252,6 @@ class MultiLevelEmitterContractTest {
         @Override
         public boolean hasCraftingCardInstalled() {
             return craftingInstalled;
-        }
-    }
-
-    private static final class DummyKeyType extends AEKeyType {
-        private static final DummyKeyType INSTANCE = new DummyKeyType();
-
-        private DummyKeyType() {
-            super(Objects.requireNonNull(ResourceLocation.tryParse("chexsonsaeutils:test")),
-                    DummyKey.class,
-                    Component.literal("Test"));
-        }
-
-        @Override
-        public AEKey readFromPacket(FriendlyByteBuf input) {
-            return null;
-        }
-
-        @Override
-        public AEKey loadKeyFromTag(CompoundTag tag) {
-            return null;
-        }
-    }
-
-    private static final class DummyKey extends AEKey {
-        private final String primaryKey;
-        private final String variantId;
-        private final int fuzzyValue;
-        private final int fuzzyMaxValue;
-
-        private DummyKey(String primaryKey, String variantId, int fuzzyValue, int fuzzyMaxValue) {
-            this.primaryKey = primaryKey;
-            this.variantId = variantId;
-            this.fuzzyValue = fuzzyValue;
-            this.fuzzyMaxValue = fuzzyMaxValue;
-        }
-
-        @Override
-        public AEKeyType getType() {
-            return DummyKeyType.INSTANCE;
-        }
-
-        @Override
-        public AEKey dropSecondary() {
-            return this;
-        }
-
-        @Override
-        public CompoundTag toTag() {
-            CompoundTag tag = new CompoundTag();
-            tag.putString("primary", primaryKey);
-            tag.putString("variant", variantId);
-            tag.putInt("fuzzyValue", fuzzyValue);
-            tag.putInt("fuzzyMaxValue", fuzzyMaxValue);
-            return tag;
-        }
-
-        @Override
-        public Object getPrimaryKey() {
-            return primaryKey;
-        }
-
-        @Override
-        public int getFuzzySearchValue() {
-            return fuzzyValue;
-        }
-
-        @Override
-        public int getFuzzySearchMaxValue() {
-            return fuzzyMaxValue;
-        }
-
-        @Override
-        public ResourceLocation getId() {
-            return Objects.requireNonNull(ResourceLocation.tryParse(
-                    "chexsonsaeutils:" + primaryKey + "_" + variantId
-            ));
-        }
-
-        @Override
-        public void writeToPacket(FriendlyByteBuf data) {
-        }
-
-        @Override
-        protected Component computeDisplayName() {
-            return Component.literal(primaryKey + ":" + variantId);
-        }
-
-        @Override
-        public void addDrops(long amount, List<ItemStack> drops, Level level, net.minecraft.core.BlockPos pos) {
         }
     }
 }

@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.config;
 
-import net.minecraftforge.fml.loading.FMLPaths;
+import net.neoforged.fml.loading.FMLPaths;
 
 import java.io.IOException;
 import java.nio.file.Files;

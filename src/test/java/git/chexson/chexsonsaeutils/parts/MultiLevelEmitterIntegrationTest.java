@@ -8,6 +8,7 @@ import appeng.api.networking.IStackWatcher;
 import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.api.networking.crafting.ICraftingPlan;
+import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.crafting.ICraftingRequester;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.crafting.ICraftingSimulationRequester;
@@ -15,7 +16,6 @@ import appeng.api.networking.crafting.ICraftingSubmitResult;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.storage.IStorageService;
 import appeng.api.stacks.AEKey;
-import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.AEKeyFilter;
@@ -25,13 +25,8 @@ import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
-import io.netty.buffer.Unpooled;
-import net.minecraft.core.BlockPos;
+import git.chexson.chexsonsaeutils.support.TestKeySupport.DummyKey;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.Test;
 
@@ -45,10 +40,10 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Future;
 
+import static git.chexson.chexsonsaeutils.support.TestKeySupport.newRegistryFriendlyByteBuf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -578,7 +573,7 @@ class MultiLevelEmitterIntegrationTest {
                 )
         ));
 
-        FriendlyByteBuf stream = new FriendlyByteBuf(Unpooled.buffer());
+        var stream = newRegistryFriendlyByteBuf();
         beforeRoundTrip.writeToStream(stream);
 
         CapabilityAwareRuntimePart restored = newCapabilityRuntimePart(false, true);
@@ -795,6 +790,18 @@ class MultiLevelEmitterIntegrationTest {
         }
 
         @Override
+        public void addGlobalCraftingProvider(ICraftingProvider provider) {
+        }
+
+        @Override
+        public void removeGlobalCraftingProvider(ICraftingProvider provider) {
+        }
+
+        @Override
+        public void refreshGlobalCraftingProvider(ICraftingProvider provider) {
+        }
+
+        @Override
         public AEKey getFuzzyCraftable(AEKey whatToCraft, AEKeyFilter filter) {
             return null;
         }
@@ -912,111 +919,4 @@ class MultiLevelEmitterIntegrationTest {
         }
     }
 
-    private static final class DummyKeyType extends AEKeyType {
-        private static final DummyKeyType INSTANCE = new DummyKeyType();
-
-        private DummyKeyType() {
-            super(Objects.requireNonNull(ResourceLocation.tryParse("chexsonsaeutils:test")),
-                    DummyKey.class,
-                    Component.literal("Test"));
-        }
-
-        @Override
-        public AEKey readFromPacket(FriendlyByteBuf input) {
-            return null;
-        }
-
-        @Override
-        public AEKey loadKeyFromTag(CompoundTag tag) {
-            return null;
-        }
-    }
-
-    private static final class DummyKey extends AEKey {
-        private final String primaryKey;
-        private final String variantId;
-        private final int fuzzyValue;
-        private final int fuzzyMaxValue;
-
-        private DummyKey(String primaryKey, String variantId, int fuzzyValue, int fuzzyMaxValue) {
-            this.primaryKey = primaryKey;
-            this.variantId = variantId;
-            this.fuzzyValue = fuzzyValue;
-            this.fuzzyMaxValue = fuzzyMaxValue;
-        }
-
-        @Override
-        public AEKeyType getType() {
-            return DummyKeyType.INSTANCE;
-        }
-
-        @Override
-        public AEKey dropSecondary() {
-            return this;
-        }
-
-        @Override
-        public CompoundTag toTag() {
-            CompoundTag tag = new CompoundTag();
-            tag.putString("primary", primaryKey);
-            tag.putString("variant", variantId);
-            tag.putInt("fuzzyValue", fuzzyValue);
-            tag.putInt("fuzzyMaxValue", fuzzyMaxValue);
-            return tag;
-        }
-
-        @Override
-        public Object getPrimaryKey() {
-            return primaryKey;
-        }
-
-        @Override
-        public int getFuzzySearchValue() {
-            return fuzzyValue;
-        }
-
-        @Override
-        public int getFuzzySearchMaxValue() {
-            return fuzzyMaxValue;
-        }
-
-        @Override
-        public ResourceLocation getId() {
-            return Objects.requireNonNull(ResourceLocation.tryParse(
-                    "chexsonsaeutils:" + primaryKey + "_" + variantId
-            ));
-        }
-
-        @Override
-        public void writeToPacket(FriendlyByteBuf data) {
-        }
-
-        @Override
-        protected Component computeDisplayName() {
-            return Component.literal(primaryKey + ":" + variantId);
-        }
-
-        @Override
-        public void addDrops(long amount, List<ItemStack> drops, Level level, BlockPos pos) {
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            if (this == other) {
-                return true;
-            }
-            if (!(other instanceof DummyKey dummyKey)) {
-                return false;
-            }
-            return fuzzyValue == dummyKey.fuzzyValue
-                    && fuzzyMaxValue == dummyKey.fuzzyMaxValue
-                    && Objects.equals(primaryKey, dummyKey.primaryKey)
-                    && Objects.equals(variantId, dummyKey.variantId);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(primaryKey, variantId, fuzzyValue, fuzzyMaxValue);
-        }
-    }
 }

@@ -19,10 +19,10 @@ import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitter
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionFormatter;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionPlan;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
@@ -79,7 +79,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     }
 
     @Override
-    public boolean onPartActivate(Player player, InteractionHand hand, Vec3 hitPos) {
+    public boolean onUseWithoutItem(Player player, Vec3 hitPos) {
         if (isClientSide()) {
             return true;
         }
@@ -95,34 +95,34 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     }
 
     @Override
-    public void readFromNBT(CompoundTag data) {
-        super.readFromNBT(data);
-        readRuntimeSnapshot(data, false);
+    public void readFromNBT(CompoundTag data, HolderLookup.Provider provider) {
+        super.readFromNBT(data, provider);
+        readRuntimeSnapshot(data, provider, false);
     }
 
     @Override
-    public void writeToNBT(CompoundTag data) {
-        super.writeToNBT(data);
+    public void writeToNBT(CompoundTag data, HolderLookup.Provider provider) {
+        super.writeToNBT(data, provider);
         if (data == null) {
             return;
         }
-        writeRuntimeSnapshot(data);
+        writeRuntimeSnapshot(data, provider);
     }
 
     @Override
-    public void writeToStream(FriendlyByteBuf data) {
+    public void writeToStream(RegistryFriendlyByteBuf data) {
         super.writeToStream(data);
         CompoundTag snapshot = new CompoundTag();
-        writeRuntimeSnapshot(snapshot);
+        writeRuntimeSnapshot(snapshot, data.registryAccess());
         data.writeNbt(snapshot);
     }
 
     @Override
-    public boolean readFromStream(FriendlyByteBuf data) {
+    public boolean readFromStream(RegistryFriendlyByteBuf data) {
         boolean changed = super.readFromStream(data);
         CompoundTag snapshot = data.readNbt();
         if (snapshot != null) {
-            readRuntimeSnapshot(snapshot, false);
+            readRuntimeSnapshot(snapshot, data.registryAccess(), false);
             return true;
         }
         return changed;
@@ -468,10 +468,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
 
     private ConfigInventory ensureConfigInventory() {
         if (configInventory == null) {
-            configInventory = ConfigInventory.configTypes(
-                    MultiLevelEmitterMenu.SLOT_CAPACITY,
-                    this::onConfigInventoryChanged
-            );
+            configInventory = ConfigInventory.configTypes(MultiLevelEmitterMenu.SLOT_CAPACITY)
+                    .changeListener(this::onConfigInventoryChanged)
+                    .build();
         }
         return configInventory;
     }
@@ -589,9 +588,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         );
     }
 
-    private void writeRuntimeSnapshot(CompoundTag data) {
+    private void writeRuntimeSnapshot(CompoundTag data, HolderLookup.Provider provider) {
         data.putInt(NBT_CONFIGURED_ITEM_COUNT, configuredItemCount);
-        ensureConfigInventory().writeToChildTag(data, NBT_CONFIG);
+        ensureConfigInventory().writeToChildTag(data, NBT_CONFIG, provider);
         MultiLevelEmitterPart.writeThresholdsToNbt(thresholds, data, NBT_REPORTING_VALUES);
         MultiLevelEmitterUtils.writeComparisonModesToNBT(comparisonModes, data, NBT_COMPARISON_MODES);
         MultiLevelEmitterUtils.writeLogicRelationsToNBT(relations, data, NBT_LOGIC_RELATIONS);
@@ -601,7 +600,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         data.putString(NBT_EXPRESSION_OWNERSHIP, expressionOwnership.name());
     }
 
-    private void readRuntimeSnapshot(CompoundTag data, boolean refreshRuntimeState) {
+    private void readRuntimeSnapshot(CompoundTag data, HolderLookup.Provider provider, boolean refreshRuntimeState) {
         if (data == null) {
             boolean previous = suppressConfigInventoryCallback;
             suppressConfigInventoryCallback = true;
@@ -623,7 +622,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         boolean previous = suppressConfigInventoryCallback;
         suppressConfigInventoryCallback = true;
         if (data.contains(NBT_CONFIG)) {
-            ensureConfigInventory().readFromChildTag(data, NBT_CONFIG);
+            ensureConfigInventory().readFromChildTag(data, NBT_CONFIG, provider);
         } else {
             ensureConfigInventory().clear();
         }

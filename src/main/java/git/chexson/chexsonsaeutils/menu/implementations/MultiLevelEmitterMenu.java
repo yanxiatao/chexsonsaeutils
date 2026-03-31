@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.menu.implementations;
 
-import appeng.menu.locator.MenuLocator;
+import appeng.menu.locator.MenuHostLocator;
 import appeng.menu.locator.MenuLocators;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.menu.AEBaseMenu;
@@ -13,7 +13,7 @@ import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.MenuProvider;
@@ -23,8 +23,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.network.NetworkHooks;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -58,7 +56,7 @@ public final class MultiLevelEmitterMenu {
 
     @FunctionalInterface
     public interface RuntimeBindingResolver {
-        MultiLevelEmitterRuntimePart resolve(Inventory inventory, FriendlyByteBuf networkData);
+        MultiLevelEmitterRuntimePart resolve(Inventory inventory, RegistryFriendlyByteBuf networkData);
     }
 
     public static void registerMenuBindings() {
@@ -102,9 +100,9 @@ public final class MultiLevelEmitterMenu {
         return menuType;
     }
 
-    private static MultiLevelEmitterRuntimePart resolveRuntimePart(Inventory inventory, FriendlyByteBuf networkData) {
+    private static MultiLevelEmitterRuntimePart resolveRuntimePart(Inventory inventory, RegistryFriendlyByteBuf networkData) {
         if (inventory != null && networkData != null && networkData.readableBytes() > 0) {
-            MenuLocator locator = MenuLocators.readFromPacket(networkData);
+            MenuHostLocator locator = MenuLocators.readFromPacket(networkData);
             MultiLevelEmitterRuntimePart located = locator.locate(inventory.player, MultiLevelEmitterRuntimePart.class);
             if (located != null) {
                 return located;
@@ -120,13 +118,13 @@ public final class MultiLevelEmitterMenu {
     public static void openMenu(ServerPlayer player, MultiLevelEmitterRuntimePart runtimePart) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(runtimePart, "runtimePart");
-        MenuLocator locator = MenuLocators.forPart(runtimePart);
+        MenuHostLocator locator = MenuLocators.forPart(runtimePart);
         MenuProvider menuProvider = new SimpleMenuProvider(
                 (containerId, inventory, ignoredPlayer) ->
                         new RuntimeMenu(containerId, inventory, registeredMenuType(), runtimePart),
                 MENU_TITLE
         );
-        NetworkHooks.openScreen(player, menuProvider, buffer -> MenuLocators.writeToPacket(buffer, locator));
+        player.openMenu(menuProvider, buffer -> MenuLocators.writeToPacket(buffer, locator));
     }
 
     public static long sanitizeThresholdInput(long rawThreshold) {
@@ -238,7 +236,7 @@ public final class MultiLevelEmitterMenu {
             }
         }
 
-        public static RuntimeMenu fromNetwork(int containerId, Inventory inventory, FriendlyByteBuf networkData) {
+        public static RuntimeMenu fromNetwork(int containerId, Inventory inventory, RegistryFriendlyByteBuf networkData) {
             MenuType<?> resolvedMenuType = menuTypeSupplier == null ? null : menuTypeSupplier.get();
             MultiLevelEmitterRuntimePart runtimePart = resolveRuntimePart(inventory, networkData);
             return new RuntimeMenu(containerId, inventory, resolvedMenuType, runtimePart);
