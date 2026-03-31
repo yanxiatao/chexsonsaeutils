@@ -20,6 +20,7 @@ import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitter
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionPlan;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
@@ -72,6 +73,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private boolean cardCapabilityStateInitialized;
     private boolean lastKnownFuzzyCardInstalled;
     private boolean lastKnownCraftingCardInstalled;
+    private HolderLookup.Provider lastKnownSnapshotProvider = RegistryAccess.EMPTY;
 
     public MultiLevelEmitterRuntimePart(IPartItem<?> partItem) {
         super(partItem);
@@ -97,7 +99,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     @Override
     public void readFromNBT(CompoundTag data, HolderLookup.Provider provider) {
         super.readFromNBT(data, provider);
-        readRuntimeSnapshot(data, provider, false);
+        rememberSnapshotProvider(provider);
+        readRuntimeSnapshot(data, false);
     }
 
     @Override
@@ -106,7 +109,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         if (data == null) {
             return;
         }
-        writeRuntimeSnapshot(data, provider);
+        rememberSnapshotProvider(provider);
+        writeRuntimeSnapshot(data);
     }
 
     @Override
@@ -122,6 +126,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         boolean changed = super.readFromStream(data);
         CompoundTag snapshot = data.readNbt();
         if (snapshot != null) {
+            rememberSnapshotProvider(data.registryAccess());
             readRuntimeSnapshot(snapshot, data.registryAccess(), false);
             return true;
         }
@@ -588,9 +593,14 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         );
     }
 
+    private void writeRuntimeSnapshot(CompoundTag data) {
+        writeRuntimeSnapshot(data, null);
+    }
+
     private void writeRuntimeSnapshot(CompoundTag data, HolderLookup.Provider provider) {
+        HolderLookup.Provider effectiveProvider = resolveSnapshotProvider(provider);
         data.putInt(NBT_CONFIGURED_ITEM_COUNT, configuredItemCount);
-        ensureConfigInventory().writeToChildTag(data, NBT_CONFIG, provider);
+        ensureConfigInventory().writeToChildTag(data, NBT_CONFIG, effectiveProvider);
         MultiLevelEmitterPart.writeThresholdsToNbt(thresholds, data, NBT_REPORTING_VALUES);
         MultiLevelEmitterUtils.writeComparisonModesToNBT(comparisonModes, data, NBT_COMPARISON_MODES);
         MultiLevelEmitterUtils.writeLogicRelationsToNBT(relations, data, NBT_LOGIC_RELATIONS);
@@ -600,7 +610,12 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         data.putString(NBT_EXPRESSION_OWNERSHIP, expressionOwnership.name());
     }
 
+    private void readRuntimeSnapshot(CompoundTag data, boolean refreshRuntimeState) {
+        readRuntimeSnapshot(data, null, refreshRuntimeState);
+    }
+
     private void readRuntimeSnapshot(CompoundTag data, HolderLookup.Provider provider, boolean refreshRuntimeState) {
+        HolderLookup.Provider effectiveProvider = resolveSnapshotProvider(provider);
         if (data == null) {
             boolean previous = suppressConfigInventoryCallback;
             suppressConfigInventoryCallback = true;
@@ -622,7 +637,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         boolean previous = suppressConfigInventoryCallback;
         suppressConfigInventoryCallback = true;
         if (data.contains(NBT_CONFIG)) {
-            ensureConfigInventory().readFromChildTag(data, NBT_CONFIG, provider);
+            ensureConfigInventory().readFromChildTag(data, NBT_CONFIG, effectiveProvider);
         } else {
             ensureConfigInventory().clear();
         }
@@ -904,6 +919,17 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             case PERCENT_50 -> FuzzyMode.PERCENT_50;
             case PERCENT_25 -> FuzzyMode.PERCENT_25;
         };
+    }
+
+    private void rememberSnapshotProvider(HolderLookup.Provider provider) {
+        if (provider != null) {
+            lastKnownSnapshotProvider = provider;
+        }
+    }
+
+    private HolderLookup.Provider resolveSnapshotProvider(HolderLookup.Provider provider) {
+        rememberSnapshotProvider(provider);
+        return lastKnownSnapshotProvider == null ? RegistryAccess.EMPTY : lastKnownSnapshotProvider;
     }
 
     private RedstoneMode currentRedstoneMode() {
