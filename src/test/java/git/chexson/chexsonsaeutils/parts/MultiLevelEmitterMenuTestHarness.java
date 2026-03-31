@@ -2,7 +2,7 @@ package git.chexson.chexsonsaeutils.parts;
 
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.world.entity.player.Inventory;
 
 import java.lang.reflect.Field;
@@ -19,7 +19,7 @@ final class MultiLevelEmitterMenuTestHarness {
         return menu;
     }
 
-    static MultiLevelEmitterMenu.RuntimeMenu fromNetwork(Inventory inventory, FriendlyByteBuf networkData) {
+    static MultiLevelEmitterMenu.RuntimeMenu fromNetwork(Inventory inventory, RegistryFriendlyByteBuf networkData) {
         MultiLevelEmitterMenu.RuntimeMenu menu = allocateMenu();
         menu.bindRuntimePart(resolveRuntimePart(inventory, networkData));
         return menu;
@@ -41,12 +41,12 @@ final class MultiLevelEmitterMenuTestHarness {
         }
     }
 
-    private static MultiLevelEmitterRuntimePart resolveRuntimePart(Inventory inventory, FriendlyByteBuf networkData) {
+    private static MultiLevelEmitterRuntimePart resolveRuntimePart(Inventory inventory, RegistryFriendlyByteBuf networkData) {
         try {
             Method method = MultiLevelEmitterMenu.class.getDeclaredMethod(
                     "resolveRuntimePart",
                     Inventory.class,
-                    FriendlyByteBuf.class
+                    RegistryFriendlyByteBuf.class
             );
             method.setAccessible(true);
             return (MultiLevelEmitterRuntimePart) method.invoke(null, inventory, networkData);
