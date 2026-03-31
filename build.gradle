@@ -125,13 +125,13 @@ tasks.named('test', Test).configure {
     useJUnitPlatform()
     systemProperty 'user.dir', project.projectDir.absolutePath
 
-    // Phase 01 only gates the NeoForge platform baseline. Broader emitter/replacement/continuation
-    // regression suites stay compiled, but execution resumes after later migration phases realign them.
+    // Phase 02 restores an emitter-focused regression slice without reopening the whole repository corpus.
     filter {
-        includeTestsMatching 'git.chexson.chexsonsaeutils.support.RepositoryStructureContractTest'
         includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterRegistrationTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterCraftingContinuationConfigGateTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.pattern.ProcessingPatternReplacementConfigGateTest'
+        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterPartTest'
+        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterPersistenceIntegrationTest'
+        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterMenuTest'
+        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterScreenTest'
     }
 }
 
