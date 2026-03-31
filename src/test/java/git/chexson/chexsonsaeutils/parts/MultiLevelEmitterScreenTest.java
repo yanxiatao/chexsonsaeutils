@@ -8,6 +8,7 @@ import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
@@ -488,7 +489,9 @@ class MultiLevelEmitterScreenTest {
         assertTrue(source.contains("gui.chexsonsaeutils.multi_level_emitter.format_expression"));
         assertTrue(source.contains("setFormatter("));
         assertTrue(source.contains("setResponder("));
-        assertTrue(source.contains("mouseScrolled(double mouseX, double mouseY, double wheelDelta)"));
+        assertTrue(source.contains(
+                "mouseScrolled(double mouseX, double mouseY, double horizontalDelta, double verticalDelta)"
+        ));
         assertTrue(source.contains("isMouseOverConfigPanel(mouseX, mouseY)"));
         assertTrue(source.contains("ROW_SHADE_RIGHT = 145"));
         assertTrue(source.contains("SCROLL_BUTTON_X = 151"));
@@ -733,10 +736,11 @@ class MultiLevelEmitterScreenTest {
             Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod(
                     "readRuntimeSnapshot",
                     CompoundTag.class,
+                    net.minecraft.core.HolderLookup.Provider.class,
                     boolean.class
             );
             method.setAccessible(true);
-            method.invoke(runtime, snapshot, false);
+            method.invoke(runtime, snapshot, RegistryAccess.EMPTY, false);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to read runtime snapshot for screen test instance", exception);
         }
