@@ -517,18 +517,15 @@ class MultiLevelEmitterScreenTest {
         assertTrue(source.contains("gui.chexsonsaeutils.multi_level_emitter.out_of_range_slot_status"));
         assertTrue(source.contains("StyleManager.loadStyleDoc(\"/screens/multi_level_emitter.json\")"));
         assertTrue(source.contains("ObfuscationReflectionHelper.findField("));
-        assertTrue(source.contains("findField(Slot.class, \"f_40220_\")"));
-        assertTrue(source.contains("findField(Slot.class, \"f_40221_\")"));
-        assertTrue(source.contains("findField(EditBox.class, \"f_94102_\")"));
+        assertTrue(source.contains("findField(Slot.class, \"x\", \"f_40220_\")"));
+        assertTrue(source.contains("findField(Slot.class, \"y\", \"f_40221_\")"));
+        assertTrue(source.contains("findField(EditBox.class, \"highlightPos\", \"f_94102_\")"));
         assertFalse(source.contains("UpgradeableScreen"));
         assertFalse(source.contains("ServerSettingToggleButton"));
         assertFalse(source.contains("Settings.FUZZY_MODE"));
         assertFalse(source.contains("EMPTY_HINT = Component.literal(\"No item marked\")"));
         assertFalse(source.contains("AND is evaluated before OR. Use parentheses to group."));
         assertFalse(source.contains("Emitter configuration UI is active."));
-        assertFalse(source.contains("findField(Slot.class, \"x\")"));
-        assertFalse(source.contains("findField(Slot.class, \"y\")"));
-        assertFalse(source.contains("findField(EditBox.class, \"highlightPos\")"));
     }
 
     @Test
