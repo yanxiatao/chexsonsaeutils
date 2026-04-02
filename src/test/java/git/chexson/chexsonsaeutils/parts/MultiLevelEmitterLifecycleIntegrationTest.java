@@ -107,6 +107,16 @@ class MultiLevelEmitterLifecycleIntegrationTest {
     }
 
     @Test
+    void runtimeScreenClassInitializesAgainstCurrentClientMappings() throws Exception {
+        assertEquals(
+                "git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen",
+                Class.forName(
+                        "git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen"
+                ).getName()
+        );
+    }
+
+    @Test
     void placeOpenNetworkLifecycleTransitionsAreDeterministic() {
         MultiLevelEmitterRuntimePart runtime = newRuntimePart();
         runtime.applyConfiguration(

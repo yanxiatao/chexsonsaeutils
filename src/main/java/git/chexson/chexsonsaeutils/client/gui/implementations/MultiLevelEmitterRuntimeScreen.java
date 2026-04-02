@@ -112,9 +112,9 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
     private static final int SCROLL_BUTTON_X = 151;
     private static final int SCROLL_UP_BUTTON_Y = ROW_TOP + 4;
     private static final int SCROLL_DOWN_BUTTON_Y = ROW_TOP + ROW_HEIGHT - 1;
-    private static final Field SLOT_X_FIELD = findField(Slot.class, "f_40220_");
-    private static final Field SLOT_Y_FIELD = findField(Slot.class, "f_40221_");
-    private static final Field EDIT_BOX_HIGHLIGHT_FIELD = findField(EditBox.class, "f_94102_");
+    private static final Field SLOT_X_FIELD = findField(Slot.class, "x", "f_40220_");
+    private static final Field SLOT_Y_FIELD = findField(Slot.class, "y", "f_40221_");
+    private static final Field EDIT_BOX_HIGHLIGHT_FIELD = findField(EditBox.class, "highlightPos", "f_94102_");
 
     private final List<ThresholdEditBox> thresholdInputs = new ArrayList<>();
     private final List<Button> comparisonButtons = new ArrayList<>();
@@ -976,12 +976,34 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
         };
     }
 
-    private static Field findField(Class<?> owner, String name) {
-        try {
-            return ObfuscationReflectionHelper.findField(owner, name);
-        } catch (RuntimeException exception) {
-            throw new IllegalStateException("Unable to access " + owner.getSimpleName() + "." + name, exception);
+    private static Field findField(Class<?> owner, String... names) {
+        List<RuntimeException> failures = new ArrayList<>();
+        for (String name : names) {
+            try {
+                Field field = ObfuscationReflectionHelper.findField(owner, name);
+                field.setAccessible(true);
+                return field;
+            } catch (RuntimeException exception) {
+                failures.add(exception);
+            }
+            for (Class<?> type = owner; type != null; type = type.getSuperclass()) {
+                try {
+                    Field field = type.getDeclaredField(name);
+                    field.setAccessible(true);
+                    return field;
+                } catch (ReflectiveOperationException exception) {
+                    failures.add(new IllegalStateException(
+                            "Unable to access " + type.getSimpleName() + "." + name,
+                            exception
+                    ));
+                }
+            }
         }
+        IllegalStateException exception = new IllegalStateException(
+                "Unable to access " + owner.getSimpleName() + "." + String.join(" / ", names)
+        );
+        failures.forEach(exception::addSuppressed);
+        throw exception;
     }
 
     private static void setSlotPosition(Slot slot, int x, int y) {
