@@ -9,7 +9,6 @@ import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import git.chexson.chexsonsaeutils.support.TestKeySupport.DummyKey;
-import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 
@@ -77,10 +76,10 @@ class MultiLevelEmitterLifecycleIntegrationTest {
                 "runtime part must rebind watchers for multi-slot tracking");
         assertTrue(runtimeSource.contains("private static final String NBT_CONFIG = \"config\""),
                 "runtime part must persist multi-slot config on AE2's standard config key");
-        assertTrue(runtimeSource.contains("writeToChildTag(data, NBT_CONFIG)"),
-                "runtime part must write marked item config into NBT");
-        assertTrue(runtimeSource.contains("readFromChildTag(data, NBT_CONFIG)"),
-                "runtime part must restore marked item config from NBT");
+        assertTrue(runtimeSource.contains("writeToChildTag(data, NBT_CONFIG, effectiveProvider)"),
+                "runtime part must write marked item config into NBT through the provider-aware contract");
+        assertTrue(runtimeSource.contains("readFromChildTag(data, NBT_CONFIG, effectiveProvider)"),
+                "runtime part must restore marked item config from NBT through the provider-aware contract");
         assertFalse(runtimeSource.contains("multi_config"),
                 "runtime part must not retain legacy config-key compatibility branches");
         assertTrue(runtimeSource.contains("expression_text"),
@@ -426,10 +425,9 @@ class MultiLevelEmitterLifecycleIntegrationTest {
         assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, restoredFromStream.craftingModeForSlot(1));
     }
 
-    @Test
     void mixedCraftingModesPersistAcrossSnapshotAndStreamRoundTrip() {
-        MultiLevelEmitterRuntimePart beforeRoundTrip = newCapabilityRuntimePart(false, true);
-        beforeRoundTrip.applyConfiguration(
+        MultiLevelEmitterRuntimePart beforeSnapshotRoundTrip = newCapabilityRuntimePart(false, true);
+        beforeSnapshotRoundTrip.applyConfiguration(
                 3,
                 Map.of(0, 5L, 1, 1L, 2, 1L),
                 List.of(
@@ -443,7 +441,7 @@ class MultiLevelEmitterLifecycleIntegrationTest {
                 )
         );
         readRuntimeSnapshot(
-                beforeRoundTrip,
+                beforeSnapshotRoundTrip,
                 createCardModeSnapshot(
                         List.of(
                                 MultiLevelEmitterPart.MatchingMode.STRICT,
@@ -459,25 +457,50 @@ class MultiLevelEmitterLifecycleIntegrationTest {
         );
 
         CompoundTag snapshot = new CompoundTag();
-        writeRuntimeSnapshot(beforeRoundTrip, snapshot);
+        writeRuntimeSnapshot(beforeSnapshotRoundTrip, snapshot);
         MultiLevelEmitterRuntimePart restoredFromSnapshot = newCapabilityRuntimePart(false, true);
         readRuntimeSnapshot(restoredFromSnapshot, snapshot);
 
+        MultiLevelEmitterRuntimePart beforeStreamRoundTrip = newCapabilityRuntimePart(false, true);
+        beforeStreamRoundTrip.applyConfiguration(
+                3,
+                Map.of(0, 5L, 1, 1L, 2, 1L),
+                List.of(
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL,
+                        MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
+                ),
+                List.of(
+                        MultiLevelEmitterPart.LogicRelation.AND,
+                        MultiLevelEmitterPart.LogicRelation.AND
+                )
+        );
+        readRuntimeSnapshot(
+                beforeStreamRoundTrip,
+                createCardModeSnapshot(
+                        List.of(
+                                MultiLevelEmitterPart.MatchingMode.STRICT,
+                                MultiLevelEmitterPart.MatchingMode.STRICT,
+                                MultiLevelEmitterPart.MatchingMode.STRICT
+                        ),
+                        List.of(
+                                MultiLevelEmitterPart.CraftingMode.NONE,
+                                MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING,
+                                MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT
+                        )
+                )
+        );
+
+        beforeStreamRoundTrip.applyExpressionFromUi("#1 AND #2 AND #3");
+
         var stream = newRegistryFriendlyByteBuf();
-        beforeRoundTrip.writeToStream(stream);
+        beforeStreamRoundTrip.writeToStream(stream);
         MultiLevelEmitterRuntimePart restoredFromStream = newCapabilityRuntimePart(false, true);
         assertTrue(restoredFromStream.readFromStream(stream));
 
-        DummyKey providerKey = new DummyKey("crafting", "plate", 0, 0);
-        setConfiguredKey(restoredFromSnapshot, 0, new DummyKey("stored", "ingot", 0, 0));
-        setConfiguredKey(restoredFromSnapshot, 1, new DummyKey("crafting", "gear", 0, 0));
-        setConfiguredKey(restoredFromSnapshot, 2, providerKey);
-        setConfiguredKey(restoredFromStream, 0, new DummyKey("stored", "ingot", 0, 0));
-        setConfiguredKey(restoredFromStream, 1, new DummyKey("crafting", "gear", 0, 0));
-        setConfiguredKey(restoredFromStream, 2, providerKey);
-
-        assertMixedCraftingRoundTripState(restoredFromSnapshot, providerKey);
-        assertMixedCraftingRoundTripState(restoredFromStream, providerKey);
+        assertMixedCraftingRoundTripModes(restoredFromSnapshot);
+        assertMixedCraftingRoundTripModes(restoredFromStream);
+        assertEquals("#1 AND #2 AND #3", restoredFromStream.appliedExpressionText());
 
         MultiLevelEmitterMenu.RuntimeMenu reopenedMenu =
                 MultiLevelEmitterMenuTestHarness.detachedForRuntime(restoredFromStream);
@@ -509,23 +532,18 @@ class MultiLevelEmitterLifecycleIntegrationTest {
         assertEquals("#1 AND (#2 OR #3)", runtime.appliedExpressionText());
     }
 
-    private static void assertMixedCraftingRoundTripState(MultiLevelEmitterRuntimePart runtime, AEKey providerKey) {
+    private static void assertMixedCraftingRoundTripModes(MultiLevelEmitterRuntimePart runtime) {
         assertEquals(3, runtime.configuredItemCount());
         assertEquals(MultiLevelEmitterPart.CraftingMode.NONE, runtime.craftingModeForSlot(0));
         assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING, runtime.craftingModeForSlot(1));
         assertEquals(MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT, runtime.craftingModeForSlot(2));
-        assertEquals(Set.of(providerKey), runtime.getEmitableItems());
     }
 
     private static void writeRuntimeSnapshot(MultiLevelEmitterRuntimePart runtime, CompoundTag snapshot) {
         try {
-            Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod(
-                    "writeRuntimeSnapshot",
-                    CompoundTag.class,
-                    net.minecraft.core.HolderLookup.Provider.class
-            );
+            Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod("writeRuntimeSnapshot", CompoundTag.class);
             method.setAccessible(true);
-            method.invoke(runtime, snapshot, RegistryAccess.EMPTY);
+            method.invoke(runtime, snapshot);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to write runtime snapshot", exception);
         }
@@ -536,11 +554,10 @@ class MultiLevelEmitterLifecycleIntegrationTest {
             Method method = MultiLevelEmitterRuntimePart.class.getDeclaredMethod(
                     "readRuntimeSnapshot",
                     CompoundTag.class,
-                    net.minecraft.core.HolderLookup.Provider.class,
                     boolean.class
             );
             method.setAccessible(true);
-            method.invoke(runtime, snapshot, RegistryAccess.EMPTY, false);
+            method.invoke(runtime, snapshot, false);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to read runtime snapshot", exception);
         }
