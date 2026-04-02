@@ -137,6 +137,20 @@ tasks.named('test', Test).configure {
     }
 }
 
+tasks.register('patternReplacementTest', Test) {
+    group = 'verification'
+    description = 'Runs the Phase 03 processing pattern replacement regression suites.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath.filter { !it.name.startsWith('junit-fml-') }
+    useJUnitPlatform()
+    systemProperty 'user.dir', project.projectDir.absolutePath
+
+    filter {
+        includeTestsMatching 'git.chexson.chexsonsaeutils.pattern.PatternTerminal*'
+        includeTestsMatching 'git.chexson.chexsonsaeutils.pattern.ProcessingPatternReplacement*'
+    }
+}
+
 tasks.named('jar', Jar).configure {
     manifest {
         attributes(
