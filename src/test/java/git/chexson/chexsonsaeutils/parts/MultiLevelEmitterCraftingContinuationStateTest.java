@@ -121,8 +121,11 @@ class MultiLevelEmitterCraftingContinuationStateTest {
         savedData.putWaitingDetail(staleCraftId, staleDetail);
 
         savedData.retainLiveCrafts(Set.of(liveCraftId));
+        Map<UUID, CraftingContinuationWaitingDetail> retainedDetails = savedData.snapshotWaitingDetails();
 
         assertEquals(liveDetail, savedData.getWaitingDetail(liveCraftId));
+        assertEquals(Set.of(liveCraftId), retainedDetails.keySet());
+        assertEquals(liveDetail, retainedDetails.get(liveCraftId));
         assertNull(savedData.getWaitingDetail(staleCraftId));
     }
 
