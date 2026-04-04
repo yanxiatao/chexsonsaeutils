@@ -257,14 +257,14 @@
 <!-- GSD:workflow-start source:GSD defaults -->
 ## GSD Workflow Enforcement
 
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+在使用 Edit、Write 或其他会改文件的工具前，先通过 GSD 命令进入对应工作流，保证 planning artifacts、状态文件和执行上下文保持同步。
 
-Use these entry points:
-- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd:debug` for investigation and bug fixing
-- `/gsd:execute-phase` for planned phase work
+使用这些入口：
+- `/gsd:quick` 处理小修复、文档更新和临时任务
+- `/gsd:debug` 处理调查与缺陷修复
+- `/gsd:execute-phase` 执行已经规划好的 phase 工作
 
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
+除非用户明确要求绕过，否则不要在 GSD 工作流之外直接修改仓库。
 <!-- GSD:workflow-end -->
 
 
