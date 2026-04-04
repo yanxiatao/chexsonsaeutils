@@ -29,6 +29,10 @@ class MultiLevelEmitterCraftingContinuationConfigGateTest {
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftConfirmMenuContinuationMixin";
     private static final String CONTINUATION_SCREEN_MIXIN =
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftConfirmScreenContinuationMixin";
+    private static final String CRAFT_CONFIRM_MENU_TARGET =
+            "appeng.menu.me.crafting.CraftConfirmMenu";
+    private static final String CRAFT_CONFIRM_SCREEN_TARGET =
+            "appeng.client.gui.me.crafting.CraftConfirmScreen";
     private static final String ALWAYS_ON_MIXIN =
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.SomeAlwaysOnMixin";
     private static final Path COMPATIBILITY_CONFIG = Path.of(
@@ -96,8 +100,8 @@ class MultiLevelEmitterCraftingContinuationConfigGateTest {
         Object plugin = instantiatePlugin();
 
         withStartupConfigDir(configDir, () -> {
-            assertTrue(shouldApplyMixin(plugin, "appeng.menu.implementations.CraftConfirmMenu", CONTINUATION_MENU_MIXIN));
-            assertTrue(shouldApplyMixin(plugin, "appeng.client.gui.me.crafting.CraftConfirmScreen", CONTINUATION_SCREEN_MIXIN));
+            assertTrue(shouldApplyMixin(plugin, CRAFT_CONFIRM_MENU_TARGET, CONTINUATION_MENU_MIXIN));
+            assertTrue(shouldApplyMixin(plugin, CRAFT_CONFIRM_SCREEN_TARGET, CONTINUATION_SCREEN_MIXIN));
             assertTrue(shouldApplyMixin(plugin, "appeng.menu.SomeAlwaysOnMenu", ALWAYS_ON_MIXIN));
         });
     }
