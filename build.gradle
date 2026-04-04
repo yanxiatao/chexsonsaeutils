@@ -137,6 +137,20 @@ tasks.named('test', Test).configure {
     }
 }
 
+tasks.register('continuationTest', Test) {
+    group = 'verification'
+    description = 'Runs the Phase 04 crafting continuation regression suites.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath.filter { !it.name.startsWith('junit-fml-') }
+    useJUnitPlatform()
+    systemProperty 'user.dir', project.projectDir.absolutePath
+
+    filter {
+        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterCraftingContinuation*'
+        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.CraftingContinuationPartialSubmitTest'
+    }
+}
+
 tasks.register('patternReplacementTest', Test) {
     group = 'verification'
     description = 'Runs the Phase 03 processing pattern replacement regression suites.'
