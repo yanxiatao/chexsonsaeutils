@@ -1,56 +1,34 @@
 # Chexson's AE Utils
 
-`Chexson's AE Utils` 是一个面向 `Minecraft 1.20.1 + Forge` 的 `Applied Energistics 2` 附属模组，当前版本聚焦三类已经落地的能力：
+## 项目概述
 
-- 提供可实际使用的多物品发信器
-- 为 AE2 加工样板提供 replacement rule 编辑、持久化与执行期替换能力
-- 在不破坏 AE2 原有行为边界的前提下，为合成流程补充“按任务忽略缺料并自动续作”的能力
+`Chexson's AE Utils` 当前是一个面向 `Minecraft 1.21.1 + NeoForge 21.1.222 + AE2 19.2.17 + Java 21` 的迁移仓库，而不是旧版 `1.20.1 + Forge` 分支的继续维护副本。
 
-## 当前功能
+本仓库的目标是把原项目已经存在的 AE2 扩展能力迁移到新的平台组合上，并尽量保留原有功能语义、配置开关、持久化格式与玩家可见行为，不用“能编译通过”去交换“功能被删减或悄悄降级”。
 
-### 1. 多物品发信器
+## 核心能力
 
-在 AE2 原生等级发信器的使用场景上扩展出一套多槽位条件监控能力：
+### 1. Multi-Level Emitter
 
-- 一个发信器可同时监控多个物品
-- 每个槽位可单独设置阈值
-- 支持表达式逻辑，不再局限于简单线性关系
-- 支持 `AND`、`OR` 与括号分组
-- 表达式在应用前会进行校验并给出界面反馈
-- 配置槽位支持动态增减，并保持客户端、服务端与重进世界后的同步一致性
-- UI 保持 AE2 风格，使用独立菜单绑定与运行时屏幕实现
+- 在 AE2 原生发信器语义之上扩展多槽位监控。
+- 每个槽位可独立设置阈值、比较模式、模糊匹配与 crafting 联动条件。
+- 支持表达式逻辑、括号分组与校验反馈，并保持菜单/屏幕链路与运行时状态同步。
 
-### 2. 加工样板替换规则
+### 2. Processing Pattern Replacement
 
-为 AE2 processing pattern 增加了可编辑、可持久化的输入替换规则：
+- 允许在 processing terminal 中为输入槽配置 replacement rule。
+- 将 replacement metadata 持久化到 encoded pattern，并在解码后恢复 replacement-aware 语义。
+- 在 planning / execution 阶段按既有规则选择候选输入，而不是回退到旧的单一输入语义。
 
-- 可在终端中为 processing pattern 的输入槽配置 replacement rule
-- 支持基于标签或显式候选物集合定义替换边界
-- replacement metadata 会随 encoded pattern 一起保存
-- planning 与 execution 两侧都会按 replacement-aware 语义选择候选输入
-- 提供独立 feature gate，可在启动阶段整体关闭相关 mixin 与行为入口
+### 3. Crafting Continuation
 
-### 3. AE2 合成缺料续作
+- 在 craft confirm 流程中为任务级合成提供 ignore-missing / continuation 模式。
+- 材料不足时仅阻塞受影响分支，已满足条件的子步骤继续执行。
+- 在 AE2 CPU 相关菜单与界面中保留等待详情、分支状态与运行中摘要投影。
 
-为 AE2 合成确认流程增加了按任务粒度的 continuation 能力：
+### 4. 兼容性与开关
 
-- 在提交合成任务时可选择是否启用“忽略缺料并继续”
-- 缺料时不是整单硬失败，而是只让被阻塞分支进入等待
-- 已满足材料的子步骤会继续执行
-- 材料回到网络后会自动恢复等待中的步骤
-- 续作状态会在 AE2 CPU 状态界面中展示等待信息
-- 行为是任务级别的，不是全局常驻开关
+- continuation 与 processing pattern replacement 仍通过公共配置开关控制。
+- 旧版 emitter NBT、旧版 pattern metadata 与 continuation 持久化状态都以“安全读取或明确降级”为目标。
+- 当前仓库仍在迁移与验证阶段，不能把尚未完成的 Phase 05/06 误认为最终发布验收。
 
-### 4. 兼容性开关
-
-当前提供两个启动期配置开关，默认开启：
-
-- 配置项：`craftingContinuationEnabled`
-- 配置项：`processingPatternReplacementEnabled`
-- 位置：标准 Forge `common` 配置文件
-- 作用：关闭后会在启动阶段屏蔽对应功能的 mixin 与行为入口
-- 生效方式：重启后生效
-
-## AI 生成说明
-
-- 本仓库代码均由 AI 编写；README 文案也由 AI 辅助整理。实际能力与行为仍以仓库中的代码、配置和提交历史为准
