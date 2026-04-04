@@ -1,67 +1,47 @@
 # Chexson's AE Utils
 
-`Chexson's AE Utils` 是一个面向 `Minecraft 1.20.1 + Forge` 的 `Applied Energistics 2` 附属模组，当前版本聚焦三类已经落地的能力：
+## 项目概述
 
-- 提供可实际使用的多物品发信器
-- 为 AE2 加工样板提供 replacement rule 编辑、持久化与执行期替换能力
-- 在不破坏 AE2 原有行为边界的前提下，为合成流程补充“按任务忽略缺料并自动续作”的能力
+`Chexson's AE Utils` 当前是一个面向 `Minecraft 1.21.1 + NeoForge 21.1.222 + AE2 19.2.17 + Java 21` 的迁移仓库，而不是旧版 `1.20.1 + Forge` 分支的继续维护副本。
 
-## 当前功能
+本仓库的目标是把原项目已经存在的 AE2 扩展能力迁移到新的平台组合上，并尽量保留原有功能语义、配置开关、持久化格式与玩家可见行为，不用“能编译通过”去交换“功能被删减或悄悄降级”。
 
-### 1. 多物品发信器
+## 当前迁移状态
 
-在 AE2 原生等级发信器的使用场景上扩展出一套多槽位条件监控能力：
+- Phase 01 已完成：目标平台版本组合、Gradle 构建链、模组元数据、最小加载入口与公共配置读取链路已经锁定到当前 `1.21.1 + NeoForge` 基线。
+- Phase 02 已完成：multi-level emitter 的物品/部件注册、菜单与界面链路、watcher 运行时逻辑、表达式输入与兼容性验证已经迁移到 AE2 19 接缝。
+- Phase 03 已完成：processing pattern replacement 的规则编辑、metadata 持久化、解码与 planning / execution 替换语义已经恢复。
+- Phase 04 已完成：crafting continuation 的确认流模式切换、等待分支追踪、持久化与 CPU 状态投影已经恢复。
+- Phase 05 尚未完成：回归加固、目标平台烟雾验证与最终验证收口仍待执行。
+- Phase 06 正在执行：统一仓库文档语言、修正文档中的英文脚手架与历史工件说明，并保持 UTF-8 无 BOM + CRLF 约束。
 
-- 一个发信器可同时监控多个物品
-- 每个槽位可单独设置阈值
-- 支持表达式逻辑，不再局限于简单线性关系
-- 支持 `AND`、`OR` 与括号分组
-- 表达式在应用前会进行校验并给出界面反馈
-- 配置槽位支持动态增减，并保持客户端、服务端与重进世界后的同步一致性
-- UI 保持 AE2 风格，使用独立菜单绑定与运行时屏幕实现
+## 核心能力
 
-### 2. 加工样板替换规则
+### 1. Multi-Level Emitter
 
-为 AE2 processing pattern 增加了可编辑、可持久化的输入替换规则：
+- 在 AE2 原生发信器语义之上扩展多槽位监控。
+- 每个槽位可独立设置阈值、比较模式、模糊匹配与 crafting 联动条件。
+- 支持表达式逻辑、括号分组与校验反馈，并保持菜单/屏幕链路与运行时状态同步。
 
-- 可在终端中为 processing pattern 的输入槽配置 replacement rule
-- 支持基于标签或显式候选物集合定义替换边界
-- replacement metadata 会随 encoded pattern 一起保存
-- planning 与 execution 两侧都会按 replacement-aware 语义选择候选输入
-- 提供独立 feature gate，可在启动阶段整体关闭相关 mixin 与行为入口
+### 2. Processing Pattern Replacement
 
-### 3. AE2 合成缺料续作
+- 允许在 processing terminal 中为输入槽配置 replacement rule。
+- 将 replacement metadata 持久化到 encoded pattern，并在解码后恢复 replacement-aware 语义。
+- 在 planning / execution 阶段按既有规则选择候选输入，而不是回退到旧的单一输入语义。
 
-为 AE2 合成确认流程增加了按任务粒度的 continuation 能力：
+### 3. Crafting Continuation
 
-- 在提交合成任务时可选择是否启用“忽略缺料并继续”
-- 缺料时不是整单硬失败，而是只让被阻塞分支进入等待
-- 已满足材料的子步骤会继续执行
-- 材料回到网络后会自动恢复等待中的步骤
-- 续作状态会在 AE2 CPU 状态界面中展示等待信息
-- 行为是任务级别的，不是全局常驻开关
+- 在 craft confirm 流程中为任务级合成提供 ignore-missing / continuation 模式。
+- 材料不足时仅阻塞受影响分支，已满足条件的子步骤继续执行。
+- 在 AE2 CPU 相关菜单与界面中保留等待详情、分支状态与运行中摘要投影。
 
-### 4. 兼容性开关
+### 4. 兼容性与开关
 
-当前提供两个启动期配置开关，默认开启：
+- continuation 与 processing pattern replacement 仍通过公共配置开关控制。
+- 旧版 emitter NBT、旧版 pattern metadata 与 continuation 持久化状态都以“安全读取或明确降级”为目标。
+- 当前仓库仍在迁移与验证阶段，不能把尚未完成的 Phase 05/06 误认为最终发布验收。
 
-- 配置项：`craftingContinuationEnabled`
-- 配置项：`processingPatternReplacementEnabled`
-- 位置：标准 Forge `common` 配置文件
-- 作用：关闭后会在启动阶段屏蔽对应功能的 mixin 与行为入口
-- 生效方式：重启后生效
-
-## 开发环境
-
-- Minecraft `1.20.1`
-- Forge `47.4.10`
-- AE2 `15.4.5`
-- GuideME `20.1.7`
-- JEI runtime `15.0.0.12`
-- Java `17`
-- Gradle Wrapper 已包含在仓库中
-
-## 构建与运行
+## 开发与验证命令
 
 ```powershell
 .\gradlew.bat build
@@ -70,69 +50,33 @@
 .\gradlew.bat runServer
 ```
 
-如果需要把 Gradle 缓存放到仓库本地目录：
+如需把 Gradle 缓存固定在仓库本地目录：
 
 ```powershell
 $env:GRADLE_USER_HOME = (Join-Path (Get-Location) '.gradle-user')
 .\gradlew.bat test
 ```
 
-## 测试
+说明：
 
-项目已经包含 JUnit 5 回归测试，覆盖重点包括：
+- `build` 用于验证当前 NeoForge 构建链是否仍可完成解析、编译、资源处理与打包。
+- `test` 当前主要运行迁移阶段保留的关键回归切片与结构契约测试，详见 `build.gradle` 中的 `tasks.named('test', Test)` 配置。
+- `runClient` / `runServer` 用于最小启动与功能接缝验证。
 
-- 发信器注册、放置、菜单、界面与持久化
-- 加工样板 replacement rule 的编辑、持久化、planning / execution 与 feature gate
-- 表达式解析、格式化、校验与运行时应用
-- 动态槽位同步
-- continuation 状态、确认流程、生命周期与配置门控
-- 结构重组后的包布局契约
+## 目录与验证入口
 
-示例：
+- `src/main/java/`：模组主逻辑、AE2 接缝、mixin 与运行时行为实现。
+- `src/main/resources/` 与 `src/generated/resources/`：模组元数据、资源、数据包与生成产物入口。
+- `.planning/REQUIREMENTS.md`：迁移需求、需求状态与阶段追踪矩阵。
+- `.planning/ROADMAP.md`：阶段目标、计划清单、波次与整体进度。
+- `.planning/STATE.md`：当前执行位置、阶段状态、计划完成度与最近活动。
+- `.planning/phases/`：各阶段的 `PLAN.md`、`SUMMARY.md`、`CONTEXT.md`、`VERIFICATION.md` 等执行工件。
+- `CLAUDE.md`：GSD 同步上下文、架构摘要、工作流约束与受管标记块入口。
 
-```powershell
-.\gradlew.bat test --tests "git.chexson.chexsonsaeutils.parts.MultiLevelEmitterCraftingContinuationConfigGateTest"
-.\gradlew.bat test --tests "git.chexson.chexsonsaeutils.crafting.CraftingContinuationPartialSubmitTest"
-```
+如需快速了解当前仓库状态，建议按下面顺序阅读：
 
-## 代码结构
-
-- `src/main/java/git/chexson/chexsonsaeutils/parts/automation/`
-  多物品发信器核心部件与表达式实现
-- `src/main/java/git/chexson/chexsonsaeutils/menu/implementations/`
-  菜单与屏幕绑定
-- `src/main/java/git/chexson/chexsonsaeutils/client/gui/implementations/`
-  运行时 GUI
-- `src/main/java/git/chexson/chexsonsaeutils/pattern/replacement/`
-  加工样板 replacement rule 与 replacement-aware pattern 语义
-- `src/main/java/git/chexson/chexsonsaeutils/crafting/`
-  continuation 模式、持久化、状态投影与提交逻辑
-- `src/main/java/git/chexson/chexsonsaeutils/mixin/ae2/`
-  AE2 兼容集成点
-- `src/test/java/git/chexson/chexsonsaeutils/`
-  面向行为与结构契约的测试
-
-## 设计原则
-
-- 以 AE2 集成为前提，不做侵入式重写
-- 优先保证行为稳定、可验证、可回归
-- 目录结构尽量贴近 AE2 责任边界，降低后续扩展成本
-- 新功能默认先补测试，再补运行时闭环
-
-## 当前状态
-
-当前远端主线已整理为只包含功能代码的干净历史，适合继续做：
-
-- 里程碑归档
-- 新功能开发
-- 更细的安装说明与发布说明补充
-
-## 分支与维护说明
-
-- `master` 分支保持当前 `Minecraft 1.20.1 + Forge` 功能基线，适合作为稳定开发入口
-- `1.21.x + NeoForge` 迁移工作会在独立分支中推进，避免直接影响当前主线可用性
-- README 以当前主线能力与开发方式为准，迁移进度以后续迁移分支和相关文档为准
-
-## AI 生成说明
-
-- 本仓库代码均由 AI 编写；README 文案也由 AI 辅助整理。实际能力与行为仍以仓库中的代码、配置和提交历史为准
+1. `README.md`
+2. `.planning/ROADMAP.md`
+3. `.planning/STATE.md`
+4. `.planning/REQUIREMENTS.md`
+5. `CLAUDE.md`
