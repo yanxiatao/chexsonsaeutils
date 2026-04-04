@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.mixin.ae2.client.gui;
 import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.me.crafting.CraftConfirmScreen;
 import appeng.client.gui.style.ScreenStyle;
+import appeng.client.gui.widgets.AE2Button;
 import appeng.menu.me.crafting.CraftConfirmMenu;
 import appeng.menu.me.crafting.CraftingPlanSummary;
 import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
@@ -23,12 +24,6 @@ public abstract class CraftConfirmScreenContinuationMixin extends AEBaseScreen<C
     private static final String chexsonContinuationMode = "chexsonContinuationMode";
 
     @Unique
-    private static final int chexsonsaeutils$modeButtonWidth = 98;
-
-    @Unique
-    private static final int chexsonsaeutils$modeButtonGap = 4;
-
-    @Unique
     private static final String chexsonsaeutils$defaultModeKey = "gui.chexsonsaeutils.crafting_mode.default";
 
     @Unique
@@ -42,7 +37,7 @@ public abstract class CraftConfirmScreenContinuationMixin extends AEBaseScreen<C
     private Button selectCPU;
 
     @Unique
-    private Button chexsonsaeutils$continuationModeButton;
+    private AE2Button chexsonsaeutils$continuationModeButton;
 
     protected CraftConfirmScreenContinuationMixin(CraftConfirmMenu menu, Inventory playerInventory, Component title,
             ScreenStyle style) {
@@ -50,33 +45,23 @@ public abstract class CraftConfirmScreenContinuationMixin extends AEBaseScreen<C
     }
 
     @Inject(method = "init", at = @At("HEAD"))
-    private void chexsonsaeutils$resetContinuationButtonOnInit(CallbackInfo ci) {
-        chexsonsaeutils$continuationModeButton = null;
+    private void chexsonsaeutils$installContinuationModeButton(CallbackInfo ci) {
+        if (chexsonsaeutils$continuationModeButton == null) {
+            chexsonsaeutils$continuationModeButton = widgets.addButton(
+                    chexsonContinuationMode,
+                    chexsonsaeutils$getModeLabel(CraftingContinuationMode.defaultMode()),
+                    this::chexsonsaeutils$cycleContinuationMode);
+        }
     }
 
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$updateContinuationModeState(CallbackInfo ci) {
-        if (chexsonsaeutils$continuationModeButton == null
-                || !renderables.contains(chexsonsaeutils$continuationModeButton)
-                || !children().contains(chexsonsaeutils$continuationModeButton)) {
-            chexsonsaeutils$continuationModeButton = addRenderableWidget(
-                    Button.builder(chexsonsaeutils$getModeLabel(CraftingContinuationMode.defaultMode()),
-                                    button -> chexsonsaeutils$cycleContinuationMode())
-                            .bounds(
-                                    start.getX() - chexsonsaeutils$modeButtonWidth - chexsonsaeutils$modeButtonGap,
-                                    start.getY(),
-                                    chexsonsaeutils$modeButtonWidth,
-                                    start.getHeight())
-                            .build());
+        if (chexsonsaeutils$continuationModeButton == null) {
+            return;
         }
 
         CraftConfirmMenu menu = getMenu();
         CraftingContinuationMode mode = CraftingContinuationSubmitBridge.getConfirmMode(menu);
-        chexsonsaeutils$continuationModeButton.setX(
-                start.getX() - chexsonsaeutils$modeButtonWidth - chexsonsaeutils$modeButtonGap);
-        chexsonsaeutils$continuationModeButton.setY(start.getY());
-        chexsonsaeutils$continuationModeButton.setWidth(chexsonsaeutils$modeButtonWidth);
-        chexsonsaeutils$continuationModeButton.setHeight(start.getHeight());
         chexsonsaeutils$continuationModeButton.setMessage(chexsonsaeutils$getModeLabel(mode));
         chexsonsaeutils$continuationModeButton.visible = true;
         chexsonsaeutils$continuationModeButton.active = true;
