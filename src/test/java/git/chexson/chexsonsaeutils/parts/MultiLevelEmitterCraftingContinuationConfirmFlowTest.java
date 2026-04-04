@@ -35,6 +35,7 @@ class MultiLevelEmitterCraftingContinuationConfirmFlowTest {
     private static final Path MIXINS = Path.of("src/main/resources/chexsonsaeutils.mixins.json");
     private static final Path MIXIN_PLUGIN = Path.of(
             "src/main/java/git/chexson/chexsonsaeutils/mixin/ae2/ChexsonsaeutilsMixinPlugin.java");
+    private static final Path CRAFT_CONFIRM_STYLE = Path.of("src/main/resources/assets/ae2/screens/craft_confirm.json");
     private static final Path EN_US = Path.of("src/main/resources/assets/chexsonsaeutils/lang/en_us.json");
     private static final Path ZH_CN = Path.of("src/main/resources/assets/chexsonsaeutils/lang/zh_cn.json");
 
@@ -65,12 +66,10 @@ class MultiLevelEmitterCraftingContinuationConfirmFlowTest {
     @Test
     void rebuildsIgnoreMissingButtonAfterScreenInit() throws IOException {
         assertContains(SCREEN_MIXIN, "@Inject(method = \"init\", at = @At(\"HEAD\"))");
-        assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton = null;");
         assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton == null");
-        assertContains(SCREEN_MIXIN, "!renderables.contains(chexsonsaeutils$continuationModeButton)");
-        assertContains(SCREEN_MIXIN, "!children().contains(chexsonsaeutils$continuationModeButton)");
-        assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton.setX(");
-        assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton.setY(start.getY())");
+        assertContains(SCREEN_MIXIN, "widgets.addButton(");
+        assertContains(SCREEN_MIXIN, "chexsonContinuationMode");
+        assertContains(CRAFT_CONFIRM_STYLE, "\"chexsonContinuationMode\"");
     }
 
     @Test
@@ -112,10 +111,12 @@ class MultiLevelEmitterCraftingContinuationConfirmFlowTest {
             assertTrue(plugin.shouldApplyMixin("appeng.menu.SomeAlwaysOnMenu", ALWAYS_ON_MIXIN));
         });
 
-        assertContains(SCREEN_MIXIN, "Button.builder");
+        assertContains(SCREEN_MIXIN, "AE2Button");
+        assertContains(SCREEN_MIXIN, "widgets.addButton(");
         assertContains(SCREEN_MIXIN, "chexsonsaeutils$cycleContinuationMode()");
         assertContains(SCREEN_MIXIN, "CraftingContinuationSubmitBridge.getConfirmMode(menu)");
         assertContains(SCREEN_MIXIN, "CraftingContinuationSubmitBridge.allowsSimulationStart(menu, plan)");
+        assertContains(CRAFT_CONFIRM_STYLE, "\"width\": 98");
         assertContains(MENU_MIXIN, "registerClientAction");
     }
 
