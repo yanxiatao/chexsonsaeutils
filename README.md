@@ -1,67 +1,109 @@
 # Chexson's AE Utils
 
-`Chexson's AE Utils` 是一个面向 `Minecraft 1.20.1 + Forge` 的 `Applied Energistics 2` 附属模组，当前版本聚焦三类已经落地的能力：
+[English README](README_EN.md)
 
-- 提供可实际使用的多物品发信器
-- 为 AE2 加工样板提供 replacement rule 编辑、持久化与执行期替换能力
-- 在不破坏 AE2 原有行为边界的前提下，为合成流程补充“按任务忽略缺料并自动续作”的能力
+`Chexson's AE Utils` 是一个面向 Applied Energistics 2 的实用扩展模组，当前 `master` 分支目标平台为 `Minecraft 1.20.1 + Forge 47.4.10 + AE2 15.4.5 + Java 17`。它补充了多槽发信器、处理样板替换规则、缺料时继续合成等自动化能力，适合需要更细粒度 ME 网络控制和自动合成容错的整合包或技术向存档。
 
-## 当前功能
+本 README 对应 `1.20.1 + Forge` 分支。`Minecraft 1.21.1 + NeoForge` 迁移分支使用同一套功能说明结构，但依赖版本和开发环境不同。
 
-### 1. 多物品发信器
+## AI 编写提示
 
-在 AE2 原生等级发信器的使用场景上扩展出一套多槽位条件监控能力：
+本模组的代码、文档与部分资源主要由 AI 在开发者指令下编写、迁移和整理，并由人工进行取舍与审阅。请将它视为需要独立验证的软件：在重要存档或服务器中使用前，建议先备份世界、确认依赖版本，并在测试环境中验证核心自动化链路。
 
-- 一个发信器可同时监控多个物品
-- 每个槽位可单独设置阈值
-- 支持表达式逻辑，不再局限于简单线性关系
-- 支持 `AND`、`OR` 与括号分组
-- 表达式在应用前会进行校验并给出界面反馈
-- 配置槽位支持动态增减，并保持客户端、服务端与重进世界后的同步一致性
-- UI 保持 AE2 风格，使用独立菜单绑定与运行时屏幕实现
+## 版本与依赖
 
-### 2. 加工样板替换规则
+- Minecraft: `1.20.1`
+- Forge: `47.4.10` 或更高的兼容 `47.x` 版本
+- Applied Energistics 2: `15.4.5` 或更高的兼容 `15.4.x` 版本
+- GuideME: `20.1.7`
+- JEI runtime: `15.0.0.12`
+- Java: `17`
+- Mod ID: `chexsonsaeutils`
+- License: `MIT`
 
-为 AE2 processing pattern 增加了可编辑、可持久化的输入替换规则：
+该分支依赖 Forge 与 AE2 的当前内部 API 和 mixin 接缝。升级 AE2、Forge 或 Minecraft 后，应重新运行测试并做游戏内验证。
 
-- 可在终端中为 processing pattern 的输入槽配置 replacement rule
-- 支持基于标签或显式候选物集合定义替换边界
-- replacement metadata 会随 encoded pattern 一起保存
-- planning 与 execution 两侧都会按 replacement-aware 语义选择候选输入
-- 提供独立 feature gate，可在启动阶段整体关闭相关 mixin 与行为入口
+## 功能说明
 
-### 3. AE2 合成缺料续作
+### ME 多槽发信器
 
-为 AE2 合成确认流程增加了按任务粒度的 continuation 能力：
+`ME 多槽发信器` 是对 AE2 原生发信器语义的扩展，物品 ID 为 `chexsonsaeutils:multi_level_emitter`。它仍作为 AE2 部件放置在可接受 AE2 part 的网络侧面，但可以在一个部件里管理多个监控槽位。
 
-- 在提交合成任务时可选择是否启用“忽略缺料并继续”
-- 缺料时不是整单硬失败，而是只让被阻塞分支进入等待
-- 已满足材料的子步骤会继续执行
-- 材料回到网络后会自动恢复等待中的步骤
-- 续作状态会在 AE2 CPU 状态界面中展示等待信息
-- 行为是任务级别的，不是全局常驻开关
+主要能力：
 
-### 4. 兼容性开关
+- 最多配置 `64` 个监控槽位。
+- 每个槽位可独立标记物品、设置阈值、比较模式和模糊匹配模式。
+- 支持通过合成卡启用与自动合成相关的槽位行为。
+- 支持表达式逻辑，例如 `#1 OR (#2 AND #3)`。
+- 表达式支持 `AND`、`OR` 和括号分组，并会对越界槽位、未标记槽位和语法问题给出反馈。
+- 槽位数量、阈值、比较方式、模糊匹配、合成模式和表达式会持久化到部件 NBT。
 
-当前提供两个启动期配置开关，默认开启：
+合成配方是无序合成：
 
-- 配置项：`craftingContinuationEnabled`
-- 配置项：`processingPatternReplacementEnabled`
-- 位置：标准 Forge `common` 配置文件
-- 作用：关闭后会在启动阶段屏蔽对应功能的 mixin 与行为入口
-- 生效方式：重启后生效
+- `ae2:level_emitter`
+- `ae2:logic_processor`
+- `ae2:engineering_processor`
+
+产物为 `chexsonsaeutils:multi_level_emitter`。
+
+### 处理样板替换规则
+
+处理样板替换功能允许玩家为 AE2 processing pattern 的输入槽保存替换规则。它适合“同一个处理流程可以接受同类材料或指定候选物品”的自动化场景。
+
+主要能力：
+
+- 在 AE2 样板编码终端中为处理输入槽配置规则。
+- 支持按共享物品标签分组选择，也支持显式选择单个物品。
+- 将替换规则写入编码样板的 metadata，根标签为 `chexsonsaeutils_processing_replacements`。
+- 解码样板时恢复 replacement-aware 语义。
+- 在 planning 和 execution 阶段按规则选择可用候选输入，而不是固定使用编码时的单一输入。
+- UI 会区分未配置、已配置和部分失效状态，便于排查标签或物品变化造成的规则问题。
+
+### 合成续跑与缺料忽略
+
+合成续跑功能扩展 AE2 的合成确认流程，在合成计划存在缺料时提供 `Default` 与 `Ignore Missing` 模式切换。
+
+主要能力：
+
+- 在 Craft Confirm 界面切换任务级合成模式。
+- `Default` 保持 AE2 默认行为。
+- `Ignore Missing` 会尽量提交可执行分支，只让受缺料影响的分支等待。
+- 合成 CPU 菜单和状态显示会保留等待数量、等待分支与运行中摘要。
+- 与多槽发信器的合成状态联动能力配合使用时，可构建更细粒度的补货与等待逻辑。
+
+## 配置
+
+公共配置文件位于标准 Forge `common` 配置位置，通常为：
+
+```text
+config/chexsonsaeutils-common.toml
+```
+
+当前配置项：
+
+```toml
+craftingContinuationEnabled = true
+processingPatternReplacementEnabled = true
+```
+
+- `craftingContinuationEnabled`：启用或禁用 AE2 合成续跑 / 缺料忽略功能包。
+- `processingPatternReplacementEnabled`：启用或禁用 AE2 处理样板替换功能包。
+
+这两个配置在启动时读取，修改后需要重启游戏或服务器。
+
+## 安装说明
+
+1. 安装 Minecraft `1.20.1`、Forge `47.4.10+` 与 Java `17`。
+2. 安装 Applied Energistics 2 `15.4.5+`。
+3. 将本模组 jar 放入 `mods` 目录。
+4. 首次启动后检查 `config/chexsonsaeutils-common.toml`。
+5. 在测试世界中验证多槽发信器、处理样板替换和合成续跑是否符合整合包预期。
+
+建议在服务器环境中先进行离线或测试服验证，再迁移到正式存档。
 
 ## 开发环境
 
-- Minecraft `1.20.1`
-- Forge `47.4.10`
-- AE2 `15.4.5`
-- GuideME `20.1.7`
-- JEI runtime `15.0.0.12`
-- Java `17`
-- Gradle Wrapper 已包含在仓库中
-
-## 构建与运行
+本仓库使用 Gradle Wrapper。常用命令：
 
 ```powershell
 .\gradlew.bat build
@@ -70,69 +112,47 @@
 .\gradlew.bat runServer
 ```
 
-如果需要把 Gradle 缓存放到仓库本地目录：
+命令说明：
+
+- `build`：编译、处理资源并打包。
+- `test`：运行当前配置的回归测试。
+- `runClient` / `runServer`：启动开发客户端或服务端进行游戏内验证。
+
+如需把 Gradle 缓存固定到仓库本地目录：
 
 ```powershell
 $env:GRADLE_USER_HOME = (Join-Path (Get-Location) '.gradle-user')
 .\gradlew.bat test
 ```
 
-## 测试
+## 仓库结构
 
-项目已经包含 JUnit 5 回归测试，覆盖重点包括：
+- `src/main/java/`：模组主逻辑、AE2 接缝、mixin、菜单与运行时行为。
+- `src/main/resources/`：模组元数据、资源、语言文件、贴图和数据包入口。
+- `src/main/resources/assets/chexsonsaeutils/lang/`：中文与英文语言文件。
+- `src/main/resources/data/chexsonsaeutils/recipes/`：模组配方。
+- `gradle.properties`：目标平台、依赖版本和模组元数据。
 
-- 发信器注册、放置、菜单、界面与持久化
-- 加工样板 replacement rule 的编辑、持久化、planning / execution 与 feature gate
-- 表达式解析、格式化、校验与运行时应用
-- 动态槽位同步
-- continuation 状态、确认流程、生命周期与配置门控
-- 结构重组后的包布局契约
+项目文件约定使用 UTF-8 编码与 CRLF 换行。
 
-示例：
+## 兼容性与限制
 
-```powershell
-.\gradlew.bat test --tests "git.chexson.chexsonsaeutils.parts.MultiLevelEmitterCraftingContinuationConfigGateTest"
-.\gradlew.bat test --tests "git.chexson.chexsonsaeutils.crafting.CraftingContinuationPartialSubmitTest"
-```
+- 本模组不是 AE2 官方项目，也不代表 AE2 官方兼容承诺。
+- 当前 `master` 分支只面向 `Minecraft 1.20.1 + Forge + AE2 15`。
+- 功能依赖 AE2 菜单、样板、合成服务和部件系统的内部行为；AE2 更新后可能需要适配。
+- 修改处理样板 metadata 和多槽发信器 NBT 前，建议备份重要世界。
+- 如果整合包中还有修改 AE2 合成、样板或终端界面的模组，建议重点测试交互兼容性。
 
-## 代码结构
+## 反馈问题
 
-- `src/main/java/git/chexson/chexsonsaeutils/parts/automation/`
-  多物品发信器核心部件与表达式实现
-- `src/main/java/git/chexson/chexsonsaeutils/menu/implementations/`
-  菜单与屏幕绑定
-- `src/main/java/git/chexson/chexsonsaeutils/client/gui/implementations/`
-  运行时 GUI
-- `src/main/java/git/chexson/chexsonsaeutils/pattern/replacement/`
-  加工样板 replacement rule 与 replacement-aware pattern 语义
-- `src/main/java/git/chexson/chexsonsaeutils/crafting/`
-  continuation 模式、持久化、状态投影与提交逻辑
-- `src/main/java/git/chexson/chexsonsaeutils/mixin/ae2/`
-  AE2 兼容集成点
-- `src/test/java/git/chexson/chexsonsaeutils/`
-  面向行为与结构契约的测试
+提交问题时建议包含：
 
-## 设计原则
+- Minecraft、Forge、AE2 和本模组版本。
+- 是否在客户端、服务端或专用服务器出现。
+- 完整日志和崩溃报告。
+- 复现步骤、涉及的样板或发信器配置。
+- `config/chexsonsaeutils-common.toml` 中的相关配置。
 
-- 以 AE2 集成为前提，不做侵入式重写
-- 优先保证行为稳定、可验证、可回归
-- 目录结构尽量贴近 AE2 责任边界，降低后续扩展成本
-- 新功能默认先补测试，再补运行时闭环
+## 许可证
 
-## 当前状态
-
-当前远端主线已整理为只包含功能代码的干净历史，适合继续做：
-
-- 里程碑归档
-- 新功能开发
-- 更细的安装说明与发布说明补充
-
-## 分支与维护说明
-
-- `master` 分支保持当前 `Minecraft 1.20.1 + Forge` 功能基线，适合作为稳定开发入口
-- `1.21.x + NeoForge` 迁移工作会在独立分支中推进，避免直接影响当前主线可用性
-- README 以当前主线能力与开发方式为准，迁移进度以后续迁移分支和相关文档为准
-
-## AI 生成说明
-
-- 本仓库代码均由 AI 编写；README 文案也由 AI 辅助整理。实际能力与行为仍以仓库中的代码、配置和提交历史为准
+本项目使用 `MIT` 许可证。详见仓库中的许可证文件或发布页面说明。
