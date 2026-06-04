@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import static git.chexson.chexsonsaeutils.support.ContinuationConfigTestSupport.withStartupConfigDir;
 import static git.chexson.chexsonsaeutils.support.ContinuationConfigTestSupport.writeCommonConfigDir;
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.assertContains;
+import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.assertDoesNotContain;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -64,9 +65,9 @@ class MultiLevelEmitterCraftingContinuationConfirmFlowTest {
     }
 
     @Test
-    void rebuildsIgnoreMissingButtonAfterScreenInit() throws IOException {
-        assertContains(SCREEN_MIXIN, "@Inject(method = \"init\", at = @At(\"HEAD\"))");
-        assertContains(SCREEN_MIXIN, "chexsonsaeutils$continuationModeButton == null");
+    void registersIgnoreMissingButtonWithCraftConfirmConstructorWidgets() throws IOException {
+        assertContains(SCREEN_MIXIN, "@Inject(method = \"<init>\", at = @At(\"TAIL\"))");
+        assertDoesNotContain(SCREEN_MIXIN, "@Inject(method = \"init\"");
         assertContains(SCREEN_MIXIN, "widgets.addButton(");
         assertContains(SCREEN_MIXIN, "chexsonContinuationMode");
         assertContains(CRAFT_CONFIRM_STYLE, "\"chexsonContinuationMode\"");
