@@ -1,9 +1,12 @@
 package git.chexson.chexsonsaeutils.pattern;
 
+import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
+import appeng.crafting.execution.CraftingCpuHelper;
+import appeng.crafting.inv.ListCraftingInventory;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternSlotReplacementRule;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleValidation;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotTagService;
@@ -27,6 +30,7 @@ import java.util.Set;
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.assertContains;
 import static git.chexson.chexsonsaeutils.support.SourceLayoutTestSupport.javaSource;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProcessingPatternReplacementExecutionTest {
@@ -50,6 +54,9 @@ class ProcessingPatternReplacementExecutionTest {
     void decoderReturnsWrapperOnlyWhenReplacementMetadataExists() throws IOException {
         assertContains(DECODER_CLASS, "chexsonsaeutils_processing_replacements");
         assertContains(DECODER_CLASS, "new ReplacementAwareProcessingPattern");
+        assertContains(DECODER_CLASS, "AEComponents.ENCODED_PROCESSING_PATTERN");
+        assertContains(DECODER_CLASS, "hasProcessingPatternPayload(stack)");
+        assertContains(DECODER_CLASS, "hasProcessingPatternPayload(definition)");
         assertContains(DECODER_CLASS, "return null;");
     }
 
@@ -160,6 +167,39 @@ class ProcessingPatternReplacementExecutionTest {
         );
 
         assertEquals("Expected a valid input for processing slot 5, but none was available", error.getMessage());
+    }
+
+    @Test
+    void replacementExecutionExtractsAndPushesCandidateWhenPrimaryIsMissing() throws Exception {
+        DummyKey primary = new DummyKey("stone");
+        DummyKey candidate = new DummyKey("andesite");
+        SingleInputPattern pattern = new SingleInputPattern(new TestInput(primary, candidate));
+        ListCraftingInventory inventory = new ListCraftingInventory(ignored -> {
+        });
+        inventory.insert(candidate, 1L, Actionable.MODULATE);
+
+        KeyCounter[] extracted = CraftingCpuHelper.extractPatternInputs(
+                pattern,
+                inventory,
+                null,
+                new KeyCounter(),
+                new KeyCounter()
+        );
+
+        assertNotNull(extracted);
+        assertEquals(0L, extracted[0].get(primary));
+        assertEquals(1L, extracted[0].get(candidate));
+
+        List<PushRecord> pushed = new ArrayList<>();
+        invokePushInputToSink(
+                pattern.input(),
+                extracted[0],
+                1L,
+                (key, amount) -> pushed.add(new PushRecord(key, amount)),
+                0
+        );
+
+        assertEquals(List.of(new PushRecord(candidate, 1L)), pushed);
     }
 
     @Test
@@ -288,6 +328,28 @@ class ProcessingPatternReplacementExecutionTest {
 
         @Override
         public AEKey getRemainingKey(AEKey template) {
+            return null;
+        }
+    }
+
+    private record SingleInputPattern(IPatternDetails.IInput input) implements IPatternDetails {
+        @Override
+        public appeng.api.stacks.AEItemKey getDefinition() {
+            return null;
+        }
+
+        @Override
+        public IInput[] getInputs() {
+            return new IInput[]{input};
+        }
+
+        @Override
+        public List<GenericStack> getOutputs() {
+            return List.of();
+        }
+
+        @Override
+        public GenericStack getPrimaryOutput() {
             return null;
         }
     }
