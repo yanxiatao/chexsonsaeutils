@@ -2,10 +2,10 @@ package git.chexson.chexsonsaeutils.pattern.replacement;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.IPatternDetailsDecoder;
+import appeng.api.ids.AEComponents;
 import appeng.api.stacks.AEItemKey;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
@@ -14,9 +14,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 
 public class ProcessingPatternReplacementDecoder implements IPatternDetailsDecoder {
-    private static final String INPUTS_TAG = "in";
-    private static final String OUTPUTS_TAG = "out";
-
     private final ProcessingPatternReplacementPersistence persistence;
     private final ProcessingSlotTagService tagService;
     private final ProcessingSlotRuleValidation validation;
@@ -48,7 +45,7 @@ public class ProcessingPatternReplacementDecoder implements IPatternDetailsDecod
         return stack != null
                 && !stack.isEmpty()
                 && persistence.hasReplacementMetadata(stack)
-                && hasProcessingPatternPayload(getPatternTag(stack));
+                && hasProcessingPatternPayload(stack);
     }
 
     @Override
@@ -56,7 +53,7 @@ public class ProcessingPatternReplacementDecoder implements IPatternDetailsDecod
         CompoundTag patternTag = getPatternTag(definition);
         if (definition == null
                 || !persistence.hasReplacementMetadata(patternTag)
-                || !hasProcessingPatternPayload(patternTag)) {
+                || !hasProcessingPatternPayload(definition)) {
             return null;
         }
 
@@ -78,10 +75,12 @@ public class ProcessingPatternReplacementDecoder implements IPatternDetailsDecod
         return definition == null ? null : decodePattern(definition, level);
     }
 
-    private static boolean hasProcessingPatternPayload(@Nullable CompoundTag patternTag) {
-        return patternTag != null
-                && patternTag.contains(INPUTS_TAG, Tag.TAG_LIST)
-                && patternTag.contains(OUTPUTS_TAG, Tag.TAG_LIST);
+    private static boolean hasProcessingPatternPayload(ItemStack stack) {
+        return stack != null && stack.get(AEComponents.ENCODED_PROCESSING_PATTERN) != null;
+    }
+
+    private static boolean hasProcessingPatternPayload(AEItemKey definition) {
+        return definition != null && definition.get(AEComponents.ENCODED_PROCESSING_PATTERN) != null;
     }
 
     private static @Nullable CompoundTag getPatternTag(ItemStack stack) {

@@ -44,14 +44,18 @@ public abstract class CraftConfirmScreenContinuationMixin extends AEBaseScreen<C
         super(menu, playerInventory, title, style);
     }
 
-    @Inject(method = "init", at = @At("HEAD"))
-    private void chexsonsaeutils$installContinuationModeButton(CallbackInfo ci) {
-        if (chexsonsaeutils$continuationModeButton == null) {
-            chexsonsaeutils$continuationModeButton = widgets.addButton(
-                    chexsonContinuationMode,
-                    chexsonsaeutils$getModeLabel(CraftingContinuationMode.defaultMode()),
-                    this::chexsonsaeutils$cycleContinuationMode);
-        }
+    @Inject(method = "<init>", at = @At("TAIL"))
+    private void chexsonsaeutils$installContinuationModeButton(
+            CraftConfirmMenu menu,
+            Inventory playerInventory,
+            Component title,
+            ScreenStyle style,
+            CallbackInfo ci
+    ) {
+        chexsonsaeutils$continuationModeButton = widgets.addButton(
+                chexsonContinuationMode,
+                chexsonsaeutils$getModeLabel(CraftingContinuationMode.defaultMode()),
+                this::chexsonsaeutils$cycleContinuationMode);
     }
 
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
