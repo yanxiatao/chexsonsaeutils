@@ -122,3 +122,11 @@ runs/
 
 
 TODO.md
+
+# Local planning, agent, MCP, and IDE metadata
+.planning/
+AGENTS.md
+CLAUDE.md
+.mcp.json
+.vscode/
+.codex/
