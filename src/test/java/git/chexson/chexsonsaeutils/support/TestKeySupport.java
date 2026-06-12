@@ -2,12 +2,16 @@ package git.chexson.chexsonsaeutils.support;
 
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AEKeyType;
+import appeng.api.stacks.AEKeyTypesInternal;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.Lifecycle;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.MappedRegistry;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -20,12 +24,27 @@ import java.util.List;
 import java.util.Objects;
 
 public final class TestKeySupport {
+    private static boolean aeKeyTypeRegistryInitialized;
 
     private TestKeySupport() {
     }
 
     public static RegistryFriendlyByteBuf newRegistryFriendlyByteBuf() {
         return new RegistryFriendlyByteBuf(Unpooled.buffer(), RegistryAccess.EMPTY);
+    }
+
+    public static synchronized void ensureAeKeyTypeRegistryInitialized() {
+        if (aeKeyTypeRegistryInitialized) {
+            return;
+        }
+        MappedRegistry<AEKeyType> mappedRegistry = new MappedRegistry<>(AEKeyType.REGISTRY_KEY, Lifecycle.stable());
+        Registry.register(mappedRegistry, DummyKeyType.INSTANCE.getId(), DummyKeyType.INSTANCE);
+        try {
+            AEKeyTypesInternal.setRegistry(mappedRegistry.freeze());
+        } catch (IllegalStateException ignored) {
+            // 同一 JVM 内其他测试已初始化过 registry。
+        }
+        aeKeyTypeRegistryInitialized = true;
     }
 
     public static final class DummyKey extends AEKey {

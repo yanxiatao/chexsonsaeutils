@@ -12,10 +12,13 @@ import appeng.api.stacks.AEKey;
 import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
+import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationSubmitBridge;
+import org.spongepowered.asm.mixin.Unique;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -55,6 +58,13 @@ public abstract class CraftingServiceContinuationMixin {
     ) {
         if (!job.simulation()
                 || CraftingContinuationSubmitBridge.currentMode() != CraftingContinuationMode.IGNORE_MISSING) {
+            return;
+        }
+        if (target instanceof ParallelCraftingCPU) {
+            return;
+        }
+        if (target == null && chexsonsaeutils$hasAutoSelectableParallelCpu(src)) {
+            cir.setReturnValue(CraftingSubmitResult.INCOMPLETE_PLAN);
             return;
         }
 
@@ -118,5 +128,22 @@ public abstract class CraftingServiceContinuationMixin {
                 this.grid,
                 this.craftingCPUClusters
         );
+    }
+
+    @Unique
+    private boolean chexsonsaeutils$hasAutoSelectableParallelCpu(IActionSource src) {
+        if (this.grid == null) {
+            return false;
+        }
+        for (AE2ParallelCpuToolBlockEntity cpuTool : this.grid.getMachines(AE2ParallelCpuToolBlockEntity.class)) {
+            if (cpuTool != null
+                    && cpuTool.canProcessParallelCpuJobs()
+                    && cpuTool.getGrid() == this.grid
+                    && cpuTool.getParallelCpuCluster().canAdvertiseFakePoolCpu()
+                    && cpuTool.getParallelCpuCluster().canBeAutoSelectedFor(src)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

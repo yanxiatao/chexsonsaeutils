@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "machine_item": "minecraft:crafting_table",
+  "recipe_types": [
+    "chexsonsaeutils:direct_processing_mock"
+  ],
+  "default_ticks": 20
+}

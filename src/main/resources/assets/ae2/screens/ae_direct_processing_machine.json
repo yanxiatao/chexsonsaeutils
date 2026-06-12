@@ -1,0 +1,70 @@
+{
+  "$schema": "schema.json",
+  "includes": ["common/common.json"],
+  "generatedBackground": {
+    "width": 200,
+    "height": 238
+  },
+  "slots": {
+    "MACHINE_INPUT": {
+      "left": 8,
+      "top": 52,
+      "grid": "HORIZONTAL"
+    },
+    "ENCODED_PATTERN": {
+      "left": 8,
+      "top": 88,
+      "grid": "BREAK_AFTER_9COLS"
+    },
+    "PLAYER_INVENTORY": {
+      "left": 8,
+      "top": 150,
+      "grid": "BREAK_AFTER_9COLS"
+    },
+    "PLAYER_HOTBAR": {
+      "left": 8,
+      "top": 218,
+      "grid": "HORIZONTAL"
+    },
+    "UPGRADE": {
+      "left": 176,
+      "top": 88,
+      "grid": "VERTICAL"
+    }
+  },
+  "widgets": {
+    "upgrades": {
+      "left": 176,
+      "top": 88
+    }
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.chexsonsaeutils.ae_direct_processing_machine"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    },
+    "binding_slot": {
+      "text": {
+        "translate": "gui.chexsonsaeutils.ae_direct_processing_machine.binding_slot_label"
+      },
+      "position": {
+        "left": 28,
+        "top": 56
+      }
+    },
+    "player_inventory_title": {
+      "text": {
+        "translate": "container.inventory"
+      },
+      "position": {
+        "left": 8,
+        "top": 138
+      }
+    }
+  }
+}

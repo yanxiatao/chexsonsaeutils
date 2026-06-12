@@ -155,7 +155,7 @@ class ProcessingPatternReplacementConfigGateTest {
         assertContains(MAIN_CLASS, "event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);");
         assertContains(MAIN_CLASS, "registerProcessingPatternReplacementDecoder");
         assertFalse(mainSource.contains(
-                "event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap);\n" +
+                "event.enqueueWork(ChexsonsaeutilsContent::registerCommonContent);\n" +
                         "        event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);"
         ));
         assertDoesNotContain(MAIN_CLASS, "writeRules(");

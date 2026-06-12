@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "IPI",
+    "PMP",
+    "ISI"
+  ],
+  "key": {
+    "I": {
+      "item": "minecraft:copper_ingot"
+    },
+    "P": {
+      "item": "ae2:processing_pattern"
+    },
+    "M": {
+      "item": "ae2:interface"
+    },
+    "S": {
+      "item": "ae2:speed_card"
+    }
+  },
+  "result": {
+    "id": "chexsonsaeutils:ae_direct_processing_machine"
+  }
+}

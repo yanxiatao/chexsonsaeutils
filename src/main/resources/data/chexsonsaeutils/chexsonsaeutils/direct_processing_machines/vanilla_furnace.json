@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "machine_item": "minecraft:furnace",
+  "machine_block": "minecraft:furnace",
+  "recipe_types": [
+    "minecraft:smelting"
+  ],
+  "default_ticks": 200
+}

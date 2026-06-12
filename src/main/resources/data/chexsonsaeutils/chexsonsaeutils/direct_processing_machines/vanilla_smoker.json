@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "machine_item": "minecraft:smoker",
+  "machine_block": "minecraft:smoker",
+  "recipe_types": [
+    "minecraft:smoking"
+  ],
+  "default_ticks": 100
+}

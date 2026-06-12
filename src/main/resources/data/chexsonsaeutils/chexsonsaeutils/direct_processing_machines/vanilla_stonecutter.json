@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "machine_item": "minecraft:stonecutter",
+  "machine_block": "minecraft:stonecutter",
+  "recipe_types": [
+    "minecraft:stonecutting"
+  ],
+  "default_ticks": 20
+}
