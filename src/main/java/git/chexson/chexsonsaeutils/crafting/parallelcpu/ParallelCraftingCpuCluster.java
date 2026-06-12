@@ -3,7 +3,7 @@ package git.chexson.chexsonsaeutils.crafting.parallelcpu;
 import appeng.api.config.Actionable;
 import appeng.api.config.CpuSelectionMode;
 import appeng.api.networking.IGrid;
-import appeng.api.networking.crafting.CraftingJobStatus;
+import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.crafting.ICraftingRequester;
 import appeng.api.networking.crafting.ICraftingSubmitResult;
@@ -36,9 +36,7 @@ public final class ParallelCraftingCpuCluster {
 
     private final AE2ParallelCpuToolBlockEntity owner;
     private final MachineSource source;
-    private final ParallelCraftingCPU fakePoolCpu = new ParallelCraftingCPU(this, ParallelCraftingCPU.Kind.FAKE_POOL);
-    private final ParallelCraftingCPU activeSummaryCpu =
-            new ParallelCraftingCPU(this, ParallelCraftingCPU.Kind.ACTIVE_SUMMARY);
+    private final ParallelCraftingCPU remainingCapacityCpu = new ParallelCraftingCPU(this, null);
     private final Map<UUID, ParallelCraftingLaneState> lanes = new LinkedHashMap<>();
     private final Map<ICraftingPlan, ParallelCraftingLaneState> lanesByPlan = new IdentityHashMap<>();
     private final ArrayDeque<ParallelCraftingLaneState> runnableLanes = new ArrayDeque<>();
@@ -87,7 +85,7 @@ public final class ParallelCraftingCpuCluster {
         return activeLaneCount() < ParallelCraftingCpuConfig.current().maxInternalLanesPerBlock();
     }
 
-    public boolean canAdvertiseFakePoolCpu() {
+    public boolean canAdvertiseRemainingCapacityCpu() {
         return hasSubmissionCapacity() && storageBytes() > 0L;
     }
 
@@ -174,19 +172,35 @@ public final class ParallelCraftingCpuCluster {
     }
 
     public void appendVisibleCpus(
-            ImmutableSet.Builder<appeng.api.networking.crafting.ICraftingCPU> builder,
-            boolean advertiseFakePoolCpu
+            ImmutableSet.Builder<ICraftingCPU> builder,
+            boolean advertiseRemainingCapacityCpu
     ) {
-        if (advertiseFakePoolCpu) {
-            builder.add(fakePoolCpu);
+        for (ParallelCraftingLaneState lane : lanes.values()) {
+            builder.add(lane.activeCpu());
         }
-        if (activeLaneCount() > 0) {
-            builder.add(activeSummaryCpu);
+        if (advertiseRemainingCapacityCpu) {
+            builder.add(remainingCapacityCpu);
         }
     }
 
     public boolean hasVisibleCpu(ParallelCraftingCPU cpu) {
-        return cpu == fakePoolCpu || cpu == activeSummaryCpu;
+        if (cpu == null || cpu.cluster() != this) {
+            return false;
+        }
+        if (cpu == remainingCapacityCpu) {
+            return canAdvertiseRemainingCapacityCpu();
+        }
+        ParallelCraftingLaneState lane = findLaneState(cpu.laneId());
+        return lane != null && lane.activeCpu() == cpu;
+    }
+
+    public void appendActiveVisibleCpus(Collection<ParallelCraftingCPU> target) {
+        if (target == null) {
+            return;
+        }
+        for (ParallelCraftingLaneState lane : lanes.values()) {
+            target.add(lane.activeCpu());
+        }
     }
 
     public void appendActiveLaneLinks(Collection<CraftingLink> target) {
@@ -217,6 +231,12 @@ public final class ParallelCraftingCpuCluster {
     @Nullable
     public ParallelCraftingLane findLaneByCraftingId(@Nullable UUID craftingId) {
         return findLaneState(craftingId);
+    }
+
+    @Nullable
+    public ParallelCraftingCPU findActiveCpuByCraftingId(@Nullable UUID craftingId) {
+        ParallelCraftingLaneState lane = findLaneState(craftingId);
+        return lane == null ? null : lane.activeCpu();
     }
 
     public long getRequestedAmountForCraft(@Nullable UUID craftingId, @Nullable AEKey what) {
@@ -273,70 +293,16 @@ public final class ParallelCraftingCpuCluster {
         return ParallelCraftingCpuConfig.current().coProcessorsPerVirtualCpu();
     }
 
-    ParallelCraftingCPU activeSummaryCpu() {
-        return activeSummaryCpu;
+    public ParallelCraftingCPU remainingCapacityCpu() {
+        return remainingCapacityCpu;
     }
 
-    public ParallelCraftingCPU menuCpu() {
-        return activeLaneCount() > 0 ? activeSummaryCpu : fakePoolCpu;
-    }
-
-    @Nullable
-    public ParallelCraftingCpuLogic menuLogic() {
-        ParallelCraftingLaneState lane = leadLane();
-        return lane == null ? null : lane.logic();
-    }
-
-    @Nullable
-    public CraftingJobStatus getSummaryJobStatus() {
-        ParallelCraftingLaneState lane = leadLane();
-        return lane == null ? null : lane.getJobStatus();
-    }
-
-    public void cancelAllJobs() {
-        for (ParallelCraftingLaneState lane : List.copyOf(lanes.values())) {
-            lane.cancel();
-            removeLane(lane);
-        }
-    }
-
-    public boolean isSuspended() {
-        if (lanes.isEmpty()) {
-            return false;
-        }
-        for (ParallelCraftingLaneState lane : lanes.values()) {
-            if (!lane.isSuspended()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    public void setSuspended(boolean suspended) {
-        for (ParallelCraftingLaneState lane : lanes.values()) {
-            lane.setSuspended(suspended);
-            refreshLaneState(lane);
-            if (!suspended) {
-                enqueueRunnable(lane);
-            }
-        }
-    }
-
-    public boolean isCantStoreItems() {
-        for (ParallelCraftingLaneState lane : lanes.values()) {
-            if (lane.isCantStoreItems()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public CraftingStatus createMenuStatus() {
-        ParallelCraftingCpuLogic logic = menuLogic();
-        if (logic == null) {
+    public CraftingStatus createMenuStatus(ParallelCraftingLaneState lane) {
+        if (lane == null) {
             return CraftingStatus.EMPTY;
         }
 
+        ParallelCraftingCpuLogic logic = lane.logic();
         KeyCounter allItems = new KeyCounter();
         logic.getAllItems(allItems);
         List<CraftingStatusEntry> entries = new ArrayList<>(allItems.size());
@@ -390,6 +356,14 @@ public final class ParallelCraftingCpuCluster {
         return lastModifiedOnTick;
     }
 
+    void cancelLane(@Nullable ParallelCraftingLaneState lane) {
+        if (lane == null) {
+            return;
+        }
+        lane.cancel();
+        removeLane(lane);
+    }
+
     void removeLane(ParallelCraftingLaneState lane) {
         if (lane == null || lanes.remove(lane.laneId()) == null) {
             return;
@@ -415,6 +389,14 @@ public final class ParallelCraftingCpuCluster {
             return;
         }
         enqueueRunnable(lane);
+    }
+
+    @Nullable
+    ParallelCraftingLaneState findLaneState(@Nullable UUID craftingId) {
+        if (craftingId == null) {
+            return null;
+        }
+        return lanes.get(craftingId);
     }
 
     private void promoteDelayedLanes(long currentTick, int shardLimit) {
@@ -444,28 +426,10 @@ public final class ParallelCraftingCpuCluster {
         }
     }
 
-    @Nullable
-    private ParallelCraftingLaneState leadLane() {
-        for (ParallelCraftingLaneState lane : lanes.values()) {
-            if (lane.isLaneActive()) {
-                return lane;
-            }
-        }
-        return null;
-    }
-
     private static long nextDelayTicks(ParallelCraftingLaneState lane, int shardLimit) {
         long shardWindow = Math.max(1L, shardLimit);
         long laneHash = lane.laneId().getLeastSignificantBits() ^ lane.laneId().getMostSignificantBits();
         return 1L + Math.floorMod(laneHash, shardWindow);
-    }
-
-    @Nullable
-    private ParallelCraftingLaneState findLaneState(@Nullable UUID craftingId) {
-        if (craftingId == null) {
-            return null;
-        }
-        return lanes.get(craftingId);
     }
 
     public long storedAmountForTest(@Nullable AEKey what) {

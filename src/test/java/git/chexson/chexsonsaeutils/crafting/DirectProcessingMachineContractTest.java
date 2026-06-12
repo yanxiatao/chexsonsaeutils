@@ -333,6 +333,8 @@ class DirectProcessingMachineContractTest {
                         && gameTestSource.contains("directProcessingAutoConfiguresMekanismEnrichmentChamber")
                         && gameTestSource.contains("directProcessingAutoConfiguresMekanismEnergizedSmelter"),
                 "direct processing Mekanism positive auto-config GameTests must exist");
+        assertTrue(gameTestSource.contains("directProcessingAutoConfiguresIfeuInfuser"),
+                "direct processing IFEU positive auto-config GameTest must exist");
         assertTrue(gameTestSource.contains("directProcessingMekanismSawmillStaysUnsupported")
                         && gameTestSource.contains("directProcessingMekanismChemicalMachineStaysUnsupported"),
                 "direct processing Mekanism negative GameTests must exist");

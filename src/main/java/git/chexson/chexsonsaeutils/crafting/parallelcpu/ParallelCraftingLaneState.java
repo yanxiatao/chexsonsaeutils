@@ -21,6 +21,7 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
 
     private final ParallelCraftingCpuCluster cluster;
     private final UUID laneId;
+    private final ParallelCraftingCPU activeCpu;
     private final ParallelCraftingCpuLogic logic;
     private long nextEligibleTick;
     @Nullable
@@ -30,6 +31,7 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
     ParallelCraftingLaneState(ParallelCraftingCpuCluster cluster, UUID laneId, long currentTick) {
         this.cluster = cluster;
         this.laneId = laneId;
+        this.activeCpu = new ParallelCraftingCPU(cluster, laneId);
         this.logic = new ParallelCraftingCpuLogic(this);
         this.nextEligibleTick = currentTick;
     }
@@ -87,8 +89,12 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
         return logic;
     }
 
+    ParallelCraftingCPU activeCpu() {
+        return activeCpu;
+    }
+
     ParallelCraftingCPU linkCpu() {
-        return cluster.activeSummaryCpu();
+        return activeCpu;
     }
 
     @Override

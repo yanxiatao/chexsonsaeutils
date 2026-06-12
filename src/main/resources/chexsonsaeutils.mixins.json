@@ -21,6 +21,7 @@
     "ae2.crafting.CraftingTreeProcessReplacementMixin",
     "ae2.crafting.CraftingTreeNodeReplacementMixin",
     "ae2.crafting.CraftingCalculationAccessor",
+    "ae2.crafting.CraftingCpuLogicFormalMachineSourceContextMixin",
     "ae2.crafting.CraftingCpuLogicAccessor",
     "ae2.crafting.CraftingCpuLogicFormalMachineScaledPatternMixin",
     "ae2.crafting.CraftingLinkAccessor",

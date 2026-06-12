@@ -4,43 +4,65 @@ import appeng.api.config.CpuSelectionMode;
 import appeng.api.networking.crafting.CraftingJobStatus;
 import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.menu.me.crafting.CraftingStatus;
-import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.UUID;
 
 public final class ParallelCraftingCPU implements ICraftingCPU {
 
     private final ParallelCraftingCpuCluster cluster;
-    private final Kind kind;
+    @Nullable
+    private final UUID laneId;
 
-    ParallelCraftingCPU(ParallelCraftingCpuCluster cluster, Kind kind) {
+    ParallelCraftingCPU(ParallelCraftingCpuCluster cluster, @Nullable UUID laneId) {
         this.cluster = cluster;
-        this.kind = kind;
+        this.laneId = laneId;
     }
 
     public ParallelCraftingCpuCluster cluster() {
         return cluster;
     }
 
+    @Nullable
+    public UUID laneId() {
+        return laneId;
+    }
+
+    public boolean isRemainingCapacityCpu() {
+        return laneId == null;
+    }
+
+    public boolean isActiveVirtualCpu() {
+        return laneId != null;
+    }
+
     public boolean acceptsSubmissions() {
-        return kind == Kind.FAKE_POOL;
+        return isRemainingCapacityCpu();
+    }
+
+    @Nullable
+    public ParallelCraftingLaneState lane() {
+        return laneId == null ? null : cluster.findLaneState(laneId);
     }
 
     @Override
     public boolean isBusy() {
-        return kind == Kind.ACTIVE_SUMMARY && cluster.activeLaneCount() > 0;
+        return laneId != null;
     }
 
     @Nullable
     @Override
     public CraftingJobStatus getJobStatus() {
-        return kind == Kind.ACTIVE_SUMMARY ? cluster.getSummaryJobStatus() : null;
+        ParallelCraftingLaneState lane = lane();
+        return lane == null ? null : lane.getJobStatus();
     }
 
     @Override
     public void cancelJob() {
-        if (kind == Kind.ACTIVE_SUMMARY) {
-            cluster.cancelAllJobs();
+        ParallelCraftingLaneState lane = lane();
+        if (lane != null) {
+            cluster.cancelLane(lane);
         }
     }
 
@@ -51,15 +73,16 @@ public final class ParallelCraftingCPU implements ICraftingCPU {
 
     @Override
     public int getCoProcessors() {
-        return ParallelCraftingCpuConfig.current().coProcessorsPerVirtualCpu();
+        return cluster.advertisedCoProcessors();
     }
 
     @Nullable
     @Override
     public Component getName() {
-        return kind == Kind.FAKE_POOL
-                ? Component.translatable("block.chexsonsaeutils.ae2_parallel_cpu_tool")
-                : Component.translatable("gui.chexsonsaeutils.ae2_parallel_cpu_tool.active_summary");
+        if (isRemainingCapacityCpu()) {
+            return Component.translatable("block.chexsonsaeutils.ae2_parallel_cpu_tool");
+        }
+        return Component.translatable("gui.chexsonsaeutils.ae2_parallel_cpu_tool.active_vcpu");
     }
 
     @Override
@@ -68,25 +91,28 @@ public final class ParallelCraftingCPU implements ICraftingCPU {
     }
 
     public CraftingStatus createMenuStatus() {
-        return kind == Kind.ACTIVE_SUMMARY ? cluster.createMenuStatus() : CraftingStatus.EMPTY;
+        ParallelCraftingLaneState lane = lane();
+        return lane == null ? CraftingStatus.EMPTY : cluster.createMenuStatus(lane);
     }
 
     public boolean isSuspended() {
-        return kind == Kind.ACTIVE_SUMMARY && cluster.isSuspended();
+        ParallelCraftingLaneState lane = lane();
+        return lane != null && lane.isSuspended();
     }
 
     public void setSuspended(boolean suspended) {
-        if (kind == Kind.ACTIVE_SUMMARY) {
-            cluster.setSuspended(suspended);
+        ParallelCraftingLaneState lane = lane();
+        if (lane != null) {
+            lane.setSuspended(suspended);
+            cluster.refreshLaneState(lane);
+            if (!suspended) {
+                cluster.wakeLane(lane);
+            }
         }
     }
 
     public boolean isCantStoreItems() {
-        return kind == Kind.ACTIVE_SUMMARY && cluster.isCantStoreItems();
-    }
-
-    enum Kind {
-        FAKE_POOL,
-        ACTIVE_SUMMARY
+        ParallelCraftingLaneState lane = lane();
+        return lane != null && lane.isCantStoreItems();
     }
 }

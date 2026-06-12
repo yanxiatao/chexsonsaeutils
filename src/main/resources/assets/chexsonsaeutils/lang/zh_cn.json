@@ -79,7 +79,7 @@
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.dynamic_recipe_shape": "配方形状为动态",
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.runtime_busy": "机器忙碌",
   "block.chexsonsaeutils.ae2_parallel_cpu_tool": "AE2 极大并行 CPU 工具",
-  "gui.chexsonsaeutils.ae2_parallel_cpu_tool.active_summary": "AE2 并行 CPU 活跃任务",
+  "gui.chexsonsaeutils.ae2_parallel_cpu_tool.active_vcpu": "AE2 并行 CPU 活跃 vCPU",
   "gui.chexsonsaeutils.high_capacity_crafting_machine": "高槽位合成机",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.pattern_slots": "样板槽位",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.page_status": "第 %s / %s 页",

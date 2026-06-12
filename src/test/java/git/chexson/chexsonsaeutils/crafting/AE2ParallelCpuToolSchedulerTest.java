@@ -302,7 +302,8 @@ class AE2ParallelCpuToolSchedulerTest {
                 "pending reinject inputs must be flushed through the grid budget ledger");
         assertContainsInOrder(logicSource, List.of(
                 "reserveExpectedWaiting(job, expectedOutputs, expectedContainerItems);",
-                "acceptedPush = provider.pushPattern(details, craftingContainer);"
+                "acceptedPush = FormalMachineSourceCpuContext.withSourceCraftingId(",
+                "() -> provider.pushPattern(details, submittedCraftingContainer)"
         ));
         assertTrue(logicSource.contains("rollbackReservedWaiting(job, expectedOutputs, expectedContainerItems);"),
                 "failed provider pushes must roll back pre-registered waiting outputs");
@@ -319,12 +320,12 @@ class AE2ParallelCpuToolSchedulerTest {
                 "lane inserts must decrement the mirrored elapsed-time tracker");
         assertFalse(logicSource.contains("pending.add(finalOutput.what(), remainingAmount)"),
                 "parallel menu status must not synthesize pending counts from final-output remainder");
-        assertTrue(clusterSource.contains("ParallelCraftingCpuLogic logic = menuLogic();"),
-                "active summary menu status must be sourced from the lead active lane logic");
+        assertTrue(clusterSource.contains("ParallelCraftingCpuLogic logic = lane.logic();"),
+                "active vCPU menu status must be sourced from the concrete lane logic");
         assertTrue(clusterSource.contains("logic.getAllItems(allItems);"),
-                "cluster menu status entries must come from the lead lane item snapshot");
+                "cluster menu status entries must come from the selected lane item snapshot");
         assertTrue(clusterSource.contains("elapsedTimeTracker.getRemainingItemCount()"),
-                "cluster menu status ETA must come from the lead lane elapsed-time tracker");
+                "cluster menu status ETA must come from the selected lane elapsed-time tracker");
         assertFalse(logicSource.contains("!budgetLedger.tryClaimReinjectPatternInputs() && metrics != null"),
                 "reinject budget exhaustion must not continue to reinject in the same tick");
         assertTrue(logicSource.contains("budgetLedger.hasTimeBudget(System.nanoTime())"),
