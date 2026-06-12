@@ -190,6 +190,42 @@ class ParallelCraftingCpuLogicReservationTest {
         assertFalse(logic.hasJob());
     }
 
+    @Test
+    void finalOutputPartialRequesterAcceptanceKeepsRemainingReservationUntilFullyDelivered() {
+        TestKeySupport.ensureAeKeyTypeRegistryInitialized();
+        DummyKey finalOutput = new DummyKey("parallel_partial_accept_final_output");
+        ParallelCraftingCpuLogic logic = newDetachedLogic();
+        TestRequester requester = new TestRequester(new InsertPolicy() {
+            private int modulateCalls;
+
+            @Override
+            public long accept(AEKey what, long amount, Actionable mode) {
+                if (mode != Actionable.MODULATE) {
+                    return Math.max(0L, amount);
+                }
+                modulateCalls++;
+                return modulateCalls == 1 ? Math.min(2L, Math.max(0L, amount)) : Math.max(0L, amount);
+            }
+        });
+        ParallelExecutingCraftingJob job = newJob(finalOutput, 4L, requester);
+        setJob(logic, job);
+
+        KeyCounter expectedOutputs = new KeyCounter();
+        expectedOutputs.add(finalOutput, 4L);
+        reserveExpectedWaiting(job, expectedOutputs, new KeyCounter());
+
+        assertEquals(2L, logic.insert(finalOutput, 4L, Actionable.MODULATE));
+        assertTrue(logic.hasJob());
+        assertEquals(2L, requester.acceptedAmount(finalOutput));
+        assertEquals(2L, logic.getWaitingFor(finalOutput));
+        assertEquals(2L, getRemainingAmount(job));
+
+        assertEquals(2L, logic.insert(finalOutput, 4L, Actionable.MODULATE));
+        assertEquals(4L, requester.acceptedAmount(finalOutput));
+        assertEquals(0L, logic.getWaitingFor(finalOutput));
+        assertFalse(logic.hasJob());
+    }
+
     private static ParallelCraftingCpuLogic newDetachedLogic() {
         AE2ParallelCpuToolBlockEntity owner = allocateInstance(AE2ParallelCpuToolBlockEntity.class);
         setFinalObjectField(owner, appeng.blockentity.grid.AENetworkedBlockEntity.class,
@@ -253,6 +289,16 @@ class ParallelCraftingCpuLogicReservationTest {
 
     private static void setJob(ParallelCraftingCpuLogic logic, ParallelExecutingCraftingJob job) {
         setField(logic, ParallelCraftingCpuLogic.class, "job", job);
+    }
+
+    private static long getRemainingAmount(ParallelExecutingCraftingJob job) {
+        try {
+            Field field = ParallelExecutingCraftingJob.class.getDeclaredField("remainingAmount");
+            field.setAccessible(true);
+            return field.getLong(job);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("Unable to read field remainingAmount", exception);
+        }
     }
 
     private static void reserveExpectedWaiting(

@@ -482,23 +482,24 @@ final class ParallelCraftingCpuLogic {
             amount = waitingFor;
         }
 
-        if (type == Actionable.MODULATE) {
-            ParallelExecutingCraftingJob.decrementItems(job.timeTracker, amount, what.getType());
-            job.waitingFor.extract(what, amount, Actionable.MODULATE);
-        }
-
         long inserted = amount;
         if (what.matches(job.finalOutput)) {
             if (job.link.isStandalone() || preferBufferFinalOutput) {
                 if (type == Actionable.MODULATE) {
+                    ParallelExecutingCraftingJob.decrementItems(job.timeTracker, amount, what.getType());
+                    job.waitingFor.extract(what, amount, Actionable.MODULATE);
                     inventory.insert(what, amount, Actionable.MODULATE);
                 }
             } else {
                 inserted = job.link.insert(what, amount, type);
+                if (type == Actionable.MODULATE && inserted > 0L) {
+                    ParallelExecutingCraftingJob.decrementItems(job.timeTracker, inserted, what.getType());
+                    job.waitingFor.extract(what, inserted, Actionable.MODULATE);
+                }
             }
-            if (type == Actionable.MODULATE) {
+            if (type == Actionable.MODULATE && inserted > 0L) {
                 postChange(what);
-                job.remainingAmount = Math.max(0L, job.remainingAmount - amount);
+                job.remainingAmount = Math.max(0L, job.remainingAmount - inserted);
                 if (job.remainingAmount <= 0L) {
                     if (synchronousProviderPushDepth > 0) {
                         finishDeferredUntilProviderPushCompletes = true;
@@ -508,6 +509,8 @@ final class ParallelCraftingCpuLogic {
                 }
             }
         } else if (type == Actionable.MODULATE) {
+            ParallelExecutingCraftingJob.decrementItems(job.timeTracker, amount, what.getType());
+            job.waitingFor.extract(what, amount, Actionable.MODULATE);
             inventory.insert(what, amount, Actionable.MODULATE);
             if (job.remainingAmount <= 0L) {
                 if (synchronousProviderPushDepth > 0) {
