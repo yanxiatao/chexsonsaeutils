@@ -294,8 +294,8 @@ class AE2ParallelCpuToolSchedulerTest {
                 "sync must not remove a key that is still requested by a native AE2 CPU");
         assertFalse(mixinSource.contains("parallelCpuGrid.snapshotCurrentlyCrafting()"),
                 "sync must not build a full parallel currentlyCrafting snapshot every tick");
-        assertTrue(mixinSource.contains("onRequestChange(what)"),
-                "sync must notify AE2 crafting watchers for changed request keys");
+        assertFalse(mixinSource.contains("onRequestChange(what)"),
+                "sync must leave watcher notification to AE2 native currentlyCrafting diff handling");
         assertTrue(logicSource.contains("pendingReinjectInputs = craftingContainer"),
                 "budget exits must keep already extracted pattern inputs for a later reinject slice");
         assertTrue(logicSource.contains("flushPendingReinjectInputs(budgetLedger, metrics)"),
@@ -540,8 +540,12 @@ class AE2ParallelCpuToolSchedulerTest {
                 "parallel auto-selection misses must not return a synthetic failure at the HEAD hook");
         assertTrue(autoSubmitSource.contains("submitResult != null && submitResult.successful() ? submitResult : null"),
                 "parallel auto-selection must fall back to native AE2 when a preselected parallel cluster cannot submit");
+        assertTrue(explicitSubmitSource.contains("if (job == null || job.simulation())"),
+                "explicit target hook must preserve AE2 incomplete-plan semantics for null or simulation jobs");
+        assertTrue(explicitSubmitSource.contains("ICraftingSubmitResult result = CraftingSubmitResult.INCOMPLETE_PLAN;"),
+                "explicit target hook must return INCOMPLETE_PLAN before touching the parallel grid");
         assertTrue(explicitSubmitSource.contains("cir.setReturnValue(result == null ? CraftingSubmitResult.CPU_OFFLINE : result);"),
-                "explicit target hook must fail closed for stale parallel CPUs instead of falling back");
+                "explicit target hook must still fail closed for stale real parallel CPUs instead of falling back");
         assertTrue(autoHookSource.contains("if (result != null)"),
                 "auto-selection hook must only intercept when the parallel grid returns a real result");
         assertTrue(autoHookSource.contains("cir.setReturnValue(result);"),
