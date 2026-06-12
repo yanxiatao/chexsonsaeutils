@@ -1,0 +1,10 @@
+{
+  "type": "chexsonsaeutils:direct_processing_mock",
+  "ingredient": {
+    "item": "minecraft:coal"
+  },
+  "result": {
+    "id": "minecraft:diamond",
+    "count": 1
+  }
+}

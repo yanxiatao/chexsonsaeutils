@@ -30,32 +30,33 @@ class MultiLevelEmitterRegistrationTest {
     @Test
     void modBootstrapContainsRegistrationAnchors() throws IOException {
         String modSource = readUtf8(javaSource("git/chexson/chexsonsaeutils/Chexsonsaeutils.java"));
+        String contentSource = readUtf8(javaSource("git/chexson/chexsonsaeutils/registration/ChexsonsaeutilsContent.java"));
         String screenSource = readUtf8(javaSource(
                 "git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
         ));
         String itemModel = readUtf8(resourcePath("assets/chexsonsaeutils/models/item/multi_level_emitter.json"));
-        String recipe = readUtf8(resourcePath("data/chexsonsaeutils/recipes/network/parts/multi_level_emitter.json"));
+        String recipe = readUtf8(resourcePath("data/chexsonsaeutils/recipe/network/parts/multi_level_emitter.json"));
         String recipeAdvancement = readUtf8(resourcePath(
-                "data/chexsonsaeutils/advancements/recipes/network/parts/multi_level_emitter.json"
+                "data/chexsonsaeutils/advancement/recipes/network/parts/multi_level_emitter.json"
         ));
         JsonObject enUs = readLang(resourcePath("assets/chexsonsaeutils/lang/en_us.json"));
         JsonObject zhCn = readLang(resourcePath("assets/chexsonsaeutils/lang/zh_cn.json"));
         String gradleProperties = readUtf8(Path.of("gradle.properties"));
-        assertTrue(modSource.contains("MULTI_LEVEL_EMITTER_ITEM"), "missing emitter RegistryObject");
-        assertTrue(modSource.contains("ITEMS.register(MultiLevelEmitterItem.id()"), "missing item registration call");
-        assertTrue(modSource.contains("event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap)"),
+        assertTrue(contentSource.contains("MULTI_LEVEL_EMITTER_ITEM"), "missing emitter RegistryObject");
+        assertTrue(contentSource.contains("ITEMS.register(MultiLevelEmitterItem.id()"), "missing item registration call");
+        assertTrue(modSource.contains("event.enqueueWork(ChexsonsaeutilsContent::registerCommonContent)"),
                 "missing common setup bootstrap enqueue");
         assertTrue(modSource.contains("RegisterMenuScreensEvent"),
                 "missing NeoForge menu screen registration event anchor");
-        assertTrue(modSource.contains("IMenuTypeExtension.create(MultiLevelEmitterMenu.RuntimeMenu::fromNetwork)"),
+        assertTrue(contentSource.contains("IMenuTypeExtension.create(MultiLevelEmitterMenu.RuntimeMenu::fromNetwork)"),
                 "missing NeoForge menu type extension factory");
-        assertTrue(modSource.contains("Upgrades.add(AEItems.FUZZY_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
+        assertTrue(contentSource.contains("Upgrades.add(AEItems.FUZZY_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
                 "missing AE2 fuzzy card registration for the multi-level emitter");
-        assertTrue(modSource.contains("Upgrades.add(AEItems.CRAFTING_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
+        assertTrue(contentSource.contains("Upgrades.add(AEItems.CRAFTING_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
                 "missing AE2 crafting card registration for the multi-level emitter");
-        assertTrue(modSource.contains("Chexsonsaeutils.registerMultiLevelEmitterClientBindings()"),
+        assertTrue(contentSource.contains("registerMultiLevelEmitterClientBindings()"),
                 "missing client setup binding call");
-        assertTrue(modSource.contains("event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new)"),
+        assertTrue(contentSource.contains("event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new)"),
                 "missing NeoForge client screen registration for the custom MultiLevelEmitter menu");
         assertFalse(modSource.contains("FMLClientSetupEvent"),
                 "client registration must not regress to the legacy Forge client setup event");

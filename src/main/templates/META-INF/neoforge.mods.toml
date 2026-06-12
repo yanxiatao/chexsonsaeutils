@@ -12,6 +12,7 @@ license = "${mod_license}"
 modId = "${mod_id}" #mandatory
 version = "${mod_version}" #mandatory
 displayName = "${mod_name}" #mandatory
+logoFile = "chexsonsaeutils-logo.png"
 authors = "${mod_authors}"
 description='''
 ${mod_description}
@@ -38,5 +39,19 @@ side = "BOTH"
 modId = "ae2"
 type = "required"
 versionRange = "[${ae2_version},)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "jei"
+type = "optional"
+versionRange = "[19,)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.${mod_id}]]
+modId = "mekanism"
+type = "optional"
+versionRange = "[${mekanism_version},)"
 ordering = "AFTER"
 side = "BOTH"

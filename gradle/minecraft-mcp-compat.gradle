@@ -1,0 +1,108 @@
+def minecraftMcpVersion = '0.2.0'
+def minecraftMcpJarName = 'minecraft-mcp-1.21.1-neoforge-v0.2.0.jar'
+def minecraftMcpJarSha256 = '003f3da2531e84476caa35a025893da5bfe4b4cab740245a1330b8ecc705160b'
+def minecraftMcpJarUrl = "https://github.com/langyo/minecraft-mod-mcp/releases/download/v${minecraftMcpVersion}/${minecraftMcpJarName}"
+def minecraftMcpJar = layout.buildDirectory.file("minecraft-mcp/${minecraftMcpJarName}")
+def minecraftMcpPatchedJarName = 'minecraft-mcp-1.21.1-neoforge-dev-patched.jar'
+def minecraftMcpPatchedJar = layout.buildDirectory.file("minecraft-mcp/${minecraftMcpPatchedJarName}")
+def minecraftMcpCompatSourceDir = layout.buildDirectory.dir('generated/sources/minecraftMcpCompat/java')
+def minecraftMcpCompatClassesDir = layout.buildDirectory.dir('classes/java/minecraftMcpCompat')
+def minecraftMcpCompatResourceDir = layout.buildDirectory.dir('generated/resources/minecraftMcpCompat')
+def minecraftMcpCompatTemplateSourceDir = layout.projectDirectory.dir('src/minecraftMcpCompat/java')
+def minecraftMcpCompatTemplateResourceDir = layout.projectDirectory.dir('src/minecraftMcpCompat/resources')
+
+tasks.register('downloadMinecraftMcpMod') {
+    group = 'mod development'
+    description = 'Downloads the Minecraft Mod MCP NeoForge runtime jar used by the client dev run.'
+    outputs.file(minecraftMcpJar)
+
+    doLast {
+        def outputFile = minecraftMcpJar.get().asFile
+        outputFile.parentFile.mkdirs()
+
+        if (!outputFile.exists()) {
+            new URI(minecraftMcpJarUrl).toURL().withInputStream { input ->
+                outputFile.withOutputStream { output ->
+                    output << input
+                }
+            }
+        }
+
+        def actualSha256 = java.security.MessageDigest.getInstance('SHA-256')
+            .digest(outputFile.bytes)
+            .encodeHex()
+            .toString()
+        if (actualSha256 != minecraftMcpJarSha256) {
+            outputFile.delete()
+            throw new GradleException("Invalid Minecraft Mod MCP jar checksum: expected ${minecraftMcpJarSha256}, got ${actualSha256}")
+        }
+    }
+}
+
+tasks.register('generateMinecraftMcpCompatSource', Sync) {
+    group = 'mod development'
+    description = 'Stages the Minecraft 1.21.1 compatible ModDev MCP entrypoint source for the client dev run.'
+    from(minecraftMcpCompatTemplateSourceDir)
+    into(minecraftMcpCompatSourceDir)
+}
+
+tasks.register('generateMinecraftMcpCompatResources', Sync) {
+    group = 'mod development'
+    description = 'Stages resource overrides for the patched ModDev MCP runtime jar.'
+    from(minecraftMcpCompatTemplateResourceDir)
+    into(minecraftMcpCompatResourceDir)
+}
+
+tasks.register('compileMinecraftMcpCompatMod', JavaCompile) {
+    group = 'mod development'
+    description = 'Compiles the Minecraft 1.21.1 compatible ModDev MCP entrypoint.'
+    dependsOn tasks.named('downloadMinecraftMcpMod'), tasks.named('generateMinecraftMcpCompatSource'), tasks.named('classes')
+    source(minecraftMcpCompatSourceDir)
+    destinationDirectory = minecraftMcpCompatClassesDir
+    classpath = files(minecraftMcpJar) + sourceSets.main.output + sourceSets.main.compileClasspath
+    options.encoding = 'UTF-8'
+    javaCompiler = javaToolchains.compilerFor {
+        languageVersion = JavaLanguageVersion.of((project.java_version as String).toInteger())
+    }
+    doFirst {
+        delete(minecraftMcpCompatClassesDir)
+    }
+}
+
+tasks.register('syncGameTestStructures', Sync) {
+    group = 'verification'
+    description = 'Copies GameTest SNBT structures into the dev run directory expected by IDE game test loading.'
+    from('src/main/resources/data') {
+        include '*/gameteststructures/**/*.snbt'
+        includeEmptyDirs = false
+        eachFile { details ->
+            def segments = details.relativePath.segments
+            int markerIndex = segments.findIndexOf { it == 'gameteststructures' }
+            if (markerIndex >= 0 && markerIndex < segments.length - 1) {
+                details.path = segments[(markerIndex + 1)..<segments.length].join('/')
+            }
+        }
+    }
+    into layout.projectDirectory.dir('run/gameteststructures')
+}
+
+tasks.register('patchMinecraftMcpMod', Jar) {
+    group = 'mod development'
+    description = 'Builds a Minecraft 1.21.1 compatible ModDev MCP runtime jar for client smoke tests.'
+    dependsOn tasks.named('downloadMinecraftMcpMod'), tasks.named('compileMinecraftMcpCompatMod'), tasks.named('generateMinecraftMcpCompatResources')
+    archiveFileName = minecraftMcpPatchedJarName
+    destinationDirectory = layout.buildDirectory.dir('minecraft-mcp')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from({
+        zipTree(minecraftMcpJar.get().asFile)
+    }) {
+        exclude 'pack.mcmeta'
+        exclude 'xyz/langyo/minecraft/mcp/mod/ModDevMcpMod.class'
+        exclude 'xyz/langyo/minecraft/mcp/mod/ModDevMcpMod$*.class'
+    }
+    from(minecraftMcpCompatClassesDir)
+    from(minecraftMcpCompatResourceDir)
+}
+
+ext.minecraftMcpModRuntime = files(minecraftMcpPatchedJar)
+minecraftMcpModRuntime.builtBy(tasks.named('patchMinecraftMcpMod'))
