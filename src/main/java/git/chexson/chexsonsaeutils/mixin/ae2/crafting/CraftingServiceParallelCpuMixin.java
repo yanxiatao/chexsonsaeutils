@@ -175,6 +175,13 @@ public abstract class CraftingServiceParallelCpuMixin {
             return;
         }
 
+        if (job == null || job.simulation()) {
+            ICraftingSubmitResult result = CraftingSubmitResult.INCOMPLETE_PLAN;
+            chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
+            cir.setReturnValue(result);
+            return;
+        }
+
         ICraftingSubmitResult result = chexsonsaeutils$getParallelCpuGrid()
                 .submitJob(job, requestingMachine, target, prioritizePower, src);
         chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
@@ -432,7 +439,6 @@ public abstract class CraftingServiceParallelCpuMixin {
             return;
         }
 
-        Set<AEKey> notifyKeys = new HashSet<>();
         for (AEKey changedKey : changedKeys) {
             if (changedKey == null) {
                 continue;
@@ -447,18 +453,8 @@ public abstract class CraftingServiceParallelCpuMixin {
                     this.currentlyCrafting.remove(changedKey);
                 }
             }
-            notifyKeys.add(changedKey);
         }
         this.currentlyCrafting.addAll(chexsonsaeutils$parallelCurrentlyCrafting);
-
-        for (AEKey what : notifyKeys) {
-            for (StackWatcher<ICraftingWatcherNode> watcher : this.interestManager.get(what)) {
-                watcher.getHost().onRequestChange(what);
-            }
-            for (StackWatcher<ICraftingWatcherNode> watcher : this.interestManager.getAllStacksWatchers()) {
-                watcher.getHost().onRequestChange(what);
-            }
-        }
     }
 
     @Unique
