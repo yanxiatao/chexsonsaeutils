@@ -15,6 +15,7 @@ import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMach
 import git.chexson.chexsonsaeutils.client.gui.implementations.AEDirectProcessingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.HighCapacityCraftingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
+import git.chexson.chexsonsaeutils.client.gui.implementations.ParallelCraftingCPUScreen;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMockRecipe;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
@@ -24,7 +25,6 @@ import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
-import appeng.client.gui.me.crafting.CraftingCPUScreen;
 import appeng.client.gui.style.StyleManager;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -193,14 +193,14 @@ public final class ChexsonsaeutilsContent {
         registerMultiLevelEmitterClientBindings();
         event.register(HIGH_CAPACITY_CRAFTING_MACHINE_MENU.get(), HighCapacityCraftingMachineScreen::new);
         event.register(AE_DIRECT_PROCESSING_MACHINE_MENU.get(), AEDirectProcessingMachineScreen::new);
-        event.<ParallelCraftingCPUMenu, CraftingCPUScreen<ParallelCraftingCPUMenu>>register(
+        event.<ParallelCraftingCPUMenu, ParallelCraftingCPUScreen>register(
                 AE2_PARALLEL_CPU_TOOL_CPU_MENU.get(),
                 (menu, playerInventory, title) ->
-                new CraftingCPUScreen<ParallelCraftingCPUMenu>(
+                new ParallelCraftingCPUScreen(
                         menu,
                         playerInventory,
                         title,
-                        StyleManager.loadStyleDoc("/screens/crafting_cpu.json")
+                        StyleManager.loadStyleDoc("/screens/chexson_parallel_cpu.json")
                 )
         );
         event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new);

@@ -843,9 +843,14 @@ public final class FormalMachineCraftingDispatchService {
             }
         }
         if (candidate instanceof ParallelCraftingCPU parallelCpu) {
+            if (!parallelCpu.isActiveVirtualCpu()) {
+                return null;
+            }
             ParallelCraftingCpuCluster cluster = parallelCpu.cluster();
             ParallelCraftingLane lane = cluster.findLaneByCraftingId(craftingId);
-            boolean matches = lane != null && (job == null || craftingId.equals(cluster.findCraftingIdForPlan(job)));
+            boolean matches = lane != null
+                    && parallelCpu == cluster.findActiveCpuByCraftingId(craftingId)
+                    && (job == null || craftingId.equals(cluster.findCraftingIdForPlan(job)));
             if (matches) {
                 return new ParallelActiveCpuHandle(cluster, craftingId);
             }
@@ -862,7 +867,14 @@ public final class FormalMachineCraftingDispatchService {
             return matchingCpuCraftingId(cluster, job);
         }
         if (candidate instanceof ParallelCraftingCPU parallelCpu) {
-            return parallelCpu.cluster().findCraftingIdForPlan(job);
+            if (!parallelCpu.isActiveVirtualCpu()) {
+                return null;
+            }
+            UUID craftingId = parallelCpu.laneId();
+            if (craftingId == null) {
+                return null;
+            }
+            return craftingId.equals(parallelCpu.cluster().findCraftingIdForPlan(job)) ? craftingId : null;
         }
         return null;
     }

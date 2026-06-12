@@ -225,6 +225,9 @@ class HighCapacityPatternInventoryStateTest {
         String serviceMixinSource = readUtf8(javaSource(
                 "git/chexson/chexsonsaeutils/mixin/ae2/crafting/CraftingServiceFormalMachineMixin.java"
         ));
+        String cpuLogicSourceContextMixinSource = readUtf8(javaSource(
+                "git/chexson/chexsonsaeutils/mixin/ae2/crafting/CraftingCpuLogicFormalMachineSourceContextMixin.java"
+        ));
         String gameTestSource = readUtf8(javaSource(
                 "git/chexson/chexsonsaeutils/gametest/crafting/HighCapacityCraftingMachineGameTests.java"
         ));
@@ -240,6 +243,9 @@ class HighCapacityPatternInventoryStateTest {
         assertTrue(serviceMixinSource.contains("FormalMachineCraftingDispatchService.onSubmitJobTail(")
                         && serviceMixinSource.contains("cir.getReturnValue()"),
                 "formal CraftingService submit mixin must pass the real submit result into submit-tail timing setup");
+        assertTrue(cpuLogicSourceContextMixinSource.contains("FormalMachineSourceCpuContext.withSourceCraftingId(")
+                        && cpuLogicSourceContextMixinSource.contains("provider.pushPattern(patternDetails, inputHolder)"),
+                "native AE2 CraftingCpuLogic provider push must carry the source crafting id into formal-machine queues");
         assertTrue(gameTestSource.contains("formal machine timing state should stay pending until fast path accepts the job"),
                 "formal machine GameTest must keep submit-time timing state pending until fast-path acceptance");
         assertTrue(gameTestSource.contains("formal machine timing state should be active before requester receives final output"),
@@ -469,12 +475,18 @@ class HighCapacityPatternInventoryStateTest {
         String formalServiceMixinSource = readUtf8(javaSource(
                 "git/chexson/chexsonsaeutils/mixin/ae2/crafting/CraftingServiceFormalMachineMixin.java"
         ));
+        String parallelServiceMixinSource = readUtf8(javaSource(
+                "git/chexson/chexsonsaeutils/mixin/ae2/crafting/CraftingServiceParallelCpuMixin.java"
+        ));
         assertFalse(formalServiceMixinSource.contains("chexsonsaeutils$bypassFormalMachineCpuInsertion"),
                 "formal CraftingService mixin must no longer short-circuit AE2 CPU interception");
         assertFalse(formalServiceMixinSource.contains("cir.setReturnValue(0L)"),
                 "formal CraftingService mixin must not bypass insertIntoCpus anymore");
         assertTrue(formalServiceMixinSource.contains("FormalMachineCraftingDispatchService.onInsertIntoCpus("),
                 "formal CraftingService mixin must still observe AE2 CPU insert wakeups");
+        assertTrue(parallelServiceMixinSource.contains("chexsonsaeutils$registerFormalMachineSubmitResult(")
+                        && parallelServiceMixinSource.contains("FormalMachineCraftingDispatchService.onSubmitJobTail("),
+                "parallel fake-pool submit path must explicitly seed formal submit-tail registration after early return");
         assertTrue(hostCoreSource.contains("routePayloadIntoAeNetwork(")
                         && hostCoreSource.contains("AeCpuIngressRouter.routePayload("),
                 "formal-machine AE return path must reuse the shared CPU-first ingress router");

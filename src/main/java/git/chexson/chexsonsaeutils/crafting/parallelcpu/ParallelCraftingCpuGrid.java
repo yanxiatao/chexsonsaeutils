@@ -81,7 +81,7 @@ public final class ParallelCraftingCpuGrid {
             if (!hasCpu(parallelCpu)) {
                 return CraftingSubmitResult.CPU_OFFLINE;
             }
-            if (!parallelCpu.acceptsSubmissions()) {
+            if (parallelCpu.isActiveVirtualCpu()) {
                 return CraftingSubmitResult.CPU_BUSY;
             }
             return submitToCluster(parallelCpu.cluster(), job, requestingMachine, src);
@@ -377,13 +377,13 @@ public final class ParallelCraftingCpuGrid {
 
     private void updateMetrics() {
         waitingIndex.copyMetricsTo(metrics);
-        int fakeCpuCount = 0;
+        int remainingCapacityCpuCount = 0;
         for (ParallelCraftingCpuCluster cluster : clusters) {
-            if (cluster.canAdvertiseFakePoolCpu()) {
-                fakeCpuCount = saturatedAdd(fakeCpuCount, 1);
+            if (cluster.canAdvertiseRemainingCapacityCpu()) {
+                remainingCapacityCpuCount = saturatedAdd(remainingCapacityCpuCount, 1);
             }
         }
-        metrics.setCpuGauges(activeLaneCount(), fakeCpuCount);
+        metrics.setCpuGauges(activeLaneCount(), remainingCapacityCpuCount);
     }
 
     private static int saturatedAdd(int left, int right) {

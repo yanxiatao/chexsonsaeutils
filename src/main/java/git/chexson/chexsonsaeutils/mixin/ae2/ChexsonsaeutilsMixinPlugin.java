@@ -50,6 +50,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     );
     private static final Set<String> FORMAL_MACHINE_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceFormalMachineMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicFormalMachineSourceContextMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCPUClusterFormalMachineStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingStatusFormalMachineMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuFormalMachineHeartbeatMixin"

@@ -31,6 +31,7 @@ import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchKey;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchRequest;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineFastPathResult;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingTimingService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineCraftingProvider;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
@@ -517,6 +518,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (compiledTask == null) {
             return false;
         }
+        FormalMachineSourceCpuContext.applyToCompiledTask(compiledTask);
         IMolecularAssemblerSupportedPattern pattern = compiledTask.resolvePattern(getLevel());
         if (pattern != null) {
             maybeAttachCompletionTemplate(pattern, compiledTask);

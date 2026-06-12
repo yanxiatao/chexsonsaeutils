@@ -139,7 +139,7 @@ public abstract class CraftingServiceContinuationMixin {
             if (cpuTool != null
                     && cpuTool.canProcessParallelCpuJobs()
                     && cpuTool.getGrid() == this.grid
-                    && cpuTool.getParallelCpuCluster().canAdvertiseFakePoolCpu()
+                    && cpuTool.getParallelCpuCluster().canAdvertiseRemainingCapacityCpu()
                     && cpuTool.getParallelCpuCluster().canBeAutoSelectedFor(src)) {
                 return true;
             }

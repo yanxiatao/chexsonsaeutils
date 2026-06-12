@@ -130,6 +130,35 @@ class ParallelCraftingCpuLogicReservationTest {
     }
 
     @Test
+    void lateRecyclePayloadKeepsJobActiveUntilWaitingClears() {
+        TestKeySupport.ensureAeKeyTypeRegistryInitialized();
+        DummyKey finalOutput = new DummyKey("parallel_async_final_output");
+        DummyKey container = new DummyKey("parallel_async_container");
+        ParallelCraftingCpuLogic logic = newDetachedLogic();
+        TestRequester requester = new TestRequester();
+        ParallelExecutingCraftingJob job = newJob(finalOutput, requester);
+        setJob(logic, job);
+
+        KeyCounter expectedOutputs = new KeyCounter();
+        expectedOutputs.add(finalOutput, 1L);
+        KeyCounter expectedContainerItems = new KeyCounter();
+        expectedContainerItems.add(container, 1L);
+        reserveExpectedWaiting(job, expectedOutputs, expectedContainerItems);
+
+        assertEquals(1L, logic.insert(finalOutput, 1L, Actionable.MODULATE));
+        assertTrue(logic.hasJob());
+        assertEquals(1L, requester.acceptedAmount(finalOutput));
+        assertEquals(0L, logic.getWaitingFor(finalOutput));
+        assertEquals(1L, logic.getWaitingFor(container));
+        assertEquals(0L, logic.getStored(container));
+
+        assertEquals(1L, logic.insert(container, 1L, Actionable.MODULATE));
+        assertFalse(logic.hasJob());
+        assertEquals(0L, logic.getWaitingFor(container));
+        assertEquals(1L, logic.getStored(container));
+    }
+
+    @Test
     void externalIngressFinalOutputSimulationUsesWaitingInsteadOfRequesterEstimate() {
         TestKeySupport.ensureAeKeyTypeRegistryInitialized();
         DummyKey finalOutput = new DummyKey("parallel_external_ingress_simulation");
@@ -140,7 +169,7 @@ class ParallelCraftingCpuLogicReservationTest {
     }
 
     @Test
-    void externalIngressFinalOutputBuffersIntoLaneInventoryWhenRequesterRejectsSimulation() {
+    void externalIngressFinalOutputModulateBuffersInsideCpuWhenRequested() {
         TestKeySupport.ensureAeKeyTypeRegistryInitialized();
         DummyKey finalOutput = new DummyKey("parallel_external_ingress_modulate");
         ParallelCraftingCpuLogic logic = newDetachedLogic();
