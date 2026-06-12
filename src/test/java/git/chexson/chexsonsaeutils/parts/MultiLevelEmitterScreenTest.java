@@ -650,8 +650,16 @@ class MultiLevelEmitterScreenTest {
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.disabled"));
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.while_crafting"));
         assertTrue(english.contains("gui.chexsonsaeutils.multi_level_emitter.crafting_mode.duplicate_emit_to_craft"));
-        assertTrue(chinese.contains("\\u5df2\\u5b89\\u88c5\\u5408\\u6210\\u5361\\uff1a\\u8868\\u8fbe\\u5f0f\\u4ecd\\u53ef\\u7f16\\u8f91"));
-        assertTrue(chinese.contains("\\u82e5\\u8981\\u4fee\\u6539 REQ/SUP \\u884c\\u7684\\u9608\\u503c\\u6216\\u6bd4\\u8f83\\u65b9\\u5f0f"));
+        assertTrue(containsEscapedOrRaw(
+                chinese,
+                "\\u5df2\\u5b89\\u88c5\\u5408\\u6210\\u5361\\uff1a\\u8868\\u8fbe\\u5f0f\\u4ecd\\u53ef\\u7f16\\u8f91",
+                "已安装合成卡：表达式仍可编辑"
+        ));
+        assertTrue(containsEscapedOrRaw(
+                chinese,
+                "\\u82e5\\u8981\\u4fee\\u6539 REQ/SUP \\u884c\\u7684\\u9608\\u503c\\u6216\\u6bd4\\u8f83\\u65b9\\u5f0f",
+                "若要修改 REQ/SUP 行的阈值或比较方式"
+        ));
         assertFalse(chinese.contains(
                 "\"gui.chexsonsaeutils.multi_level_emitter.crafting_lock_helper\": " +
                         "\"\\u5df2\\u5b89\\u88c5\\u5408\\u6210\\u5361\\uff1aexpression"
@@ -747,6 +755,10 @@ class MultiLevelEmitterScreenTest {
         String rendered = tooltip.toString();
         assertTrue(rendered.contains("gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode"));
         assertTrue(rendered.contains(expectedModeKey));
+    }
+
+    private static boolean containsEscapedOrRaw(String source, String escaped, String raw) {
+        return source.contains(escaped) || source.contains(raw);
     }
 
     private static void assertCraftingTooltipContains(

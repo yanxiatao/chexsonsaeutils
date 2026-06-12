@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_molecular_assembler": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "ae2:molecular_assembler"
+          }
+        ]
+      }
+    },
+    "has_the_recipe": {
+      "trigger": "minecraft:recipe_unlocked",
+      "conditions": {
+        "recipe": "chexsonsaeutils:high_capacity_crafting_machine"
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_molecular_assembler",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "chexsonsaeutils:high_capacity_crafting_machine"
+    ]
+  }
+}

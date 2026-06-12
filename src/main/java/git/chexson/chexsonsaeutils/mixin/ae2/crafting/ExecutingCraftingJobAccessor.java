@@ -4,10 +4,13 @@ import appeng.api.stacks.GenericStack;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.ElapsedTimeTracker;
 import appeng.crafting.execution.ExecutingCraftingJob;
+import appeng.api.crafting.IPatternDetails;
 import appeng.crafting.inv.ListCraftingInventory;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
+
+import java.util.Map;
 
 @Mixin(value = ExecutingCraftingJob.class, remap = false)
 public interface ExecutingCraftingJobAccessor {
@@ -23,10 +26,19 @@ public interface ExecutingCraftingJobAccessor {
     @Accessor(value = "remainingAmount", remap = false)
     long getRemainingAmount();
 
+    @Accessor(value = "remainingAmount", remap = false)
+    void setRemainingAmount(long remainingAmount);
+
     @Accessor(value = "playerId", remap = false)
     @Nullable
     Integer getPlayerId();
 
     @Accessor(value = "timeTracker", remap = false)
     ElapsedTimeTracker getTimeTracker();
+
+    @Accessor(value = "tasks", remap = false)
+    Map<IPatternDetails, Object> getTasks();
+
+    @Accessor(value = "suspended", remap = false)
+    boolean isSuspended();
 }
