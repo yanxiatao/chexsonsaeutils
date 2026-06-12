@@ -1,6 +1,7 @@
 package git.chexson.chexsonsaeutils.gametest.crafting;
 
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
@@ -18,6 +19,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.material.Fluids;
+import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,6 +61,8 @@ public final class DirectProcessingMachineGameTests {
             ResourceLocation.fromNamespaceAndPath("mekanism", "dust_osmium");
     private static final ResourceLocation MEKANISM_INGOT_OSMIUM_ID =
             ResourceLocation.fromNamespaceAndPath("mekanism", "ingot_osmium");
+    private static final ResourceLocation IFEU_INFUSER_ID =
+            ResourceLocation.fromNamespaceAndPath("ifeu", "infuser");
     private static final Logger LOGGER = LoggerFactory.getLogger(DirectProcessingMachineGameTests.class);
     private static final long PUSH_CACHE_LOOKUP_P95_LIMIT_NANOS = 50_000L;
     private static final int DIRECT_SHORT_RECIPE_TICKS = 4;
@@ -125,6 +130,29 @@ public final class DirectProcessingMachineGameTests {
                 .thenWaitUntil(() -> assertMachineSupports(helper, fixture, energizedSmelter, Items.STONE))
                 .thenExecute(() -> pushFirstPattern(helper, fixture, Items.COBBLESTONE, Items.STONE))
                 .thenWaitUntil(() -> assertStoredAtLeast(helper, fixture, Items.STONE, 1))
+                .thenSucceed();
+    }
+
+    @GameTest(templateNamespace = Chexsonsaeutils.MODID, template = TEMPLATE, batch = BATCH, timeoutTicks = 280)
+    public static void directProcessingAutoConfiguresIfeuInfuser(GameTestHelper helper) {
+        DirectProcessingMachineGameTestFixture fixture = DirectProcessingMachineGameTestFixture.create(helper);
+        Item infuser = requireItem(helper, IFEU_INFUSER_ID);
+        List<GenericStack> inputs = List.of(
+                new GenericStack(AEItemKey.of(Items.MUD), 1),
+                requireFluidInput(helper, Fluids.WATER, 2000)
+        );
+
+        helper.startSequence()
+                .thenWaitUntil(fixture::assertNetworkReady)
+                .thenExecute(() -> installMachinePattern(
+                        fixture,
+                        infuser,
+                        inputs,
+                        List.of(new GenericStack(AEItemKey.of(Items.CLAY), 1))
+                ))
+                .thenWaitUntil(() -> assertMachineSupports(helper, fixture, infuser, Items.CLAY))
+                .thenExecute(() -> pushFirstPattern(helper, fixture, inputs, Items.CLAY))
+                .thenWaitUntil(() -> assertStoredAtLeast(helper, fixture, Items.CLAY, 1))
                 .thenSucceed();
     }
 
@@ -936,6 +964,16 @@ public final class DirectProcessingMachineGameTests {
         fixture.installProcessingPattern(0, input, 1, output, 1);
     }
 
+    private static void installMachinePattern(
+            DirectProcessingMachineGameTestFixture fixture,
+            net.minecraft.world.level.ItemLike machine,
+            List<GenericStack> inputs,
+            List<GenericStack> outputs
+    ) {
+        fixture.bindMachine(machine);
+        fixture.installProcessingPattern(0, inputs, outputs);
+    }
+
     private static void pushFirstPattern(
             GameTestHelper helper,
             DirectProcessingMachineGameTestFixture fixture,
@@ -948,6 +986,21 @@ public final class DirectProcessingMachineGameTests {
                         inputHolder(AEItemKey.of(input), 1)
                 ),
                 "direct machine must accept and execute supported pattern for " + output.asItem()
+        );
+    }
+
+    private static void pushFirstPattern(
+            GameTestHelper helper,
+            DirectProcessingMachineGameTestFixture fixture,
+            List<GenericStack> inputs,
+            net.minecraft.world.level.ItemLike output
+    ) {
+        helper.assertTrue(
+                fixture.machine().pushPattern(
+                        fixture.machine().getAvailablePatterns().getFirst(),
+                        inputHolder(inputs)
+                ),
+                "direct machine must accept and execute supported mixed-key pattern for " + output.asItem()
         );
     }
 
@@ -1111,9 +1164,32 @@ public final class DirectProcessingMachineGameTests {
     }
 
     private static KeyCounter[] inputHolder(AEItemKey key, long amount) {
+        return inputHolder(List.of(new GenericStack(key, amount)));
+    }
+
+    private static KeyCounter[] inputHolder(List<GenericStack> stacks) {
         KeyCounter counter = new KeyCounter();
-        counter.add(key, amount);
+        if (stacks != null) {
+            for (GenericStack stack : stacks) {
+                if (stack == null || stack.what() == null || stack.amount() <= 0L) {
+                    continue;
+                }
+                counter.add(stack.what(), stack.amount());
+            }
+        }
         return new KeyCounter[]{counter};
+    }
+
+    private static GenericStack requireFluidInput(
+            GameTestHelper helper,
+            net.minecraft.world.level.material.Fluid fluid,
+            int amount
+    ) {
+        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluid);
+        AEFluidKey key = AEFluidKey.of(new FluidStack(fluid, amount));
+        helper.assertTrue(key != null && fluidId != null,
+                "Missing required fluid key for GameTest: " + fluid);
+        return new GenericStack(key, Math.max(1, amount));
     }
 
     private static boolean isSupported(MachineSupportStatus status) {

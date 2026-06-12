@@ -26,6 +26,7 @@ import appeng.crafting.execution.ElapsedTimeTracker;
 import appeng.crafting.inv.ListCraftingInventory;
 import appeng.hooks.ticking.TickHandler;
 import appeng.me.service.CraftingService;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import com.google.common.base.Preconditions;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
@@ -273,8 +274,12 @@ final class ParallelCraftingCpuLogic {
                 reserveExpectedWaiting(job, expectedOutputs, expectedContainerItems);
                 boolean acceptedPush = false;
                 beginSynchronousProviderPush();
+                KeyCounter[] submittedCraftingContainer = craftingContainer;
                 try {
-                    acceptedPush = provider.pushPattern(details, craftingContainer);
+                    acceptedPush = FormalMachineSourceCpuContext.withSourceCraftingId(
+                            currentSourceCraftingId(),
+                            () -> provider.pushPattern(details, submittedCraftingContainer)
+                    );
                 } finally {
                     if (!acceptedPush) {
                         rollbackReservedWaiting(job, expectedOutputs, expectedContainerItems);
@@ -427,9 +432,7 @@ final class ParallelCraftingCpuLogic {
             return;
         }
         finishDeferredUntilProviderPushCompletes = false;
-        if (job != null && job.remainingAmount <= 0L) {
-            finishJob(true);
-        }
+        finishJobIfReady();
     }
 
     private boolean flushPendingReinjectInputs(
@@ -486,7 +489,7 @@ final class ParallelCraftingCpuLogic {
 
         long inserted = amount;
         if (what.matches(job.finalOutput)) {
-            if (preferBufferFinalOutput || job.link.isStandalone()) {
+            if (job.link.isStandalone() || preferBufferFinalOutput) {
                 if (type == Actionable.MODULATE) {
                     inventory.insert(what, amount, Actionable.MODULATE);
                 }
@@ -500,15 +503,26 @@ final class ParallelCraftingCpuLogic {
                     if (synchronousProviderPushDepth > 0) {
                         finishDeferredUntilProviderPushCompletes = true;
                     } else {
-                        finishJob(true);
+                        finishJobIfReady();
                     }
                 }
             }
         } else if (type == Actionable.MODULATE) {
             inventory.insert(what, amount, Actionable.MODULATE);
+            if (job.remainingAmount <= 0L) {
+                if (synchronousProviderPushDepth > 0) {
+                    finishDeferredUntilProviderPushCompletes = true;
+                } else {
+                    finishJobIfReady();
+                }
+            }
         }
 
         return inserted;
+    }
+
+    private @Nullable UUID currentSourceCraftingId() {
+        return job == null || job.link == null ? null : job.link.getCraftingID();
     }
 
     void cancel() {
@@ -551,6 +565,25 @@ final class ParallelCraftingCpuLogic {
         this.job = null;
         this.requesterLink = null;
         this.storeItems();
+    }
+
+    private void finishJobIfReady() {
+        if (job == null || job.remainingAmount > 0L || hasOutstandingWaiting()) {
+            return;
+        }
+        finishJob(true);
+    }
+
+    private boolean hasOutstandingWaiting() {
+        if (job == null) {
+            return false;
+        }
+        for (var entry : job.waitingFor.list) {
+            if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                return true;
+            }
+        }
+        return false;
     }
 
     void storeItems() {

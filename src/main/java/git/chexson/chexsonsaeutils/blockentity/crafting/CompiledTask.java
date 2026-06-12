@@ -15,6 +15,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 public final class CompiledTask {
@@ -216,6 +217,9 @@ public final class CompiledTask {
             return false;
         }
         if (this.completionRoute != other.completionRoute) {
+            return false;
+        }
+        if (!Objects.equals(this.sourceCraftingId, other.sourceCraftingId)) {
             return false;
         }
         if (this.totalTicks != other.totalTicks) {

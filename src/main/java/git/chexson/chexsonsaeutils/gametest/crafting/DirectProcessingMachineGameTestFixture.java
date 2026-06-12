@@ -83,6 +83,10 @@ public final class DirectProcessingMachineGameTestFixture {
         machine.setPatternAt(slot, encodeProcessingPattern(input, inputAmount, output, outputAmount));
     }
 
+    public void installProcessingPattern(int slot, List<GenericStack> inputs, List<GenericStack> outputs) {
+        machine.setPatternAt(slot, encodeProcessingPattern(inputs, outputs));
+    }
+
     public void installSpeedCards(int count) {
         int desired = Math.max(0, Math.min(count, machine.getUpgrades().size()));
         for (int slot = 0; slot < machine.getUpgrades().size(); slot++) {
@@ -91,9 +95,16 @@ public final class DirectProcessingMachineGameTestFixture {
     }
 
     public ItemStack encodeProcessingPattern(ItemLike input, long inputAmount, ItemLike output, long outputAmount) {
-        return PatternDetailsHelper.encodeProcessingPattern(
+        return encodeProcessingPattern(
                 List.of(new GenericStack(AEItemKey.of(input), Math.max(1L, inputAmount))),
                 List.of(new GenericStack(AEItemKey.of(output), Math.max(1L, outputAmount)))
+        );
+    }
+
+    public ItemStack encodeProcessingPattern(List<GenericStack> inputs, List<GenericStack> outputs) {
+        return PatternDetailsHelper.encodeProcessingPattern(
+                inputs == null ? List.of() : List.copyOf(inputs),
+                outputs == null ? List.of() : List.copyOf(outputs)
         );
     }
 

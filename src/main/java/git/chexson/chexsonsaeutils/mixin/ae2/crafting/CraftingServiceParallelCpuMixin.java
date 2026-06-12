@@ -22,12 +22,15 @@ import appeng.me.service.CraftingService;
 import com.google.common.collect.ImmutableSet;
 import com.llamalad7.mixinextras.sugar.Local;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
+import git.chexson.chexsonsaeutils.config.FormalMachineCraftingDispatchFeatureGate;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import git.chexson.chexsonsaeutils.crafting.AeExternalIngressContext;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuGrid;
 import net.minecraft.nbt.CompoundTag;
+import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -153,7 +156,7 @@ public abstract class CraftingServiceParallelCpuMixin {
         for (ParallelCraftingCpuCluster cluster : this.chexsonsaeutils$parallelCpuClusters) {
             cluster.appendVisibleCpus(
                     cpus,
-                    cluster.canAdvertiseFakePoolCpu()
+                    cluster.canAdvertiseRemainingCapacityCpu()
                             && activeLaneCount < settings.maxInternalLanesPerGrid()
             );
         }
@@ -174,6 +177,7 @@ public abstract class CraftingServiceParallelCpuMixin {
 
         ICraftingSubmitResult result = chexsonsaeutils$getParallelCpuGrid()
                 .submitJob(job, requestingMachine, target, prioritizePower, src);
+        chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
         cir.setReturnValue(result == null ? CraftingSubmitResult.CPU_OFFLINE : result);
     }
 
@@ -205,6 +209,7 @@ public abstract class CraftingServiceParallelCpuMixin {
         ICraftingSubmitResult result = chexsonsaeutils$getParallelCpuGrid()
                 .submitJob(job, requestingMachine, null, prioritizePower, src);
         if (result != null) {
+            chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, null, result);
             cir.setReturnValue(result);
         }
     }
@@ -387,6 +392,27 @@ public abstract class CraftingServiceParallelCpuMixin {
             return Integer.MAX_VALUE;
         }
         return left + right;
+    }
+
+    @Unique
+    private void chexsonsaeutils$registerFormalMachineSubmitResult(
+            @Nullable ICraftingPlan job,
+            @Nullable ICraftingRequester requestingMachine,
+            @Nullable ICraftingCPU target,
+            @Nullable ICraftingSubmitResult result
+    ) {
+        if (!FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()
+                || result == null
+                || !result.successful()) {
+            return;
+        }
+        FormalMachineCraftingDispatchService.onSubmitJobTail(
+                (CraftingService) (Object) this,
+                job,
+                requestingMachine,
+                target,
+                result
+        );
     }
 
     @Unique

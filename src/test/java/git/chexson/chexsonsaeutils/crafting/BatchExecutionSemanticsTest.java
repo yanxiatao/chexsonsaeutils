@@ -44,6 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BatchExecutionSemanticsTest {
@@ -456,6 +457,8 @@ class BatchExecutionSemanticsTest {
         CompiledTask task = newTask(20, 8);
         task.setCompletionRoute(TaskCompletionRoute.CPU_WAITING);
         task.setSupportsTemplatedCompletion(true);
+        UUID sourceCraftingId = UUID.randomUUID();
+        task.setSourceCraftingId(sourceCraftingId);
 
         PendingCompletionWork work = new PendingCompletionWork(task);
         assertNull(work.toPendingAeReturn());
@@ -483,7 +486,22 @@ class BatchExecutionSemanticsTest {
         assertEquals(TaskCompletionRoute.CPU_WAITING, pending.completionRoute());
         assertEquals(8, pending.logicalExecutionCount());
         assertEquals(8L, pending.primaryResult().amount());
+        assertEquals(sourceCraftingId, pending.sourceCraftingId());
         assertTrue(pending.remainingItems().isEmpty());
+    }
+
+    @Test
+    void compiledTaskDoesNotShareBatchKeyAcrossDifferentSourceCraftingIds() {
+        CompiledTask left = newTask(20, 1);
+        CompiledTask right = newTask(20, 1);
+        left.setCompletionRoute(TaskCompletionRoute.CPU_WAITING);
+        right.setCompletionRoute(TaskCompletionRoute.CPU_WAITING);
+        left.setSourceCraftingId(UUID.randomUUID());
+        right.setSourceCraftingId(UUID.randomUUID());
+
+        assertNotEquals(left.getSourceCraftingId(), right.getSourceCraftingId());
+        assertFalse(left.hasSameBatchKey(right));
+        assertFalse(left.canCoalesceWith(right, 4));
     }
 
     @Test

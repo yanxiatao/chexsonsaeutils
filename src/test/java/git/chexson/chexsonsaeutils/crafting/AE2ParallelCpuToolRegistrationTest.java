@@ -118,6 +118,8 @@ class AE2ParallelCpuToolRegistrationTest {
                 "parallel CPU mixin must have an independent gate");
         assertTrue(mixinPluginSource.contains("ParallelCraftingCpuFeatureGate.isEnabledAtStartup()"),
                 "parallel CPU mixin must not reuse continuation or formal machine gates");
+        assertTrue(mixinPluginSource.contains("CraftingCpuLogicFormalMachineSourceContextMixin"),
+                "formal-machine source-context mixin must stay behind the formal-machine feature gate");
         assertTrue(mixinSource.contains("if (!(target instanceof ParallelCraftingCPU))"),
                 "native AE2 CPU targets must be passed through unchanged");
         assertTrue(gridSource.contains("CraftingSubmitResult.CPU_OFFLINE"),
@@ -125,7 +127,7 @@ class AE2ParallelCpuToolRegistrationTest {
         assertTrue(!mixinSource.contains("craftingCPUClusters.add"),
                 "parallel CPU tool must not insert itself into AE2's native CPU cluster set");
         assertTrue(gridSource.contains("submitToAutoSelectedCluster"),
-                "null auto-selection must route to the parallel fake pool when it has capacity");
+                "null auto-selection must route to the remaining-capacity CPU when it has capacity");
         assertTrue(continuationMixinSource.contains("target instanceof ParallelCraftingCPU"),
                 "continuation IGNORE_MISSING must not steal parallel CPU jobs into native CPU auto-selection");
         assertTrue(continuationMixinSource.contains("target == null && chexsonsaeutils$hasAutoSelectableParallelCpu(src)"),
@@ -134,10 +136,13 @@ class AE2ParallelCpuToolRegistrationTest {
                 "parallel auto-selection with an incomplete plan must fail explicitly instead of selecting native CPU");
         assertTrue(mixinSource.contains("private final Set<ParallelCraftingCpuCluster> chexsonsaeutils$parallelCpuClusters"),
                 "CraftingService mixin must own a stable parallel CPU cluster registry");
+        assertTrue(mixinSource.contains("chexsonsaeutils$registerFormalMachineSubmitResult(")
+                        && mixinSource.contains("FormalMachineCraftingDispatchService.onSubmitJobTail("),
+                "parallel CPU explicit and auto-selected fake-pool submits must preserve formal submit-tail registration");
         assertTrue(mixinSource.contains("ImmutableSet.Builder<ICraftingCPU> cpus"),
                 "getCpus must inject directly into AE2's ImmutableSet builder");
         assertTrue(mixinSource.contains("cluster.appendVisibleCpus("),
-                "getCpus must append stable fake-pool and active-summary facades from the service registry");
+                "getCpus must append stable remaining-capacity and active-vcpu identities from the service registry");
         assertTrue(mixinSource.contains("grid.getMachines(AE2ParallelCpuToolBlockEntity.class)"),
                 "parallel cluster discovery must rebuild from CraftingService.updateCPUClusters");
         assertTrue(gridSource.contains("public void setClusters(Collection<ParallelCraftingCpuCluster> nextClusters)"),
@@ -150,10 +155,10 @@ class AE2ParallelCpuToolRegistrationTest {
                 "parallel CPU grid must not scan the AE grid for provider discovery");
         assertTrue(gridSource.contains("activeLaneCount()"),
                 "internal lanes must not be exposed as one CPU each");
-        assertTrue(clusterSource.contains("builder.add(fakePoolCpu)"),
-                "each tool block must expose one fake pool CPU while it has submission capacity");
-        assertTrue(clusterSource.contains("builder.add(activeSummaryCpu)"),
-                "active lanes must be summarized by one bounded active CPU instead of one CPU per lane");
+        assertTrue(clusterSource.contains("builder.add(lane.activeCpu())"),
+                "active lanes must expose their own active vCPU identities");
+        assertTrue(clusterSource.contains("builder.add(remainingCapacityCpu)"),
+                "each tool block must expose one remaining-capacity CPU while it has submission capacity");
         assertTrue(clusterSource.contains("public boolean isCraftActive(")
                         && clusterSource.contains("public ParallelCraftingLane findLaneByCraftingId(")
                         && clusterSource.contains("public long getRequestedAmountForCraft(")
@@ -189,7 +194,7 @@ class AE2ParallelCpuToolRegistrationTest {
                 "player startJob coverage must submit through CraftConfirmMenu.startJob");
         assertTrue(gameTestSource.contains("runMenuActionForMockPlayer(helper, menu::startJob, \"nativeAeProviderStartJob\")"),
                 "native AE provider player startJob coverage must submit through CraftConfirmMenu.startJob");
-        assertTrue(gameTestSource.contains("parallelCpuToolOpensCraftingStatusMenu"),
+        assertTrue(gameTestSource.contains("parallelCpuToolOpensDedicatedCpuMenu"),
                 "GameTest must cover the right-click menu host contract");
         assertTrue(gameTestSource.contains("ParallelCraftingCPUMenu.TYPE"),
                 "GameTest must cover the parallel crafting CPU menu type");
@@ -290,18 +295,28 @@ class AE2ParallelCpuToolRegistrationTest {
         assertTrue(contentSource.contains("AE2_PARALLEL_CPU_TOOL_CPU_MENU")
                         && contentSource.contains("ParallelCraftingCPUMenu.TYPE"),
                 "parallel CPU menu type must stay registered through the content registry");
-        assertTrue(contentSource.contains("CraftingCPUScreen<ParallelCraftingCPUMenu>"),
-                "parallel CPU menu must bind to AE2's Crafting CPU screen");
+        assertTrue(contentSource.contains("ParallelCraftingCPUScreen"),
+                "parallel CPU menu must bind to the dedicated quantum-style crafting CPU screen");
         assertTrue(mixinPluginSource.contains("CraftingCPUMenuParallelCpuMixin"),
                 "parallel CPU menu mixin must stay controlled by the parallel CPU feature gate");
         assertTrue(mixinConfigSource.contains("ae2.menu.CraftingCPUMenuParallelCpuMixin"),
                 "parallel CPU menu mixin must stay declared in the mixin config");
         assertTrue(menuSource.contains("extends CraftingCPUMenu"),
                 "parallel CPU menu must stay compatible with AE2's Crafting CPU screen contract");
-        assertTrue(menuSource.contains("setCPU(host.getParallelCpuCluster().menuCpu())"),
-                "parallel CPU menu must refresh the facade CPU from its block entity host");
+        assertTrue(menuSource.contains("refreshCpuList()"),
+                "parallel CPU menu must rebuild its visible CPU list from the host cluster");
+        assertTrue(menuSource.contains("selectDefaultCpuIfNeeded()"),
+                "parallel CPU menu must default-select a busy active vCPU or the remaining-capacity CPU");
         assertTrue(menuSource.contains("public boolean allowConfiguration()"),
                 "parallel CPU menu must explicitly define native configuration visibility");
+        assertTrue(menuSource.contains("return false;"),
+                "parallel CPU menu must disable the native configuration button and rely on the custom quantum toolbar");
+        assertTrue(menuSource.contains("@GuiSync(15)")
+                        && menuSource.contains("@GuiSync(16)")
+                        && menuSource.contains("@GuiSync(17)"),
+                "parallel CPU menu must sync cpuList, selectedCpuSerial and selectionMode to the client");
+        assertTrue(menuSource.contains("registerClientAction(ACTION_SELECT_CPU, Integer.class, this::selectCpu);"),
+                "parallel CPU menu must expose the selectCpu client action");
         assertTrue(menuMixinSource.contains("parallelCpu.getSelectionMode()"),
                 "parallel CPU menu mixin must mirror the facade selection mode");
         assertTrue(menuMixinSource.contains("parallelCpu.isCantStoreItems()"),
@@ -328,14 +343,16 @@ class AE2ParallelCpuToolRegistrationTest {
                 "parallel CPU facade must expose suspend toggles to the menu mixin");
         assertTrue(cpuSource.contains("public boolean isCantStoreItems()"),
                 "parallel CPU facade must expose storage warnings to the menu mixin");
-        assertTrue(clusterSource.contains("public ParallelCraftingCPU menuCpu()"),
-                "parallel CPU menu must choose between the fake pool and active summary facade");
-        assertTrue(clusterSource.contains("public CraftingStatus createMenuStatus()"),
-                "cluster must aggregate active lanes into a Crafting Status payload");
+        assertFalse(clusterSource.contains("public ParallelCraftingCPU menuCpu()"),
+                "parallel CPU cluster must not keep the old lead-lane menuCpu compatibility helper");
+        assertTrue(clusterSource.contains("public CraftingStatus createMenuStatus(ParallelCraftingLaneState lane)"),
+                "cluster must build Crafting Status payloads from a concrete active lane");
         assertTrue(gameTestSource.contains("createCraftingCpuMenuForServerPath"),
                 "GameTest must cover the dedicated parallel CPU menu factory");
         assertTrue(gameTestSource.contains("ParallelCraftingCPUMenu.TYPE"),
                 "GameTest must verify the dedicated parallel CPU menu type");
+        assertTrue(gameTestSource.contains("parallelCpuToolOpensDedicatedCpuMenu"),
+                "GameTest must cover the dedicated quantum-style parallel CPU menu host contract");
     }
 
     @Test

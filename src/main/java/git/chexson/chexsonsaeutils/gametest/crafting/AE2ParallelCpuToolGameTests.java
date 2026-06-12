@@ -29,6 +29,7 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.block.crafting.AE2ParallelCpuToolBlock;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
+import git.chexson.chexsonsaeutils.blockentity.crafting.PatternBenchmarkSnapshot;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingLane;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCpuGridBudgetLedger;
@@ -73,17 +74,17 @@ public final class AE2ParallelCpuToolGameTests {
     }
 
     @GameTest(templateNamespace = Chexsonsaeutils.MODID, template = TEMPLATE, batch = BATCH, timeoutTicks = 120)
-    public static void parallelCpuToolAdvertisesExtremeFakePool(GameTestHelper helper) {
+    public static void parallelCpuToolAdvertisesRemainingCapacityCpu(GameTestHelper helper) {
         installParallelCpuToolNetwork(helper);
 
         helper.startSequence()
                 .thenWaitUntil(() -> assertParallelCpuToolReady(helper))
-                .thenExecute(() -> assertVisibleCpuContract(helper, 2))
+                .thenExecute(() -> assertVisibleCpuContract(helper))
                 .thenSucceed();
     }
 
     @GameTest(templateNamespace = Chexsonsaeutils.MODID, template = TEMPLATE, batch = BATCH, timeoutTicks = 120)
-    public static void parallelCpuToolOpensCraftingStatusMenu(GameTestHelper helper) {
+    public static void parallelCpuToolOpensDedicatedCpuMenu(GameTestHelper helper) {
         installParallelCpuToolNetwork(helper);
 
         helper.startSequence()
@@ -115,9 +116,17 @@ public final class AE2ParallelCpuToolGameTests {
                             "parallel CPU menu target must remain the tool block entity");
                     helper.assertTrue(menu.getTarget() instanceof AE2ParallelCpuToolBlockEntity,
                             "parallel CPU menu target must be an AE2ParallelCpuToolBlockEntity");
-                    helper.assertTrue(menu.allowConfiguration(),
-                            "parallel CPU menu must expose CPU selection mode configuration");
+                    helper.assertTrue(!menu.allowConfiguration(),
+                            "parallel CPU menu must disable the native configuration button");
                     broadcastChangesForMockPlayer(helper, menu::broadcastChanges);
+                    helper.assertValueEqual(CpuSelectionMode.ANY, menu.getSelectionMode(),
+                            "parallel CPU menu must sync the current selection mode");
+                    helper.assertValueEqual(1, menu.cpuList.cpus().size(),
+                            "idle dedicated CPU menu must show only the remaining-capacity CPU");
+                    helper.assertTrue(menu.getSelectedCpuSerial() == menu.cpuList.cpus().getFirst().serial(),
+                            "idle dedicated CPU menu must auto-select the remaining-capacity CPU");
+                    helper.assertTrue(menu.cpuList.cpus().getFirst().currentJob() == null,
+                            "idle dedicated CPU menu must expose the remaining-capacity CPU as idle");
                     menu.removed(player);
                 })
                 .thenSucceed();
@@ -132,7 +141,7 @@ public final class AE2ParallelCpuToolGameTests {
                 .thenExecute(() -> {
                     MEChestBlockEntity meChest = helper.getBlockEntity(ME_CHEST_POS);
                     Player player = menuPlayer(helper);
-                    assertVisibleCpuContract(helper, 2);
+                    assertVisibleCpuContract(helper);
                     CraftConfirmMenu menu = new CraftConfirmMenu(2, player.getInventory(), meChest);
                     helper.assertTrue(menu.getHost() == meChest,
                             "Craft Confirm menu host must be the ME chest terminal block entity");
@@ -142,7 +151,7 @@ public final class AE2ParallelCpuToolGameTests {
                             "Craft Confirm menu must start without a resolved crafting plan");
                     broadcastChangesForMockPlayer(helper, menu::broadcastChanges);
                     helper.assertTrue(!menu.hasNoCPU(),
-                            "Craft Confirm menu must see the parallel fake pool as an available CPU");
+                            "Craft Confirm menu must see the parallel remaining-capacity CPU as an available CPU");
                     helper.assertTrue(menu.getName() == null,
                             "Craft Confirm menu must keep automatic CPU selection by default");
                     helper.assertValueEqual(0L, menu.getCpuAvailableBytes(),
@@ -185,7 +194,7 @@ public final class AE2ParallelCpuToolGameTests {
                     CraftConfirmMenu menu = requireCraftConfirmMenu(menuHolder);
                     broadcastChangesForMockPlayer(helper, menu::broadcastChanges);
                     helper.assertTrue(!menu.hasNoCPU(),
-                            "Craft Confirm menu must discover the parallel fake pool through the AE terminal host");
+                            "Craft Confirm menu must discover the parallel remaining-capacity CPU through the AE terminal host");
                     helper.assertTrue(menu.getPlan() != null,
                             "Craft Confirm menu must resolve a plan before startJob");
                     helper.assertTrue(menu.getName() == null,
@@ -209,7 +218,7 @@ public final class AE2ParallelCpuToolGameTests {
                     if (menu != null && player != null) {
                         menu.removed(player);
                     }
-                    assertVisibleCpuContract(helper, 2);
+                    assertVisibleCpuContract(helper);
                 })
                 .thenSucceed();
     }
@@ -251,7 +260,7 @@ public final class AE2ParallelCpuToolGameTests {
     }
 
     @GameTest(templateNamespace = Chexsonsaeutils.MODID, template = TEMPLATE, batch = BATCH, timeoutTicks = 180)
-    public static void parallelCpuToolExplicitFakePoolTargetIgnoresRestrictedMode(GameTestHelper helper) {
+    public static void parallelCpuToolExplicitRemainingCapacityTargetIgnoresRestrictedMode(GameTestHelper helper) {
         ParallelSubmitHarness harness = installParallelCpuToolCraftingNetwork(helper);
         AEItemKey output = AEItemKey.of(Items.OAK_BUTTON);
 
@@ -269,9 +278,9 @@ public final class AE2ParallelCpuToolGameTests {
                 .thenWaitUntil(harness::assertPlanDone)
                 .thenExecute(() -> {
                     setSelectionMode(helper, harness.cpuTool, CpuSelectionMode.PLAYER_ONLY);
-                    harness.submitToParallelFakePool(
+                    harness.submitToRemainingCapacityCpu(
                             harness.requester.getActionSource(),
-                            "PLAYER_ONLY explicit fake pool target from machine source",
+                            "PLAYER_ONLY explicit remaining-capacity CPU target from machine source",
                             1
                     );
                 })
@@ -297,7 +306,7 @@ public final class AE2ParallelCpuToolGameTests {
                 .thenWaitUntil(() -> harness.assertCraftable(output))
                 .thenExecute(() -> harness.beginPlan(output, 4L))
                 .thenWaitUntil(harness::assertPlanDone)
-                .thenExecute(harness::submitToParallelFakePool)
+                .thenExecute(harness::submitToRemainingCapacityCpu)
                 .thenWaitUntil(() -> harness.assertAnyBufferedIntermediate(intermediates))
                 .thenWaitUntil(() -> helper.assertTrue(harness.totalObservableOutput(output) >= 4L,
                         "parallel CPU chained job must return at least the requested ladder amount, "
@@ -330,7 +339,7 @@ public final class AE2ParallelCpuToolGameTests {
                 .thenWaitUntil(() -> harness.assertCraftable(output))
                 .thenExecute(() -> harness.beginPlan(output, 4L))
                 .thenWaitUntil(harness::assertPlanDone)
-                .thenExecute(harness::submitToParallelFakePool);
+                .thenExecute(harness::submitToRemainingCapacityCpu);
         for (int tick = 0; tick < 40; tick++) {
             sequence = sequence.thenExecuteAfter(1, () -> harness.assertNoTransientAeLeak(intermediates));
         }
@@ -348,13 +357,10 @@ public final class AE2ParallelCpuToolGameTests {
     }
 
     @GameTest(templateNamespace = Chexsonsaeutils.MODID, template = TEMPLATE, batch = BATCH, timeoutTicks = 420)
-    public static void parallelCpuToolBuffersNativeAeProviderFinalOutputDuringExternalIngress(
+    public static void parallelCpuToolRoutesNativeAeProviderExternalIngressThroughCpuBeforeReturningToAe(
             GameTestHelper helper
     ) {
-        NativeAePatternProviderHarness harness = installParallelCpuToolNativeAeCraftingNetwork(
-                helper,
-                (what, amount, mode) -> mode == Actionable.SIMULATE ? 0L : Math.max(0L, amount)
-        );
+        NativeAePatternProviderHarness harness = installParallelCpuToolNativeAeCraftingNetwork(helper);
         AEItemKey output = AEItemKey.of(Items.LADDER);
         List<AEItemKey> trackedKeys = List.of(
                 output,
@@ -374,26 +380,93 @@ public final class AE2ParallelCpuToolGameTests {
                 .thenWaitUntil(() -> harness.assertCraftable(output))
                 .thenExecute(() -> harness.beginPlan(output, 4L))
                 .thenWaitUntil(harness::assertPlanDone)
-                .thenExecute(harness::submitToParallelFakePool);
+                .thenExecute(harness::submitToRemainingCapacityCpu);
         for (int tick = 0; tick < 40; tick++) {
             sequence = sequence.thenExecuteAfter(1, () -> harness.assertNoTransientAeLeak(trackedKeys));
         }
         sequence
+                .thenWaitUntil(() -> harness.assertFinalOutputBufferedInsideCpu(output))
                 .thenWaitUntil(() -> helper.assertTrue(
-                        harness.cpuTool.getParallelCpuCluster().waitingAmountForTest(output) > 0L
-                                || harness.cpuTool.getParallelCpuCluster().storedAmountForTest(output) > 0L,
-                        "external ingress final output must be buffered or waiting inside the lane before completion"))
+                        harness.cpuTool.getGrid().getStorageService().getCachedInventory().get(output) >= 4L,
+                        "external ingress final output must return enough items to AE storage after CPU completion, "
+                                + harness.describeOutputProgress(output, trackedKeys)))
                 .thenWaitUntil(() -> helper.assertTrue(harness.requester.isJobFinished(),
-                        "external ingress final output requester link must finish"))
+                        "external ingress final output requester link must finish after CPU completion"))
                 .thenWaitUntil(() -> helper.assertValueEqual(0,
                         harness.cpuTool.getParallelCpuCluster().activeLaneCount(),
                         "external ingress final output job must recycle its lane after completion"))
+                .thenExecute(() -> {
+                    helper.assertValueEqual(0L,
+                            harness.cpuTool.getParallelCpuCluster().storedAmountForTest(output),
+                            "external ingress final output must fully drain lane inventory after completion");
+                    helper.assertValueEqual(0L,
+                            harness.cpuTool.getParallelCpuCluster().waitingAmountForTest(output),
+                            "external ingress final output must fully drain CPU waiting after completion");
+                    helper.assertValueEqual(0L,
+                            harness.requester.countAcceptedOutput(output),
+                            "external ingress final output must not bypass CPU into requester accounting");
+                    helper.assertTrue(
+                            harness.cpuTool.getGrid().getStorageService().getCachedInventory().get(output) >= 4L,
+                            "external ingress final output must end in AE storage with at least the requested amount, "
+                                    + harness.describeOutputProgress(output, trackedKeys));
+                    helper.assertTrue(harness.totalObservableOutput(output) >= 4L,
+                            "external ingress final output must remain observable after lane recycle, "
+                                    + harness.describeOutputProgress(output, trackedKeys));
+                })
+                .thenSucceed();
+    }
+
+    @GameTest(templateNamespace = Chexsonsaeutils.MODID, template = TEMPLATE, batch = BATCH, timeoutTicks = 420)
+    public static void parallelCpuToolSingleNativeAeProviderExternalIngressBuffersFinalOutputInsideCpu(
+            GameTestHelper helper
+    ) {
+        NativeAePatternProviderHarness harness = installParallelCpuToolNativeAeCraftingNetwork(helper);
+        AEItemKey output = AEItemKey.of(Items.LADDER);
+        List<AEItemKey> trackedKeys = List.of(
+                output,
+                AEItemKey.of(Items.OAK_PLANKS),
+                AEItemKey.of(Items.STICK)
+        );
+        var sequence = helper.startSequence()
+                .thenWaitUntil(() -> assertParallelCpuToolReady(helper))
+                .thenWaitUntil(harness::assertProviderReady)
+                .thenExecute(() -> {
+                    harness.installProviderPatterns(CraftingPatternDataset.patternsOnly(
+                            CraftingPatternDataset.chainedSet(helper.getLevel())
+                    ));
+                    harness.seedInputs(List.of(new GenericStack(AEItemKey.of(Items.OAK_LOG), 2L)));
+                })
+                .thenWaitUntil(() -> harness.assertStored(AEItemKey.of(Items.OAK_LOG), 2L))
+                .thenWaitUntil(() -> harness.assertCraftable(output))
+                .thenExecute(() -> harness.beginPlan(output, 1L))
+                .thenWaitUntil(harness::assertPlanDone)
+                .thenExecute(harness::submitToRemainingCapacityCpu);
+        for (int tick = 0; tick < 40; tick++) {
+            sequence = sequence.thenExecuteAfter(1, () -> harness.assertNoTransientAeLeak(trackedKeys));
+        }
+        sequence
+                .thenWaitUntil(() -> harness.assertFinalOutputBufferedInsideCpu(output))
                 .thenWaitUntil(() -> helper.assertTrue(
-                        harness.cpuTool.getGrid().getStorageService().getCachedInventory().get(output) >= 4L,
-                        "external ingress final output must return to AE storage after lane completion"))
-                .thenExecute(() -> helper.assertValueEqual(0L,
-                        harness.requester.countAcceptedOutput(output),
-                        "external ingress final output must stay out of requester acceptance accounting"))
+                        harness.cpuTool.getGrid().getStorageService().getCachedInventory().get(output) >= 1L,
+                        "single external ingress final output must return enough items to AE storage after CPU completion, "
+                                + harness.describeOutputProgress(output, trackedKeys)))
+                .thenWaitUntil(() -> helper.assertTrue(harness.requester.isJobFinished(),
+                        "single external ingress requester link must finish after CPU completion"))
+                .thenWaitUntil(() -> helper.assertValueEqual(0,
+                        harness.cpuTool.getParallelCpuCluster().activeLaneCount(),
+                        "single external ingress job must recycle its lane after completion"))
+                .thenExecute(() -> {
+                    helper.assertValueEqual(0L,
+                            harness.cpuTool.getParallelCpuCluster().storedAmountForTest(output),
+                            "single external ingress final output must fully drain lane inventory after completion");
+                    helper.assertTrue(
+                            harness.cpuTool.getGrid().getStorageService().getCachedInventory().get(output) >= 1L,
+                            "single external ingress final output must end in AE storage with at least the requested amount, "
+                                    + harness.describeOutputProgress(output, trackedKeys));
+                    helper.assertValueEqual(0L,
+                            harness.requester.countAcceptedOutput(output),
+                            "single external ingress final output must not bypass CPU into requester accounting");
+                })
                 .thenSucceed();
     }
 
@@ -432,7 +505,7 @@ public final class AE2ParallelCpuToolGameTests {
                     CraftConfirmMenu menu = requireCraftConfirmMenu(menuHolder);
                     broadcastChangesForMockPlayer(helper, menu::broadcastChanges);
                     helper.assertTrue(!menu.hasNoCPU(),
-                            "native AE provider Craft Confirm menu must discover the parallel fake pool");
+                            "native AE provider Craft Confirm menu must discover the parallel remaining-capacity CPU");
                     helper.assertTrue(menu.getPlan() != null,
                             "native AE provider Craft Confirm menu must resolve a plan before startJob");
                     helper.assertTrue(menu.getName() == null,
@@ -461,13 +534,13 @@ public final class AE2ParallelCpuToolGameTests {
                     if (menu != null && player != null) {
                         menu.removed(player);
                     }
-                    assertVisibleCpuContract(helper, 2);
+                    assertVisibleCpuContract(helper);
                 })
                 .thenSucceed();
     }
 
     @GameTest(templateNamespace = Chexsonsaeutils.MODID, template = TEMPLATE, batch = BATCH, timeoutTicks = 220)
-    public static void parallelCpuToolCpuListRefreshesFakeAndActiveSummaryModes(GameTestHelper helper) {
+    public static void parallelCpuToolCpuListRefreshesRemainingAndActiveVcpuModes(GameTestHelper helper) {
         ParallelSubmitHarness harness = installParallelCpuToolCraftingNetwork(helper);
         AEItemKey output = AEItemKey.of(Items.OAK_BUTTON);
 
@@ -485,28 +558,28 @@ public final class AE2ParallelCpuToolGameTests {
                 .thenWaitUntil(harness::assertPlanDone)
                 .thenExecute(() -> {
                     setSelectionMode(helper, harness.cpuTool, CpuSelectionMode.PLAYER_ONLY);
-                    assertVisibleCpuContract(helper, 2);
+                    assertVisibleCpuContract(helper);
                     Player player = menuPlayer(helper);
                     CraftingStatusMenu menu = new CraftingStatusMenu(5, player.getInventory(), harness.meChest);
                     helper.assertTrue(menu.getHost() == harness.meChest,
                             "Crafting Status menu host must be the ME chest terminal block entity");
                     try {
                         broadcastMenuChangesForMockPlayer(helper, menu, 20);
-                        assertVisibleCpuContract(helper, 2);
-                        assertCpuListFakePoolMode(helper, menu, CpuSelectionMode.PLAYER_ONLY);
+                        assertVisibleCpuContract(helper);
+                        assertCpuListRemainingCapacityMode(helper, menu, CpuSelectionMode.PLAYER_ONLY);
 
-                        harness.submitToParallelFakePool(
+                        harness.submitToRemainingCapacityCpu(
                                 harness.requester.getActionSource(),
-                                "PLAYER_ONLY explicit fake pool target before CPU list refresh",
+                                "PLAYER_ONLY explicit remaining-capacity CPU target before CPU list refresh",
                                 1
                         );
                         broadcastMenuChangesForMockPlayer(helper, menu, 1);
-                        assertVisibleCpuContract(helper, 2);
-                        assertCpuListFakeAndActiveSummaryModes(helper, menu, CpuSelectionMode.PLAYER_ONLY);
+                        assertVisibleCpuContract(helper);
+                        assertCpuListRemainingAndActiveModes(helper, menu, CpuSelectionMode.PLAYER_ONLY);
 
                         setSelectionMode(helper, harness.cpuTool, CpuSelectionMode.MACHINE_ONLY);
                         broadcastMenuChangesForMockPlayer(helper, menu, 20);
-                        assertCpuListFakeAndActiveSummaryModes(helper, menu, CpuSelectionMode.MACHINE_ONLY);
+                        assertCpuListRemainingAndActiveModes(helper, menu, CpuSelectionMode.MACHINE_ONLY);
                     } finally {
                         menu.removed(player);
                     }
@@ -541,7 +614,7 @@ public final class AE2ParallelCpuToolGameTests {
                         helper.assertTrue(!blockEntities.next().getBlockPos().equals(cpuTool.getBlockPos()),
                                 "parallel CPU tool must never be part of a native AE2 crafting CPU cluster");
                     }
-                    assertVisibleCpuContract(helper, 3);
+                    assertVisibleCpuContract(helper, 1, 1);
                 })
                 .thenSucceed();
     }
@@ -553,7 +626,7 @@ public final class AE2ParallelCpuToolGameTests {
         helper.startSequence()
                 .thenWaitUntil(() -> assertParallelCpuToolReady(helper))
                 .thenExecute(() -> {
-                    assertVisibleCpuContract(helper, 2);
+                    assertVisibleCpuContract(helper);
                     assertSyntheticLaneScale(helper, "smoke_1024", 1_024);
                     helper.assertValueEqual(
                             65_536,
@@ -604,7 +677,7 @@ public final class AE2ParallelCpuToolGameTests {
                             "parallel CPU metrics must record the submitted virtual CPU");
                     helper.assertTrue(metrics.completedVirtualCpuCount() >= 1L,
                             "parallel CPU metrics must record lane completion");
-                    assertVisibleCpuContract(helper, 2);
+                    assertVisibleCpuContract(helper);
                 })
                 .thenSucceed();
     }
@@ -627,7 +700,7 @@ public final class AE2ParallelCpuToolGameTests {
                 .thenWaitUntil(() -> harness.assertCraftable(output))
                 .thenExecute(() -> harness.beginPlan(output, requestedAmount))
                 .thenWaitUntil(harness::assertPlanDone)
-                .thenExecute(harness::submitToParallelFakePool)
+                .thenExecute(harness::submitToRemainingCapacityCpu)
                 .thenWaitUntil(() -> helper.assertTrue(
                         harness.cpuTool.getParallelCpuCluster()
                                 .metricsSnapshotForTest()
@@ -662,7 +735,7 @@ public final class AE2ParallelCpuToolGameTests {
         helper.startSequence()
                 .thenWaitUntil(() -> assertParallelCpuToolReady(helper))
                 .thenExecute(() -> {
-                    assertVisibleCpuContract(helper, 2);
+                    assertVisibleCpuContract(helper);
                     assertSyntheticLaneScale(helper, "stress_65536", 65_536);
                     assertSyntheticAllBusyProviderBackoff(helper, 65_536);
                     helper.assertValueEqual(
@@ -690,7 +763,7 @@ public final class AE2ParallelCpuToolGameTests {
         helper.startSequence()
                 .thenWaitUntil(() -> assertParallelCpuToolReady(helper))
                 .thenExecute(() -> {
-                    assertVisibleCpuContract(helper, 2);
+                    assertVisibleCpuContract(helper);
                     assertSyntheticLaneScale(helper, "extreme_1048576", 1_048_576);
                     helper.assertValueEqual(
                             1_048_576,
@@ -761,15 +834,45 @@ public final class AE2ParallelCpuToolGameTests {
         helper.assertTrue(cpuTool.getGrid() != null, "parallel CPU tool must join an AE grid");
     }
 
-    private static void assertVisibleCpuContract(GameTestHelper helper, int maxVisibleCpus) {
+    private static void assertVisibleCpuContract(GameTestHelper helper) {
+        assertVisibleCpuContract(helper, 0, 0);
+    }
+
+    private static void assertVisibleCpuContract(
+            GameTestHelper helper,
+            int minimumNativeVisibleCpus,
+            int maximumNativeVisibleCpus
+    ) {
         AE2ParallelCpuToolBlockEntity cpuTool = helper.getBlockEntity(CPU_TOOL_POS);
         List<ICraftingCPU> cpus = List.copyOf(cpuTool.getGrid().getCraftingService().getCpus());
         helper.assertTrue(!cpus.isEmpty(), "parallel CPU tool must advertise AE2 CPU entries");
-        helper.assertTrue(cpus.size() <= maxVisibleCpus,
-                "parallel CPU tool must not expose one CPU per internal lane, cpus=" + cpus.size());
-        helper.assertTrue(cpus.stream().anyMatch(cpu -> cpu.getCoProcessors()
-                        == ParallelCraftingCpuConfig.DEFAULT_CO_PROCESSORS_PER_VIRTUAL_CPU),
-                "parallel CPU tool must advertise an Integer.MAX_VALUE - 1 co-processor fake pool");
+        int activeLaneCount = cpuTool.getParallelCpuCluster().activeLaneCount();
+        boolean canAdvertiseRemainingCapacityCpu = cpuTool.getParallelCpuCluster().canAdvertiseRemainingCapacityCpu();
+        int expectedParallelVisibleCpus = activeLaneCount + (canAdvertiseRemainingCapacityCpu ? 1 : 0);
+        List<ICraftingCPU> parallelCpus = cpus.stream()
+                .filter(cpu -> cpu.getCoProcessors()
+                        == ParallelCraftingCpuConfig.DEFAULT_CO_PROCESSORS_PER_VIRTUAL_CPU)
+                .toList();
+        int nativeCpuCount = cpus.size() - parallelCpus.size();
+        long busyParallelCpuCount = parallelCpus.stream().filter(ICraftingCPU::isBusy).count();
+        long idleParallelCpuCount = parallelCpus.stream().filter(cpu -> !cpu.isBusy()).count();
+
+        helper.assertValueEqual(expectedParallelVisibleCpus, parallelCpus.size(),
+                "parallel CPU tool must expose exactly one remaining-capacity CPU plus one active vCPU per lane, "
+                        + "parallelCpus=" + parallelCpus.size()
+                        + ", totalCpus=" + cpus.size()
+                        + ", activeLanes=" + activeLaneCount
+                        + ", canAdvertiseRemaining=" + canAdvertiseRemainingCapacityCpu);
+        helper.assertValueEqual(activeLaneCount, (int) busyParallelCpuCount,
+                "parallel CPU tool busy vCPU count must match the active lane count");
+        helper.assertValueEqual(canAdvertiseRemainingCapacityCpu ? 1 : 0, (int) idleParallelCpuCount,
+                "parallel CPU tool idle remaining-capacity CPU count must match its remaining submission capacity");
+        helper.assertTrue(nativeCpuCount >= minimumNativeVisibleCpus,
+                "parallel CPU tool must expose at least the expected native AE CPU floor, nativeCpus="
+                        + nativeCpuCount + ", totalCpus=" + cpus.size());
+        helper.assertTrue(nativeCpuCount <= maximumNativeVisibleCpus,
+                "parallel CPU tool must expose no more than the expected native AE CPU ceiling, nativeCpus="
+                        + nativeCpuCount + ", totalCpus=" + cpus.size());
     }
 
     private static void setSelectionMode(
@@ -783,53 +886,53 @@ public final class AE2ParallelCpuToolGameTests {
                 "parallel CPU tool selection mode must update to " + mode);
     }
 
-    private static void assertMenuShowsParallelFakePool(GameTestHelper helper, CraftingStatusMenu menu) {
-        CraftingStatusMenu.CraftingCpuListEntry fakePool = findFakePoolEntry(menu);
-        helper.assertTrue(fakePool.storage() >= ParallelCraftingCpuConfig.current().storageBytes(),
-                "Crafting Status menu fake pool CPU must expose configured storage bytes");
+    private static void assertMenuShowsRemainingCapacityCpu(GameTestHelper helper, CraftingStatusMenu menu) {
+        CraftingStatusMenu.CraftingCpuListEntry remainingCapacity = findRemainingCapacityEntry(menu);
+        helper.assertTrue(remainingCapacity.storage() >= ParallelCraftingCpuConfig.current().storageBytes(),
+                "Crafting Status menu remaining-capacity CPU must expose configured storage bytes");
     }
 
-    private static void assertCpuListFakePoolMode(
+    private static void assertCpuListRemainingCapacityMode(
             GameTestHelper helper,
             CraftingStatusMenu menu,
             CpuSelectionMode expectedMode
     ) {
-        CraftingStatusMenu.CraftingCpuListEntry fakePool = findFakePoolEntry(menu);
-        helper.assertTrue(fakePool.mode() == expectedMode,
-                "Crafting Status menu fake pool mode must refresh to " + expectedMode);
+        CraftingStatusMenu.CraftingCpuListEntry remainingCapacity = findRemainingCapacityEntry(menu);
+        helper.assertTrue(remainingCapacity.mode() == expectedMode,
+                "Crafting Status menu remaining-capacity mode must refresh to " + expectedMode);
     }
 
-    private static void assertCpuListFakeAndActiveSummaryModes(
+    private static void assertCpuListRemainingAndActiveModes(
             GameTestHelper helper,
             CraftingStatusMenu menu,
             CpuSelectionMode expectedMode
     ) {
-        CraftingStatusMenu.CraftingCpuListEntry fakePool = findFakePoolEntry(menu);
-        CraftingStatusMenu.CraftingCpuListEntry activeSummary = findActiveSummaryEntry(menu);
-        helper.assertTrue(fakePool.mode() == expectedMode,
-                "Crafting Status menu fake pool mode must refresh to " + expectedMode);
-        helper.assertTrue(activeSummary.mode() == expectedMode,
-                "Crafting Status menu active summary mode must refresh to " + expectedMode);
+        CraftingStatusMenu.CraftingCpuListEntry remainingCapacity = findRemainingCapacityEntry(menu);
+        CraftingStatusMenu.CraftingCpuListEntry activeCpu = findActiveCpuEntry(menu);
+        helper.assertTrue(remainingCapacity.mode() == expectedMode,
+                "Crafting Status menu remaining-capacity mode must refresh to " + expectedMode);
+        helper.assertTrue(activeCpu.mode() == expectedMode,
+                "Crafting Status menu active vCPU mode must refresh to " + expectedMode);
     }
 
-    private static CraftingStatusMenu.CraftingCpuListEntry findFakePoolEntry(CraftingStatusMenu menu) {
+    private static CraftingStatusMenu.CraftingCpuListEntry findRemainingCapacityEntry(CraftingStatusMenu menu) {
         return menu.cpuList.cpus().stream()
                 .filter(cpu -> cpu.coProcessors()
                         == ParallelCraftingCpuConfig.DEFAULT_CO_PROCESSORS_PER_VIRTUAL_CPU)
                 .filter(cpu -> cpu.currentJob() == null)
                 .findFirst()
                 .orElseThrow(() -> new AssertionError(
-                        "Crafting Status menu must list the parallel fake pool CPU"));
+                        "Crafting Status menu must list the parallel remaining-capacity CPU"));
     }
 
-    private static CraftingStatusMenu.CraftingCpuListEntry findActiveSummaryEntry(CraftingStatusMenu menu) {
+    private static CraftingStatusMenu.CraftingCpuListEntry findActiveCpuEntry(CraftingStatusMenu menu) {
         return menu.cpuList.cpus().stream()
                 .filter(cpu -> cpu.coProcessors()
                         == ParallelCraftingCpuConfig.DEFAULT_CO_PROCESSORS_PER_VIRTUAL_CPU)
                 .filter(cpu -> cpu.currentJob() != null)
                 .findFirst()
                 .orElseThrow(() -> new AssertionError(
-                        "Crafting Status menu must list the parallel active summary CPU"));
+                        "Crafting Status menu must list the parallel active vCPU"));
     }
 
     private static void broadcastChangesForMockPlayer(GameTestHelper helper, Runnable broadcastChanges) {
@@ -1182,22 +1285,26 @@ public final class AE2ParallelCpuToolGameTests {
             plan = resolvedPlan;
         }
 
-        void submitToParallelFakePool() {
-            submitToParallelFakePool(requester.getActionSource(), "parallel CPU fake pool submit", 1);
+        void submitToRemainingCapacityCpu() {
+            submitToRemainingCapacityCpu(
+                    requester.getActionSource(),
+                    "parallel CPU remaining-capacity CPU submit",
+                    1
+            );
         }
 
-        void submitToParallelFakePool(IActionSource actionSource, String label, int expectedActiveLaneCount) {
+        void submitToRemainingCapacityCpu(IActionSource actionSource, String label, int expectedActiveLaneCount) {
             helper.assertTrue(plan != null, "parallel CPU submit must have a resolved plan");
-            ICraftingCPU fakePool = List.copyOf(cpuTool.getGrid().getCraftingService().getCpus()).stream()
+            ICraftingCPU remainingCapacityCpu = List.copyOf(cpuTool.getGrid().getCraftingService().getCpus()).stream()
                     .filter(cpu -> cpu.getCoProcessors()
                             == ParallelCraftingCpuConfig.DEFAULT_CO_PROCESSORS_PER_VIRTUAL_CPU)
                     .filter(cpu -> !cpu.isBusy())
                     .findFirst()
-                    .orElseThrow(() -> new AssertionError("parallel CPU fake pool must be visible"));
+                    .orElseThrow(() -> new AssertionError("parallel CPU remaining-capacity CPU must be visible"));
             ICraftingSubmitResult result = cpuTool.getGrid().getCraftingService().submitJob(
                     plan,
                     requester,
-                    fakePool,
+                    remainingCapacityCpu,
                     false,
                     actionSource
             );
@@ -1206,7 +1313,7 @@ public final class AE2ParallelCpuToolGameTests {
             requester.trackLink(result.link());
             helper.assertValueEqual(expectedActiveLaneCount, cpuTool.getParallelCpuCluster().activeLaneCount(),
                     label + " must allocate the expected internal lane count");
-            assertVisibleCpuContract(helper, 2);
+            assertVisibleCpuContract(helper);
         }
 
         void submitWithAutoSelection() {
@@ -1227,7 +1334,7 @@ public final class AE2ParallelCpuToolGameTests {
             requester.trackLink(result.link());
             helper.assertValueEqual(expectedActiveLaneCount, cpuTool.getParallelCpuCluster().activeLaneCount(),
                     label + " must allocate the expected internal lane count");
-            assertVisibleCpuContract(helper, 2);
+            assertVisibleCpuContract(helper);
         }
 
         void assertAutoSelectionRejected(IActionSource actionSource, String label) {
@@ -1411,6 +1518,25 @@ public final class AE2ParallelCpuToolGameTests {
             }
         }
 
+        void assertFinalOutputBufferedInsideCpu(AEItemKey output) {
+            helper.assertTrue(cpuTool.getParallelCpuCluster().activeLaneCount() > 0,
+                    "final output buffer inspection requires an active lane");
+            long buffered = cpuTool.getParallelCpuCluster().storedAmountForTest(output);
+            long waiting = cpuTool.getParallelCpuCluster().waitingAmountForTest(output);
+            long networkStored = cpuTool.getGrid().getStorageService().getCachedInventory().get(output);
+            helper.assertValueEqual(0L, networkStored,
+                    "final output must stay out of AE storage while lane remains active");
+            helper.assertValueEqual(0L, requester.countAcceptedOutput(output),
+                    "final output must stay out of requester accounting while lane remains active");
+            helper.assertTrue(buffered > 0L || waiting > 0L,
+                    "final output must enter CPU waiting or lane inventory before completion, buffered="
+                            + buffered
+                            + ", waiting="
+                            + waiting
+                            + ", pending="
+                            + cpuTool.getParallelCpuCluster().pendingAmountForTest(output));
+        }
+
         String describeOutputProgress(AEItemKey output, List<AEItemKey> intermediates) {
             StringBuilder details = new StringBuilder("accepted=");
             details.append(requester.countAcceptedOutput(output))
@@ -1471,27 +1597,27 @@ public final class AE2ParallelCpuToolGameTests {
             plan = resolvedPlan;
         }
 
-        void submitToParallelFakePool() {
+        void submitToRemainingCapacityCpu() {
             helper.assertTrue(plan != null, "native AE provider submit must have a resolved plan");
-            ICraftingCPU fakePool = List.copyOf(cpuTool.getGrid().getCraftingService().getCpus()).stream()
+            ICraftingCPU remainingCapacityCpu = List.copyOf(cpuTool.getGrid().getCraftingService().getCpus()).stream()
                     .filter(cpu -> cpu.getCoProcessors()
                             == ParallelCraftingCpuConfig.DEFAULT_CO_PROCESSORS_PER_VIRTUAL_CPU)
                     .filter(cpu -> !cpu.isBusy())
                     .findFirst()
-                    .orElseThrow(() -> new AssertionError("parallel CPU fake pool must be visible"));
+                    .orElseThrow(() -> new AssertionError("parallel CPU remaining-capacity CPU must be visible"));
             ICraftingSubmitResult result = cpuTool.getGrid().getCraftingService().submitJob(
                     plan,
                     requester,
-                    fakePool,
+                    remainingCapacityCpu,
                     false,
                     requester.getActionSource()
             );
             helper.assertTrue(result != null && result.successful(),
-                    "native AE provider fake pool submit must succeed, result=" + result);
+                    "native AE provider remaining-capacity CPU submit must succeed, result=" + result);
             requester.trackLink(result.link());
             helper.assertValueEqual(1, cpuTool.getParallelCpuCluster().activeLaneCount(),
-                    "native AE provider fake pool submit must allocate one active lane");
-            assertVisibleCpuContract(helper, 2);
+                    "native AE provider remaining-capacity CPU submit must allocate one active lane");
+            assertVisibleCpuContract(helper);
         }
 
         private void ensureProviderConnected() {

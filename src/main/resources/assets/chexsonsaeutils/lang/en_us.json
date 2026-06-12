@@ -79,7 +79,7 @@
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.dynamic_recipe_shape": "Dynamic recipe shape",
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.runtime_busy": "Machine busy",
   "block.chexsonsaeutils.ae2_parallel_cpu_tool": "AE2 Parallel CPU Tool",
-  "gui.chexsonsaeutils.ae2_parallel_cpu_tool.active_summary": "AE2 Parallel CPU Active Jobs",
+  "gui.chexsonsaeutils.ae2_parallel_cpu_tool.active_vcpu": "AE2 Parallel CPU Active vCPU",
   "gui.chexsonsaeutils.high_capacity_crafting_machine": "High-Capacity Crafting Machine",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.pattern_slots": "Pattern Slots",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.page_status": "Page %s / %s",
