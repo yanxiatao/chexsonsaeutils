@@ -1,6 +1,8 @@
 package git.chexson.chexsonsaeutils.crafting.color;
 
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -19,6 +21,44 @@ public final class DyeablePatternCraftingPlanner {
 
     public static boolean isCompressedRingCalculable(@Nullable DyeablePatternCompressedRing ring) {
         return ring != null && ring.calculable();
+    }
+
+    public static boolean allowsRingReplacementCandidate(
+            @Nullable DyeablePatternCompressedRing ring,
+            int processColor,
+            @Nullable AEKey entryPoint
+    ) {
+        return processColor != -1
+                && entryPoint != null
+                && isCompressedRingCalculable(ring)
+                && ring.entryPoints().contains(entryPoint);
+    }
+
+    public static boolean canPlanRingReplacementWithoutSwallowingReplacement(
+            @Nullable DyeablePatternCompressedRing ring
+    ) {
+        if (!isCompressedRingCalculable(ring)) {
+            return false;
+        }
+        for (IPatternDetails pattern : ring.executionRatio().keySet()) {
+            if (hasReplacementAwareAlternatives(pattern)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean hasReplacementAwareAlternatives(@Nullable IPatternDetails pattern) {
+        if (pattern == null) {
+            return false;
+        }
+        for (IPatternDetails.IInput input : pattern.getInputs()) {
+            GenericStack[] possibleInputs = input.getPossibleInputs();
+            if (possibleInputs != null && possibleInputs.length > 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static List<IPatternDetails> prioritizeSameColorFallback(

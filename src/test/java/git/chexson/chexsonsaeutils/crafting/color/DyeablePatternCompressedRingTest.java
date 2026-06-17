@@ -168,10 +168,82 @@ final class DyeablePatternCompressedRingTest {
         assertEquals(blue, ordered.getLast());
     }
 
+    @Test
+    void allowsRingReplacementCandidateNeedsMatchingEntryPoint() {
+        AEKey iron = AEItemKey.of(Items.IRON_INGOT);
+        AEKey piston = AEItemKey.of(Items.PISTON);
+        TestPatternDetails pattern = new TestPatternDetails(
+                AEItemKey.of(Items.PAPER),
+                0xFF336699,
+                List.of(new GenericStack(iron, 1L)),
+                List.of(new GenericStack(piston, 1L), new GenericStack(iron, 1L))
+        );
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(List.of(pattern));
+
+        assertNotNull(ring);
+        assertTrue(DyeablePatternCraftingPlanner.allowsRingReplacementCandidate(ring, 0xFF336699, piston));
+        assertFalse(DyeablePatternCraftingPlanner.allowsRingReplacementCandidate(ring, 0xFF336699, iron));
+        assertFalse(DyeablePatternCraftingPlanner.allowsRingReplacementCandidate(ring, -1, piston));
+    }
+
+    @Test
+    void ringReplacementPlanningRejectsReplacementAwareInputs() {
+        AEKey iron = AEItemKey.of(Items.IRON_INGOT);
+        AEKey copper = AEItemKey.of(Items.COPPER_INGOT);
+        AEKey piston = AEItemKey.of(Items.PISTON);
+        TestPatternDetails pattern = new TestPatternDetails(
+                AEItemKey.of(Items.PAPER),
+                0xFF336699,
+                List.of(new TestInput(new GenericStack(iron, 1L), new GenericStack(copper, 1L))),
+                List.of(new GenericStack(piston, 1L))
+        );
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(List.of(pattern));
+
+        assertNotNull(ring);
+        assertTrue(DyeablePatternCraftingPlanner.allowsRingReplacementCandidate(ring, 0xFF336699, piston));
+        assertFalse(DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring));
+    }
+
+    @Test
+    void ringReplacementCandidateRequiresMatchingEntryPoint() {
+        AEKey iron = AEItemKey.of(Items.IRON_INGOT);
+        AEKey piston = AEItemKey.of(Items.PISTON);
+        TestPatternDetails pattern = new TestPatternDetails(
+                AEItemKey.of(Items.PAPER),
+                0xFF336699,
+                List.of(new GenericStack(iron, 1L)),
+                List.of(new GenericStack(piston, 1L), new GenericStack(iron, 1L))
+        );
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(List.of(pattern));
+
+        assertNotNull(ring);
+        assertTrue(DyeablePatternCraftingPlanner.allowsRingReplacementCandidate(ring, 0xFF336699, piston));
+        assertFalse(DyeablePatternCraftingPlanner.allowsRingReplacementCandidate(ring, 0xFF336699, iron));
+        assertFalse(DyeablePatternCraftingPlanner.allowsRingReplacementCandidate(ring, -1, piston));
+    }
+
+    @Test
+    void ringReplacementPlanningDoesNotSwallowReplacementAwareInputs() {
+        AEKey iron = AEItemKey.of(Items.IRON_INGOT);
+        AEKey copper = AEItemKey.of(Items.COPPER_INGOT);
+        AEKey piston = AEItemKey.of(Items.PISTON);
+        TestPatternDetails pattern = new TestPatternDetails(
+                AEItemKey.of(Items.PAPER),
+                0xFF336699,
+                List.of(new TestInput(new GenericStack(iron, 1L), new GenericStack(copper, 1L))),
+                List.of(new GenericStack(piston, 1L))
+        );
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(List.of(pattern));
+
+        assertNotNull(ring);
+        assertTrue(DyeablePatternCraftingPlanner.allowsRingReplacementCandidate(ring, 0xFF336699, piston));
+        assertFalse(DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring));
+    }
+
     private record TestPatternDetails(
             AEItemKey definition,
             int color,
-            List<GenericStack> inputs,
+            List<?> inputs,
             List<GenericStack> outputs
     ) implements IPatternDetails, IPatternDetailsColorAccessor {
 
@@ -182,7 +254,11 @@ final class DyeablePatternCompressedRingTest {
 
         @Override
         public IInput[] getInputs() {
-            return inputs.stream().map(TestInput::new).toArray(IInput[]::new);
+            return inputs.stream()
+                    .map(input -> input instanceof IInput testInput
+                            ? testInput
+                            : new TestInput((GenericStack) input))
+                    .toArray(IInput[]::new);
         }
 
         @Override
@@ -229,11 +305,11 @@ final class DyeablePatternCompressedRingTest {
         }
     }
 
-    private record TestInput(GenericStack stack) implements IPatternDetails.IInput {
+    private record TestInput(GenericStack... stacks) implements IPatternDetails.IInput {
 
         @Override
         public GenericStack[] getPossibleInputs() {
-            return new GenericStack[]{stack};
+            return stacks;
         }
 
         @Override
@@ -243,7 +319,12 @@ final class DyeablePatternCompressedRingTest {
 
         @Override
         public boolean isValid(AEKey input, net.minecraft.world.level.Level level) {
-            return stack.what().equals(input);
+            for (GenericStack stack : stacks) {
+                if (stack.what().equals(input)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         @Override
