@@ -74,7 +74,7 @@ public class AEDirectProcessingMachineMenu extends UpgradeableMenu<AEDirectProce
         addSlot(new MachineBindingSlot(getHost(), 0), SlotSemantics.MACHINE_INPUT);
         var patternInventory = getHost().getTerminalPatternInventory();
         for (int slot = 0; slot < getHost().getVisiblePatternSlots(); slot++) {
-            addSlot(new DirectProcessingPatternSlot(getHost(), patternInventory, slot, slot), SlotSemantics.ENCODED_PATTERN);
+            addSlot(new DirectProcessingPatternSlot(getHost(), patternInventory, slot), SlotSemantics.ENCODED_PATTERN);
         }
     }
 
@@ -313,17 +313,14 @@ public class AEDirectProcessingMachineMenu extends UpgradeableMenu<AEDirectProce
     private static final class DirectProcessingPatternSlot extends RestrictedInputSlot {
 
         private final AEDirectProcessingMachineBlockEntity host;
-        private final int pageSlotIndex;
 
         private DirectProcessingPatternSlot(
                 AEDirectProcessingMachineBlockEntity host,
                 appeng.api.inventories.InternalInventory inventory,
-                int slotIndex,
-                int pageSlotIndex
+                int slotIndex
         ) {
             super(PlacableItemType.MOLECULAR_ASSEMBLER_PATTERN, inventory, slotIndex);
             this.host = host;
-            this.pageSlotIndex = pageSlotIndex;
             setStackLimit(1);
         }
 
@@ -334,16 +331,18 @@ public class AEDirectProcessingMachineMenu extends UpgradeableMenu<AEDirectProce
 
         @Override
         public List<Component> getCustomTooltip(ItemStack carried) {
-            AEDirectProcessingMachineBlockEntity menuHost = this.host;
-            int globalSlot = menuHost.toGlobalPatternSlotIndex(pageSlotIndex);
-            ItemStack stack = menuHost.getPatternAt(globalSlot);
-            if (!stack.isEmpty()) {
+            ItemStack stack = getDisplayStack();
+            if (!shouldShowPatternSlotEmptyTooltip(stack)) {
                 return null;
             }
             return List.of(Component.translatable(
                     "gui.chexsonsaeutils.ae_direct_processing_machine.pattern_slot_empty_tooltip"
             ));
         }
+    }
+
+    static boolean shouldShowPatternSlotEmptyTooltip(ItemStack displayedStack) {
+        return Objects.requireNonNull(displayedStack, "displayedStack").isEmpty();
     }
 
     private static Component localizedStatus(MachineSupportStatus status) {

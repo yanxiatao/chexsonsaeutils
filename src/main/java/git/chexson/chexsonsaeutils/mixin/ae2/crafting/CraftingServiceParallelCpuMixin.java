@@ -30,6 +30,8 @@ import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingD
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuGrid;
+import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
+import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationSubmitBridge;
 import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
@@ -173,8 +175,18 @@ public abstract class CraftingServiceParallelCpuMixin {
             return;
         }
 
-        if (job == null || job.simulation()) {
+        if (job == null) {
             ICraftingSubmitResult result = CraftingSubmitResult.INCOMPLETE_PLAN;
+            chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
+            cir.setReturnValue(result);
+            return;
+        }
+        if (job.simulation()) {
+            ICraftingSubmitResult result = CraftingContinuationPartialSubmit.isPartialSubmitRequest(
+                    job,
+                    CraftingContinuationSubmitBridge.currentMode())
+                    ? CraftingSubmitResult.noSuitableCpu(new UnsuitableCpus(0, 0, 0, 1))
+                    : CraftingSubmitResult.INCOMPLETE_PLAN;
             chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
             cir.setReturnValue(result);
             return;

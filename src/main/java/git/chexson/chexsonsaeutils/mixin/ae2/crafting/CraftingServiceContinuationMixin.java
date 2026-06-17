@@ -9,16 +9,13 @@ import appeng.api.networking.crafting.ICraftingSubmitResult;
 import appeng.api.networking.crafting.UnsuitableCpus;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEKey;
+import appeng.core.AELog;
 import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
-import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
-import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
-import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationSubmitBridge;
-import org.spongepowered.asm.mixin.Unique;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -30,7 +27,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Set;
 
-@Mixin(value = CraftingService.class, remap = false)
+@Mixin(value = CraftingService.class, priority = 1100, remap = false)
 public abstract class CraftingServiceContinuationMixin {
     @Shadow(remap = false)
     private IGrid grid;
@@ -56,15 +53,17 @@ public abstract class CraftingServiceContinuationMixin {
             IActionSource src,
             CallbackInfoReturnable<ICraftingSubmitResult> cir
     ) {
-        if (!job.simulation()
-                || CraftingContinuationSubmitBridge.currentMode() != CraftingContinuationMode.IGNORE_MISSING) {
+        if (!CraftingContinuationPartialSubmit.isPartialSubmitRequest(
+                job,
+                CraftingContinuationSubmitBridge.currentMode())) {
             return;
         }
-        if (target instanceof ParallelCraftingCPU) {
-            return;
-        }
-        if (target == null && chexsonsaeutils$hasAutoSelectableParallelCpu(src)) {
-            cir.setReturnValue(CraftingSubmitResult.INCOMPLETE_PLAN);
+        if (!CraftingContinuationPartialSubmit.supportsPartialSubmitTarget(target)) {
+            AELog.warn(
+                    "Crafting continuation cannot submit incomplete plans to selected CPU type: {}",
+                    target == null ? "null" : target.getClass().getName()
+            );
+            cir.setReturnValue(CraftingSubmitResult.noSuitableCpu(new UnsuitableCpus(0, 0, 0, 1)));
             return;
         }
 
@@ -128,22 +127,5 @@ public abstract class CraftingServiceContinuationMixin {
                 this.grid,
                 this.craftingCPUClusters
         );
-    }
-
-    @Unique
-    private boolean chexsonsaeutils$hasAutoSelectableParallelCpu(IActionSource src) {
-        if (this.grid == null) {
-            return false;
-        }
-        for (AE2ParallelCpuToolBlockEntity cpuTool : this.grid.getMachines(AE2ParallelCpuToolBlockEntity.class)) {
-            if (cpuTool != null
-                    && cpuTool.canProcessParallelCpuJobs()
-                    && cpuTool.getGrid() == this.grid
-                    && cpuTool.getParallelCpuCluster().canAdvertiseRemainingCapacityCpu()
-                    && cpuTool.getParallelCpuCluster().canBeAutoSelectedFor(src)) {
-                return true;
-            }
-        }
-        return false;
     }
 }
