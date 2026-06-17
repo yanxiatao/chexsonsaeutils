@@ -51,8 +51,8 @@ final class AeaMigrationFeatureGateTest {
                 "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.TemplateManagerHandlerMixin"
         ));
         assertFalse(plugin.shouldApplyMixin(
-                "dev.ftb.mods.ftbultimine.FTBUltimine",
-                "git.chexson.chexsonsaeutils.mixin.ftbultimine.FtbUltimineMixin"
+                "dev.ftb.mods.ftbultimine.rightclick.RightClickDispatcher",
+                "git.chexson.chexsonsaeutils.mixin.ftbultimine.RightClickDispatcherMemoryCardMixin"
         ));
     }
 }

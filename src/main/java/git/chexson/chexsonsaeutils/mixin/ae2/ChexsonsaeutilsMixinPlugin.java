@@ -25,7 +25,6 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String BUILDING_GADGETS2_MOD_ID = "buildinggadgets2";
     private static final String FTB_ULTIMINE_MOD_ID = "ftbultimine";
-    private static final String FTB_LIBRARY_MOD_ID = "ftblibrary";
 
     private static final Set<String> REPLACEMENT_TERMINAL_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.PatternEncodingTermMenuRuleMixin",
@@ -108,8 +107,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.PacketUpdateTemplateManagerAccessor"
     );
     private static final Set<String> AEA_FTB_ULTIMINE_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ftbultimine.FtbUltimineMixin",
-            "git.chexson.chexsonsaeutils.mixin.ftbultimine.PlatformMethodsImplMixin"
+            "git.chexson.chexsonsaeutils.mixin.ftbultimine.RightClickDispatcherMemoryCardMixin"
     );
 
     @Override
@@ -166,8 +164,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         }
         if (AEA_FTB_ULTIMINE_MIXINS.contains(mixinClassName)) {
             return FtbUltimineMemoryCardFeatureGate.isEnabledAtStartup()
-                    && isLoadedDuringMixinScan(FTB_ULTIMINE_MOD_ID, mixinClassName)
-                    && isLoadedDuringMixinScan(FTB_LIBRARY_MOD_ID, mixinClassName);
+                    && isLoadedDuringMixinScan(FTB_ULTIMINE_MOD_ID, mixinClassName);
         }
         return true;
     }

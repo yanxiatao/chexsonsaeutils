@@ -35,7 +35,8 @@
     "ae2.crafting.ExecutingCraftingJobTaskProgressAccessor",
     "ae2.crafting.ExecutingCraftingJobFormalMachineScaledPatternMixin",
     "ae2.menu.CraftingCPUMenuAccessor",
-    "ae2.menu.CraftingCPUMenuContinuationMixin"
+    "ae2.menu.CraftingCPUMenuContinuationMixin",
+    "ftbultimine.RightClickDispatcherMemoryCardMixin"
   ],
   "client": [
     "ae2.client.gui.AbstractTableRendererAccessor",
