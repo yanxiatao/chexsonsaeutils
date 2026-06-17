@@ -11,6 +11,10 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue FORMAL_MACHINE_CRAFTING_DISPATCH_ENABLED;
     public static final ModConfigSpec.BooleanValue FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED;
     public static final ModConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
+    public static final ModConfigSpec.BooleanValue DYEABLE_PATTERNS_ENABLED;
+    public static final ModConfigSpec.BooleanValue ENHANCED_CRAFTING_STATUS_ENABLED;
+    public static final ModConfigSpec.BooleanValue BUILDING_GADGETS2_INTEGRATION_ENABLED;
+    public static final ModConfigSpec.BooleanValue FTB_ULTIMINE_MEMORY_CARD_ENABLED;
     public static final ModConfigSpec.BooleanValue PARALLEL_CRAFTING_CPU_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_CO_PROCESSORS_PER_VIRTUAL_CPU;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK;
@@ -40,6 +44,37 @@ public final class ChexsonsaeutilsCompatibilityConfig {
         PROCESSING_PATTERN_REPLACEMENT_ENABLED = builder
                 .comment("Disable the AE2 processing pattern replacement feature bundle. Takes effect after restart.")
                 .define("processingPatternReplacementEnabled", true);
+        builder.push("aeaMigration");
+        DYEABLE_PATTERNS_ENABLED = builder
+                .comment(
+                        "Enable AEA dyeable pattern migration. Takes effect after restart.",
+                        "Default on only extends AE2 pattern color handling and must preserve existing replacement,"
+                                + " continuation, formal-machine, and parallel CPU planning semantics."
+                )
+                .define("dyeablePatternsEnabled", true);
+        ENHANCED_CRAFTING_STATUS_ENABLED = builder
+                .comment(
+                        "Enable AEA enhanced crafting status migration. Takes effect after restart.",
+                        "Default on only adds Blocked and Pattern Times status data and must not replace existing"
+                                + " continuation, formal-machine, or parallel CPU UI state."
+                )
+                .define("enhancedCraftingStatusEnabled", true);
+        BUILDING_GADGETS2_INTEGRATION_ENABLED = builder
+                .comment(
+                        "Enable AEA Building Gadgets 2 template-to-processing-pattern integration."
+                                + " Takes effect after restart.",
+                        "Default on has no effect unless Building Gadgets 2 is installed and must generate standard"
+                                + " AE2 processing patterns without replacement metadata."
+                )
+                .define("buildingGadgets2IntegrationEnabled", true);
+        FTB_ULTIMINE_MEMORY_CARD_ENABLED = builder
+                .comment(
+                        "Enable AEA FTB Ultimine memory-card compatibility. Takes effect after restart.",
+                        "Default on has no effect unless FTB Ultimine is installed and must not change AE2"
+                                + " single-target memory-card behavior."
+                )
+                .define("ftbUltimineMemoryCardEnabled", true);
+        builder.pop();
         builder.push("parallelCraftingCpuTool");
         PARALLEL_CRAFTING_CPU_ENABLED = builder
                 .comment("Enable the official extreme-parallel AE2 CPU tool block. Takes effect after restart.")
