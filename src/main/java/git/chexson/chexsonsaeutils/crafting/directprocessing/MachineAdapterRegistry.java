@@ -22,7 +22,8 @@ public final class MachineAdapterRegistry {
 
     public static MachineAdapterRegistry directProcessingDefaults() {
         List<MachineRecipeAdapter> adapters = new ArrayList<>();
-        if (ModList.get().isLoaded(MEKANISM_MOD_ID)) {
+        ModList modList = ModList.get();
+        if (modList != null && modList.isLoaded(MEKANISM_MOD_ID)) {
             adapters.add(MekanismAdapterHolder.create());
         }
         return adapters.isEmpty() ? EMPTY : new MachineAdapterRegistry(adapters);

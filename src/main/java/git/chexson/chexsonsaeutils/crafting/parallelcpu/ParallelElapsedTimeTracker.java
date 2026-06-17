@@ -4,9 +4,14 @@ import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.AEKeyTypes;
 import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import it.unimi.dsi.fastutil.objects.Reference2LongOpenHashMap;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.Mth;
 
 final class ParallelElapsedTimeTracker {
+
+    private static final String NBT_ELAPSED_TIME = "elapsedTime";
+    private static final String NBT_STARTED_WORK = "startedWork";
+    private static final String NBT_COMPLETED_WORK = "completedWork";
 
     private long lastTime = System.nanoTime();
     private long elapsedTime;
@@ -14,6 +19,23 @@ final class ParallelElapsedTimeTracker {
             AEKeyTypes.getAll().size());
     private final Reference2LongMap<AEKeyType> completedWorkByType = new Reference2LongOpenHashMap<>(
             AEKeyTypes.getAll().size());
+
+    ParallelElapsedTimeTracker() {
+    }
+
+    ParallelElapsedTimeTracker(CompoundTag data) {
+        this.elapsedTime = data.getLong(NBT_ELAPSED_TIME);
+        readLongByTypeMap(data.getCompound(NBT_STARTED_WORK), startedWorkByType);
+        readLongByTypeMap(data.getCompound(NBT_COMPLETED_WORK), completedWorkByType);
+    }
+
+    CompoundTag writeToNBT() {
+        CompoundTag data = new CompoundTag();
+        data.putLong(NBT_ELAPSED_TIME, elapsedTime);
+        data.put(NBT_STARTED_WORK, writeLongByTypeMap(startedWorkByType));
+        data.put(NBT_COMPLETED_WORK, writeLongByTypeMap(completedWorkByType));
+        return data;
+    }
 
     void addMaxItems(long itemDiff, AEKeyType keyType) {
         if (itemDiff <= 0L || keyType == null) {
@@ -87,5 +109,19 @@ final class ParallelElapsedTimeTracker {
     private long saturatedSum(long left, long right) {
         long result = left + right;
         return result < 0L ? Long.MAX_VALUE : result;
+    }
+
+    private static void readLongByTypeMap(CompoundTag tag, Reference2LongMap<AEKeyType> output) {
+        for (var keyType : AEKeyTypes.getAll()) {
+            output.put(keyType, tag.getLong(keyType.getId().toString()));
+        }
+    }
+
+    private static CompoundTag writeLongByTypeMap(Reference2LongMap<AEKeyType> input) {
+        CompoundTag result = new CompoundTag();
+        for (var entry : input.reference2LongEntrySet()) {
+            result.putLong(entry.getKey().getId().toString(), entry.getLongValue());
+        }
+        return result;
     }
 }

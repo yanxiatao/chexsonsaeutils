@@ -1,9 +1,9 @@
 package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
+import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.storage.IStorageService;
-import appeng.me.helpers.MachineSource;
-import appeng.me.service.CraftingService;
 import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
+import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import appeng.api.stacks.GenericStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -12,17 +12,16 @@ import java.util.List;
 public final class DirectProcessingOutputSink {
 
     public List<GenericStack> tryReturnPayload(
-            @Nullable CraftingService craftingService,
             @Nullable IStorageService storageService,
-            MachineSource actionSource,
-            List<GenericStack> payload
+            IActionSource actionSource,
+            List<GenericStack> payload,
+            @Nullable SourceCpuHandle sourceCpu
     ) {
         return AeCpuIngressRouter.routePayload(
-                craftingService,
                 storageService,
                 actionSource,
                 payload,
-                null
+                sourceCpu
         ).remainingPayload();
     }
 }

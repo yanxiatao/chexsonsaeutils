@@ -21,10 +21,11 @@ import appeng.me.helpers.StackWatcher;
 import appeng.me.service.CraftingService;
 import com.google.common.collect.ImmutableSet;
 import com.llamalad7.mixinextras.sugar.Local;
+import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.config.FormalMachineCraftingDispatchFeatureGate;
+import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatureGate;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
-import git.chexson.chexsonsaeutils.crafting.AeExternalIngressContext;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
@@ -43,7 +44,6 @@ import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -80,9 +80,6 @@ public abstract class CraftingServiceParallelCpuMixin {
     @Unique
     private ParallelCraftingCpuGrid chexsonsaeutils$parallelCpuGrid;
 
-    @Unique
-    private final Set<AEKey> chexsonsaeutils$parallelCurrentlyCrafting = new HashSet<>();
-
     @Inject(method = "updateCPUClusters", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$refreshParallelCpuClusters(CallbackInfo ci) {
         chexsonsaeutils$rebuildParallelClusters();
@@ -117,7 +114,7 @@ public abstract class CraftingServiceParallelCpuMixin {
             remap = false
     )
     private void chexsonsaeutils$tickParallelCpuLanes(CallbackInfo ci, @Local(name = "latestChange") long latestChange) {
-        long latestParallelChange = chexsonsaeutils$getParallelCpuGrid()
+        long latestParallelChange = chexsonsaeutils$getSyncedParallelCpuGrid()
                 .tick(this.energyGrid, (CraftingService) (Object) this);
         if (latestParallelChange > latestChange) {
             this.lastProcessedCraftingLogicChangeTick = -1L;
@@ -135,7 +132,7 @@ public abstract class CraftingServiceParallelCpuMixin {
             remap = false
     )
     private void chexsonsaeutils$syncParallelCurrentlyCrafting(CallbackInfo ci) {
-        chexsonsaeutils$syncParallelCurrentlyCrafting(chexsonsaeutils$getParallelCpuGrid());
+        chexsonsaeutils$syncParallelCurrentlyCrafting(chexsonsaeutils$getSyncedParallelCpuGrid());
     }
 
     @Inject(
@@ -151,6 +148,7 @@ public abstract class CraftingServiceParallelCpuMixin {
             CallbackInfoReturnable<ImmutableSet<ICraftingCPU>> cir,
             ImmutableSet.Builder<ICraftingCPU> cpus
     ) {
+        chexsonsaeutils$syncParallelClusterView();
         int activeLaneCount = chexsonsaeutils$parallelActiveLaneCount();
         ParallelCraftingCpuConfig.Settings settings = ParallelCraftingCpuConfig.current();
         for (ParallelCraftingCpuCluster cluster : this.chexsonsaeutils$parallelCpuClusters) {
@@ -182,7 +180,7 @@ public abstract class CraftingServiceParallelCpuMixin {
             return;
         }
 
-        ICraftingSubmitResult result = chexsonsaeutils$getParallelCpuGrid()
+        ICraftingSubmitResult result = chexsonsaeutils$getSyncedParallelCpuGrid()
                 .submitJob(job, requestingMachine, target, prioritizePower, src);
         chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
         cir.setReturnValue(result == null ? CraftingSubmitResult.CPU_OFFLINE : result);
@@ -213,7 +211,7 @@ public abstract class CraftingServiceParallelCpuMixin {
             return;
         }
 
-        ICraftingSubmitResult result = chexsonsaeutils$getParallelCpuGrid()
+        ICraftingSubmitResult result = chexsonsaeutils$getSyncedParallelCpuGrid()
                 .submitJob(job, requestingMachine, null, prioritizePower, src);
         if (result != null) {
             chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, null, result);
@@ -238,7 +236,7 @@ public abstract class CraftingServiceParallelCpuMixin {
             return;
         }
 
-        ICraftingSubmitResult parallelFailure = chexsonsaeutils$getParallelCpuGrid()
+        ICraftingSubmitResult parallelFailure = chexsonsaeutils$getSyncedParallelCpuGrid()
                 .getAutoSelectionFailure(job, src);
         if (parallelFailure == null || parallelFailure.successful()) {
             return;
@@ -250,29 +248,33 @@ public abstract class CraftingServiceParallelCpuMixin {
         }
     }
 
-    @Inject(method = "insertIntoCpus", at = @At("RETURN"), cancellable = true, remap = false)
+    @Inject(
+            method = "insertIntoCpus",
+            at = @At(value = "RETURN", shift = At.Shift.BY, by = -1),
+            remap = false
+    )
     private void chexsonsaeutils$insertIntoParallelCpus(
             AEKey what,
             long amount,
             Actionable type,
-            CallbackInfoReturnable<Long> cir
+            CallbackInfoReturnable<Long> cir,
+            @Local(ordinal = 1) LocalLongRef inserted
     ) {
-        long original = Math.max(0L, cir.getReturnValue());
-        long inserted = chexsonsaeutils$getParallelCpuGrid().insertIntoCpus(
+        long original = Math.max(0L, inserted.get());
+        long parallelInserted = chexsonsaeutils$getSyncedParallelCpuGrid().insertIntoCpus(
                 what,
                 amount,
                 type,
-                original,
-                AeExternalIngressContext.isActive()
+                original
         );
-        if (inserted > 0L) {
-            cir.setReturnValue(original + inserted);
+        if (parallelInserted > 0L) {
+            inserted.set(saturatedAdd(original, parallelInserted));
         }
     }
 
     @Inject(method = "getRequestedAmount", at = @At("RETURN"), cancellable = true, remap = false)
     private void chexsonsaeutils$getParallelRequestedAmount(AEKey what, CallbackInfoReturnable<Long> cir) {
-        long requested = chexsonsaeutils$getParallelCpuGrid().getRequestedAmount(what);
+        long requested = chexsonsaeutils$getSyncedParallelCpuGrid().getRequestedAmount(what);
         if (requested > 0L) {
             cir.setReturnValue(cir.getReturnValue() + requested);
         }
@@ -280,30 +282,40 @@ public abstract class CraftingServiceParallelCpuMixin {
 
     @Inject(method = "isRequesting", at = @At("HEAD"), cancellable = true, remap = false)
     private void chexsonsaeutils$isParallelCpuRequesting(AEKey what, CallbackInfoReturnable<Boolean> cir) {
-        if (chexsonsaeutils$getParallelCpuGrid().isRequesting(what)) {
+        if (chexsonsaeutils$getSyncedParallelCpuGrid().isRequesting(what)) {
             cir.setReturnValue(true);
         }
     }
 
     @Inject(method = "isRequestingAny", at = @At("HEAD"), cancellable = true, remap = false)
     private void chexsonsaeutils$isAnyParallelCpuRequesting(CallbackInfoReturnable<Boolean> cir) {
-        if (chexsonsaeutils$getParallelCpuGrid().isRequestingAny()) {
+        if (chexsonsaeutils$getSyncedParallelCpuGrid().isRequestingAny()) {
             cir.setReturnValue(true);
         }
     }
 
     @Inject(method = "hasCpu", at = @At("HEAD"), cancellable = true, remap = false)
     private void chexsonsaeutils$hasParallelCpu(ICraftingCPU cpu, CallbackInfoReturnable<Boolean> cir) {
-        if (chexsonsaeutils$getParallelCpuGrid().hasCpu(cpu)) {
+        if (chexsonsaeutils$getSyncedParallelCpuGrid().hasCpu(cpu)) {
             cir.setReturnValue(true);
         }
     }
 
     @Unique
     private void chexsonsaeutils$rebuildParallelClusters() {
+        chexsonsaeutils$refreshParallelClusters(true);
+    }
+
+    @Unique
+    private void chexsonsaeutils$syncParallelClusterView() {
+        chexsonsaeutils$refreshParallelClusters(false);
+    }
+
+    @Unique
+    private void chexsonsaeutils$refreshParallelClusters(boolean registerActiveLinks) {
         Set<ParallelCraftingCpuCluster> nextClusters = new LinkedHashSet<>();
         if (this.grid != null) {
-            for (AE2ParallelCpuToolBlockEntity provider : this.grid.getMachines(AE2ParallelCpuToolBlockEntity.class)) {
+            for (AE2ParallelCpuToolBlockEntity provider : chexsonsaeutils$collectParallelCpuProviders()) {
                 if (provider == null) {
                     continue;
                 }
@@ -321,13 +333,48 @@ public abstract class CraftingServiceParallelCpuMixin {
         this.chexsonsaeutils$parallelCpuClusters.addAll(nextClusters);
         chexsonsaeutils$getParallelCpuGrid().setClusters(this.chexsonsaeutils$parallelCpuClusters);
 
+        if (!registerActiveLinks) {
+            return;
+        }
+        Collection<ICraftingRequester> activeRequesters = chexsonsaeutils$collectCraftingRequesters();
         Collection<CraftingLink> activeLinks = new ArrayList<>();
         for (ParallelCraftingCpuCluster cluster : this.chexsonsaeutils$parallelCpuClusters) {
+            cluster.restoreRequesterLinks(activeRequesters);
             cluster.appendActiveLaneLinks(activeLinks);
         }
         for (CraftingLink activeLink : activeLinks) {
             this.addLink(activeLink);
         }
+    }
+
+    @Unique
+    private Set<AE2ParallelCpuToolBlockEntity> chexsonsaeutils$collectParallelCpuProviders() {
+        Set<AE2ParallelCpuToolBlockEntity> providers = new LinkedHashSet<>();
+        if (this.grid == null) {
+            return providers;
+        }
+        providers.addAll(this.grid.getMachines(AE2ParallelCpuToolBlockEntity.class));
+        for (IGridNode node : this.grid.getNodes()) {
+            if (node != null && node.getOwner() instanceof AE2ParallelCpuToolBlockEntity provider) {
+                providers.add(provider);
+            }
+        }
+        return providers;
+    }
+
+    @Unique
+    private Collection<ICraftingRequester> chexsonsaeutils$collectCraftingRequesters() {
+        Collection<ICraftingRequester> requesters = new ArrayList<>();
+        if (this.grid == null) {
+            return requesters;
+        }
+        for (IGridNode node : this.grid.getNodes()) {
+            ICraftingRequester requester = node == null ? null : node.getService(ICraftingRequester.class);
+            if (requester != null) {
+                requesters.add(requester);
+            }
+        }
+        return requesters;
     }
 
     @Unique
@@ -402,13 +449,22 @@ public abstract class CraftingServiceParallelCpuMixin {
     }
 
     @Unique
+    private static long saturatedAdd(long left, long right) {
+        if (right > 0L && left >= Long.MAX_VALUE - right) {
+            return Long.MAX_VALUE;
+        }
+        return left + right;
+    }
+
+    @Unique
     private void chexsonsaeutils$registerFormalMachineSubmitResult(
             @Nullable ICraftingPlan job,
             @Nullable ICraftingRequester requestingMachine,
             @Nullable ICraftingCPU target,
             @Nullable ICraftingSubmitResult result
     ) {
-        if (!FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()
+        if (!(FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
+                || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup())
                 || result == null
                 || !result.successful()) {
             return;
@@ -432,41 +488,13 @@ public abstract class CraftingServiceParallelCpuMixin {
     }
 
     @Unique
-    private void chexsonsaeutils$syncParallelCurrentlyCrafting(ParallelCraftingCpuGrid parallelCpuGrid) {
-        Set<AEKey> changedKeys = parallelCpuGrid.consumeChangedRequestKeys();
-        if (changedKeys.isEmpty()) {
-            this.currentlyCrafting.addAll(chexsonsaeutils$parallelCurrentlyCrafting);
-            return;
-        }
-
-        for (AEKey changedKey : changedKeys) {
-            if (changedKey == null) {
-                continue;
-            }
-            boolean parallelRequesting = parallelCpuGrid.isRequesting(changedKey);
-            if (parallelRequesting) {
-                chexsonsaeutils$parallelCurrentlyCrafting.add(changedKey);
-                this.currentlyCrafting.add(changedKey);
-            } else {
-                chexsonsaeutils$parallelCurrentlyCrafting.remove(changedKey);
-                if (!chexsonsaeutils$nativeCpuIsRequesting(changedKey)) {
-                    this.currentlyCrafting.remove(changedKey);
-                }
-            }
-        }
-        this.currentlyCrafting.addAll(chexsonsaeutils$parallelCurrentlyCrafting);
+    private ParallelCraftingCpuGrid chexsonsaeutils$getSyncedParallelCpuGrid() {
+        chexsonsaeutils$syncParallelClusterView();
+        return chexsonsaeutils$getParallelCpuGrid();
     }
 
     @Unique
-    private boolean chexsonsaeutils$nativeCpuIsRequesting(AEKey what) {
-        if (what == null) {
-            return false;
-        }
-        for (CraftingCPUCluster cpu : this.craftingCPUClusters) {
-            if (cpu.craftingLogic.getWaitingFor(what) > 0L) {
-                return true;
-            }
-        }
-        return false;
+    private void chexsonsaeutils$syncParallelCurrentlyCrafting(ParallelCraftingCpuGrid parallelCpuGrid) {
+        parallelCpuGrid.appendCurrentlyCrafting(this.currentlyCrafting);
     }
 }

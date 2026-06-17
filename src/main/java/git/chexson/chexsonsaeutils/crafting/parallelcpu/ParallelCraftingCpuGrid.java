@@ -26,11 +26,9 @@ public final class ParallelCraftingCpuGrid {
     private final IGrid grid;
     private final Set<ParallelCraftingCpuCluster> clusters = new LinkedHashSet<>();
     private final ParallelCpuWaitingIndex waitingIndex = new ParallelCpuWaitingIndex();
-    private final ParallelCpuProviderBackoff providerBackoff = new ParallelCpuProviderBackoff();
     private final ParallelCpuMetrics metrics = new ParallelCpuMetrics();
     private long currentTick = Long.MIN_VALUE;
     private int submissionsThisTick;
-    private int nextClusterTickCursor;
 
     public ParallelCraftingCpuGrid(IGrid grid) {
         this.grid = grid;
@@ -106,17 +104,7 @@ public final class ParallelCraftingCpuGrid {
         currentTick = nextTick;
         submissionsThisTick = 0;
 
-        var settings = ParallelCraftingCpuConfig.current();
-        var budgetLedger = new ParallelCpuGridBudgetLedger(new ParallelCpuGridBudgetLedger.Limits(
-                settings.maxPatternPushesPerTickPerGrid(),
-                settings.maxProviderChecksPerTickPerGrid(),
-                settings.maxPatternPushesPerTickPerGrid(),
-                settings.maxPatternPushesPerTickPerGrid(),
-                settings.tickBudgetNanosPerGrid()
-        ));
         long startedAt = System.nanoTime();
-        budgetLedger.resetForTick(currentTick, startedAt);
-
         List<ParallelCraftingCpuCluster> clusterSnapshot = List.copyOf(clusters);
         if (clusterSnapshot.isEmpty()) {
             metrics.recordTickNanos(System.nanoTime() - startedAt);
@@ -124,23 +112,10 @@ public final class ParallelCraftingCpuGrid {
             return 0L;
         }
 
-        int visitedClusters = 0;
-        int cursor = Math.floorMod(nextClusterTickCursor, clusterSnapshot.size());
-        while (visitedClusters < clusterSnapshot.size() && !budgetLedger.isExhausted()) {
-            int clusterIndex = (cursor + visitedClusters) % clusterSnapshot.size();
-            ParallelCraftingCpuCluster cluster = clusterSnapshot.get(clusterIndex);
-            cluster.tick(energyGrid, craftingService, budgetLedger, providerBackoff, metrics, currentTick);
-            if (budgetLedger.isExhausted()) {
-                nextClusterTickCursor = (clusterIndex + 1) % clusterSnapshot.size();
-                break;
-            }
-            visitedClusters++;
-        }
-        if (!budgetLedger.isExhausted()) {
-            nextClusterTickCursor = (cursor + 1) % clusterSnapshot.size();
+        for (ParallelCraftingCpuCluster cluster : clusterSnapshot) {
+            cluster.tick(energyGrid, craftingService, metrics, currentTick);
         }
 
-        metrics.recordLedgerExhaustion(budgetLedger);
         metrics.recordTickNanos(System.nanoTime() - startedAt);
         updateMetrics();
 
@@ -152,42 +127,59 @@ public final class ParallelCraftingCpuGrid {
     }
 
     public long insertIntoCpus(AEKey what, long amount, Actionable type, long alreadyInserted) {
-        return insertIntoCpus(what, amount, type, alreadyInserted, false);
-    }
-
-    public long insertIntoCpus(
-            AEKey what,
-            long amount,
-            Actionable type,
-            long alreadyInserted,
-            boolean preferBufferFinalOutput
-    ) {
         long remaining = amount - Math.max(0L, alreadyInserted);
         if (remaining <= 0L) {
             return 0L;
         }
 
-        long inserted = waitingIndex.insertIntoLanes(what, remaining, type, metrics, preferBufferFinalOutput);
-        long remainingAfterIndex = remaining - inserted;
-        if (remainingAfterIndex > 0L && activeLaneCount() > 0) {
-            inserted += insertIntoActiveLanesFallback(what, remainingAfterIndex, type, preferBufferFinalOutput);
+        long inserted = 0L;
+        for (ParallelCraftingCpuCluster cluster : List.copyOf(clusters)) {
+            long remainingForParallelCpus = remaining - inserted;
+            if (remainingForParallelCpus <= 0L) {
+                break;
+            }
+            long clusterInserted = cluster.insertIntoActiveLanes(
+                    what,
+                    remainingForParallelCpus,
+                    type,
+                    metrics
+            );
+            inserted = saturatedAdd(inserted, clusterInserted);
         }
-        if (type == Actionable.MODULATE && inserted > 0L) {
+        if (type == Actionable.MODULATE) {
             removeInactiveLanes();
         }
         return inserted;
     }
 
     public long getRequestedAmount(AEKey what) {
-        return waitingIndex.getRequestedAmount(what);
+        long requested = 0L;
+        for (ParallelCraftingCpuCluster cluster : clusters) {
+            requested = saturatedAdd(requested, cluster.getRequestedAmount(what));
+        }
+        return requested;
     }
 
     public boolean isRequesting(AEKey what) {
-        return waitingIndex.isRequesting(what);
+        return getRequestedAmount(what) > 0L;
     }
 
     public boolean isRequestingAny() {
-        return waitingIndex.isRequestingAny();
+        for (ParallelCraftingCpuCluster cluster : clusters) {
+            if (cluster.isRequestingAny()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void appendCurrentlyCrafting(Set<AEKey> target) {
+        if (target == null) {
+            return;
+        }
+        for (ParallelCraftingCpuCluster cluster : clusters) {
+            cluster.appendWaitingFor(target);
+        }
     }
 
     public Set<AEKey> consumeChangedRequestKeys() {
@@ -224,36 +216,6 @@ public final class ParallelCraftingCpuGrid {
                 removeLane(lane);
             }
         }
-    }
-
-    private long insertIntoActiveLanesFallback(
-            AEKey what,
-            long amount,
-            Actionable type,
-            boolean preferBufferFinalOutput
-    ) {
-        long inserted = 0L;
-        Set<ParallelCraftingLane> activeLanes = new LinkedHashSet<>();
-        for (ParallelCraftingCpuCluster cluster : clusters) {
-            cluster.appendActiveLanes(activeLanes);
-        }
-        for (ParallelCraftingLane lane : activeLanes) {
-            if (inserted >= amount) {
-                break;
-            }
-            long accepted = Math.max(0L,
-                    lane.insertIntoWaiting(what, amount - inserted, type, preferBufferFinalOutput));
-            if (lane instanceof ParallelCraftingLaneState laneState) {
-                refreshLane(laneState);
-                if (accepted > 0L && type == Actionable.MODULATE) {
-                    laneState.cluster().wakeLane(laneState);
-                }
-            }
-            if (accepted > 0L) {
-                inserted += accepted;
-            }
-        }
-        return inserted;
     }
 
     private ICraftingSubmitResult submitToCluster(
@@ -389,6 +351,13 @@ public final class ParallelCraftingCpuGrid {
     private static int saturatedAdd(int left, int right) {
         if (right > 0 && left >= Integer.MAX_VALUE - right) {
             return Integer.MAX_VALUE;
+        }
+        return left + right;
+    }
+
+    private static long saturatedAdd(long left, long right) {
+        if (right > 0L && left >= Long.MAX_VALUE - right) {
+            return Long.MAX_VALUE;
         }
         return left + right;
     }

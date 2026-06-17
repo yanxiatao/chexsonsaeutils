@@ -14,7 +14,6 @@ import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
-import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
@@ -35,12 +34,11 @@ import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingLane;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ElapsedTimeTrackerAccessor;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobAccessor;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobTaskProgressAccessor;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -213,7 +211,6 @@ public final class FormalMachineCraftingDispatchService {
         }
 
         int acceptedBatchCount = 0;
-        List<DeferredTaskProgressAddition> deferredTaskProgressAdditions = new ArrayList<>();
         Iterator<Map.Entry<IPatternDetails, Object>> iterator = jobAccessor.getTasks().entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<IPatternDetails, Object> entry = iterator.next();
@@ -224,13 +221,11 @@ public final class FormalMachineCraftingDispatchService {
                     logicAccessor,
                     jobAccessor,
                     iterator,
-                    entry,
-                    deferredTaskProgressAdditions
+                    entry
             )) {
                 acceptedBatchCount++;
             }
         }
-        applyDeferredTaskProgressAdditions(jobAccessor, deferredTaskProgressAdditions);
         return acceptedBatchCount;
     }
 
@@ -241,8 +236,7 @@ public final class FormalMachineCraftingDispatchService {
             CraftingCpuLogicAccessor logicAccessor,
             ExecutingCraftingJobAccessor jobAccessor,
             Iterator<Map.Entry<IPatternDetails, Object>> iterator,
-            Map.Entry<IPatternDetails, Object> entry,
-            List<DeferredTaskProgressAddition> deferredTaskProgressAdditions
+            Map.Entry<IPatternDetails, Object> entry
     ) {
         if (!(entry.getValue() instanceof ExecutingCraftingJobTaskProgressAccessor taskProgress)) {
             return false;
@@ -307,19 +301,19 @@ public final class FormalMachineCraftingDispatchService {
         energyService.extractAEPower(requiredPower, Actionable.MODULATE, PowerMultiplier.CONFIG);
         registerAcceptedBatch(cpu, logicAccessor, jobAccessor, provider, batchExtraction);
         long remainingExecutions = taskProgress.getValue() - batchExtraction.taskExecutionsConsumed();
-        taskProgress.setValue(remainingExecutions);
-        if (remainingExecutions <= 0) {
-            iterator.remove();
-        }
         if (batchExtraction.deferredPattern() != null && batchExtraction.deferredPatternExecutions() > 0L) {
             debugFormalDispatch("defer pattern=" + batchExtraction.deferredPattern()
                     + " executions=" + batchExtraction.deferredPatternExecutions()
                     + " acceptedLogical=" + batchExtraction.logicalExecutions()
                     + " consumed=" + batchExtraction.taskExecutionsConsumed());
-            deferredTaskProgressAdditions.add(new DeferredTaskProgressAddition(
-                    batchExtraction.deferredPattern(),
-                    batchExtraction.deferredPatternExecutions()
-            ));
+            iterator.remove();
+            taskProgress.setValue(batchExtraction.deferredPatternExecutions());
+            jobAccessor.getTasks().put(batchExtraction.deferredPattern(), entry.getValue());
+            return true;
+        }
+        taskProgress.setValue(remainingExecutions);
+        if (remainingExecutions <= 0) {
+            iterator.remove();
         }
         return true;
     }
@@ -675,14 +669,7 @@ public final class FormalMachineCraftingDispatchService {
     }
 
     private static void addTrackedWaitingTime(ExecutingCraftingJobAccessor accessor, long amount, AEKey key) {
-        try {
-            Method addMaxItems = accessor.getTimeTracker().getClass()
-                    .getDeclaredMethod("addMaxItems", long.class, AEKeyType.class);
-            addMaxItems.setAccessible(true);
-            addMaxItems.invoke(accessor.getTimeTracker(), amount, key.getType());
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Failed to extend AE2 time tracker for formal machine dispatch", exception);
-        }
+        ((ElapsedTimeTrackerAccessor) accessor.getTimeTracker()).invokeAddMaxItems(amount, key.getType());
     }
 
     private static KeyCounter[] copyCounters(KeyCounter[] source) {
@@ -743,18 +730,34 @@ public final class FormalMachineCraftingDispatchService {
         if (craftingService == null || job == null || job.patternTimes().isEmpty()) {
             return false;
         }
+        boolean sawFormalProvider = false;
+        boolean sawAggregatedPattern = false;
+        boolean allPatternsRemainFormalOnly = true;
         for (IPatternDetails patternDetails : job.patternTimes().keySet()) {
-            boolean hasFormalProvider = false;
-            for (ICraftingProvider provider : craftingService.getProviders(patternDetails)) {
-                if (provider instanceof IFormalMachineCraftingProvider) {
-                    hasFormalProvider = true;
+            if (patternDetails instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+                AbstractHighCapacityCraftingHostBlockEntity formalHost = aggregatedPattern.hostLocator()
+                        .resolve(craftingService);
+                if (formalHost == null || !aggregatedPattern.hostLocator().matches(formalHost)) {
+                    return false;
                 }
+                sawFormalProvider = true;
+                sawAggregatedPattern = true;
+                continue;
             }
-            if (!hasFormalProvider) {
-                return false;
+            AbstractHighCapacityCraftingHostBlockEntity formalHost = resolveExclusiveFormalMachineProvider(
+                    craftingService,
+                    patternDetails
+            );
+            if (formalHost == null) {
+                allPatternsRemainFormalOnly = false;
+                continue;
             }
+            sawFormalProvider = true;
         }
-        return true;
+        if (sawAggregatedPattern) {
+            return true;
+        }
+        return sawFormalProvider && allPatternsRemainFormalOnly;
     }
 
     @Nullable
@@ -774,15 +777,48 @@ public final class FormalMachineCraftingDispatchService {
     ) {
         AbstractHighCapacityCraftingHostBlockEntity matchedHost = null;
         for (IPatternDetails patternDetails : job.patternTimes().keySet()) {
-            for (ICraftingProvider provider : craftingService.getProviders(patternDetails)) {
-                if (!(provider instanceof AbstractHighCapacityCraftingHostBlockEntity host)) {
-                    continue;
+            if (patternDetails instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+                AbstractHighCapacityCraftingHostBlockEntity host = aggregatedPattern.hostLocator().resolve(craftingService);
+                if (host == null) {
+                    return null;
                 }
                 if (matchedHost != null && matchedHost != host) {
                     return null;
                 }
                 matchedHost = host;
+                continue;
             }
+            AbstractHighCapacityCraftingHostBlockEntity host = resolveExclusiveFormalMachineProvider(
+                    craftingService,
+                    patternDetails
+            );
+            if (host == null) {
+                continue;
+            }
+            if (matchedHost != null && matchedHost != host) {
+                return null;
+            }
+            matchedHost = host;
+        }
+        return matchedHost;
+    }
+
+    private static @Nullable AbstractHighCapacityCraftingHostBlockEntity resolveExclusiveFormalMachineProvider(
+            CraftingService craftingService,
+            IPatternDetails patternDetails
+    ) {
+        if (craftingService == null || patternDetails == null) {
+            return null;
+        }
+        AbstractHighCapacityCraftingHostBlockEntity matchedHost = null;
+        for (ICraftingProvider provider : craftingService.getProviders(patternDetails)) {
+            if (!(provider instanceof AbstractHighCapacityCraftingHostBlockEntity host)) {
+                continue;
+            }
+            if (matchedHost != null && matchedHost != host) {
+                return null;
+            }
+            matchedHost = host;
         }
         return matchedHost;
     }
@@ -937,24 +973,7 @@ public final class FormalMachineCraftingDispatchService {
         }
     }
 
-    private record DeferredTaskProgressAddition(
-            IPatternDetails pattern,
-            long executions
-    ) {
-    }
-
     private record PatternTaskKey(@Nullable AEItemKey definition, int multiplier) {
-    }
-
-    private static void decrementTrackedWaitingTime(ExecutingCraftingJobAccessor accessor, long amount, AEKey key) {
-        try {
-            Method decrementItems = accessor.getTimeTracker().getClass()
-                    .getDeclaredMethod("decrementItems", long.class, AEKeyType.class);
-            decrementItems.setAccessible(true);
-            decrementItems.invoke(accessor.getTimeTracker(), amount, key.getType());
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Failed to decrement AE2 time tracker for formal machine dispatch", exception);
-        }
     }
 
     @Nullable
@@ -971,32 +990,6 @@ public final class FormalMachineCraftingDispatchService {
                 pattern.templatePrimary(),
                 pattern.templateRemainders()
         );
-    }
-
-    private static void applyDeferredTaskProgressAdditions(
-            ExecutingCraftingJobAccessor jobAccessor,
-            List<DeferredTaskProgressAddition> deferredTaskProgressAdditions
-    ) {
-        if (jobAccessor == null || deferredTaskProgressAdditions == null || deferredTaskProgressAdditions.isEmpty()) {
-            return;
-        }
-        Map<IPatternDetails, Object> tasks = jobAccessor.getTasks();
-        for (DeferredTaskProgressAddition addition : deferredTaskProgressAdditions) {
-            if (addition == null || addition.executions() <= 0L || addition.pattern() == null) {
-                continue;
-            }
-            Map.Entry<IPatternDetails, Object> matchingEntry = findNormalizedTaskProgressEntry(tasks, addition.pattern());
-            if (matchingEntry != null
-                    && matchingEntry.getValue() instanceof ExecutingCraftingJobTaskProgressAccessor progressAccessor) {
-                debugFormalDispatch("defer merge pattern=" + addition.pattern()
-                        + " add=" + addition.executions()
-                        + " existing=" + progressAccessor.getValue());
-                progressAccessor.setValue(progressAccessor.getValue() + addition.executions());
-                continue;
-            }
-            debugFormalDispatch("defer add pattern=" + addition.pattern() + " add=" + addition.executions());
-            tasks.put(addition.pattern(), newTaskProgress(addition.executions()));
-        }
     }
 
     private static @Nullable Map.Entry<IPatternDetails, Object> findNormalizedTaskProgressEntry(
@@ -1052,19 +1045,6 @@ public final class FormalMachineCraftingDispatchService {
         return new PatternTaskKey(patternDetails == null ? null : patternDetails.getDefinition(), 1);
     }
 
-    private static Object newTaskProgress(long value) {
-        try {
-            Class<?> taskProgressClass = Class.forName("appeng.crafting.execution.ExecutingCraftingJob$TaskProgress");
-            Constructor<?> constructor = taskProgressClass.getDeclaredConstructor();
-            constructor.setAccessible(true);
-            Object instance = constructor.newInstance();
-            ((ExecutingCraftingJobTaskProgressAccessor) instance).setValue(Math.max(0L, value));
-            return instance;
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Failed to create AE2 task progress for formal machine scaled dispatch", exception);
-        }
-    }
-
     private record NativeSourceCpuHandle(CraftingCPUCluster cpu, UUID craftingId) implements SourceCpuHandle {
 
         @Override
@@ -1078,82 +1058,52 @@ public final class FormalMachineCraftingDispatchService {
         }
 
         @Override
+        public long getBufferedAmount(@Nullable AEKey what) {
+            if (what == null) {
+                return 0L;
+            }
+            CraftingCpuLogicAccessor logicAccessor = (CraftingCpuLogicAccessor) cpu.craftingLogic;
+            return Math.max(0L, logicAccessor.getInventory().extract(what, Long.MAX_VALUE, Actionable.SIMULATE));
+        }
+
+        @Override
+        public long extractBuffered(@Nullable AEKey what, long amount, Actionable mode) {
+            if (what == null || amount <= 0L) {
+                return 0L;
+            }
+            CraftingCpuLogicAccessor logicAccessor = (CraftingCpuLogicAccessor) cpu.craftingLogic;
+            long extracted = Math.max(
+                    0L,
+                    Math.min(amount, logicAccessor.getInventory().extract(what, amount, mode))
+            );
+            if (mode == Actionable.MODULATE && extracted > 0L) {
+                cpu.markDirty();
+                logicAccessor.invokePostChange(what);
+            }
+            return extracted;
+        }
+
+        @Override
+        public long insertBuffered(@Nullable AEKey what, long amount, Actionable mode) {
+            if (what == null || amount <= 0L) {
+                return 0L;
+            }
+            if (mode != Actionable.MODULATE) {
+                return amount;
+            }
+            CraftingCpuLogicAccessor logicAccessor = (CraftingCpuLogicAccessor) cpu.craftingLogic;
+            logicAccessor.getInventory().insert(what, amount, Actionable.MODULATE);
+            cpu.markDirty();
+            logicAccessor.invokePostChange(what);
+            return amount;
+        }
+
+        @Override
         public long insert(@Nullable AEKey what, long amount, Actionable mode, IActionSource source) {
             if (what == null || amount <= 0L) {
                 return 0L;
             }
-            long simulatedAccepted = simulateExternalIngressFinalOutput(what, amount, mode);
-            if (simulatedAccepted >= 0L) {
-                return simulatedAccepted;
-            }
-            long standaloneAccepted = insertStandaloneFinalOutput(what, amount, mode);
-            if (standaloneAccepted >= 0L) {
-                return standaloneAccepted;
-            }
             return Math.max(0L, cpu.insert(what, amount, mode, source));
-        }
-
-        private long simulateExternalIngressFinalOutput(AEKey what, long amount, Actionable mode) {
-            if (mode != Actionable.SIMULATE) {
-                return -1L;
-            }
-            CraftingCpuLogicAccessor logicAccessor = (CraftingCpuLogicAccessor) cpu.craftingLogic;
-            ExecutingCraftingJob job = logicAccessor.getJob();
-            if (job == null) {
-                return -1L;
-            }
-            ExecutingCraftingJobAccessor jobAccessor = (ExecutingCraftingJobAccessor) job;
-            if (jobAccessor.getLink() == null || jobAccessor.getLink().isStandalone()) {
-                return -1L;
-            }
-            GenericStack finalOutput = jobAccessor.getFinalOutput();
-            if (finalOutput == null || !what.matches(finalOutput)) {
-                return -1L;
-            }
-            long waiting = jobAccessor.getWaitingFor().extract(what, amount, Actionable.SIMULATE);
-            return waiting <= 0L ? 0L : Math.min(amount, waiting);
-        }
-
-        private long insertStandaloneFinalOutput(AEKey what, long amount, Actionable mode) {
-            CraftingCpuLogicAccessor logicAccessor = (CraftingCpuLogicAccessor) cpu.craftingLogic;
-            ExecutingCraftingJob job = logicAccessor.getJob();
-            if (job == null) {
-                return -1L;
-            }
-            ExecutingCraftingJobAccessor jobAccessor = (ExecutingCraftingJobAccessor) job;
-            if (jobAccessor.getLink() == null || !jobAccessor.getLink().isStandalone()) {
-                return -1L;
-            }
-            GenericStack finalOutput = jobAccessor.getFinalOutput();
-            if (finalOutput == null || !what.matches(finalOutput)) {
-                return -1L;
-            }
-
-            long waiting = jobAccessor.getWaitingFor().extract(what, amount, Actionable.SIMULATE);
-            if (waiting <= 0L) {
-                return 0L;
-            }
-            long accepted = Math.min(amount, waiting);
-            if (mode != Actionable.MODULATE) {
-                return accepted;
-            }
-
-            decrementTrackedWaitingTime(jobAccessor, accepted, what);
-            jobAccessor.getWaitingFor().extract(what, accepted, Actionable.MODULATE);
-            cpu.markDirty();
-
-            logicAccessor.getInventory().insert(what, accepted, Actionable.MODULATE);
-            logicAccessor.invokePostChange(what);
-
-            long remainingAmount = Math.max(0L, jobAccessor.getRemainingAmount() - accepted);
-            jobAccessor.setRemainingAmount(remainingAmount);
-            if (remainingAmount <= 0L) {
-                logicAccessor.invokeFinishJob(true);
-                cpu.updateOutput(null);
-            } else {
-                cpu.updateOutput(new GenericStack(finalOutput.what(), remainingAmount));
-            }
-            return accepted;
         }
     }
 
@@ -1171,9 +1121,24 @@ public final class FormalMachineCraftingDispatchService {
         }
 
         @Override
+        public long getBufferedAmount(@Nullable AEKey what) {
+            return cluster == null ? 0L : cluster.getBufferedAmountForCraft(craftingId, what);
+        }
+
+        @Override
+        public long extractBuffered(@Nullable AEKey what, long amount, Actionable mode) {
+            return cluster == null ? 0L : cluster.extractBufferedForCraft(craftingId, what, amount, mode);
+        }
+
+        @Override
+        public long insertBuffered(@Nullable AEKey what, long amount, Actionable mode) {
+            return cluster == null ? 0L : cluster.insertBufferedForCraft(craftingId, what, amount, mode);
+        }
+
+        @Override
         public long insert(@Nullable AEKey what, long amount, Actionable mode, IActionSource source) {
             return cluster == null ? 0L
-                    : cluster.insertIntoWaitingForCraft(craftingId, what, amount, mode, true);
+                    : cluster.insertIntoWaitingForCraft(craftingId, what, amount, mode);
         }
     }
 }

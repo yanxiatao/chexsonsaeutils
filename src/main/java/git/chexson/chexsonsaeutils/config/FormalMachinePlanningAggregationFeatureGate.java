@@ -19,9 +19,6 @@ public final class FormalMachinePlanningAggregationFeatureGate {
     }
 
     public static boolean isEnabledAtStartup() {
-        if (!FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()) {
-            return false;
-        }
         if (ChexsonsaeutilsCompatibilityConfig.SPEC.isLoaded()) {
             return ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED.get();
         }

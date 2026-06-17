@@ -7,33 +7,26 @@ import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.crafting.ICraftingSubmitResult;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEKey;
-import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.KeyCounter;
 import appeng.core.AELog;
-import appeng.core.network.clientbound.CraftingJobStatusPacket;
-import appeng.crafting.CraftingLink;
-import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.execution.CraftingCpuLogic;
 import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
-import appeng.api.features.IPlayerRegistry;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingBranch;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingDetail;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ElapsedTimeTrackerAccessor;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobAccessor;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 public final class CraftingContinuationPartialSubmit {
@@ -66,20 +59,27 @@ public final class CraftingContinuationPartialSubmit {
             AELog.warn("Crafting CPU inventory is not empty yet a continuation job was submitted.");
         }
 
-        KeyCounter missingInitialItems = extractAvailableInitialItems(plan, grid, logicAccessor.getInventory(), src);
-        CraftingLink link = new CraftingLink(
-                CraftingCpuHelper.generateLinkData(UUID.randomUUID(), true, false),
-                cpuCluster);
-        ExecutingCraftingJob job = createExecutingJob(plan, link, src, logicAccessor);
+        ICraftingSubmitResult submitResult = logic.trySubmitJob(
+                grid,
+                createNativeSubmissionPlan(plan),
+                src,
+                null
+        );
+        if (!submitResult.successful()) {
+            return submitResult;
+        }
+        ExecutingCraftingJob job = logicAccessor.getJob();
+        if (job == null) {
+            AELog.error("AE2 accepted a continuation job without creating an executing job.");
+            return CraftingSubmitResult.CPU_BUSY;
+        }
 
-        logicAccessor.setJob(job);
+        KeyCounter missingInitialItems = extractAvailableInitialItems(plan, grid, logicAccessor.getInventory(), src);
         seedInitialWaitingFor(job, missingInitialItems);
-        cpuCluster.updateOutput(plan.finalOutput());
         cpuCluster.markDirty();
-        logicAccessor.invokeNotifyJobOwner(job, CraftingJobStatusPacket.Status.STARTED);
         recordWaitingDetail(cpuCluster, plan, job, missingInitialItems);
 
-        return CraftingSubmitResult.successful(null);
+        return submitResult;
     }
 
     static KeyCounter extractAvailableInitialItems(
@@ -162,55 +162,57 @@ public final class CraftingContinuationPartialSubmit {
         ));
     }
 
-    private static ExecutingCraftingJob createExecutingJob(
-            ICraftingPlan plan,
-            CraftingLink link,
-            IActionSource src,
-            CraftingCpuLogicAccessor logicAccessor
-    ) {
-        try {
-            Class<?> listenerType = Class.forName(
-                    "appeng.crafting.execution.ExecutingCraftingJob$CraftingDifferenceListener");
-            Object listener = Proxy.newProxyInstance(
-                    listenerType.getClassLoader(),
-                    new Class<?>[]{listenerType},
-                    (proxy, method, args) -> {
-                        if ("onCraftingDifference".equals(method.getName()) && args != null && args.length == 1) {
-                            logicAccessor.invokePostChange((AEKey) args[0]);
-                            return null;
-                        }
-                        throw new UnsupportedOperationException(method.getName());
-                    });
-
-            Constructor<ExecutingCraftingJob> constructor = ExecutingCraftingJob.class.getDeclaredConstructor(
-                    ICraftingPlan.class,
-                    listenerType,
-                    CraftingLink.class,
-                    Integer.class);
-            constructor.setAccessible(true);
-            return constructor.newInstance(plan, listener, link, resolvePlayerId(src));
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Failed to construct partial AE2 crafting job", exception);
-        }
-    }
-
-    private static @Nullable Integer resolvePlayerId(IActionSource src) {
-        return src.player()
-                .map(player -> player instanceof ServerPlayer serverPlayer
-                        ? IPlayerRegistry.getPlayerId(serverPlayer)
-                        : null)
-                .orElse(null);
-    }
-
     private static void addTrackedWaitingTime(ExecutingCraftingJobAccessor accessor, long amount, AEKey key) {
-        try {
-            var timeTracker = accessor.getTimeTracker();
-            Method addMaxItems = timeTracker.getClass()
-                    .getDeclaredMethod("addMaxItems", long.class, AEKeyType.class);
-            addMaxItems.setAccessible(true);
-            addMaxItems.invoke(timeTracker, amount, key.getType());
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Failed to extend AE2 time tracker for continuation waiting", exception);
+        ((ElapsedTimeTrackerAccessor) accessor.getTimeTracker()).invokeAddMaxItems(amount, key.getType());
+    }
+
+    static ICraftingPlan createNativeSubmissionPlan(ICraftingPlan plan) {
+        return new NativeJobSubmissionPlan(plan);
+    }
+
+    private record NativeJobSubmissionPlan(ICraftingPlan delegate) implements ICraftingPlan {
+        private NativeJobSubmissionPlan {
+            Objects.requireNonNull(delegate, "delegate");
+        }
+
+        @Override
+        public appeng.api.stacks.GenericStack finalOutput() {
+            return delegate.finalOutput();
+        }
+
+        @Override
+        public long bytes() {
+            return delegate.bytes();
+        }
+
+        @Override
+        public boolean simulation() {
+            return false;
+        }
+
+        @Override
+        public boolean multiplePaths() {
+            return delegate.multiplePaths();
+        }
+
+        @Override
+        public KeyCounter usedItems() {
+            return new KeyCounter();
+        }
+
+        @Override
+        public KeyCounter emittedItems() {
+            return delegate.emittedItems();
+        }
+
+        @Override
+        public KeyCounter missingItems() {
+            return new KeyCounter();
+        }
+
+        @Override
+        public Map<appeng.api.crafting.IPatternDetails, Long> patternTimes() {
+            return delegate.patternTimes();
         }
     }
 }

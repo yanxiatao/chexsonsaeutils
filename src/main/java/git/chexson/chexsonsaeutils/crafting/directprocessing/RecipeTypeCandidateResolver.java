@@ -135,8 +135,6 @@ public final class RecipeTypeCandidateResolver {
         addVanillaFallbackHint(hints, machinePathCandidates, "smoker", "smoking");
         addVanillaFallbackHint(hints, machinePathCandidates, "blasting", "blasting");
         addVanillaFallbackHint(hints, machinePathCandidates, "blast_furnace", "blasting");
-        addVanillaFallbackHint(hints, machinePathCandidates, "stonecutter", "stonecutting");
-        addVanillaFallbackHint(hints, machinePathCandidates, "cutter", "stonecutting");
         return List.copyOf(hints);
     }
 

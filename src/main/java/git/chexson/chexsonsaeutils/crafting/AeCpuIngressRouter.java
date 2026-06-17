@@ -5,7 +5,6 @@ import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.storage.IStorageService;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
-import appeng.me.service.CraftingService;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -17,7 +16,6 @@ public final class AeCpuIngressRouter {
     }
 
     public static RoutingResult routePayload(
-            @Nullable CraftingService craftingService,
             @Nullable IStorageService storageService,
             IActionSource actionSource,
             List<GenericStack> payload,
@@ -35,7 +33,6 @@ public final class AeCpuIngressRouter {
 
         for (GenericStack genericStack : payload) {
             StackRoutingResult stackResult = routeStack(
-                    craftingService,
                     storageService,
                     actionSource,
                     genericStack,
@@ -63,7 +60,6 @@ public final class AeCpuIngressRouter {
     }
 
     public static StackRoutingResult routeStack(
-            @Nullable CraftingService craftingService,
             @Nullable IStorageService storageService,
             IActionSource actionSource,
             @Nullable GenericStack genericStack,
@@ -75,95 +71,107 @@ public final class AeCpuIngressRouter {
 
         AEKey key = genericStack.what();
         long remaining = genericStack.amount();
-        long acceptedBySourceCpu = tryInsertIntoSourceCpu(sourceCpu, key, remaining, actionSource);
-        remaining -= acceptedBySourceCpu;
+        long acceptedBySourceCpu = insertIntoSourceCpu(sourceCpu, key, remaining, actionSource);
+        remaining = Math.max(0L, remaining - acceptedBySourceCpu);
+        boolean attemptedAeFallback = storageService != null && remaining > 0L;
+        long insertedIntoAe = attemptedAeFallback
+                ? insertIntoAeNetwork(storageService, key, remaining, actionSource)
+                : 0L;
+        remaining = Math.max(0L, remaining - insertedIntoAe);
 
-        boolean attemptedAeFallback = false;
-        long acceptedByFallbackCpu = 0L;
-        long insertedIntoAe = 0L;
-        if (remaining > 0L && storageService != null) {
-            long simulatedByAnyCpu = craftingService == null
-                    ? 0L
-                    : clampAccepted(
-                            craftingService.insertIntoCpus(key, remaining, Actionable.SIMULATE),
-                            remaining
-                    );
-            long simulatedByNetwork = clampAccepted(
-                    storageService.getInventory().insert(key, remaining, Actionable.SIMULATE, actionSource),
-                    remaining
-            );
-            if (simulatedByNetwork > 0L) {
-                attemptedAeFallback = true;
-                long insertedIntoNetwork = clampAccepted(
-                        storageService.getInventory().insert(
-                                key,
-                                simulatedByNetwork,
-                                Actionable.MODULATE,
-                                actionSource
-                        ),
-                        simulatedByNetwork
-                );
-                acceptedByFallbackCpu = Math.min(simulatedByAnyCpu, insertedIntoNetwork);
-                insertedIntoAe = Math.max(0L, insertedIntoNetwork - acceptedByFallbackCpu);
-                remaining -= insertedIntoNetwork;
-            }
-        } else if (remaining > 0L && craftingService != null) {
-            acceptedByFallbackCpu = tryInsertIntoCraftingService(craftingService, key, remaining);
-            remaining -= acceptedByFallbackCpu;
-        }
-
-        long acceptedByAnyCpu = saturatedAdd(acceptedBySourceCpu, acceptedByFallbackCpu);
         return new StackRoutingResult(
                 key,
                 genericStack.amount(),
                 acceptedBySourceCpu,
-                acceptedByAnyCpu,
+                saturatedAdd(acceptedBySourceCpu, insertedIntoAe),
                 insertedIntoAe,
                 attemptedAeFallback,
-                Math.max(0L, remaining)
+                remaining
         );
     }
 
-    private static long tryInsertIntoSourceCpu(
+    public static RoutingResult routePayloadIntoSourceCpu(
+            IActionSource actionSource,
+            List<GenericStack> payload,
+            @Nullable SourceCpuHandle sourceCpu
+    ) {
+        if (payload == null || payload.isEmpty()) {
+            return new RoutingResult(List.of(), List.of(), 0L, 0L, 0L);
+        }
+
+        List<GenericStack> remainingPayload = new ArrayList<>(payload.size());
+        List<StackRoutingResult> stackResults = new ArrayList<>(payload.size());
+        long acceptedBySourceCpu = 0L;
+
+        for (GenericStack genericStack : payload) {
+            StackRoutingResult stackResult = routeStackIntoSourceCpu(actionSource, genericStack, sourceCpu);
+            if (stackResult.originalAmount() <= 0L) {
+                continue;
+            }
+            stackResults.add(stackResult);
+            acceptedBySourceCpu = saturatedAdd(acceptedBySourceCpu, stackResult.acceptedBySourceCpu());
+            if (stackResult.remainingAmount() > 0L && stackResult.key() != null) {
+                remainingPayload.add(new GenericStack(stackResult.key(), stackResult.remainingAmount()));
+            }
+        }
+
+        return new RoutingResult(
+                List.copyOf(remainingPayload),
+                List.copyOf(stackResults),
+                acceptedBySourceCpu,
+                acceptedBySourceCpu,
+                0L
+        );
+    }
+
+    public static StackRoutingResult routeStackIntoSourceCpu(
+            IActionSource actionSource,
+            @Nullable GenericStack genericStack,
+            @Nullable SourceCpuHandle sourceCpu
+    ) {
+        if (genericStack == null || genericStack.what() == null || genericStack.amount() <= 0L) {
+            return new StackRoutingResult(null, 0L, 0L, 0L, 0L, false, 0L);
+        }
+
+        AEKey key = genericStack.what();
+        long acceptedBySourceCpu = insertIntoSourceCpu(sourceCpu, key, genericStack.amount(), actionSource);
+        long remaining = Math.max(0L, genericStack.amount() - acceptedBySourceCpu);
+
+        return new StackRoutingResult(
+                key,
+                genericStack.amount(),
+                acceptedBySourceCpu,
+                acceptedBySourceCpu,
+                0L,
+                false,
+                remaining
+        );
+    }
+
+    private static long insertIntoSourceCpu(
             @Nullable SourceCpuHandle sourceCpu,
             AEKey key,
             long amount,
             IActionSource actionSource
     ) {
-        if (sourceCpu == null || !sourceCpu.isActive() || amount <= 0L) {
+        if (amount <= 0L || sourceCpu == null || !sourceCpu.isActive()) {
             return 0L;
         }
-        long simulated = clampAccepted(
-                sourceCpu.insert(key, amount, Actionable.SIMULATE, actionSource),
-                amount
-        );
-        if (simulated <= 0L) {
-            return 0L;
-        }
-        return clampAccepted(
-                sourceCpu.insert(key, simulated, Actionable.MODULATE, actionSource),
-                simulated
-        );
+        return clampAccepted(sourceCpu.insert(key, amount, Actionable.MODULATE, actionSource), amount);
     }
 
-    private static long tryInsertIntoCraftingService(
-            CraftingService craftingService,
+    private static long insertIntoAeNetwork(
+            IStorageService storageService,
             AEKey key,
-            long amount
+            long amount,
+            IActionSource actionSource
     ) {
         if (amount <= 0L) {
             return 0L;
         }
-        long simulated = clampAccepted(
-                craftingService.insertIntoCpus(key, amount, Actionable.SIMULATE),
-                amount
-        );
-        if (simulated <= 0L) {
-            return 0L;
-        }
         return clampAccepted(
-                craftingService.insertIntoCpus(key, simulated, Actionable.MODULATE),
-                simulated
+                storageService.getInventory().insert(key, amount, Actionable.MODULATE, actionSource),
+                amount
         );
     }
 

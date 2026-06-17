@@ -264,27 +264,18 @@ public final class LocalExecutionQueue {
     }
 
     private CompiledTask findDrainCoalesceTarget(CompiledTask task, QueueBudgetContext budgetContext) {
-        int sameKeyTaskCount = 0;
         CompiledTask leastLoadedTarget = null;
         int maxExecutionCount = maxPhysicalTaskExecutionCount(budgetContext);
         for (BoundedExecutionLane lane : lanes) {
             CompiledTask activeTask = lane.getActiveTask();
             if (activeTask != null && activeTask.canDrainCoalesceWith(task, maxExecutionCount)) {
-                sameKeyTaskCount++;
                 leastLoadedTarget = selectLeastLoadedTarget(leastLoadedTarget, activeTask, task, maxExecutionCount);
             }
         }
         for (CompiledTask pendingTask : pendingTasks) {
             if (pendingTask.canDrainCoalesceWith(task, maxExecutionCount)) {
-                sameKeyTaskCount++;
                 leastLoadedTarget = selectLeastLoadedTarget(leastLoadedTarget, pendingTask, task, maxExecutionCount);
             }
-        }
-        int parallelWindow = budgetContext == null ? 1 : Math.max(1, budgetContext.preferredLaneFloor());
-        if (sameKeyTaskCount < parallelWindow
-                && totalTaskCount() < maxTaskCount
-                && shouldOpenParallelDrainTask(leastLoadedTarget, parallelWindow)) {
-            return null;
         }
         if (leastLoadedTarget != null
                 && budgetContext != null
@@ -292,10 +283,6 @@ public final class LocalExecutionQueue {
             return null;
         }
         return leastLoadedTarget;
-    }
-
-    private static boolean shouldOpenParallelDrainTask(CompiledTask leastLoadedTarget, int parallelWindow) {
-        return leastLoadedTarget == null || leastLoadedTarget.getExecutionCount() >= parallelWindow;
     }
 
     private static CompiledTask selectLeastLoadedTarget(

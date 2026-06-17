@@ -19,6 +19,7 @@ import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitter
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionFormatter;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionOwnership;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionPlan;
+import git.chexson.chexsonsaeutils.mixin.ae2.automation.StorageLevelEmitterPartAccessor;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
@@ -28,7 +29,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -51,8 +51,6 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     static final String NBT_EXPRESSION_TEXT = "expression_text";
     static final String NBT_EXPRESSION_OWNERSHIP = "expression_ownership";
     public static final int DEFAULT_VISIBLE_SLOT_COUNT = 1;
-    private static final Field STORAGE_WATCHER_FIELD = resolveField("storageWatcher");
-    private static final Field CRAFTING_WATCHER_FIELD = resolveField("craftingWatcher");
     private static final ThreadLocal<MultiLevelEmitterRuntimePart> PUBLISHED_MENU_RUNTIME = new ThreadLocal<>();
 
     private ConfigInventory configInventory;
@@ -225,7 +223,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     @Override
     protected void configureWatchers() {
         reconcileCardModes();
-        IStackWatcher storageWatcher = getWatcher(STORAGE_WATCHER_FIELD);
+        StorageLevelEmitterPartAccessor watcherAccessor = (StorageLevelEmitterPartAccessor) this;
+        IStackWatcher storageWatcher = watcherAccessor.chexsonsaeutils$getStorageWatcher();
         if (storageWatcher != null) {
             storageWatcher.reset();
             if (hasMarkedNonStrictStorageSlot()) {
@@ -237,7 +236,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             }
         }
 
-        IStackWatcher craftingWatcher = getWatcher(CRAFTING_WATCHER_FIELD);
+        IStackWatcher craftingWatcher = watcherAccessor.chexsonsaeutils$getCraftingWatcher();
         if (craftingWatcher != null) {
             craftingWatcher.reset();
             for (AEKey key : requestStateCraftingKeys()) {
@@ -950,24 +949,6 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             }
             ICraftingProvider.requestUpdate(getMainNode());
         } catch (RuntimeException ignored) {
-        }
-    }
-
-    private IStackWatcher getWatcher(Field field) {
-        try {
-            return (IStackWatcher) field.get(this);
-        } catch (IllegalAccessException exception) {
-            throw new IllegalStateException("Unable to read AE2 watcher field", exception);
-        }
-    }
-
-    private static Field resolveField(String fieldName) {
-        try {
-            Field field = StorageLevelEmitterPart.class.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return field;
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Unable to resolve StorageLevelEmitterPart." + fieldName, exception);
         }
     }
 

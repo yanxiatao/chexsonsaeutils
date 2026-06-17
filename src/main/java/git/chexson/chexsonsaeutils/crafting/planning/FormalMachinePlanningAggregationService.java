@@ -1,572 +1,774 @@
 package git.chexson.chexsonsaeutils.crafting.planning;
 
 import appeng.api.crafting.IPatternDetails;
-import appeng.api.networking.IGrid;
+import appeng.api.config.Actionable;
 import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.crafting.ICraftingProvider;
-import appeng.api.networking.crafting.ICraftingSimulationRequester;
-import appeng.api.networking.storage.IStorageService;
+import appeng.api.networking.security.IActionSource;
+import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.pattern.AECraftingPattern;
 import appeng.me.service.CraftingService;
+import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AbstractHighCapacityCraftingHostBlockEntity;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.ScaledCraftingPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.ScaledCraftingPatternEligibilityService;
-import org.jetbrains.annotations.Nullable;
-
+import git.chexson.chexsonsaeutils.blockentity.crafting.TaskCompletionRoute;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceAccessor;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 
 import java.util.ArrayDeque;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public final class FormalMachinePlanningAggregationService {
 
-    private static final long MIN_AGGREGATION_THRESHOLD = 16_384L;
-    private static final long WORK_AGGREGATION_THRESHOLD = 16_384L;
-    private static final int MAX_ANALYSIS_DEPTH = 64;
-    private static final int MAX_ANALYSIS_STEPS = 4_096;
-    private static final int MAX_DETERMINISTIC_PLANNING_STEPS = 16_384;
-    private static final long MAX_DETERMINISTIC_PLANNING_NANOS = TimeUnit.SECONDS.toNanos(1L);
-    private static final int PLANNING_POOL_THREADS = 2;
-    private static final int PLANNING_QUEUE_CAPACITY = 8;
-    private static final long PLANNING_FUTURE_TIMEOUT_SECONDS = 5L;
-    private static final ExecutorService PLANNING_POOL;
-
-    static {
-        ThreadFactory factory = runnable -> {
-            Thread thread = new Thread(runnable, "Formal Machine Planning Aggregator");
-            thread.setDaemon(true);
-            return thread;
-        };
-        PLANNING_POOL = new ThreadPoolExecutor(
-                PLANNING_POOL_THREADS,
-                PLANNING_POOL_THREADS,
-                30L,
-                TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(PLANNING_QUEUE_CAPACITY),
-                factory,
-                new ThreadPoolExecutor.AbortPolicy()
-        );
-    }
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private FormalMachinePlanningAggregationService() {
     }
 
-    public static @Nullable Future<ICraftingPlan> tryBeginCraftingCalculation(
+    public static Future<ICraftingPlan> tryBeginCraftingCalculation(
+            @Nullable CraftingService craftingService,
+            @Nullable Level level,
+            @Nullable AEKey what,
+            long amount,
+            @Nullable CalculationStrategy strategy,
+            @Nullable Future<ICraftingPlan> nativeFuture
+    ) {
+        if (nativeFuture == null
+                || craftingService == null
+                || level == null
+                || what == null
+                || amount <= 0L
+                || !supportsStrategy(strategy)) {
+            return nativeFuture;
+        }
+        return new AggregatingPlanningFuture(craftingService, level, what, amount, nativeFuture);
+    }
+
+    private static boolean supportsStrategy(@Nullable CalculationStrategy strategy) {
+        return strategy == CalculationStrategy.REPORT_MISSING_ITEMS
+                || strategy == CalculationStrategy.CRAFT_LESS;
+    }
+
+    private static ICraftingPlan rewriteNativePlan(
             CraftingService craftingService,
-            IGrid realGrid,
             Level level,
-            ICraftingSimulationRequester simRequester,
-            AEKey what,
-            long amount,
-            CalculationStrategy strategy
+            AEKey requestedOutput,
+            long requestedAmount,
+            ICraftingPlan nativePlan
     ) {
-        if (craftingService == null || realGrid == null || level == null || what == null || amount <= 0L) {
-            return null;
+        if (nativePlan == null
+                || nativePlan.finalOutput() == null
+                || nativePlan.finalOutput().what() == null
+                || nativePlan.patternTimes().isEmpty()) {
+            return nativePlan;
         }
 
-        PlanningPathAnalysis analysis = analyzePath(craftingService, what, amount);
-        AbstractHighCapacityCraftingHostBlockEntity host = analysis.host();
-        if (host == null) {
-            return null;
+        SelectedPlanGraph selectedGraph = buildSelectedPlanGraph(
+                craftingService,
+                nativePlan.finalOutput().what(),
+                nativePlan.patternTimes()
+        );
+        if (selectedGraph == null || selectedGraph.nodes().isEmpty()) {
+            return nativePlan;
         }
 
-        host.recordPlanningAggregationRequestForTest(amount);
-        boolean amountTriggered = amount >= analysis.threshold();
-        boolean deterministicDepthTriggered = analysis.depth() > 1
-                && analysis.estimatedWork() > 0L;
-        boolean workTriggered = analysis.estimatedWork() >= WORK_AGGREGATION_THRESHOLD || deterministicDepthTriggered;
-        boolean deterministicTriggered = amountTriggered || workTriggered;
-        host.recordPlanningWorkEstimateForTest(analysis.estimatedWork(), workTriggered);
-        if (!supportsStrategy(strategy)) {
-            if (!analysis.supported() && deterministicTriggered) {
-                host.recordPlanningAggregationFallbackForTest(analysis.replacementAware());
-            }
-            return null;
-        }
-        if (!analysis.supported()) {
-            if (deterministicTriggered) {
-                host.recordPlanningAggregationFallbackForTest(analysis.replacementAware());
-                host.recordPlanningAggregationFailureForTest(0L, 0, 0L);
-                return CompletableFuture.completedFuture(missingPlan(what, amount));
-            }
-            return null;
-        }
-        if (!deterministicTriggered) {
-            return null;
-        }
-
-        KeyCounter initialSnapshot = copyCounter(snapshotVisibleInventory(realGrid.getStorageService()));
-
-        try {
-            CompletableFuture<ICraftingPlan> future = new CompletableFuture<>();
-            future.completeOnTimeout(
-                    missingPlan(what, amount),
-                    PLANNING_FUTURE_TIMEOUT_SECONDS,
-                    TimeUnit.SECONDS
-            );
-            PLANNING_POOL.execute(() -> runFormalPlanningAsync(
-                    future,
-                    level,
-                    host,
-                    what,
-                    amount,
-                    initialSnapshot,
-                    analysis,
-                    deterministicTriggered
-            ));
-            return future;
-        } catch (RejectedExecutionException ignored) {
-            host.recordPlanningAggregationFallbackForTest(false);
-            host.recordPlanningAggregationFailureForTest(0L, 0, 0L);
-            return CompletableFuture.completedFuture(missingPlan(what, amount));
-        }
-    }
-
-    private static void runFormalPlanningAsync(
-            CompletableFuture<ICraftingPlan> future,
-            Level level,
-            AbstractHighCapacityCraftingHostBlockEntity host,
-            AEKey what,
-            long amount,
-            KeyCounter initialSnapshot,
-            PlanningPathAnalysis analysis,
-            boolean deterministicTriggered
-    ) {
-        PlanningComputationResult result;
-        try {
-            result = runFormalPlanning(level, what, amount, initialSnapshot, analysis, deterministicTriggered);
-        } catch (RuntimeException exception) {
-            result = PlanningComputationResult.failure(missingPlan(what, amount));
-        }
-        PlanningComputationResult finalResult = result;
-        Runnable completion = () -> {
-            applyPlanningTelemetry(host, finalResult.telemetry());
-            future.complete(finalResult.plan());
-        };
-        if (level.getServer() == null || level.getServer().isSameThread()) {
-            completion.run();
-        } else {
-            try {
-                level.getServer().execute(completion);
-            } catch (RejectedExecutionException exception) {
-                future.complete(finalResult.plan());
-            }
-        }
-    }
-
-    private static PlanningComputationResult runFormalPlanning(
-            Level level,
-            AEKey what,
-            long amount,
-            KeyCounter initialSnapshot,
-            PlanningPathAnalysis analysis,
-            boolean deterministicTriggered
-    ) {
-        PlanningComputationResult deterministicPlan = tryBuildDeterministicPlan(
+        List<HostAggregationCandidate> candidates = buildHostAggregationCandidates(
                 level,
-                what,
-                amount,
-                analysis,
-                deterministicTriggered,
-                initialSnapshot
+                nativePlan,
+                selectedGraph
         );
-        if (deterministicPlan != null) {
-            return deterministicPlan;
+        if (candidates.isEmpty()) {
+            return nativePlan;
         }
-        return PlanningComputationResult.failure(missingPlan(what, amount));
-    }
 
-    private static @Nullable PlanningComputationResult tryBuildDeterministicPlan(
-            Level level,
-            AEKey what,
-            long amount,
-            PlanningPathAnalysis analysis,
-            boolean deterministicTriggered,
-            KeyCounter initialSnapshot
-    ) {
+        Map<IPatternDetails, Long> rewrittenPatternTimes = new LinkedHashMap<>(nativePlan.patternTimes());
         long startedAt = System.nanoTime();
-        if (!analysis.supported() || !deterministicTriggered) {
-            return null;
-        }
-        DeterministicPlanAccumulator accumulator = new DeterministicPlanAccumulator(
-                initialSnapshot
-        );
-        DeterministicPlanningBudget budget = new DeterministicPlanningBudget(startedAt);
-        if (!collectDeterministicRequirements(
-                analysis.frozenGraph(),
-                what,
-                amount,
-                accumulator,
-                true,
-                1,
-                new HashMap<>(),
-                budget
-        )) {
-            return null;
-        }
-        if (accumulator.patternTimes.isEmpty()) {
-            if (accumulator.missingItems.isEmpty()) {
-                return null;
-            }
-            ICraftingPlan plan = new AggregatedCraftingPlan(
-                    new GenericStack(what, amount),
-                    0L,
-                    true,
-                    false,
-                    accumulator.usedItems,
-                    new KeyCounter(),
-                    accumulator.missingItems,
-                    Map.of()
+        boolean changed = false;
+        List<HostAggregationCandidate> appliedCandidates = new ArrayList<>();
+        KeyCounter liveVisibleStacks = snapshotLiveVisibleStacks(craftingService);
+
+        for (HostAggregationCandidate candidate : candidates) {
+            FormalMachineAggregatedPattern aggregatedPattern = FormalMachineAggregatedPattern.create(
+                    level.registryAccess(),
+                    candidate.basePattern(),
+                    FormalMachineHostLocator.fromHost(candidate.host()),
+                    candidate.boundaryInputs(),
+                    candidate.aggregatedOutputs(),
+                    candidate.aggregatedRemainders(),
+                    candidate.steps(),
+                    candidate.totalTicks()
             );
-            return PlanningComputationResult.hit(plan, System.nanoTime() - startedAt);
-        }
-        boolean simulation = !accumulator.missingItems.isEmpty();
-        long totalBytes = 0L;
-        for (long patternTime : accumulator.patternTimes.values()) {
-            totalBytes = saturatingAdd(totalBytes, patternTime);
-        }
-        ScalingTransformResult scalingResult = scalePatternTimes(level, accumulator.patternTimes);
-        ICraftingPlan plan = new AggregatedCraftingPlan(
-                new GenericStack(what, amount),
-                Math.max(1L, totalBytes),
-                simulation,
-                false,
-                accumulator.usedItems,
-                new KeyCounter(),
-                accumulator.missingItems,
-                scalingResult.patternTimes()
-        );
-        return PlanningComputationResult.hit(plan, System.nanoTime() - startedAt, scalingResult);
-    }
-
-    private static void applyPlanningTelemetry(
-            AbstractHighCapacityCraftingHostBlockEntity host,
-            PlanningComputationTelemetry telemetry
-    ) {
-        if (telemetry.deterministicHit()) {
-            host.recordDeterministicPlanningHitForTest(telemetry.wallClockNanos());
-        }
-        if (telemetry.deterministicFallback()) {
-            host.recordDeterministicPlanningFallbackForTest();
-        }
-        host.recordVirtualScaledPatternStatsForTest(
-                telemetry.virtualScaledPatternHitCount(),
-                telemetry.virtualScaledPatternFallbackCount(),
-                telemetry.largestVirtualPatternMultiplier(),
-                telemetry.virtualScaledPatternLogicalExecutionsSaved()
-        );
-        if (telemetry.aggregationFallback()) {
-            host.recordPlanningAggregationFallbackForTest(false);
-        }
-        if (telemetry.aggregationFailure()) {
-            host.recordPlanningAggregationFailureForTest(0L, 0, 0L);
-        }
-    }
-
-    private static ScalingTransformResult scalePatternTimes(
-            Level level,
-            Map<IPatternDetails, Long> originalPatternTimes
-    ) {
-        if (level == null || originalPatternTimes.isEmpty()) {
-            return new ScalingTransformResult(Map.copyOf(originalPatternTimes), 0L, 0L, 0, 0L);
-        }
-        Map<IPatternDetails, Long> scaledPatternTimes = new LinkedHashMap<>();
-        Map<IPatternDetails, ScaledCraftingPatternEligibilityService.Eligibility> eligibilityCache = new HashMap<>();
-        long hitCount = 0L;
-        long fallbackCount = 0L;
-        int largestMultiplier = 0;
-        long logicalExecutionsSaved = 0L;
-
-        for (Map.Entry<IPatternDetails, Long> entry : originalPatternTimes.entrySet()) {
-            IPatternDetails patternDetails = entry.getKey();
-            long craftCount = entry.getValue() == null ? 0L : entry.getValue();
-            if (craftCount <= 0L) {
-                continue;
-            }
-            ScaledCraftingPatternEligibilityService.Eligibility eligibility = eligibilityCache.computeIfAbsent(
-                    patternDetails,
-                    ignored -> ScaledCraftingPatternEligibilityService.analyze(level, patternDetails)
-            );
-            if (eligibility == null || craftCount <= 1L) {
-                scaledPatternTimes.merge(patternDetails, craftCount, FormalMachinePlanningAggregationService::saturatingAdd);
-                if (craftCount > 1L && patternDetails instanceof AECraftingPattern) {
-                    fallbackCount = saturatingAdd(fallbackCount, 1L);
-                }
-                continue;
-            }
-
-            long remainingCrafts = craftCount;
-            long emittedTaskCount = 0L;
-            boolean scaled = false;
-            while (remainingCrafts > 0L) {
-                int multiplier = ScaledCraftingPatternEligibilityService.capMultiplier(eligibility, remainingCrafts);
-                if (multiplier <= 1) {
-                    scaledPatternTimes.merge(eligibility.basePattern(), remainingCrafts, FormalMachinePlanningAggregationService::saturatingAdd);
-                    emittedTaskCount = saturatingAdd(emittedTaskCount, remainingCrafts);
-                    if (!scaled) {
-                        fallbackCount = saturatingAdd(fallbackCount, 1L);
-                    }
-                    remainingCrafts = 0L;
-                    continue;
-                }
-                ScaledCraftingPattern scaledPattern = ScaledCraftingPatternEligibilityService.createScaledPattern(
-                        eligibility,
-                        multiplier
+            if (aggregatedPattern == null) {
+                LOGGER.warn(
+                        "Failed to build aggregated formal-machine pattern for host {} and output {}",
+                        candidate.host().getBlockPos(),
+                        nativePlan.finalOutput()
                 );
-                long scaledRuns = remainingCrafts / multiplier;
-                if (scaledRuns <= 0L) {
-                    scaledRuns = 1L;
-                }
-                scaledPatternTimes.merge(scaledPattern, scaledRuns, FormalMachinePlanningAggregationService::saturatingAdd);
-                remainingCrafts -= saturatingMultiply(scaledRuns, multiplier);
-                emittedTaskCount = saturatingAdd(emittedTaskCount, scaledRuns);
-                hitCount = saturatingAdd(hitCount, scaledRuns);
-                largestMultiplier = Math.max(largestMultiplier, multiplier);
-                scaled = true;
+                continue;
             }
-            if (scaled) {
-                long savedForPattern = Math.max(0L, craftCount - emittedTaskCount);
-                logicalExecutionsSaved = saturatingAdd(logicalExecutionsSaved, savedForPattern);
+
+            boolean removedAny = false;
+            for (IPatternDetails originalPattern : candidate.originalPatterns()) {
+                removedAny |= rewrittenPatternTimes.remove(originalPattern) != null;
             }
+            if (!removedAny) {
+                continue;
+            }
+
+            rewrittenPatternTimes.put(aggregatedPattern, 1L);
+            changed = true;
+            appliedCandidates.add(candidate);
         }
 
-        return new ScalingTransformResult(
-                Map.copyOf(scaledPatternTimes),
-                hitCount,
-                fallbackCount,
-                largestMultiplier,
-                logicalExecutionsSaved
+        if (!changed) {
+            return nativePlan;
+        }
+
+        Map<IPatternDetails, Long> dependencyOrderedPatternTimes = orderPatternTimesByDependencies(
+                rewrittenPatternTimes
+        );
+        if (dependencyOrderedPatternTimes == null) {
+            LOGGER.warn(
+                    "Failed to topologically order rewritten formal-machine crafting plan for output {} amount {}",
+                    requestedOutput,
+                    requestedAmount
+            );
+            return nativePlan;
+        }
+        rewrittenPatternTimes = dependencyOrderedPatternTimes;
+
+        long wallClockNanos = Math.max(0L, System.nanoTime() - startedAt);
+        long rewrittenBytes = computeRewrittenBytes(appliedCandidates);
+        for (HostAggregationCandidate candidate : appliedCandidates) {
+            candidate.host().recordPlanningAggregationRequestForTest(requestedAmount);
+            candidate.host().recordPlanningWorkEstimateForTest(candidate.estimatedWork(), true);
+            candidate.host().recordDeterministicPlanningHitForTest(wallClockNanos);
+        }
+
+        KeyCounter rewrittenMissingItems = mergeMissingItems(
+                nativePlan.missingItems(),
+                appliedCandidates,
+                liveVisibleStacks
+        );
+
+        return new AggregatedCraftingPlan(
+                nativePlan.finalOutput(),
+                rewrittenBytes,
+                !rewrittenMissingItems.isEmpty(),
+                nativePlan.multiplePaths(),
+                computeRewrittenUsedItems(rewrittenPatternTimes, rewrittenMissingItems),
+                copyCounter(nativePlan.emittedItems()),
+                rewrittenMissingItems,
+                immutableOrderedPatternTimes(rewrittenPatternTimes)
         );
     }
 
-    private static boolean collectDeterministicRequirements(
-            Map<AEKey, FrozenPatternNode> frozenGraph,
-            AEKey output,
-            long requiredAmount,
-            DeterministicPlanAccumulator accumulator,
-            boolean root,
-            int depth,
-            Map<AEKey, Boolean> recursionGuard,
-            DeterministicPlanningBudget budget
-    ) {
-        if (!budget.tryClaim()) {
-            return false;
-        }
-        if (requiredAmount <= 0L) {
-            return true;
-        }
-        if (!root) {
-            long consumed = accumulator.consumeAvailable(output, requiredAmount);
-            if (consumed > 0L) {
-                requiredAmount -= consumed;
-                if (requiredAmount <= 0L) {
-                    return true;
-                }
-            }
-        }
-        if (depth > MAX_ANALYSIS_DEPTH || Boolean.TRUE.equals(recursionGuard.put(output, true))) {
-            return false;
-        }
-        FrozenPatternNode node = frozenGraph.get(output);
-        if (node == null) {
-            accumulator.missingItems.add(output, requiredAmount);
-            recursionGuard.remove(output);
-            return true;
-        }
-        long outputAmount = node.outputAmount();
-        if (outputAmount <= 0L) {
-            recursionGuard.remove(output);
-            return false;
-        }
-        long craftCount = ceilDiv(requiredAmount, outputAmount);
-        accumulator.patternTimes.merge(node.pattern(), craftCount, FormalMachinePlanningAggregationService::saturatingAdd);
-        for (Map.Entry<AEKey, Long> entry : node.inputs().entrySet()) {
-            long inputAmount = saturatingMultiply(craftCount, entry.getValue());
-            if (inputAmount <= 0L) {
-                recursionGuard.remove(output);
-                return false;
-            }
-            if (!collectDeterministicRequirements(
-                    frozenGraph,
-                    entry.getKey(),
-                    inputAmount,
-                    accumulator,
-                    false,
-                    depth + 1,
-                    recursionGuard,
-                    budget
-            )) {
-                recursionGuard.remove(output);
-                return false;
-            }
-        }
-        recursionGuard.remove(output);
-        return true;
-    }
-
-    private static KeyCounter snapshotVisibleInventory(IStorageService storageService) {
-        if (storageService == null) {
-            return new KeyCounter();
-        }
-        return storageService.getInventory().getAvailableStacks();
-    }
-
-    private static PlanningPathAnalysis analyzePath(
+    private static @Nullable SelectedPlanGraph buildSelectedPlanGraph(
             CraftingService craftingService,
             AEKey rootOutput,
-            long rootAmount
+            Map<IPatternDetails, Long> selectedPatternTimes
     ) {
-        ArrayDeque<PatternPathNode> queue = new ArrayDeque<>();
-        queue.addLast(new PatternPathNode(rootOutput, Math.max(1L, rootAmount), 1));
-        Map<AEKey, java.util.Collection<IPatternDetails>> craftingForCache = new HashMap<>();
-        Map<AEKey, FrozenPatternNode> frozenGraph = new LinkedHashMap<>();
-
-        AbstractHighCapacityCraftingHostBlockEntity resolvedHost = null;
-        int maxDepth = 1;
-        int steps = 0;
-        long estimatedWork = 0L;
-
-        while (!queue.isEmpty()) {
-            PatternPathNode current = queue.removeFirst();
-            if (++steps > MAX_ANALYSIS_STEPS || current.depth() > MAX_ANALYSIS_DEPTH) {
-                return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-            }
-            maxDepth = Math.max(maxDepth, current.depth());
-
-            var patterns = craftingFor(craftingService, craftingForCache, current.output());
-            if (patterns.isEmpty()) {
-                continue;
-            }
-            FormalProviderOwnership ownership = formalProviderOwnership(craftingService, patterns);
-            if (!ownership.allFormal()) {
-                return PlanningPathAnalysis.unsupported(
-                        resolvedHost != null ? resolvedHost : ownership.host(),
-                        maxDepth,
-                        estimatedWork
-                );
-            }
-            AbstractHighCapacityCraftingHostBlockEntity patternsHost = ownership.host();
-            if (patternsHost == null) {
-                return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-            }
-            if (!ownership.exclusive()) {
-                return PlanningPathAnalysis.unsupported(
-                        resolvedHost != null ? resolvedHost : patternsHost,
-                        maxDepth,
-                        estimatedWork
-                );
-            }
-            if (resolvedHost != null && patternsHost != resolvedHost) {
-                return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-            }
-            resolvedHost = patternsHost;
-            if (patterns.size() != 1) {
-                return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-            }
-
-            IPatternDetails pattern = patterns.iterator().next();
-            if (!(pattern instanceof AECraftingPattern craftingPattern)
-                    || craftingPattern.canSubstitute
-                    || craftingPattern.canSubstituteFluids) {
-                return PlanningPathAnalysis.replacementAware(resolvedHost, maxDepth, estimatedWork);
-            }
-
-            long outputAmount = outputAmountFor(pattern, current.output());
-            if (outputAmount <= 0L) {
-                return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-            }
-            long craftCount = ceilDiv(current.requiredAmount(), outputAmount);
-            long inputWorkUnits = 0L;
-            Map<AEKey, Long> mergedInputs = new LinkedHashMap<>();
-            Map<AEKey, Long> mergedCraftableInputs = new LinkedHashMap<>();
-            for (IPatternDetails.IInput input : craftingPattern.getInputs()) {
-                GenericStack[] possibleInputs = input.getPossibleInputs();
-                if (possibleInputs.length != 1 || possibleInputs[0] == null || possibleInputs[0].amount() <= 0L) {
-                    return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-                }
-                long inputMultiplier = input.getMultiplier();
-                if (inputMultiplier <= 0L) {
-                    return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-                }
-                inputWorkUnits = saturatingAdd(inputWorkUnits, inputMultiplier);
-
-                GenericStack possibleInput = possibleInputs[0];
-                AEKey inputKey = possibleInput.what();
-                long inputAmount = saturatingMultiply(possibleInput.amount(), inputMultiplier);
-                if (inputAmount <= 0L) {
-                    return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-                }
-                mergedInputs.merge(
-                        inputKey,
-                        inputAmount,
-                        FormalMachinePlanningAggregationService::saturatingAdd
-                );
-                var inputPatterns = craftingFor(craftingService, craftingForCache, inputKey);
-                if (!inputPatterns.isEmpty()) {
-                    if (inputPatterns.size() != 1) {
-                        return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-                    }
-                    mergedCraftableInputs.merge(
-                            inputKey,
-                            saturatingMultiply(craftCount, inputAmount),
-                            FormalMachinePlanningAggregationService::saturatingAdd
-                    );
-                }
-            }
-            FrozenPatternNode existingNode = frozenGraph.putIfAbsent(
-                    current.output(),
-                    new FrozenPatternNode(pattern, outputAmount, Map.copyOf(mergedInputs))
-            );
-            if (existingNode != null && existingNode.pattern() != pattern) {
-                return PlanningPathAnalysis.unsupported(resolvedHost, maxDepth, estimatedWork);
-            }
-            for (Map.Entry<AEKey, Long> entry : mergedCraftableInputs.entrySet()) {
-                queue.addLast(new PatternPathNode(
-                        entry.getKey(),
-                        entry.getValue(),
-                        current.depth() + 1
-                ));
-            }
-            estimatedWork = saturatingAdd(
-                    estimatedWork,
-                    saturatingMultiply(craftCount, saturatingAdd(1L, inputWorkUnits))
-            );
+        if (selectedPatternTimes == null || selectedPatternTimes.isEmpty()) {
+            return null;
         }
 
-        return resolvedHost == null
-                ? PlanningPathAnalysis.unsupported(null, maxDepth, estimatedWork)
-                : PlanningPathAnalysis.supported(resolvedHost, maxDepth, estimatedWork, Map.copyOf(frozenGraph));
+        Map<AEKey, List<SelectedGraphNode>> nodesByOutput = new LinkedHashMap<>();
+        for (Map.Entry<IPatternDetails, Long> entry : selectedPatternTimes.entrySet()) {
+            IPatternDetails pattern = entry.getKey();
+            long craftCount = Math.max(0L, entry.getValue() == null ? 0L : entry.getValue());
+            if (pattern == null || craftCount <= 0L) {
+                continue;
+            }
+
+            PatternDefinitionKey definitionKey = PatternDefinitionKey.of(pattern);
+            if (definitionKey == null) {
+                return null;
+            }
+
+            Map<AEKey, Long> inputs = describePatternInputs(pattern);
+            if (inputs == null) {
+                LOGGER.warn("Selected crafting pattern {} has non-deterministic inputs", pattern.getDefinition());
+                return null;
+            }
+
+            AbstractHighCapacityCraftingHostBlockEntity host = exclusiveFormalMachineProvider(craftingService, pattern);
+            for (GenericStack output : pattern.getOutputs()) {
+                if (output == null || output.what() == null || output.amount() <= 0L) {
+                    continue;
+                }
+                nodesByOutput.computeIfAbsent(output.what(), ignored -> new ArrayList<>()).add(
+                        new SelectedGraphNode(
+                                definitionKey,
+                                pattern,
+                                craftCount,
+                                output.what(),
+                                output.amount(),
+                                Map.copyOf(inputs),
+                                host
+                        )
+                );
+            }
+        }
+
+        ArrayDeque<AEKey> pending = new ArrayDeque<>();
+        pending.addLast(rootOutput);
+
+        Map<AEKey, SelectedGraphNode> nodes = new LinkedHashMap<>();
+
+        while (!pending.isEmpty()) {
+            AEKey current = pending.removeFirst();
+            if (current == null || nodes.containsKey(current)) {
+                continue;
+            }
+
+            List<SelectedGraphNode> candidates = nodesByOutput.getOrDefault(current, List.of());
+            if (candidates.isEmpty()) {
+                if (Objects.equals(current, rootOutput)) {
+                    return null;
+                }
+                continue;
+            }
+            SelectedGraphNode resolved = collapseEquivalentCandidates(current, candidates);
+            if (resolved == null) {
+                LOGGER.warn("Output {} resolves to multiple non-equivalent selected native planning patterns", current);
+                return null;
+            }
+            nodes.put(current, resolved);
+            for (AEKey input : resolved.inputs().keySet()) {
+                if (input != null && !nodes.containsKey(input) && nodesByOutput.containsKey(input)) {
+                    pending.addLast(input);
+                }
+            }
+        }
+
+        return new SelectedPlanGraph(Map.copyOf(nodes));
     }
 
-    private static java.util.Collection<IPatternDetails> craftingFor(
-            CraftingService craftingService,
-            Map<AEKey, java.util.Collection<IPatternDetails>> cache,
-            AEKey output
+    private static @Nullable SelectedGraphNode collapseEquivalentCandidates(
+            AEKey output,
+            List<SelectedGraphNode> candidates
     ) {
-        return cache.computeIfAbsent(output, craftingService::getCraftingFor);
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        if (candidates.size() == 1) {
+            return candidates.getFirst();
+        }
+
+        SelectedGraphNode base = candidates.getFirst();
+        EquivalentSelectedNodeKey baseKey = EquivalentSelectedNodeKey.of(base);
+        if (base == null || baseKey == null) {
+            return null;
+        }
+
+        long aggregatedCraftCount = 0L;
+        IPatternDetails selectedPattern = base.pattern();
+        for (SelectedGraphNode candidate : candidates) {
+            EquivalentSelectedNodeKey candidateKey = EquivalentSelectedNodeKey.of(candidate);
+            if (candidate == null || candidateKey == null || !baseKey.equals(candidateKey)) {
+                return null;
+            }
+            if (selectedPattern != candidate.pattern()
+                    && comparePatternDefinitions(selectedPattern, candidate.pattern()) > 0) {
+                selectedPattern = candidate.pattern();
+            }
+            aggregatedCraftCount = saturatingAdd(aggregatedCraftCount, candidate.craftCount());
+        }
+        return new SelectedGraphNode(
+                base.definitionKey(),
+                selectedPattern,
+                aggregatedCraftCount,
+                output,
+                base.outputAmount(),
+                base.inputs(),
+                base.host()
+        );
+    }
+
+    private static List<HostAggregationCandidate> buildHostAggregationCandidates(
+            Level level,
+            ICraftingPlan nativePlan,
+            SelectedPlanGraph selectedGraph
+    ) {
+        Map<AbstractHighCapacityCraftingHostBlockEntity, Map<AEKey, SelectedGraphNode>> grouped = new LinkedHashMap<>();
+        for (Map.Entry<AEKey, SelectedGraphNode> entry : selectedGraph.nodes().entrySet()) {
+            SelectedGraphNode node = entry.getValue();
+            if (unwrapBaseCraftingPattern(node.pattern()) == null || node.host() == null) {
+                continue;
+            }
+            grouped.computeIfAbsent(node.host(), ignored -> new LinkedHashMap<>()).put(entry.getKey(), node);
+        }
+
+        List<HostAggregationCandidate> candidates = new ArrayList<>();
+        for (Map.Entry<AbstractHighCapacityCraftingHostBlockEntity, Map<AEKey, SelectedGraphNode>> entry : grouped.entrySet()) {
+            Map<AEKey, SelectedGraphNode> hostNodes = entry.getValue();
+            for (Set<AEKey> segment : splitPerPatternFormalAggregationSegments(formalInputsByOutput(hostNodes))) {
+                Map<AEKey, SelectedGraphNode> segmentNodes = selectSegmentNodes(hostNodes, segment);
+                HostAggregationCandidate candidate = buildHostAggregationCandidate(
+                        level,
+                        nativePlan,
+                        entry.getKey(),
+                        segmentNodes
+                );
+                if (candidate != null) {
+                    candidates.add(candidate);
+                }
+            }
+        }
+        return List.copyOf(candidates);
+    }
+
+    static List<Set<AEKey>> splitPerPatternFormalAggregationSegments(
+            Map<AEKey, ? extends Collection<AEKey>> formalInputsByOutput
+    ) {
+        if (formalInputsByOutput == null || formalInputsByOutput.isEmpty()) {
+            return List.of();
+        }
+
+        List<Set<AEKey>> segments = new ArrayList<>();
+        for (AEKey output : formalInputsByOutput.keySet()) {
+            if (output != null) {
+                segments.add(Set.of(output));
+            }
+        }
+        return List.copyOf(segments);
+    }
+
+    static List<Set<AEKey>> splitFormalDependencySegments(
+            Map<AEKey, ? extends Collection<AEKey>> formalInputsByOutput
+    ) {
+        return splitFormalDependencySegments(formalInputsByOutput, Set.of());
+    }
+
+    static List<Set<AEKey>> splitFormalDependencySegments(
+            Map<AEKey, ? extends Collection<AEKey>> formalInputsByOutput,
+            Set<AEKey> segmentStartOutputs
+    ) {
+        if (formalInputsByOutput == null || formalInputsByOutput.isEmpty()) {
+            return List.of();
+        }
+        Set<AEKey> forcedSegmentStarts = segmentStartOutputs == null ? Set.of() : segmentStartOutputs;
+
+        Map<AEKey, LinkedHashSet<AEKey>> adjacency = new LinkedHashMap<>();
+        for (AEKey output : formalInputsByOutput.keySet()) {
+            if (output != null) {
+                adjacency.putIfAbsent(output, new LinkedHashSet<>());
+            }
+        }
+
+        for (Map.Entry<AEKey, ? extends Collection<AEKey>> entry : formalInputsByOutput.entrySet()) {
+            AEKey consumerOutput = entry.getKey();
+            if (consumerOutput == null || !adjacency.containsKey(consumerOutput) || entry.getValue() == null) {
+                continue;
+            }
+            for (AEKey inputKey : entry.getValue()) {
+                if (inputKey == null || !adjacency.containsKey(inputKey)) {
+                    continue;
+                }
+                if (forcedSegmentStarts.contains(consumerOutput)) {
+                    continue;
+                }
+                adjacency.get(inputKey).add(consumerOutput);
+                adjacency.get(consumerOutput).add(inputKey);
+            }
+        }
+
+        List<Set<AEKey>> segments = new ArrayList<>();
+        Set<AEKey> visited = new LinkedHashSet<>();
+        for (AEKey start : adjacency.keySet()) {
+            if (!visited.add(start)) {
+                continue;
+            }
+
+            LinkedHashSet<AEKey> segment = new LinkedHashSet<>();
+            ArrayDeque<AEKey> pending = new ArrayDeque<>();
+            pending.addLast(start);
+            while (!pending.isEmpty()) {
+                AEKey current = pending.removeFirst();
+                segment.add(current);
+                for (AEKey next : adjacency.getOrDefault(current, new LinkedHashSet<>())) {
+                    if (visited.add(next)) {
+                        pending.addLast(next);
+                    }
+                }
+            }
+            segments.add(Set.copyOf(segment));
+        }
+        return List.copyOf(segments);
+    }
+
+    private static Set<AEKey> externalProducedInputConsumers(
+            Map<AEKey, SelectedGraphNode> hostNodes,
+            Map<AEKey, SelectedGraphNode> selectedNodes,
+            AbstractHighCapacityCraftingHostBlockEntity host
+    ) {
+        if (hostNodes == null || hostNodes.isEmpty() || selectedNodes == null || selectedNodes.isEmpty()) {
+            return Set.of();
+        }
+        Set<AEKey> consumers = new LinkedHashSet<>();
+        for (Map.Entry<AEKey, SelectedGraphNode> entry : hostNodes.entrySet()) {
+            SelectedGraphNode consumer = entry.getValue();
+            if (entry.getKey() == null || consumer == null || consumer.inputs() == null) {
+                continue;
+            }
+            for (AEKey inputKey : consumer.inputs().keySet()) {
+                SelectedGraphNode producer = selectedNodes.get(inputKey);
+                if (producer != null && producer.host() != host) {
+                    consumers.add(entry.getKey());
+                    break;
+                }
+            }
+        }
+        return Set.copyOf(consumers);
+    }
+
+    private static Map<AEKey, Collection<AEKey>> formalInputsByOutput(Map<AEKey, SelectedGraphNode> hostNodes) {
+        Map<AEKey, Collection<AEKey>> inputsByOutput = new LinkedHashMap<>();
+        if (hostNodes == null || hostNodes.isEmpty()) {
+            return inputsByOutput;
+        }
+        for (Map.Entry<AEKey, SelectedGraphNode> entry : hostNodes.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                inputsByOutput.put(entry.getKey(), entry.getValue().inputs().keySet());
+            }
+        }
+        return inputsByOutput;
+    }
+
+    private static Map<AEKey, SelectedGraphNode> selectSegmentNodes(
+            Map<AEKey, SelectedGraphNode> hostNodes,
+            Set<AEKey> segment
+    ) {
+        Map<AEKey, SelectedGraphNode> selected = new LinkedHashMap<>();
+        if (hostNodes == null || hostNodes.isEmpty() || segment == null || segment.isEmpty()) {
+            return selected;
+        }
+        for (Map.Entry<AEKey, SelectedGraphNode> entry : hostNodes.entrySet()) {
+            if (segment.contains(entry.getKey())) {
+                selected.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return selected;
+    }
+
+    private static @Nullable HostAggregationCandidate buildHostAggregationCandidate(
+            Level level,
+            ICraftingPlan nativePlan,
+            AbstractHighCapacityCraftingHostBlockEntity host,
+            Map<AEKey, SelectedGraphNode> hostNodes
+    ) {
+        List<SelectedGraphNode> executionOrder = topoSortHostNodes(hostNodes);
+        if (executionOrder == null || executionOrder.isEmpty()) {
+            return null;
+        }
+
+        Map<AEKey, Long> totalInputs = new LinkedHashMap<>();
+        Map<AEKey, Long> totalPrimaryOutputs = new LinkedHashMap<>();
+        Map<AEKey, Long> totalRemainders = new LinkedHashMap<>();
+        LinkedHashSet<IPatternDetails> originalPatterns = new LinkedHashSet<>();
+        List<FormalMachineAggregationStep> steps = new ArrayList<>(executionOrder.size());
+
+        for (SelectedGraphNode node : executionOrder) {
+            ItemStack patternDefinition = node.pattern().getDefinition().toStack();
+            if (patternDefinition.isEmpty()) {
+                return null;
+            }
+
+            Map<AEItemKey, Long> singleRunRemainders =
+                    FormalMachineAggregationRemainderHelper.computeSingleRunRemainders(level, node.pattern());
+            if (singleRunRemainders == null) {
+                return null;
+            }
+
+            List<GenericStack> stepInputs = toScaledStacks(node.inputs(), node.craftCount());
+            long primaryAmount = multiply(node.outputAmount(), node.craftCount());
+            if (primaryAmount <= 0L) {
+                return null;
+            }
+            List<GenericStack> stepRemainders = toScaledStacks(singleRunRemainders, node.craftCount());
+
+            steps.add(new FormalMachineAggregationStep(
+                    patternDefinition,
+                    node.craftCount(),
+                    stepInputs,
+                    new GenericStack(node.outputKey(), primaryAmount),
+                    stepRemainders,
+                    TaskCompletionRoute.AE_STORAGE
+            ));
+
+            mergeStacks(totalInputs, stepInputs);
+            mergeStack(totalPrimaryOutputs, node.outputKey(), primaryAmount);
+            mergeStacks(totalRemainders, stepRemainders);
+            originalPatterns.add(node.pattern());
+        }
+
+        if (steps.isEmpty() || originalPatterns.isEmpty()) {
+            return null;
+        }
+
+        Map<AEKey, Long> totalProduced = new LinkedHashMap<>(totalPrimaryOutputs);
+        mergeStackMaps(totalProduced, totalRemainders);
+
+        Map<AEKey, Long> boundaryInputs = subtractPositive(totalInputs, totalProduced);
+        Map<AEKey, Long> externalMissingInputs = extractExternalMissingInputs(
+                nativePlan.missingItems(),
+                totalPrimaryOutputs
+        );
+        Map<AEKey, Long> boundaryOutputs = subtractPositive(totalProduced, totalInputs);
+        if (boundaryOutputs.isEmpty()) {
+            return null;
+        }
+
+        SplitBoundaryOutputs splitOutputs = splitBoundaryOutputs(
+                nativePlan.finalOutput(),
+                boundaryOutputs,
+                totalPrimaryOutputs
+        );
+        if (splitOutputs.outputs().isEmpty() && !splitOutputs.remainders().isEmpty()) {
+            List<GenericStack> outputs = new ArrayList<>();
+            outputs.add(splitOutputs.remainders().getFirst());
+            List<GenericStack> remainders = new ArrayList<>(splitOutputs.remainders());
+            remainders.removeFirst();
+            splitOutputs = new SplitBoundaryOutputs(List.copyOf(outputs), List.copyOf(remainders));
+        }
+        if (splitOutputs.outputs().isEmpty()) {
+            return null;
+        }
+
+        AECraftingPattern basePattern = chooseBasePattern(nativePlan.finalOutput(), hostNodes, executionOrder);
+        if (basePattern == null) {
+            return null;
+        }
+
+        return new HostAggregationCandidate(
+                host,
+                basePattern,
+                toGenericStacks(boundaryInputs),
+                toGenericStacks(externalMissingInputs),
+                splitOutputs.outputs(),
+                splitOutputs.remainders(),
+                List.copyOf(steps),
+                saturatingIntMultiply(host.getCurrentOperationTicks(), Math.max(1, steps.size())),
+                List.copyOf(originalPatterns.stream().toList()),
+                estimateAggregatedWork(steps)
+        );
+    }
+
+    private static @Nullable List<SelectedGraphNode> topoSortHostNodes(Map<AEKey, SelectedGraphNode> hostNodes) {
+        Map<AEKey, Integer> indegree = new LinkedHashMap<>();
+        Map<AEKey, List<AEKey>> adjacency = new LinkedHashMap<>();
+
+        for (AEKey output : hostNodes.keySet()) {
+            indegree.putIfAbsent(output, 0);
+            adjacency.putIfAbsent(output, new ArrayList<>());
+        }
+
+        for (Map.Entry<AEKey, SelectedGraphNode> entry : hostNodes.entrySet()) {
+            AEKey consumerOutput = entry.getKey();
+            for (AEKey inputKey : entry.getValue().inputs().keySet()) {
+                if (!hostNodes.containsKey(inputKey)) {
+                    continue;
+                }
+                adjacency.computeIfAbsent(inputKey, ignored -> new ArrayList<>()).add(consumerOutput);
+                indegree.merge(consumerOutput, 1, Integer::sum);
+            }
+        }
+
+        ArrayDeque<AEKey> ready = new ArrayDeque<>();
+        for (Map.Entry<AEKey, Integer> entry : indegree.entrySet()) {
+            if (entry.getValue() == 0) {
+                ready.addLast(entry.getKey());
+            }
+        }
+
+        List<SelectedGraphNode> ordered = new ArrayList<>(hostNodes.size());
+        while (!ready.isEmpty()) {
+            AEKey current = ready.removeFirst();
+            ordered.add(hostNodes.get(current));
+            for (AEKey consumer : adjacency.getOrDefault(current, List.of())) {
+                int next = indegree.getOrDefault(consumer, 0) - 1;
+                indegree.put(consumer, next);
+                if (next == 0) {
+                    ready.addLast(consumer);
+                }
+            }
+        }
+
+        return ordered.size() == hostNodes.size() ? List.copyOf(ordered) : null;
+    }
+
+    private static @Nullable Map<IPatternDetails, Long> orderPatternTimesByDependencies(
+            Map<IPatternDetails, Long> patternTimes
+    ) {
+        if (patternTimes == null || patternTimes.size() <= 1) {
+            return patternTimes;
+        }
+
+        Map<IPatternDetails, Integer> indegree = new LinkedHashMap<>();
+        Map<IPatternDetails, LinkedHashSet<IPatternDetails>> adjacency = new LinkedHashMap<>();
+        Map<IPatternDetails, Map<AEKey, Long>> inputsByPattern = new LinkedHashMap<>();
+        Map<AEKey, List<IPatternDetails>> producersByOutput = new LinkedHashMap<>();
+
+        for (Map.Entry<IPatternDetails, Long> entry : patternTimes.entrySet()) {
+            IPatternDetails pattern = entry.getKey();
+            if (pattern == null) {
+                return null;
+            }
+
+            Map<AEKey, Long> inputs = describePatternInputs(pattern);
+            if (inputs == null) {
+                LOGGER.warn("Rewritten crafting pattern {} has non-deterministic inputs", pattern.getDefinition());
+                return null;
+            }
+
+            indegree.putIfAbsent(pattern, 0);
+            adjacency.putIfAbsent(pattern, new LinkedHashSet<>());
+            inputsByPattern.put(pattern, inputs);
+            for (GenericStack output : pattern.getOutputs()) {
+                if (output == null || output.what() == null || output.amount() <= 0L) {
+                    continue;
+                }
+                producersByOutput.computeIfAbsent(output.what(), ignored -> new ArrayList<>()).add(pattern);
+            }
+        }
+
+        for (Map.Entry<IPatternDetails, Map<AEKey, Long>> entry : inputsByPattern.entrySet()) {
+            IPatternDetails consumer = entry.getKey();
+            for (AEKey inputKey : entry.getValue().keySet()) {
+                for (IPatternDetails producer : producersByOutput.getOrDefault(inputKey, List.of())) {
+                    if (producer == consumer) {
+                        continue;
+                    }
+                    if (adjacency.get(producer).add(consumer)) {
+                        indegree.merge(consumer, 1, Integer::sum);
+                    }
+                }
+            }
+        }
+
+        ArrayDeque<IPatternDetails> ready = new ArrayDeque<>();
+        for (Map.Entry<IPatternDetails, Integer> entry : indegree.entrySet()) {
+            if (entry.getValue() == 0) {
+                ready.addLast(entry.getKey());
+            }
+        }
+
+        Map<IPatternDetails, Long> ordered = new LinkedHashMap<>();
+        while (!ready.isEmpty()) {
+            IPatternDetails current = ready.removeFirst();
+            ordered.put(current, patternTimes.get(current));
+            for (IPatternDetails consumer : adjacency.getOrDefault(current, new LinkedHashSet<>())) {
+                int next = indegree.getOrDefault(consumer, 0) - 1;
+                indegree.put(consumer, next);
+                if (next == 0) {
+                    ready.addLast(consumer);
+                }
+            }
+        }
+
+        return ordered.size() == patternTimes.size() ? ordered : null;
+    }
+
+    private static Map<IPatternDetails, Long> immutableOrderedPatternTimes(
+            Map<IPatternDetails, Long> patternTimes
+    ) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(patternTimes));
+    }
+
+    private static SplitBoundaryOutputs splitBoundaryOutputs(
+            @Nullable GenericStack finalOutput,
+            Map<AEKey, Long> boundaryOutputs,
+            Map<AEKey, Long> totalPrimaryOutputs
+    ) {
+        List<GenericStack> outputs = new ArrayList<>();
+        List<GenericStack> remainders = new ArrayList<>();
+        Set<AEKey> emittedAsOutput = new HashSet<>();
+
+        if (finalOutput != null && finalOutput.what() != null) {
+            Long amount = boundaryOutputs.get(finalOutput.what());
+            if (amount != null && amount > 0L) {
+                outputs.add(new GenericStack(finalOutput.what(), amount));
+                emittedAsOutput.add(finalOutput.what());
+            }
+        }
+
+        for (AEKey key : totalPrimaryOutputs.keySet()) {
+            Long amount = boundaryOutputs.get(key);
+            if (amount != null && amount > 0L && emittedAsOutput.add(key)) {
+                outputs.add(new GenericStack(key, amount));
+            }
+        }
+
+        for (Map.Entry<AEKey, Long> entry : boundaryOutputs.entrySet()) {
+            if (entry.getKey() != null
+                    && entry.getValue() > 0L
+                    && !emittedAsOutput.contains(entry.getKey())) {
+                remainders.add(new GenericStack(entry.getKey(), entry.getValue()));
+            }
+        }
+
+        return new SplitBoundaryOutputs(List.copyOf(outputs), List.copyOf(remainders));
+    }
+
+    private static @Nullable AECraftingPattern chooseBasePattern(
+            @Nullable GenericStack finalOutput,
+            Map<AEKey, SelectedGraphNode> hostNodes,
+            List<SelectedGraphNode> executionOrder
+    ) {
+        if (finalOutput != null && finalOutput.what() != null) {
+            SelectedGraphNode finalNode = hostNodes.get(finalOutput.what());
+            AECraftingPattern craftingPattern = finalNode == null ? null : unwrapBaseCraftingPattern(finalNode.pattern());
+            if (craftingPattern != null) {
+                return craftingPattern;
+            }
+        }
+
+        List<SelectedGraphNode> reversedOrder = new ArrayList<>(executionOrder);
+        Collections.reverse(reversedOrder);
+        for (SelectedGraphNode node : reversedOrder) {
+            AECraftingPattern craftingPattern = unwrapBaseCraftingPattern(node.pattern());
+            if (craftingPattern != null) {
+                return craftingPattern;
+            }
+        }
+        return null;
     }
 
     private static @Nullable AbstractHighCapacityCraftingHostBlockEntity exclusiveFormalMachineProvider(
             CraftingService craftingService,
             IPatternDetails pattern
     ) {
+        IPatternDetails providerPattern = unwrapDelegatingPattern(pattern);
+        if (!(providerPattern instanceof AECraftingPattern)) {
+            return null;
+        }
+
         AbstractHighCapacityCraftingHostBlockEntity matchedHost = null;
         boolean sawFormalProvider = false;
-        for (ICraftingProvider provider : craftingService.getProviders(pattern)) {
+        for (ICraftingProvider provider : craftingService.getProviders(providerPattern)) {
             if (!(provider instanceof AbstractHighCapacityCraftingHostBlockEntity host)) {
                 continue;
             }
@@ -579,31 +781,6 @@ public final class FormalMachinePlanningAggregationService {
         return sawFormalProvider ? matchedHost : null;
     }
 
-    private static FormalProviderOwnership formalProviderOwnership(
-            CraftingService craftingService,
-            java.util.Collection<IPatternDetails> patterns
-    ) {
-        AbstractHighCapacityCraftingHostBlockEntity matchedHost = null;
-        boolean allFormal = true;
-        boolean exclusive = true;
-        for (IPatternDetails pattern : patterns) {
-            AbstractHighCapacityCraftingHostBlockEntity patternHost = exclusiveFormalMachineProvider(
-                    craftingService,
-                    pattern
-            );
-            if (patternHost == null) {
-                allFormal = false;
-                continue;
-            }
-            if (matchedHost != null && patternHost != matchedHost) {
-                exclusive = false;
-                continue;
-            }
-            matchedHost = patternHost;
-        }
-        return new FormalProviderOwnership(allFormal, exclusive, matchedHost);
-    }
-
     private static long outputAmountFor(IPatternDetails pattern, AEKey output) {
         long amount = 0L;
         for (GenericStack stack : pattern.getOutputs()) {
@@ -614,14 +791,523 @@ public final class FormalMachinePlanningAggregationService {
         return amount;
     }
 
-    private static long ceilDiv(long value, long divisor) {
-        if (divisor <= 0L) {
-            return Long.MAX_VALUE;
+    private static @Nullable Map<AEKey, Long> describePatternInputs(IPatternDetails pattern) {
+        if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+            return describeAggregatedPatternInputs(aggregatedPattern);
         }
-        if (value <= 0L) {
+        AECraftingPattern craftingPattern = unwrapBaseCraftingPattern(pattern);
+        if (craftingPattern != null) {
+            return describeCraftingPatternInputs(craftingPattern);
+        }
+        Map<AEKey, Long> mergedInputs = new LinkedHashMap<>();
+        for (IPatternDetails.IInput input : pattern.getInputs()) {
+            GenericStack resolvedInput = resolveDeterministicInput(input);
+            if (resolvedInput == null || resolvedInput.what() == null || resolvedInput.amount() <= 0L) {
+                return null;
+            }
+            long multiplier = input.getMultiplier();
+            if (multiplier <= 0L) {
+                return null;
+            }
+            long scaledAmount = multiply(resolvedInput.amount(), multiplier);
+            if (scaledAmount <= 0L) {
+                return null;
+            }
+            mergeStack(mergedInputs, resolvedInput.what(), scaledAmount);
+        }
+        return Map.copyOf(mergedInputs);
+    }
+
+    private static @Nullable Map<AEKey, Long> describeAggregatedPatternInputs(
+            IFormalMachineAggregatedPattern pattern
+    ) {
+        Map<AEKey, Long> mergedInputs = new LinkedHashMap<>();
+        for (GenericStack input : pattern.aggregatedInputs()) {
+            if (input == null) {
+                continue;
+            }
+            if (input.what() == null || input.amount() <= 0L) {
+                return null;
+            }
+            mergeStack(mergedInputs, input.what(), input.amount());
+        }
+        return Map.copyOf(mergedInputs);
+    }
+
+    private static @Nullable AECraftingPattern unwrapBaseCraftingPattern(@Nullable IPatternDetails pattern) {
+        IPatternDetails unwrapped = unwrapDelegatingPattern(pattern);
+        return unwrapped instanceof AECraftingPattern craftingPattern ? craftingPattern : null;
+    }
+
+    private static @Nullable IPatternDetails unwrapDelegatingPattern(@Nullable IPatternDetails pattern) {
+        if (pattern instanceof IFormalMachineDelegatingPattern delegatingPattern) {
+            return delegatingPattern.basePattern();
+        }
+        return pattern;
+    }
+
+    private static @Nullable Map<AEKey, Long> describeCraftingPatternInputs(AECraftingPattern pattern) {
+        if (pattern == null) {
+            return null;
+        }
+        Map<AEKey, Long> mergedInputs = new LinkedHashMap<>();
+        for (GenericStack input : pattern.getSparseInputs()) {
+            if (input == null) {
+                continue;
+            }
+            if (input.what() == null || input.amount() <= 0L) {
+                return null;
+            }
+            mergeStack(mergedInputs, input.what(), input.amount());
+        }
+        return Map.copyOf(mergedInputs);
+    }
+
+    private static @Nullable GenericStack resolveDeterministicInput(IPatternDetails.IInput input) {
+        if (input == null) {
+            return null;
+        }
+        GenericStack matched = null;
+        for (GenericStack possibleInput : input.getPossibleInputs()) {
+            if (possibleInput == null || possibleInput.what() == null || possibleInput.amount() <= 0L) {
+                continue;
+            }
+            if (matched == null) {
+                matched = possibleInput;
+                continue;
+            }
+            if (!matched.what().equals(possibleInput.what()) || matched.amount() != possibleInput.amount()) {
+                return null;
+            }
+        }
+        return matched == null ? null : new GenericStack(matched.what(), matched.amount());
+    }
+
+    private static int comparePatternDefinitions(@Nullable IPatternDetails left, @Nullable IPatternDetails right) {
+        ItemStack leftStack = left == null || left.getDefinition() == null ? ItemStack.EMPTY : left.getDefinition().toStack();
+        ItemStack rightStack = right == null || right.getDefinition() == null ? ItemStack.EMPTY : right.getDefinition().toStack();
+        return compareItemStacks(leftStack, rightStack);
+    }
+
+    private static int compareItemStacks(@Nullable ItemStack left, @Nullable ItemStack right) {
+        if (left == right) {
+            return 0;
+        }
+        if (left == null || left.isEmpty()) {
+            return right == null || right.isEmpty() ? 0 : -1;
+        }
+        if (right == null || right.isEmpty()) {
+            return 1;
+        }
+        int idCompare = left.getItem().toString().compareTo(right.getItem().toString());
+        if (idCompare != 0) {
+            return idCompare;
+        }
+        int countCompare = Integer.compare(left.getCount(), right.getCount());
+        if (countCompare != 0) {
+            return countCompare;
+        }
+        return left.getComponentsPatch().toString().compareTo(right.getComponentsPatch().toString());
+    }
+
+    private static List<GenericStack> toScaledStacks(Map<? extends AEKey, Long> amounts, long multiplier) {
+        if (amounts == null || amounts.isEmpty() || multiplier <= 0L) {
+            return List.of();
+        }
+        List<GenericStack> stacks = new ArrayList<>(amounts.size());
+        for (Map.Entry<? extends AEKey, Long> entry : amounts.entrySet()) {
+            if (entry.getKey() == null) {
+                continue;
+            }
+            long scaledAmount = multiply(Math.max(0L, entry.getValue() == null ? 0L : entry.getValue()), multiplier);
+            if (scaledAmount > 0L) {
+                stacks.add(new GenericStack(entry.getKey(), scaledAmount));
+            }
+        }
+        return List.copyOf(stacks);
+    }
+
+    private static List<GenericStack> toGenericStacks(Map<AEKey, Long> amounts) {
+        if (amounts == null || amounts.isEmpty()) {
+            return List.of();
+        }
+        List<GenericStack> stacks = new ArrayList<>(amounts.size());
+        for (Map.Entry<AEKey, Long> entry : amounts.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null && entry.getValue() > 0L) {
+                stacks.add(new GenericStack(entry.getKey(), entry.getValue()));
+            }
+        }
+        return List.copyOf(stacks);
+    }
+
+    private static void mergeStacks(Map<AEKey, Long> target, List<GenericStack> stacks) {
+        if (target == null || stacks == null) {
+            return;
+        }
+        for (GenericStack stack : stacks) {
+            if (stack != null && stack.what() != null && stack.amount() > 0L) {
+                mergeStack(target, stack.what(), stack.amount());
+            }
+        }
+    }
+
+    private static void mergeStack(Map<AEKey, Long> target, AEKey key, long amount) {
+        if (target == null || key == null || amount <= 0L) {
+            return;
+        }
+        target.merge(key, amount, FormalMachinePlanningAggregationService::saturatingAdd);
+    }
+
+    private static void mergeStackMaps(Map<AEKey, Long> target, Map<AEKey, Long> source) {
+        if (target == null || source == null || source.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<AEKey, Long> entry : source.entrySet()) {
+            mergeStack(target, entry.getKey(), Math.max(0L, entry.getValue() == null ? 0L : entry.getValue()));
+        }
+    }
+
+    private static Map<AEKey, Long> subtractPositive(Map<AEKey, Long> left, Map<AEKey, Long> right) {
+        Map<AEKey, Long> difference = new LinkedHashMap<>();
+        if (left == null || left.isEmpty()) {
+            return difference;
+        }
+        for (Map.Entry<AEKey, Long> entry : left.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null || entry.getValue() <= 0L) {
+                continue;
+            }
+            long remaining = Math.max(0L, entry.getValue() - Math.max(0L, right.getOrDefault(entry.getKey(), 0L)));
+            if (remaining > 0L) {
+                difference.put(entry.getKey(), remaining);
+            }
+        }
+        return difference;
+    }
+
+    private static void subtractInPlace(Map<AEKey, Long> target, Map<AEKey, Long> consumed) {
+        if (target == null || target.isEmpty() || consumed == null || consumed.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<AEKey, Long> entry : consumed.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null || entry.getValue() <= 0L) {
+                continue;
+            }
+            long remaining = Math.max(0L, target.getOrDefault(entry.getKey(), 0L) - entry.getValue());
+            if (remaining > 0L) {
+                target.put(entry.getKey(), remaining);
+            } else {
+                target.remove(entry.getKey());
+            }
+        }
+    }
+
+    private static Map<AEKey, Long> extractMissingAmounts(@Nullable KeyCounter missingItems) {
+        return extractCounterAmounts(missingItems);
+    }
+
+    private static Map<AEKey, Long> extractExternalMissingInputs(
+            @Nullable KeyCounter missingItems,
+            Map<AEKey, Long> internallyCraftedOutputs
+    ) {
+        Map<AEKey, Long> missing = extractCounterAmounts(missingItems);
+        if (missing.isEmpty() || internallyCraftedOutputs == null || internallyCraftedOutputs.isEmpty()) {
+            return missing;
+        }
+        for (AEKey craftedOutput : internallyCraftedOutputs.keySet()) {
+            if (craftedOutput != null) {
+                missing.remove(craftedOutput);
+            }
+        }
+        return missing;
+    }
+
+    private static KeyCounter snapshotLiveVisibleStacks(CraftingService craftingService) {
+        KeyCounter liveVisible = new KeyCounter();
+        if (craftingService == null
+                || ((CraftingServiceAccessor) craftingService).chexsonsaeutils$getGrid() == null
+                || ((CraftingServiceAccessor) craftingService).chexsonsaeutils$getGrid().getStorageService() == null) {
+            return liveVisible;
+        }
+        var inventory = ((CraftingServiceAccessor) craftingService)
+                .chexsonsaeutils$getGrid()
+                .getStorageService()
+                .getInventory();
+        KeyCounter visibleStacks = inventory.getAvailableStacks();
+        liveVisible.addAll(visibleStacks);
+        for (var entry : visibleStacks) {
+            if (entry.getKey() == null || entry.getLongValue() < Integer.MAX_VALUE) {
+                continue;
+            }
+            long liveAmount = inventory.extract(
+                    entry.getKey(),
+                    Long.MAX_VALUE,
+                    Actionable.SIMULATE,
+                    IActionSource.empty()
+            );
+            if (liveAmount > entry.getLongValue()) {
+                liveVisible.set(entry.getKey(), liveAmount);
+            }
+        }
+        return liveVisible;
+    }
+
+    private static Map<AEKey, Long> extractCounterAmounts(@Nullable KeyCounter counter) {
+        Map<AEKey, Long> amounts = new LinkedHashMap<>();
+        if (counter == null) {
+            return amounts;
+        }
+        for (var entry : counter) {
+            if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                amounts.put(entry.getKey(), entry.getLongValue());
+            }
+        }
+        return amounts;
+    }
+
+    private static long estimateAggregatedWork(List<FormalMachineAggregationStep> steps) {
+        if (steps == null || steps.isEmpty()) {
             return 0L;
         }
-        return 1L + (value - 1L) / divisor;
+        long estimatedWork = 0L;
+        for (FormalMachineAggregationStep step : steps) {
+            if (step == null) {
+                continue;
+            }
+            estimatedWork = saturatingAdd(estimatedWork, Math.max(1L, step.executionCount()));
+        }
+        return estimatedWork;
+    }
+
+    private static long computeRewrittenBytes(List<HostAggregationCandidate> candidates) {
+        long rewritten = 0L;
+        if (candidates == null || candidates.isEmpty()) {
+            return 1L;
+        }
+
+        for (HostAggregationCandidate candidate : candidates) {
+            if (candidate == null) {
+                continue;
+            }
+            rewritten = saturatingAdd(rewritten, estimateAggregatedReplacementBytes(candidate));
+        }
+
+        return Math.max(1L, rewritten);
+    }
+
+    private static long estimateAggregatedReplacementBytes(HostAggregationCandidate candidate) {
+        if (candidate == null) {
+            return 1L;
+        }
+
+        long replacementBytes = 0L;
+        replacementBytes = saturatingAdd(replacementBytes, 1L);
+        replacementBytes = saturatingAdd(replacementBytes, multiply(estimateAggregatedReplacementNodeCount(candidate), 8L));
+        replacementBytes = saturatingAdd(replacementBytes, estimateAggregatedDescriptorBytes(candidate));
+        return Math.max(1L, replacementBytes);
+    }
+
+    private static long estimateAggregatedReplacementNodeCount(HostAggregationCandidate candidate) {
+        long outputNodes = countPayloadEntries(candidate == null ? null : candidate.aggregatedOutputs());
+        long inputNodes = countPayloadEntries(candidate == null ? null : candidate.boundaryInputs());
+        return Math.max(1L, saturatingAdd(outputNodes, inputNodes));
+    }
+
+    private static long estimateAggregatedDescriptorBytes(HostAggregationCandidate candidate) {
+        if (candidate == null) {
+            return 0L;
+        }
+
+        long descriptorBytes = 0L;
+        descriptorBytes = saturatingAdd(descriptorBytes, countPayloadEntries(candidate.boundaryInputs()));
+        descriptorBytes = saturatingAdd(descriptorBytes, countPayloadEntries(candidate.aggregatedOutputs()));
+        descriptorBytes = saturatingAdd(descriptorBytes, countPayloadEntries(candidate.aggregatedRemainders()));
+
+        if (candidate.steps() == null) {
+            return descriptorBytes;
+        }
+
+        for (FormalMachineAggregationStep step : candidate.steps()) {
+            if (step == null) {
+                continue;
+            }
+            descriptorBytes = saturatingAdd(descriptorBytes, 1L);
+            descriptorBytes = saturatingAdd(descriptorBytes, countPayloadEntries(step.stepInputs()));
+            descriptorBytes = saturatingAdd(descriptorBytes, step.stepPrimaryOutput() == null ? 0L : 1L);
+            descriptorBytes = saturatingAdd(descriptorBytes, countPayloadEntries(step.stepRemainders()));
+        }
+        return descriptorBytes;
+    }
+
+
+    private static long countPayloadEntries(@Nullable List<GenericStack> stacks) {
+        if (stacks == null || stacks.isEmpty()) {
+            return 0L;
+        }
+
+        long entries = 0L;
+        for (GenericStack stack : stacks) {
+            if (stack == null || stack.what() == null || stack.amount() <= 0L) {
+                continue;
+            }
+            entries++;
+        }
+        return entries;
+    }
+
+    private static KeyCounter copyCounter(@Nullable KeyCounter original) {
+        KeyCounter copy = new KeyCounter();
+        if (original != null) {
+            copy.addAll(original);
+        }
+        return copy;
+    }
+
+    private static KeyCounter computeRewrittenUsedItems(
+            Map<IPatternDetails, Long> patternTimes,
+            KeyCounter rewrittenMissingItems
+    ) {
+        Map<AEKey, Long> totalInputs = new LinkedHashMap<>();
+        Map<AEKey, Long> totalOutputs = new LinkedHashMap<>();
+        if (patternTimes != null) {
+            for (Map.Entry<IPatternDetails, Long> entry : patternTimes.entrySet()) {
+                IPatternDetails pattern = entry.getKey();
+                long count = Math.max(0L, entry.getValue() == null ? 0L : entry.getValue());
+                if (pattern == null || count <= 0L) {
+                    continue;
+                }
+                Map<AEKey, Long> inputs = describePatternInputs(pattern);
+                if (inputs == null) {
+                    continue;
+                }
+                mergeScaledMap(totalInputs, inputs, count);
+                for (GenericStack output : pattern.getOutputs()) {
+                    if (output != null && output.what() != null && output.amount() > 0L) {
+                        mergeStack(totalOutputs, output.what(), multiply(output.amount(), count));
+                    }
+                }
+            }
+        }
+        Map<AEKey, Long> requiredExternalInputs = subtractPositive(totalInputs, totalOutputs);
+        if (rewrittenMissingItems == null || rewrittenMissingItems.isEmpty()) {
+            return toCounter(requiredExternalInputs);
+        }
+
+        Map<AEKey, Long> availableInputs = new LinkedHashMap<>();
+        for (Map.Entry<AEKey, Long> entry : requiredExternalInputs.entrySet()) {
+            AEKey key = entry.getKey();
+            if (key == null || entry.getValue() == null || entry.getValue() <= 0L) {
+                continue;
+            }
+            long missingAmount = Math.max(0L, rewrittenMissingItems.get(key));
+            long usedAmount = Math.max(0L, entry.getValue() - missingAmount);
+            if (usedAmount > 0L) {
+                availableInputs.put(key, usedAmount);
+            }
+        }
+        return toCounter(availableInputs);
+    }
+
+    private static void mergeScaledMap(Map<AEKey, Long> target, Map<AEKey, Long> source, long multiplier) {
+        if (target == null || source == null || source.isEmpty() || multiplier <= 0L) {
+            return;
+        }
+        for (Map.Entry<AEKey, Long> entry : source.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null && entry.getValue() > 0L) {
+                mergeStack(target, entry.getKey(), multiply(entry.getValue(), multiplier));
+            }
+        }
+    }
+
+    private static KeyCounter toCounter(Map<AEKey, Long> amounts) {
+        KeyCounter counter = new KeyCounter();
+        if (amounts == null || amounts.isEmpty()) {
+            return counter;
+        }
+        for (Map.Entry<AEKey, Long> entry : amounts.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null && entry.getValue() > 0L) {
+                counter.add(entry.getKey(), entry.getValue());
+            }
+        }
+        return counter;
+    }
+
+    private static KeyCounter mergeMissingItems(
+            @Nullable KeyCounter nativeMissingItems,
+            List<HostAggregationCandidate> candidates,
+            @Nullable KeyCounter liveVisibleStacks
+    ) {
+        KeyCounter merged = copyCounter(nativeMissingItems);
+        if (candidates == null || candidates.isEmpty()) {
+            return merged;
+        }
+
+        for (HostAggregationCandidate candidate : candidates) {
+            if (candidate == null) {
+                continue;
+            }
+            pruneInternalCraftableMissing(merged, candidate.originalPatterns());
+            mergePositiveStacksByMax(merged, candidate.externalMissingInputs());
+        }
+        pruneLiveVisibleMissing(merged, liveVisibleStacks);
+        return merged;
+    }
+
+    private static void pruneLiveVisibleMissing(KeyCounter missingItems, @Nullable KeyCounter liveVisibleStacks) {
+        if (missingItems == null || missingItems.isEmpty() || liveVisibleStacks == null || liveVisibleStacks.isEmpty()) {
+            return;
+        }
+        for (var entry : liveVisibleStacks) {
+            if (entry.getKey() == null || entry.getLongValue() <= 0L) {
+                continue;
+            }
+            if (missingItems.get(entry.getKey()) <= entry.getLongValue()) {
+                missingItems.remove(entry.getKey());
+            }
+        }
+        missingItems.removeZeros();
+    }
+
+    private static void pruneInternalCraftableMissing(
+            KeyCounter missingItems,
+            @Nullable List<IPatternDetails> originalPatterns
+    ) {
+        if (missingItems == null || missingItems.isEmpty() || originalPatterns == null || originalPatterns.isEmpty()) {
+            return;
+        }
+        for (IPatternDetails pattern : originalPatterns) {
+            if (pattern == null) {
+                continue;
+            }
+            for (GenericStack output : pattern.getOutputs()) {
+                if (output == null || output.what() == null) {
+                    continue;
+                }
+                missingItems.remove(output.what());
+            }
+        }
+        missingItems.removeZeros();
+    }
+
+    private static void mergePositiveStacksByMax(KeyCounter counter, @Nullable List<GenericStack> stacks) {
+        if (counter == null || stacks == null || stacks.isEmpty()) {
+            return;
+        }
+        for (GenericStack stack : stacks) {
+            if (stack == null || stack.what() == null || stack.amount() <= 0L) {
+                continue;
+            }
+            counter.set(stack.what(), Math.max(counter.get(stack.what()), stack.amount()));
+        }
+    }
+
+    private static long multiply(long left, long right) {
+        if (left <= 0L || right <= 0L) {
+            return 0L;
+        }
+        if (left > Long.MAX_VALUE / right) {
+            return Long.MAX_VALUE;
+        }
+        return left * right;
     }
 
     private static long saturatingAdd(long left, long right) {
@@ -634,221 +1320,167 @@ public final class FormalMachinePlanningAggregationService {
         return left + right;
     }
 
-    private static long saturatingMultiply(long left, long right) {
-        if (left <= 0L || right <= 0L) {
-            return 0L;
+    private static int saturatingIntMultiply(int left, int right) {
+        if (left <= 0 || right <= 0) {
+            return 1;
         }
-        if (left > Long.MAX_VALUE / right) {
-            return Long.MAX_VALUE;
+        if (left > Integer.MAX_VALUE / right) {
+            return Integer.MAX_VALUE;
         }
-        return left * right;
+        return Math.max(1, left * right);
     }
 
-    private static boolean supportsStrategy(@Nullable CalculationStrategy strategy) {
-        return strategy == CalculationStrategy.REPORT_MISSING_ITEMS
-                || strategy == CalculationStrategy.CRAFT_LESS;
+    private record HostAggregationCandidate(
+            AbstractHighCapacityCraftingHostBlockEntity host,
+            AECraftingPattern basePattern,
+            List<GenericStack> boundaryInputs,
+            List<GenericStack> externalMissingInputs,
+            List<GenericStack> aggregatedOutputs,
+            List<GenericStack> aggregatedRemainders,
+            List<FormalMachineAggregationStep> steps,
+            int totalTicks,
+            List<IPatternDetails> originalPatterns,
+            long estimatedWork
+    ) {
     }
 
-    private static KeyCounter copyCounter(KeyCounter original) {
-        KeyCounter copy = new KeyCounter();
-        if (original != null) {
-            copy.addAll(original);
-        }
-        return copy;
+    private record SelectedPlanGraph(Map<AEKey, SelectedGraphNode> nodes) {
     }
 
-    private static final class DeterministicPlanAccumulator {
-
-        private final KeyCounter availableInputs;
-        private final KeyCounter usedItems = new KeyCounter();
-        private final KeyCounter missingItems = new KeyCounter();
-        private final Map<IPatternDetails, Long> patternTimes = new LinkedHashMap<>();
-
-        private DeterministicPlanAccumulator(
-                KeyCounter availableInputs
-        ) {
-            this.availableInputs = copyCounter(availableInputs);
-        }
-
-        private long consumeAvailable(AEKey key, long requestedAmount) {
-            if (key == null || requestedAmount <= 0L) {
-                return 0L;
-            }
-            long consumed = 0L;
-            long snapshotted = availableInputs.get(key);
-            long fromSnapshot = Math.min(snapshotted, requestedAmount);
-            if (fromSnapshot > 0L) {
-                availableInputs.set(key, snapshotted - fromSnapshot);
-                consumed = FormalMachinePlanningAggregationService.saturatingAdd(consumed, fromSnapshot);
-            }
-            if (consumed > 0L) {
-                usedItems.add(key, consumed);
-            }
-            return consumed;
-        }
-    }
-
-    private static final class DeterministicPlanningBudget {
-
-        private final long startedAtNanos;
-        private int remainingSteps = MAX_DETERMINISTIC_PLANNING_STEPS;
-
-        private DeterministicPlanningBudget(long startedAtNanos) {
-            this.startedAtNanos = startedAtNanos;
-        }
-
-        private boolean tryClaim() {
-            if (remainingSteps-- <= 0) {
-                return false;
-            }
-            return System.nanoTime() - startedAtNanos < MAX_DETERMINISTIC_PLANNING_NANOS;
-        }
-    }
-
-    private static ICraftingPlan missingPlan(AEKey what, long amount) {
-        KeyCounter missingItems = new KeyCounter();
-        long requestedAmount = Math.max(1L, amount);
-        missingItems.add(what, requestedAmount);
-        return new AggregatedCraftingPlan(
-                new GenericStack(what, requestedAmount),
-                0L,
-                true,
-                false,
-                new KeyCounter(),
-                new KeyCounter(),
-                missingItems,
-                Map.of()
-        );
-    }
-
-    private record PatternPathNode(AEKey output, long requiredAmount, int depth) {
-    }
-
-    private record FrozenPatternNode(IPatternDetails pattern, long outputAmount, Map<AEKey, Long> inputs) {
-    }
-
-    private record FormalProviderOwnership(
-            boolean allFormal,
-            boolean exclusive,
+    private record SelectedGraphNode(
+            PatternDefinitionKey definitionKey,
+            IPatternDetails pattern,
+            long craftCount,
+            AEKey outputKey,
+            long outputAmount,
+            Map<AEKey, Long> inputs,
             @Nullable AbstractHighCapacityCraftingHostBlockEntity host
     ) {
     }
 
-    private record PlanningComputationResult(ICraftingPlan plan, PlanningComputationTelemetry telemetry) {
-        private static PlanningComputationResult hit(
-                ICraftingPlan plan,
-                long wallClockNanos
-        ) {
-            return hit(plan, wallClockNanos, new ScalingTransformResult(Map.of(), 0L, 0L, 0, 0L));
-        }
-
-        private static PlanningComputationResult hit(
-                ICraftingPlan plan,
-                long wallClockNanos,
-                ScalingTransformResult scalingResult
-        ) {
-            return new PlanningComputationResult(
-                    plan,
-                    new PlanningComputationTelemetry(
-                            true,
-                            false,
-                            false,
-                            false,
-                            Math.max(0L, wallClockNanos),
-                            scalingResult.hitCount(),
-                            scalingResult.fallbackCount(),
-                            scalingResult.largestMultiplier(),
-                            scalingResult.logicalExecutionsSaved()
-                    )
-            );
-        }
-
-        private static PlanningComputationResult failure(ICraftingPlan plan) {
-            return new PlanningComputationResult(
-                    plan,
-                    new PlanningComputationTelemetry(false, true, true, true, 0L, 0L, 0L, 0, 0L)
-            );
-        }
-    }
-
-    private record PlanningComputationTelemetry(
-            boolean deterministicHit,
-            boolean deterministicFallback,
-            boolean aggregationFallback,
-            boolean aggregationFailure,
-            long wallClockNanos,
-            long virtualScaledPatternHitCount,
-            long virtualScaledPatternFallbackCount,
-            int largestVirtualPatternMultiplier,
-            long virtualScaledPatternLogicalExecutionsSaved
-    ) {
-    }
-
-    private record ScalingTransformResult(
-            Map<IPatternDetails, Long> patternTimes,
-            long hitCount,
-            long fallbackCount,
-            int largestMultiplier,
-            long logicalExecutionsSaved
-    ) {
-    }
-
-    private record PlanningPathAnalysis(
-            boolean supported,
-            boolean replacementAware,
+    private record EquivalentSelectedNodeKey(
             @Nullable AbstractHighCapacityCraftingHostBlockEntity host,
-            int depth,
-            long threshold,
-            long estimatedWork,
-            Map<AEKey, FrozenPatternNode> frozenGraph
+            AEKey outputKey,
+            long outputAmount,
+            Map<AEKey, Long> inputs
     ) {
-        private static PlanningPathAnalysis supported(
-                AbstractHighCapacityCraftingHostBlockEntity host,
-                int depth,
-                long estimatedWork,
-                Map<AEKey, FrozenPatternNode> frozenGraph
-        ) {
-            return new PlanningPathAnalysis(
-                    true,
-                    false,
-                    host,
-                    Math.max(1, depth),
-                    MIN_AGGREGATION_THRESHOLD,
-                    Math.max(0L, estimatedWork),
-                    Map.copyOf(frozenGraph)
+        private static @Nullable EquivalentSelectedNodeKey of(@Nullable SelectedGraphNode node) {
+            if (node == null || node.outputKey() == null || node.inputs() == null) {
+                return null;
+            }
+            return new EquivalentSelectedNodeKey(
+                    node.host(),
+                    node.outputKey(),
+                    node.outputAmount(),
+                    node.inputs()
             );
         }
+    }
 
-        private static PlanningPathAnalysis unsupported(
-                @Nullable AbstractHighCapacityCraftingHostBlockEntity host,
-                int depth,
-                long estimatedWork
+    private record SplitBoundaryOutputs(List<GenericStack> outputs, List<GenericStack> remainders) {
+    }
+
+    private record PatternDefinitionKey(AEItemKey definition) {
+        private static @Nullable PatternDefinitionKey of(@Nullable IPatternDetails pattern) {
+            if (pattern == null || pattern.getDefinition() == null) {
+                return null;
+            }
+            return new PatternDefinitionKey(pattern.getDefinition());
+        }
+    }
+
+    private static final class AggregatingPlanningFuture implements Future<ICraftingPlan> {
+
+        private final CraftingService craftingService;
+        private final Level level;
+        private final AEKey requestedOutput;
+        private final long requestedAmount;
+        private final Future<ICraftingPlan> delegate;
+        private final Object lock = new Object();
+
+        private volatile boolean transformed;
+        private @Nullable ICraftingPlan cachedPlan;
+
+        private AggregatingPlanningFuture(
+                CraftingService craftingService,
+                Level level,
+                AEKey requestedOutput,
+                long requestedAmount,
+                Future<ICraftingPlan> delegate
         ) {
-            return new PlanningPathAnalysis(
-                    false,
-                    false,
-                    host,
-                    Math.max(1, depth),
-                    MIN_AGGREGATION_THRESHOLD,
-                    Math.max(0L, estimatedWork),
-                    Map.of()
-            );
+            this.craftingService = craftingService;
+            this.level = level;
+            this.requestedOutput = requestedOutput;
+            this.requestedAmount = requestedAmount;
+            this.delegate = delegate;
         }
 
-        private static PlanningPathAnalysis replacementAware(
-                @Nullable AbstractHighCapacityCraftingHostBlockEntity host,
-                int depth,
-                long estimatedWork
-        ) {
-            return new PlanningPathAnalysis(
-                    false,
-                    true,
-                    host,
-                    Math.max(1, depth),
-                    MIN_AGGREGATION_THRESHOLD,
-                    Math.max(0L, estimatedWork),
-                    Map.of()
-            );
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            return delegate.cancel(mayInterruptIfRunning);
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return delegate.isCancelled();
+        }
+
+        @Override
+        public boolean isDone() {
+            return transformed || delegate.isDone();
+        }
+
+        @Override
+        public ICraftingPlan get() throws InterruptedException, ExecutionException {
+            try {
+                return awaitTransformedPlan(null, null);
+            } catch (TimeoutException exception) {
+                throw new IllegalStateException("Unbounded native crafting plan wait timed out unexpectedly", exception);
+            }
+        }
+
+        @Override
+        public ICraftingPlan get(long timeout, TimeUnit unit)
+                throws InterruptedException, ExecutionException, TimeoutException {
+            return awaitTransformedPlan(timeout, unit == null ? TimeUnit.MILLISECONDS : unit);
+        }
+
+        private ICraftingPlan awaitTransformedPlan(@Nullable Long timeout, @Nullable TimeUnit unit)
+                throws InterruptedException, ExecutionException, TimeoutException {
+            if (transformed) {
+                return cachedPlan;
+            }
+
+            synchronized (lock) {
+                if (transformed) {
+                    return cachedPlan;
+                }
+
+                ICraftingPlan nativePlan = timeout == null
+                        ? delegate.get()
+                        : delegate.get(timeout, unit);
+
+                try {
+                    cachedPlan = rewriteNativePlan(
+                            craftingService,
+                            level,
+                            requestedOutput,
+                            requestedAmount,
+                            nativePlan
+                    );
+                } catch (RuntimeException exception) {
+                    LOGGER.warn(
+                            "Failed to rewrite native AE2 crafting plan for output {} amount {}",
+                            requestedOutput,
+                            requestedAmount,
+                            exception
+                    );
+                    cachedPlan = nativePlan;
+                }
+
+                transformed = true;
+                return cachedPlan;
+            }
         }
     }
 }

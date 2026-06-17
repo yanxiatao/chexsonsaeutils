@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.client.integration.jei;
 
+import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingJeiImportRecipeTypeGuard;
 import mezz.jei.api.recipe.IRecipeLookup;
 import mezz.jei.api.recipe.IRecipeManager;
 import mezz.jei.api.recipe.RecipeType;
@@ -41,7 +42,8 @@ public final class JeiRecipeVisibilityBridge {
     }
 
     private boolean hasVisibleRecipes(IRecipeManager recipeManager, ResourceLocation recipeTypeId) {
-        if (recipeManager == null || recipeTypeId == null) {
+        if (recipeManager == null
+                || !DirectProcessingJeiImportRecipeTypeGuard.isSupportedRecipeType(recipeTypeId)) {
             return false;
         }
         Optional<RecipeType<?>> recipeType = recipeManager.getRecipeType(recipeTypeId);

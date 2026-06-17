@@ -20,7 +20,6 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.Constructor;
 import java.util.Map;
 
 public final class FormalMachineScaledPatternNbtBridge {
@@ -78,6 +77,12 @@ public final class FormalMachineScaledPatternNbtBridge {
             return;
         }
         ExecutingCraftingJobAccessor accessor = (ExecutingCraftingJobAccessor) job;
+        Map<AEItemKey, Object> existingProgressByDefinition = new java.util.LinkedHashMap<>();
+        for (Map.Entry<IPatternDetails, Object> entry : accessor.getTasks().entrySet()) {
+            if (entry.getKey() != null && entry.getKey().getDefinition() instanceof AEItemKey definition) {
+                existingProgressByDefinition.put(definition, entry.getValue());
+            }
+        }
         accessor.getTasks().clear();
         int restoredScaledPatterns = 0;
         for (int index = 0; index < tasksTag.size(); index++) {
@@ -99,10 +104,14 @@ public final class FormalMachineScaledPatternNbtBridge {
                     restoredScaledPatterns++;
                 }
             }
-            Object taskProgress = newTaskProgress(item.getLong(CRAFTING_PROGRESS_TAG));
-            if (taskProgress != null) {
-                accessor.getTasks().put(decoded, taskProgress);
+            Object taskProgress = existingProgressByDefinition.remove(definition);
+            if (taskProgress == null) {
+                continue;
             }
+            if (taskProgress instanceof ExecutingCraftingJobTaskProgressAccessor progressAccessor) {
+                progressAccessor.setValue(item.getLong(CRAFTING_PROGRESS_TAG));
+            }
+            accessor.getTasks().put(decoded, taskProgress);
         }
         if (restoredScaledPatterns > 0) {
             AbstractHighCapacityCraftingHostBlockEntity host = resolveFormalMachineHost(cpuCluster, accessor.getTasks());
@@ -111,19 +120,6 @@ public final class FormalMachineScaledPatternNbtBridge {
                     host.recordScaledPatternNbtRestoreForTest();
                 }
             }
-        }
-    }
-
-    private static @Nullable Object newTaskProgress(long value) {
-        try {
-            Class<?> taskProgressClass = Class.forName("appeng.crafting.execution.ExecutingCraftingJob$TaskProgress");
-            Constructor<?> constructor = taskProgressClass.getDeclaredConstructor();
-            constructor.setAccessible(true);
-            Object instance = constructor.newInstance();
-            ((ExecutingCraftingJobTaskProgressAccessor) instance).setValue(value);
-            return instance;
-        } catch (ReflectiveOperationException exception) {
-            return null;
         }
     }
 

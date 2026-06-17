@@ -40,6 +40,3 @@ formalMachinePlanningAggregationEnabled = true
 	#Enable generic recipe type discovery for the AE direct processing machine.
 	#When disabled, only explicit adapters and config/datapack mappings are used.
 	genericDiscoveryEnabled = true
-	#Enable read-only reflective recipe shape discovery for the AE direct processing machine.
-	#Reflection only runs during local discovery/index rebuilds, never in tick or pushPattern hot paths.
-	reflectiveDiscoveryEnabled = true

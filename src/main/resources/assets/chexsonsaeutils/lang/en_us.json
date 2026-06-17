@@ -85,7 +85,6 @@
   "gui.chexsonsaeutils.high_capacity_crafting_machine.page_status": "Page %s / %s",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.slot_range": "Slots %s-%s / %s",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.page_detail": "Page %s / %s  Slots %s-%s / %s",
-  "gui.chexsonsaeutils.high_capacity_crafting_machine.queue_stats": "Decoded %s  Queued %s  Running %s",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.search_hint": "Search inputs or outputs",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.search_result": "Matches %s",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.status_idle": "Status: Idle",

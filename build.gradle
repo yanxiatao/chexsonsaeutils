@@ -18,7 +18,6 @@ java {
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
-apply from: 'gradle/minecraft-mcp-compat.gradle'
 
 repositories {
     mavenCentral()
@@ -30,6 +29,13 @@ repositories {
         name = 'ModMavenLocalReleases'
         url = 'https://modmaven.dev/artifactory/local-releases/'
     }
+    maven {
+        name = 'CurseMaven'
+        url = 'https://www.cursemaven.com'
+        content {
+            includeGroup 'curse.maven'
+        }
+    }
 }
 
 neoForge {
@@ -38,38 +44,11 @@ neoForge {
     runs {
         client {
             client()
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-            systemProperty 'mcp.port', '9876'
         }
 
         server {
             server()
             programArgument '--nogui'
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-        }
-
-        gameTestServer {
-            server()
-            getType().set('gameTestServer')
-            programArgument '--nogui'
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-            systemProperty 'java.util.concurrent.ForkJoinPool.common.parallelism', '8'
-            systemProperty 'chexsonsaeutils.parallelCpuGameTests',
-                    System.getProperty('chexsonsaeutils.parallelCpuGameTests', 'false')
-            systemProperty 'chexsonsaeutils.directProcessingGameTests',
-                    System.getProperty('chexsonsaeutils.directProcessingGameTests', 'false')
-            systemProperty 'chexsonsaeutils.directProcessingThroughputGameTest',
-                    System.getProperty('chexsonsaeutils.directProcessingThroughputGameTest', 'false')
-            systemProperty 'chexsonsaeutils.directProcessingMillionGameTest',
-                    System.getProperty('chexsonsaeutils.directProcessingMillionGameTest', 'false')
-            systemProperty 'chexsonsaeutils.highCapacityGameTests',
-                    System.getProperty(
-                            'chexsonsaeutils.highCapacityGameTests',
-                            System.getProperty('chexsonsaeutils.directProcessingGameTests', 'false') == 'true'
-                                    ? 'false'
-                                    : 'true'
-                    )
-            jvmArguments.addAll('-Xms512m', '-Xmx6G', '-XX:ActiveProcessorCount=8')
         }
 
         data {
@@ -95,18 +74,6 @@ neoForge {
     }
 }
 
-tasks.named('writeClientLegacyClasspath').configure {
-    dependsOn tasks.named('patchMinecraftMcpMod')
-}
-
-tasks.named('runClient').configure {
-    dependsOn tasks.named('patchMinecraftMcpMod')
-}
-
-tasks.named('prepareGameTestServerRun').configure {
-    dependsOn tasks.named('syncGameTestStructures')
-}
-
 configurations {
     runtimeClasspath.extendsFrom localRuntime
 }
@@ -118,12 +85,14 @@ dependencies {
     compileOnly "org.appliedenergistics:appliedenergistics2:${ae2_version}"
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
+    compileOnly "curse.maven:applied-mekanistics-574300:${appmek_file_id}"
     localRuntime "org.appliedenergistics:appliedenergistics2:${ae2_version}"
     localRuntime "org.appliedenergistics:guideme:${guideme_version}"
     localRuntime "mekanism:Mekanism:${mekanism_version}"
-    localRuntime minecraftMcpModRuntime
+    localRuntime "curse.maven:applied-mekanistics-574300:${appmek_file_id}"
 
     testImplementation "org.appliedenergistics:appliedenergistics2:${ae2_version}"
+    testImplementation "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -171,124 +140,6 @@ publishing {
 tasks.named('test', Test).configure {
     useJUnitPlatform()
     systemProperty 'user.dir', project.projectDir.absolutePath
-
-    // Phase 02 restores an emitter-focused regression slice without reopening the whole repository corpus.
-    filter {
-        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterRegistrationTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterPlacementIntegrationTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterLifecycleIntegrationTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterPartTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterPersistenceIntegrationTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterMenuTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterScreenTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.AE2ParallelCpuToolRegistrationTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.AE2ParallelCpuToolSchedulerTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuLogicReservationTest'
-    }
-}
-
-tasks.register('parallelCpuToolTest', Test) {
-    group = 'verification'
-    description = 'Runs the extreme AE2 parallel CPU tool regression suites.'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath.filter { !it.name.startsWith('junit-fml-') }
-    useJUnitPlatform()
-    systemProperty 'user.dir', project.projectDir.absolutePath
-
-    filter {
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.AE2ParallelCpuTool*'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuLogicReservationTest'
-    }
-}
-
-tasks.register('continuationTest', Test) {
-    group = 'verification'
-    description = 'Runs the Phase 04 crafting continuation regression suites.'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath.filter { !it.name.startsWith('junit-fml-') }
-    useJUnitPlatform()
-    systemProperty 'user.dir', project.projectDir.absolutePath
-
-    filter {
-        includeTestsMatching 'git.chexson.chexsonsaeutils.parts.MultiLevelEmitterCraftingContinuation*'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.CraftingContinuationPartialSubmitTest'
-    }
-}
-
-tasks.register('patternReplacementTest', Test) {
-    group = 'verification'
-    description = 'Runs the Phase 03 processing pattern replacement regression suites.'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath.filter { !it.name.startsWith('junit-fml-') }
-    useJUnitPlatform()
-    systemProperty 'user.dir', project.projectDir.absolutePath
-
-    filter {
-        includeTestsMatching 'git.chexson.chexsonsaeutils.pattern.PatternTerminal*'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.pattern.ProcessingPatternReplacement*'
-    }
-}
-
-def directProcessingMachineTestClasses = layout.buildDirectory.dir('classes/java/directProcessingMachineTest')
-def highCapacityPatternTestClasses = layout.buildDirectory.dir('classes/java/highCapacityPatternTest')
-
-tasks.register('highCapacityPatternTest', Test) {
-    group = 'verification'
-    description = 'Runs the high-capacity formal-machine regression suites.'
-    dependsOn tasks.named('compileHighCapacityPatternTest')
-    testClassesDirs = files(highCapacityPatternTestClasses)
-    classpath = files(highCapacityPatternTestClasses) + sourceSets.test.runtimeClasspath.filter { !it.name.startsWith('junit-fml-') }
-    useJUnitPlatform()
-    systemProperty 'user.dir', project.projectDir.absolutePath
-
-    filter {
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.BatchExecutionSemanticsTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.HighCapacityCraftingMachineRegistrationTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.HighCapacityPatternInventoryStateTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.support.RepositoryStructureContractTest'
-    }
-}
-
-tasks.register('compileHighCapacityPatternTest', JavaCompile) {
-    source = files(
-        'src/test/java/git/chexson/chexsonsaeutils/crafting/BatchExecutionSemanticsTest.java',
-        'src/test/java/git/chexson/chexsonsaeutils/crafting/HighCapacityCraftingMachineRegistrationTest.java',
-        'src/test/java/git/chexson/chexsonsaeutils/crafting/HighCapacityPatternInventoryStateTest.java',
-        'src/test/java/git/chexson/chexsonsaeutils/support/RepositoryStructureContractTest.java',
-        'src/test/java/git/chexson/chexsonsaeutils/support/SourceLayoutTestSupport.java',
-        'src/test/java/git/chexson/chexsonsaeutils/support/TestKeySupport.java'
-    )
-    classpath = sourceSets.main.output + sourceSets.test.compileClasspath
-    destinationDirectory = highCapacityPatternTestClasses
-    options.encoding = 'UTF-8'
-}
-
-tasks.register('compileDirectProcessingMachineContractTest', JavaCompile) {
-    source = files(
-        'src/test/java/git/chexson/chexsonsaeutils/crafting/DirectProcessingMachineContractTest.java',
-        'src/test/java/git/chexson/chexsonsaeutils/crafting/directprocessing/DirectProcessingKeyedTaskTest.java',
-        'src/test/java/git/chexson/chexsonsaeutils/support/SourceLayoutTestSupport.java',
-        'src/test/java/git/chexson/chexsonsaeutils/support/TestKeySupport.java'
-    )
-    classpath = sourceSets.test.compileClasspath
-    destinationDirectory = directProcessingMachineTestClasses
-    options.encoding = 'UTF-8'
-}
-
-tasks.register('directProcessingMachineTest', Test) {
-    group = 'verification'
-    description = 'Runs the AE direct processing machine contract suites.'
-    useJUnitPlatform()
-    systemProperty 'user.dir', project.projectDir.absolutePath
-
-    dependsOn tasks.named('compileDirectProcessingMachineContractTest')
-    testClassesDirs = files(directProcessingMachineTestClasses)
-    classpath = files(directProcessingMachineTestClasses) + sourceSets.test.runtimeClasspath.filter { !it.name.startsWith('junit-fml-') }
-
-    filter {
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.DirectProcessingMachineContractTest'
-        includeTestsMatching 'git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingKeyedTaskTest'
-    }
 }
 
 tasks.named('jar', Jar).configure {

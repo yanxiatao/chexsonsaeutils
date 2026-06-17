@@ -1,7 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.formalmachine;
 
 import git.chexson.chexsonsaeutils.blockentity.crafting.CompiledTask;
-import git.chexson.chexsonsaeutils.blockentity.crafting.TaskCompletionRoute;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
@@ -45,9 +44,13 @@ public final class FormalMachineSourceCpuContext {
             return;
         }
 
-        compiledTask.setCompletionRoute(TaskCompletionRoute.CPU_WAITING);
         if (compiledTask.getSourceCraftingId() == null) {
             compiledTask.setSourceCraftingId(sourceCraftingId);
         }
+    }
+
+    @Nullable
+    public static UUID currentSourceCraftingId() {
+        return CURRENT_SOURCE_CRAFTING_ID.get();
     }
 }

@@ -25,7 +25,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
             AE_DIRECT_PROCESSING_MACHINE_RECIPE_MAPPINGS;
     public static final ModConfigSpec.ConfigValue<String> AE_DIRECT_PROCESSING_MACHINE_BUDGET_PROFILE;
     public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_GENERIC_DISCOVERY_ENABLED;
-    public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_REFLECTIVE_DISCOVERY_ENABLED;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -34,7 +33,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 .define("craftingContinuationEnabled", true);
         FORMAL_MACHINE_CRAFTING_DISPATCH_ENABLED = builder
                 .comment("Disable the formal machine AE2 crafting dispatch fast path. Takes effect after restart.")
-                .define("formalMachineCraftingDispatchEnabled", true);
+                .define("formalMachineCraftingDispatchEnabled", false);
         FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED = builder
                 .comment("Disable the formal machine large-request planning aggregation fast path. Takes effect after restart.")
                 .define("formalMachinePlanningAggregationEnabled", true);
@@ -98,12 +97,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "When disabled, only explicit adapters and config/datapack mappings are used."
                 )
                 .define("genericDiscoveryEnabled", true);
-        AE_DIRECT_PROCESSING_MACHINE_REFLECTIVE_DISCOVERY_ENABLED = builder
-                .comment(
-                        "Enable read-only reflective recipe shape discovery for the AE direct processing machine.",
-                        "Reflection only runs during local discovery/index rebuilds, never in tick or pushPattern hot paths."
-                )
-                .define("reflectiveDiscoveryEnabled", true);
         builder.pop();
         SPEC = builder.build();
     }

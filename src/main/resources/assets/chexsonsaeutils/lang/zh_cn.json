@@ -85,7 +85,6 @@
   "gui.chexsonsaeutils.high_capacity_crafting_machine.page_status": "第 %s / %s 页",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.slot_range": "槽位 %s-%s / %s",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.page_detail": "第 %s / %s 页  槽位 %s-%s / %s",
-  "gui.chexsonsaeutils.high_capacity_crafting_machine.queue_stats": "已解码 %s  排队 %s  运行 %s",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.search_hint": "搜索输入或输出",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.search_result": "搜索命中 %s",
   "gui.chexsonsaeutils.high_capacity_crafting_machine.status_idle": "状态：空闲",
