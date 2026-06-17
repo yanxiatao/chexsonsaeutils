@@ -104,6 +104,7 @@
   "gui.chexsonsaeutils.processing_pattern_rule.status.not_configured": "未配置",
   "gui.chexsonsaeutils.processing_pattern_rule.status.configured": "已配置",
   "gui.chexsonsaeutils.processing_pattern_rule.status.partially_invalid": "部分失效",
+  "resourcePack.chexsonsaeutils.dyeable_pattern": "可染色样板",
   "gui.chexsonsaeutils.ae_direct_processing_machine.page_line": "第 %s / %s 页  槽位 %s-%s / %s",
   "gui.chexsonsaeutils.ae_direct_processing_machine.visible_status": "支持:%s 不支持:%s 需配置:%s 不安全:%s",
   "gui.chexsonsaeutils.ae_direct_processing_machine.slot_page_tooltip": "全局槽位 %s  第 %s / %s 页  %s / %s"

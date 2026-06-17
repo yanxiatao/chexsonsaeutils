@@ -88,6 +88,8 @@ dependencies {
     compileOnly "curse.maven:applied-mekanistics-574300:${appmek_file_id}"
     compileOnly "curse.maven:building-gadgets-298187:${building_gadgets2_file_id}"
     compileOnly "curse.maven:ftb-ultimine-forge-386134:${ftb_ultimine_file_id}"
+    localRuntime "curse.maven:architectury-api-419699:${architectury_api_file_id}"
+    localRuntime "curse.maven:ftb-library-forge-404465:${ftb_library_file_id}"
     localRuntime "org.appliedenergistics:appliedenergistics2:${ae2_version}"
     localRuntime "org.appliedenergistics:guideme:${guideme_version}"
     localRuntime "mekanism:Mekanism:${mekanism_version}"

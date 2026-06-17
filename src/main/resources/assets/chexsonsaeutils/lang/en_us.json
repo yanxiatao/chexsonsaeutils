@@ -104,6 +104,7 @@
   "gui.chexsonsaeutils.processing_pattern_rule.status.not_configured": "Not Configured",
   "gui.chexsonsaeutils.processing_pattern_rule.status.configured": "Configured",
   "gui.chexsonsaeutils.processing_pattern_rule.status.partially_invalid": "Partially Invalid",
+  "resourcePack.chexsonsaeutils.dyeable_pattern": "Dyeable Pattern",
   "gui.chexsonsaeutils.ae_direct_processing_machine.page_line": "Page %s / %s  Slots %s-%s / %s",
   "gui.chexsonsaeutils.ae_direct_processing_machine.visible_status": "Support S:%s U:%s C:%s Unsafe:%s",
   "gui.chexsonsaeutils.ae_direct_processing_machine.slot_page_tooltip": "Global Slot %s  Page %s / %s  %s / %s"

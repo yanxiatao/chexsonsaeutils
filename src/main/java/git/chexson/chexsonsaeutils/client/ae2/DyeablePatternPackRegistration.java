@@ -15,9 +15,14 @@ public final class DyeablePatternPackRegistration {
 
     private static final ResourceLocation PACK_LOCATION =
             ResourceLocation.fromNamespaceAndPath("chexsonsaeutils", "resourcepacks/dyeable_pattern");
-    private static final Component PACK_TITLE = Component.literal("Dyeable Pattern");
+    private static final Component PACK_TITLE =
+            Component.translatable("resourcePack.chexsonsaeutils.dyeable_pattern");
 
     private DyeablePatternPackRegistration() {
+    }
+
+    public static String packTitleTranslationKey() {
+        return "resourcePack.chexsonsaeutils.dyeable_pattern";
     }
 
     public static void register(AddPackFindersEvent event) {

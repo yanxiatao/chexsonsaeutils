@@ -2,7 +2,7 @@
 
 [English README](README_EN.md)
 
-`Chexson's AE Utils` 是一个面向 Applied Energistics 2 的实用扩展模组，当前目标平台为 `Minecraft 1.21.1 + NeoForge 21.1.222 + AE2 19.2.17 + Java 21`。它补充了多槽发信器、处理样板替换规则、缺料时继续合成等自动化能力，适合需要更细粒度 ME 网络控制和自动合成容错的整合包或技术向存档。
+`Chexson's AE Utils` 是一个面向 Applied Energistics 2 的实用扩展模组，当前目标平台为 `Minecraft 1.21.1 + NeoForge 21.1.222 + AE2 19.2.17 + Java 21`。它补充了多槽发信器、处理样板替换规则、缺料时继续合成，以及 AEA 迁移的染色样板、增强合成状态、Building Gadgets 2 集成、FTB Ultimine 记忆卡兼容能力。
 
 本仓库是迁移到 `Minecraft 1.21.1 + NeoForge` 的分支，不是旧版 `1.20.1 + Forge` 分支的直接发布说明。发布前请以实际构建产物、变更日志和测试结果为准。
 
@@ -22,6 +22,24 @@
 该分支依赖 NeoForge 与 AE2 的当前内部 API 和 mixin 接缝。升级 AE2、NeoForge 或 Minecraft 后，应重新运行测试并做游戏内验证。
 
 ## 功能说明
+
+### AEA 迁移功能
+
+当前分支已迁移并保留以下 AEA 功能：
+
+- `Dyeable Patterns`：
+  AE2 编码样板支持染色。
+  内置客户端资源包会覆盖样板模型与贴图。
+  planning 侧会优先选择同色样板，并保留 replacement、continuation、formal-machine、parallel CPU 的既有主链语义。
+- `Enhanced Crafting Status`：
+  在合成状态和 Craft Confirm 视图中追加 `Blocked` 与 `Pattern Times` 信息。
+  仅扩展状态展示与序列化，不替换本仓已有 continuation、formal-machine、parallel CPU 的 UI 语义。
+- `Building Gadgets 2 Integration`：
+  可将 BG2 模板材料需求编码为标准 AE2 processing pattern。
+  生成物保持标准 AE2 processing pattern，不额外写入 replacement metadata。
+- `FTB Ultimine & Memory Card Compatibility`：
+  FTB Ultimine 批量右键流程可复用 AE 记忆卡设置目标。
+  未安装 FTB Ultimine 时不会加载对应 mixin。
 
 ### ME 多槽发信器
 
@@ -81,13 +99,27 @@ config/chexsonsaeutils-common.toml
 
 ```toml
 craftingContinuationEnabled = true
+formalMachineCraftingDispatchEnabled = false
+formalMachinePlanningAggregationEnabled = true
 processingPatternReplacementEnabled = true
+
+[aeaMigration]
+dyeablePatternsEnabled = true
+enhancedCraftingStatusEnabled = true
+buildingGadgets2IntegrationEnabled = true
+ftbUltimineMemoryCardEnabled = true
 ```
 
 - `craftingContinuationEnabled`：启用或禁用 AE2 合成续跑 / 缺料忽略功能包。
+- `formalMachineCraftingDispatchEnabled`：启用或禁用 formal-machine 的 AE2 合成派发快路径。
+- `formalMachinePlanningAggregationEnabled`：启用或禁用 formal-machine 的大请求 planning 聚合快路径。
 - `processingPatternReplacementEnabled`：启用或禁用 AE2 处理样板替换功能包。
+- `[aeaMigration].dyeablePatternsEnabled`：启用或禁用 AEA 染色样板迁移。
+- `[aeaMigration].enhancedCraftingStatusEnabled`：启用或禁用 AEA 增强合成状态迁移。
+- `[aeaMigration].buildingGadgets2IntegrationEnabled`：启用或禁用 AEA Building Gadgets 2 集成。
+- `[aeaMigration].ftbUltimineMemoryCardEnabled`：启用或禁用 AEA FTB Ultimine 记忆卡兼容。
 
-这两个配置在启动时读取，修改后需要重启游戏或服务器。
+以上配置均在启动时读取，修改后需要重启游戏或服务器。
 
 ## 安装说明
 
@@ -95,7 +127,7 @@ processingPatternReplacementEnabled = true
 2. 安装 Applied Energistics 2 `19.2.17+`。
 3. 将本模组 jar 放入 `mods` 目录。
 4. 首次启动后检查 `config/chexsonsaeutils-common.toml`。
-5. 在测试世界中验证多槽发信器、处理样板替换和合成续跑是否符合整合包预期。
+5. 在测试世界中验证多槽发信器、处理样板替换、合成续跑和 AEA 迁移功能是否符合整合包预期。
 
 建议在服务器环境中先进行离线或测试服验证，再迁移到正式存档。
 
@@ -141,6 +173,8 @@ $env:GRADLE_USER_HOME = (Join-Path (Get-Location) '.gradle-user')
 - 功能依赖 AE2 菜单、样板、合成服务和部件系统的内部行为；AE2 更新后可能需要适配。
 - 修改处理样板 metadata 和多槽发信器 NBT 前，建议备份重要世界。
 - 如果整合包中还有修改 AE2 合成、样板或终端界面的模组，建议重点测试交互兼容性。
+- BG2 与 FTB Ultimine 集成功能都属于可选依赖路径。
+  未安装对应 mod 时，本模组应保持可启动且不加载对应 mixin。
 
 ## 反馈问题
 
