@@ -7,6 +7,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.DyedItemColor;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
+
 /**
  * 样板染色辅助逻辑。
  *
@@ -42,5 +46,18 @@ public final class PatternColorHelper {
                 && !stack.has(AEComponents.ENCODED_PROCESSING_PATTERN)
                 && !stack.has(AEComponents.ENCODED_STONECUTTING_PATTERN)
                 && !stack.has(AEComponents.ENCODED_SMITHING_TABLE_PATTERN);
+    }
+
+    public static List<IPatternDetails> orderPatternsByColor(
+            @Nullable Collection<? extends IPatternDetails> patterns,
+            int preferredColor
+    ) {
+        if (patterns == null || patterns.isEmpty() || preferredColor == -1) {
+            return patterns == null ? List.of() : patterns.stream().map(details -> (IPatternDetails) details).toList();
+        }
+        return patterns.stream()
+                .map(details -> (IPatternDetails) details)
+                .sorted(Comparator.comparingInt(details -> getPatternColor(details) == preferredColor ? 0 : 1))
+                .toList();
     }
 }
