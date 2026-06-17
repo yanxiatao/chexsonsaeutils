@@ -70,6 +70,19 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
         return result;
     }
 
+    ICraftingSubmitResult trySubmitPartialJob(
+            IGrid grid,
+            ICraftingPlan plan,
+            IActionSource src,
+            @Nullable ICraftingRequester requester
+    ) {
+        ICraftingSubmitResult result = logic.trySubmitPartialJob(grid, plan, src, requester);
+        if (result != null && result.successful()) {
+            this.submittedPlan = plan;
+        }
+        return result;
+    }
+
     void markRegistered() {
         logic.enableNotifications();
     }

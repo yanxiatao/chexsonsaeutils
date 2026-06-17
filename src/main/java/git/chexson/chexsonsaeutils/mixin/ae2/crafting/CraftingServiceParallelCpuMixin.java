@@ -28,6 +28,7 @@ import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatur
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingContinuationSubmitter;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuGrid;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
@@ -49,8 +50,8 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-@Mixin(value = CraftingService.class, remap = false)
-public abstract class CraftingServiceParallelCpuMixin {
+@Mixin(value = CraftingService.class, priority = 1200, remap = false)
+public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftingContinuationSubmitter {
 
     @Shadow(remap = false)
     private IGrid grid;
@@ -171,22 +172,33 @@ public abstract class CraftingServiceParallelCpuMixin {
             IActionSource src,
             CallbackInfoReturnable<ICraftingSubmitResult> cir
     ) {
-        if (!(target instanceof ParallelCraftingCPU)) {
-            return;
-        }
-
         if (job == null) {
+            if (!(target instanceof ParallelCraftingCPU)) {
+                return;
+            }
             ICraftingSubmitResult result = CraftingSubmitResult.INCOMPLETE_PLAN;
             chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
             cir.setReturnValue(result);
             return;
         }
+        if (CraftingContinuationPartialSubmit.isPartialSubmitRequest(
+                job,
+                CraftingContinuationSubmitBridge.currentMode())) {
+            ICraftingSubmitResult result = chexsonsaeutils$getSyncedParallelCpuGrid()
+                    .submitPartialJob(job, requestingMachine, target, prioritizePower, src);
+            if (result != null) {
+                chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
+                cir.setReturnValue(result);
+            }
+            return;
+        }
+
+        if (!(target instanceof ParallelCraftingCPU)) {
+            return;
+        }
+
         if (job.simulation()) {
-            ICraftingSubmitResult result = CraftingContinuationPartialSubmit.isPartialSubmitRequest(
-                    job,
-                    CraftingContinuationSubmitBridge.currentMode())
-                    ? CraftingSubmitResult.noSuitableCpu(new UnsuitableCpus(0, 0, 0, 1))
-                    : CraftingSubmitResult.INCOMPLETE_PLAN;
+            ICraftingSubmitResult result = CraftingSubmitResult.INCOMPLETE_PLAN;
             chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
             cir.setReturnValue(result);
             return;
@@ -488,6 +500,22 @@ public abstract class CraftingServiceParallelCpuMixin {
                 target,
                 result
         );
+    }
+
+    @Override
+    public ICraftingSubmitResult submitParallelContinuationPartialJob(
+            ICraftingPlan job,
+            @Nullable ICraftingRequester requestingMachine,
+            @Nullable ICraftingCPU target,
+            boolean prioritizePower,
+            IActionSource src
+    ) {
+        ICraftingSubmitResult result = chexsonsaeutils$getSyncedParallelCpuGrid()
+                .submitPartialJob(job, requestingMachine, target, prioritizePower, src);
+        if (result != null) {
+            chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
+        }
+        return result;
     }
 
     @Unique

@@ -28,6 +28,7 @@ import appeng.me.service.CraftingService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import com.google.common.base.Preconditions;
+import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -114,6 +115,37 @@ final class ParallelCraftingCpuLogic {
         }
 
         return CraftingSubmitResult.successful(null);
+    }
+
+    ICraftingSubmitResult trySubmitPartialJob(
+            IGrid grid,
+            ICraftingPlan plan,
+            IActionSource src,
+            @Nullable ICraftingRequester requester
+    ) {
+        ICraftingSubmitResult submitResult = trySubmitJob(
+                grid,
+                CraftingContinuationPartialSubmit.createNativeSubmissionPlan(plan),
+                src,
+                requester
+        );
+        if (!submitResult.successful()) {
+            return submitResult;
+        }
+        if (this.job == null) {
+            AELog.error("Parallel CPU accepted a continuation job without creating an executing job.");
+            return CraftingSubmitResult.CPU_BUSY;
+        }
+
+        KeyCounter missingInitialItems = CraftingContinuationPartialSubmit.extractAvailableInitialItems(
+                plan,
+                grid,
+                inventory,
+                src
+        );
+        seedInitialWaitingFor(this.job, missingInitialItems, this::postChange);
+        lane.cluster().refreshLaneState(lane);
+        return submitResult;
     }
 
     void enableNotifications() {
@@ -346,6 +378,28 @@ final class ParallelCraftingCpuLogic {
                     expectedContainerItem.getLongValue(),
                     Actionable.MODULATE
             );
+        }
+    }
+
+    static void seedInitialWaitingFor(
+            ParallelExecutingCraftingJob job,
+            KeyCounter missingInitialItems,
+            Consumer<AEKey> postChange
+    ) {
+        if (missingInitialItems == null || missingInitialItems.isEmpty()) {
+            return;
+        }
+
+        for (var entry : missingInitialItems) {
+            job.waitingFor.insert(entry.getKey(), entry.getLongValue(), Actionable.MODULATE);
+            ParallelExecutingCraftingJob.addMaxItems(
+                    job.timeTracker,
+                    entry.getLongValue(),
+                    entry.getKey().getType()
+            );
+            if (postChange != null) {
+                postChange.accept(entry.getKey());
+            }
         }
     }
 

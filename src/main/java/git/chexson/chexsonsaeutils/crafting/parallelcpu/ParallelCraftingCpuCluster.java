@@ -108,7 +108,50 @@ public final class ParallelCraftingCpuCluster {
         }
 
         ParallelCraftingLaneState lane = new ParallelCraftingLaneState(this, UUID.randomUUID(), currentTick);
-        ICraftingSubmitResult submitResult = lane.trySubmitJob(grid, plan, src == null ? source : src, requester);
+        ICraftingSubmitResult submitResult = lane.trySubmitJob(
+                grid,
+                plan,
+                src == null ? source : src,
+                requester
+        );
+        if (submitResult == null || !submitResult.successful()) {
+            return submitResult == null ? CraftingSubmitResult.CPU_OFFLINE : submitResult;
+        }
+
+        lanes.put(lane.laneId(), lane);
+        lanesByPlan.put(plan, lane);
+        lane.markRegistered();
+        if (metrics != null) {
+            metrics.recordSubmittedVirtualCpu();
+        }
+        return submitResult;
+    }
+
+    public ICraftingSubmitResult submitPartialJob(
+            IGrid grid,
+            ICraftingPlan plan,
+            ICraftingRequester requester,
+            IActionSource src,
+            long currentTick,
+            ParallelCpuMetrics metrics
+    ) {
+        if (!canProcessJobs()) {
+            return CraftingSubmitResult.CPU_OFFLINE;
+        }
+        if (!hasSubmissionCapacity()) {
+            return CraftingSubmitResult.CPU_BUSY;
+        }
+        if (storageBytes() < plan.bytes()) {
+            return CraftingSubmitResult.CPU_TOO_SMALL;
+        }
+
+        ParallelCraftingLaneState lane = new ParallelCraftingLaneState(this, UUID.randomUUID(), currentTick);
+        ICraftingSubmitResult submitResult = lane.trySubmitPartialJob(
+                grid,
+                plan,
+                src == null ? source : src,
+                requester
+        );
         if (submitResult == null || !submitResult.successful()) {
             return submitResult == null ? CraftingSubmitResult.CPU_OFFLINE : submitResult;
         }

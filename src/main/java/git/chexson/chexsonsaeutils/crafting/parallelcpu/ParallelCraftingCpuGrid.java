@@ -92,6 +92,34 @@ public final class ParallelCraftingCpuGrid {
         return null;
     }
 
+    public ICraftingSubmitResult submitPartialJob(
+            ICraftingPlan job,
+            ICraftingRequester requestingMachine,
+            ICraftingCPU target,
+            boolean prioritizePower,
+            IActionSource src
+    ) {
+        if (job == null || !job.simulation()) {
+            return null;
+        }
+
+        if (target instanceof ParallelCraftingCPU parallelCpu) {
+            if (!hasCpu(parallelCpu)) {
+                return CraftingSubmitResult.CPU_OFFLINE;
+            }
+            if (parallelCpu.isActiveVirtualCpu()) {
+                return CraftingSubmitResult.CPU_BUSY;
+            }
+            return submitPartialToCluster(parallelCpu.cluster(), job, requestingMachine, src);
+        }
+
+        if (target == null) {
+            return submitPartialToAutoSelectedCluster(job, requestingMachine, prioritizePower, src);
+        }
+
+        return null;
+    }
+
     public ICraftingSubmitResult getAutoSelectionFailure(ICraftingPlan job, IActionSource src) {
         AutoSelectionResult result = findAutoSelectionCluster(job, src, false);
         return result.hasAnyUnsuitable()
@@ -235,6 +263,23 @@ public final class ParallelCraftingCpuGrid {
         return cluster.submitJob(grid, job, requestingMachine, src, currentTick, metrics);
     }
 
+    private ICraftingSubmitResult submitPartialToCluster(
+            ParallelCraftingCpuCluster cluster,
+            ICraftingPlan job,
+            ICraftingRequester requestingMachine,
+            IActionSource src
+    ) {
+        var settings = ParallelCraftingCpuConfig.current();
+        if (submissionsThisTick >= settings.maxSubmissionsPerTickPerGrid()) {
+            return CraftingSubmitResult.CPU_BUSY;
+        }
+        if (activeLaneCount() >= settings.maxInternalLanesPerGrid()) {
+            return CraftingSubmitResult.CPU_BUSY;
+        }
+        submissionsThisTick++;
+        return cluster.submitPartialJob(grid, job, requestingMachine, src, currentTick, metrics);
+    }
+
     private ICraftingSubmitResult submitToAutoSelectedCluster(
             ICraftingPlan job,
             ICraftingRequester requestingMachine,
@@ -246,6 +291,25 @@ public final class ParallelCraftingCpuGrid {
             return null;
         }
         ICraftingSubmitResult submitResult = submitToCluster(result.selectedCluster(), job, requestingMachine, src);
+        return submitResult != null && submitResult.successful() ? submitResult : null;
+    }
+
+    private ICraftingSubmitResult submitPartialToAutoSelectedCluster(
+            ICraftingPlan job,
+            ICraftingRequester requestingMachine,
+            boolean prioritizePower,
+            IActionSource src
+    ) {
+        AutoSelectionResult result = findAutoSelectionCluster(job, src, prioritizePower);
+        if (result.selectedCluster() == null) {
+            return null;
+        }
+        ICraftingSubmitResult submitResult = submitPartialToCluster(
+                result.selectedCluster(),
+                job,
+                requestingMachine,
+                src
+        );
         return submitResult != null && submitResult.successful() ? submitResult : null;
     }
 

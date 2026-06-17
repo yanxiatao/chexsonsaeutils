@@ -102,7 +102,7 @@ public final class CraftingContinuationPartialSubmit {
         return submitResult;
     }
 
-    static KeyCounter extractAvailableInitialItems(
+    public static KeyCounter extractAvailableInitialItems(
             ICraftingPlan plan,
             IGrid grid,
             ListCraftingInventory cpuInventory,
