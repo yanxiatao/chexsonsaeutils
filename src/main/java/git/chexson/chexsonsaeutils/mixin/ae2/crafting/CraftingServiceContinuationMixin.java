@@ -13,6 +13,8 @@ import appeng.core.AELog;
 import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingContinuationSubmitter;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationSubmitBridge;
@@ -53,10 +55,26 @@ public abstract class CraftingServiceContinuationMixin {
             IActionSource src,
             CallbackInfoReturnable<ICraftingSubmitResult> cir
     ) {
+        if (cir.isCancelled()) {
+            return;
+        }
         if (!CraftingContinuationPartialSubmit.isPartialSubmitRequest(
                 job,
                 CraftingContinuationSubmitBridge.currentMode())) {
             return;
+        }
+        if (target == null || target instanceof ParallelCraftingCPU) {
+            ICraftingSubmitResult parallelResult = chexsonsaeutils$submitParallelContinuationPartialJob(
+                    job,
+                    requestingMachine,
+                    target,
+                    prioritizePower,
+                    src
+            );
+            if (parallelResult != null) {
+                cir.setReturnValue(parallelResult);
+                return;
+            }
         }
         if (!CraftingContinuationPartialSubmit.supportsPartialSubmitTarget(target)) {
             AELog.warn(
@@ -90,6 +108,26 @@ public abstract class CraftingServiceContinuationMixin {
                 prioritizePower,
                 src
         ));
+    }
+
+    @Nullable
+    private ICraftingSubmitResult chexsonsaeutils$submitParallelContinuationPartialJob(
+            ICraftingPlan job,
+            @Nullable ICraftingRequester requestingMachine,
+            @Nullable ICraftingCPU target,
+            boolean prioritizePower,
+            IActionSource src
+    ) {
+        if (!((Object) this instanceof ParallelCraftingContinuationSubmitter submitter)) {
+            return null;
+        }
+        return submitter.submitParallelContinuationPartialJob(
+                job,
+                requestingMachine,
+                target,
+                prioritizePower,
+                src
+        );
     }
 
     @Inject(method = "insertIntoCpus", at = @At("TAIL"), remap = false)
