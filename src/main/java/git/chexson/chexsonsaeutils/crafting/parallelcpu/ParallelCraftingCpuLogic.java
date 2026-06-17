@@ -22,12 +22,15 @@ import appeng.core.network.clientbound.CraftingJobStatusPacket;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.execution.CraftingSubmitResult;
-import appeng.crafting.execution.ElapsedTimeTracker;
 import appeng.crafting.inv.ListCraftingInventory;
 import appeng.hooks.ticking.TickHandler;
 import appeng.me.service.CraftingService;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import com.google.common.base.Preconditions;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
@@ -46,14 +49,10 @@ final class ParallelCraftingCpuLogic {
     private ParallelExecutingCraftingJob job;
     @Nullable
     private CraftingLink requesterLink;
-    @Nullable
-    private KeyCounter[] pendingReinjectInputs;
     private boolean cantStoreItems;
     private long lastModifiedOnTick = TickHandler.instance().getCurrentTick();
     private boolean registered;
     private boolean suppressChangeNotifications;
-    private int synchronousProviderPushDepth;
-    private boolean finishDeferredUntilProviderPushCompletes;
 
     ParallelCraftingCpuLogic(ParallelCraftingLaneState lane) {
         this.lane = lane;
@@ -125,8 +124,6 @@ final class ParallelCraftingCpuLogic {
     boolean tickCraftingLogic(
             IEnergyService energyGrid,
             CraftingService craftingService,
-            ParallelCpuGridBudgetLedger budgetLedger,
-            ParallelCpuProviderBackoff providerBackoff,
             ParallelCpuMetrics metrics,
             long currentTick
     ) {
@@ -167,8 +164,6 @@ final class ParallelCraftingCpuLogic {
                         remainingOperations,
                         craftingService,
                         energyGrid,
-                        budgetLedger,
-                        providerBackoff,
                         metrics,
                         currentTick
                 );
@@ -178,7 +173,7 @@ final class ParallelCraftingCpuLogic {
                 } else {
                     break;
                 }
-            } while (remainingOperations > 0L && budgetLedger.hasTimeBudget(System.nanoTime()));
+            } while (remainingOperations > 0L);
         }
 
         this.usedOps[2] = this.usedOps[1];
@@ -191,16 +186,11 @@ final class ParallelCraftingCpuLogic {
             long maxPatterns,
             CraftingService craftingService,
             IEnergyService energyService,
-            ParallelCpuGridBudgetLedger budgetLedger,
-            ParallelCpuProviderBackoff providerBackoff,
             ParallelCpuMetrics metrics,
             long currentTick
     ) {
         if (metrics != null) {
             metrics.recordExecuteCraftingCall();
-        }
-        if (!flushPendingReinjectInputs(budgetLedger, metrics)) {
-            return 0L;
         }
         if (job == null || job.tasks.isEmpty()) {
             return 0L;
@@ -208,9 +198,8 @@ final class ParallelCraftingCpuLogic {
 
         long pushedPatterns = 0L;
         var iterator = job.tasks.entrySet().iterator();
-        boolean stopAfterReinject = false;
-        while (iterator.hasNext() && pushedPatterns < maxPatterns && !budgetLedger.isExhausted()
-                && !stopAfterReinject && budgetLedger.hasTimeBudget(System.nanoTime())) {
+        taskLoop:
+        while (iterator.hasNext() && pushedPatterns < maxPatterns) {
             var task = iterator.next();
             if (task.getValue().value <= 0L) {
                 iterator.remove();
@@ -220,16 +209,6 @@ final class ParallelCraftingCpuLogic {
             var details = task.getKey();
             var expectedOutputs = new KeyCounter();
             var expectedContainerItems = new KeyCounter();
-            if (!budgetLedger.tryClaimExtractPatternInputs()) {
-                break;
-            }
-            if (metrics != null) {
-                metrics.recordExtractPatternInputs(1L);
-            }
-            if (!budgetLedger.hasTimeBudget(System.nanoTime())) {
-                stopAfterReinject = true;
-                continue;
-            }
 
             @Nullable
             var craftingContainer = CraftingCpuHelper.extractPatternInputs(
@@ -239,63 +218,53 @@ final class ParallelCraftingCpuLogic {
                     expectedOutputs,
                     expectedContainerItems
             );
+            if (metrics != null) {
+                metrics.recordExtractPatternInputs(1L);
+            }
 
             for (ICraftingProvider provider : craftingService.getProviders(details)) {
-                if (!budgetLedger.hasTimeBudget(System.nanoTime())) {
-                    stopAfterReinject = true;
-                    break;
-                }
                 if (craftingContainer == null) {
                     break;
                 }
 
-                var availability = providerBackoff.checkProvider(provider, currentTick, budgetLedger, metrics);
-                if (availability == ParallelCpuProviderBackoff.ProviderAvailability.BUDGET_EXHAUSTED) {
-                    stopAfterReinject = true;
-                    break;
+                if (metrics != null) {
+                    metrics.recordProviderScan();
                 }
-                if (availability != ParallelCpuProviderBackoff.ProviderAvailability.READY) {
+                if (provider.isBusy()) {
+                    if (metrics != null) {
+                        metrics.recordBusyProviderSkip();
+                    }
                     continue;
                 }
 
-                var patternPower = CraftingCpuHelper.calculatePatternPower(craftingContainer);
-                if (energyService.extractAEPower(
-                        patternPower,
-                        Actionable.SIMULATE,
-                        PowerMultiplier.CONFIG
-                ) < patternPower - 0.01D) {
-                    break;
-                }
-                if (!budgetLedger.tryClaimPatternPush()) {
-                    stopAfterReinject = true;
-                    break;
-                }
+                while (craftingContainer != null && pushedPatterns < maxPatterns) {
+                    var patternPower = CraftingCpuHelper.calculatePatternPower(craftingContainer);
+                    if (energyService.extractAEPower(
+                            patternPower,
+                            Actionable.SIMULATE,
+                            PowerMultiplier.CONFIG
+                    ) < patternPower - 0.01D) {
+                        break;
+                    }
 
-                reserveExpectedWaiting(job, expectedOutputs, expectedContainerItems);
-                boolean acceptedPush = false;
-                beginSynchronousProviderPush();
-                KeyCounter[] submittedCraftingContainer = craftingContainer;
-                try {
-                    acceptedPush = FormalMachineSourceCpuContext.withSourceCraftingId(
+                    KeyCounter[] submittedCraftingContainer = craftingContainer;
+                    boolean acceptedPush = FormalMachineSourceCpuContext.withSourceCraftingId(
                             currentSourceCraftingId(),
                             () -> provider.pushPattern(details, submittedCraftingContainer)
                     );
-                } finally {
-                    if (!acceptedPush) {
-                        rollbackReservedWaiting(job, expectedOutputs, expectedContainerItems);
-                    }
-                    endSynchronousProviderPush();
-                }
 
-                if (acceptedPush) {
+                    if (!acceptedPush) {
+                        break;
+                    }
+
                     craftingContainer = null;
-                    providerBackoff.recordPushAccepted(provider);
                     energyService.extractAEPower(
                             patternPower,
                             Actionable.MODULATE,
                             PowerMultiplier.CONFIG
                     );
                     pushedPatterns++;
+                    reserveExpectedWaiting(expectedOutputs, expectedContainerItems);
                     if (metrics != null) {
                         metrics.recordPushedPattern(1L);
                     }
@@ -310,26 +279,14 @@ final class ParallelCraftingCpuLogic {
                     task.getValue().value--;
                     if (task.getValue().value <= 0L) {
                         iterator.remove();
-                        break;
+                        continue taskLoop;
                     }
                     if (pushedPatterns >= maxPatterns) {
-                        stopAfterReinject = true;
-                        break;
+                        break taskLoop;
                     }
 
                     expectedOutputs.reset();
                     expectedContainerItems.reset();
-                    if (!budgetLedger.hasTimeBudget(System.nanoTime())) {
-                        stopAfterReinject = true;
-                        break;
-                    }
-                    if (!budgetLedger.tryClaimExtractPatternInputs()) {
-                        stopAfterReinject = true;
-                        break;
-                    }
-                    if (metrics != null) {
-                        metrics.recordExtractPatternInputs(1L);
-                    }
                     craftingContainer = CraftingCpuHelper.extractPatternInputs(
                             details,
                             inventory,
@@ -337,20 +294,29 @@ final class ParallelCraftingCpuLogic {
                             expectedOutputs,
                             expectedContainerItems
                     );
-                } else {
-                    providerBackoff.recordPushRejected(provider, currentTick);
+                    if (metrics != null) {
+                        metrics.recordExtractPatternInputs(1L);
+                    }
                 }
             }
 
             if (craftingContainer != null) {
-                pendingReinjectInputs = craftingContainer;
-                if (!flushPendingReinjectInputs(budgetLedger, metrics)) {
-                    stopAfterReinject = true;
+                CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
+                if (metrics != null) {
+                    metrics.recordReinjectPatternInputs(1L);
                 }
             }
         }
 
         return pushedPatterns;
+    }
+
+    private void reserveExpectedWaiting(
+            KeyCounter expectedOutputs,
+            KeyCounter expectedContainerItems
+    ) {
+        reserveExpectedWaiting(job, expectedOutputs, expectedContainerItems);
+        lane.cluster().refreshLaneState(lane);
     }
 
     private static void reserveExpectedWaiting(
@@ -383,145 +349,84 @@ final class ParallelCraftingCpuLogic {
         }
     }
 
-    private static void rollbackReservedWaiting(
-            ParallelExecutingCraftingJob job,
-            KeyCounter expectedOutputs,
-            KeyCounter expectedContainerItems
-    ) {
-        if (job == null) {
-            return;
-        }
-        for (var expectedOutput : expectedOutputs) {
-            if (expectedOutput.getKey() == null || expectedOutput.getLongValue() <= 0L) {
-                continue;
-            }
-            job.waitingFor.extract(
-                    expectedOutput.getKey(),
-                    expectedOutput.getLongValue(),
-                    Actionable.MODULATE
+    void readFromNBT(CompoundTag data, HolderLookup.Provider registries) {
+        inventory.readFromNBT(data.getList("inventory", Tag.TAG_COMPOUND), registries);
+        if (data.contains("job", Tag.TAG_COMPOUND)) {
+            this.job = new ParallelExecutingCraftingJob(
+                    data.getCompound("job"),
+                    registries,
+                    this::postChange,
+                    lane
             );
-        }
-        for (var expectedContainerItem : expectedContainerItems) {
-            if (expectedContainerItem.getKey() == null || expectedContainerItem.getLongValue() <= 0L) {
-                continue;
+            if (this.job.finalOutput == null) {
+                finishJob(false);
             }
-            job.waitingFor.extract(
-                    expectedContainerItem.getKey(),
-                    expectedContainerItem.getLongValue(),
-                    Actionable.MODULATE
-            );
         }
     }
 
-    private void beginSynchronousProviderPush() {
-        synchronousProviderPushDepth++;
-    }
-
-    private void endSynchronousProviderPush() {
-        if (synchronousProviderPushDepth <= 0) {
-            return;
+    void writeToNBT(CompoundTag data, HolderLookup.Provider registries) {
+        data.put("inventory", inventory.writeToNBT(registries));
+        if (job != null) {
+            data.put("job", job.writeToNBT(registries));
         }
-        synchronousProviderPushDepth--;
-        if (synchronousProviderPushDepth == 0) {
-            finishDeferredProviderPushJobIfReady();
-        }
-    }
-
-    private void finishDeferredProviderPushJobIfReady() {
-        if (!finishDeferredUntilProviderPushCompletes) {
-            return;
-        }
-        finishDeferredUntilProviderPushCompletes = false;
-        finishJobIfReady();
-    }
-
-    private boolean flushPendingReinjectInputs(
-            ParallelCpuGridBudgetLedger budgetLedger,
-            @Nullable ParallelCpuMetrics metrics
-    ) {
-        if (pendingReinjectInputs == null) {
-            return true;
-        }
-        if (!budgetLedger.tryClaimReinjectPatternInputs()) {
-            if (metrics != null) {
-                metrics.recordBudgetExhausted(ParallelCpuGridBudgetLedger.BudgetType.REINJECT_PATTERN_INPUTS);
-            }
-            return false;
-        }
-
-        CraftingCpuHelper.reinjectPatternInputs(inventory, pendingReinjectInputs);
-        pendingReinjectInputs = null;
-        if (metrics != null) {
-            metrics.recordReinjectPatternInputs(1L);
-        }
-        return true;
-    }
-
-    void flushPendingReinjectInputsWithoutBudget() {
-        if (pendingReinjectInputs == null) {
-            return;
-        }
-        CraftingCpuHelper.reinjectPatternInputs(inventory, pendingReinjectInputs);
-        pendingReinjectInputs = null;
     }
 
     long insert(@Nullable AEKey what, long amount, Actionable type) {
-        return insert(what, amount, type, false);
+        return insertInternal(what, amount, type).insertedAmount();
     }
 
-    long insert(@Nullable AEKey what, long amount, Actionable type, boolean preferBufferFinalOutput) {
+    long insertAndGetAccountedAmount(
+            @Nullable AEKey what,
+            long amount,
+            Actionable type
+    ) {
+        return insertInternal(what, amount, type).accountedAmount();
+    }
+
+    private InsertResult insertInternal(
+            @Nullable AEKey what,
+            long amount,
+            Actionable type
+    ) {
         if (what == null || job == null) {
-            return 0L;
+            return InsertResult.EMPTY;
         }
 
         long waitingFor = job.waitingFor.extract(what, amount, Actionable.SIMULATE);
         if (waitingFor <= 0L) {
-            return 0L;
+            return InsertResult.EMPTY;
         }
         if (amount > waitingFor) {
             amount = waitingFor;
         }
 
+        if (type == Actionable.MODULATE) {
+            ParallelExecutingCraftingJob.decrementItems(job.timeTracker, amount, what.getType());
+            job.waitingFor.extract(what, amount, Actionable.MODULATE);
+            postChange(what);
+        }
+
         long inserted = amount;
         if (what.matches(job.finalOutput)) {
-            if (job.link.isStandalone() || preferBufferFinalOutput) {
-                if (type == Actionable.MODULATE) {
-                    ParallelExecutingCraftingJob.decrementItems(job.timeTracker, amount, what.getType());
-                    job.waitingFor.extract(what, amount, Actionable.MODULATE);
-                    inventory.insert(what, amount, Actionable.MODULATE);
-                }
-            } else {
-                inserted = job.link.insert(what, amount, type);
-                if (type == Actionable.MODULATE && inserted > 0L) {
-                    ParallelExecutingCraftingJob.decrementItems(job.timeTracker, inserted, what.getType());
-                    job.waitingFor.extract(what, inserted, Actionable.MODULATE);
-                }
-            }
-            if (type == Actionable.MODULATE && inserted > 0L) {
-                postChange(what);
-                job.remainingAmount = Math.max(0L, job.remainingAmount - inserted);
+            inserted = job.link.insert(what, amount, type);
+            if (type == Actionable.MODULATE) {
+                job.remainingAmount = Math.max(0L, job.remainingAmount - amount);
                 if (job.remainingAmount <= 0L) {
-                    if (synchronousProviderPushDepth > 0) {
-                        finishDeferredUntilProviderPushCompletes = true;
-                    } else {
-                        finishJobIfReady();
-                    }
+                    finishJob(true);
                 }
             }
         } else if (type == Actionable.MODULATE) {
-            ParallelExecutingCraftingJob.decrementItems(job.timeTracker, amount, what.getType());
-            job.waitingFor.extract(what, amount, Actionable.MODULATE);
             inventory.insert(what, amount, Actionable.MODULATE);
             if (job.remainingAmount <= 0L) {
-                if (synchronousProviderPushDepth > 0) {
-                    finishDeferredUntilProviderPushCompletes = true;
-                } else {
-                    finishJobIfReady();
-                }
+                finishJob(true);
             }
         }
 
-        return inserted;
+        return new InsertResult(inserted, amount);
+    }
+
+    record InsertResult(long insertedAmount, long accountedAmount) {
+        private static final InsertResult EMPTY = new InsertResult(0L, 0L);
     }
 
     private @Nullable UUID currentSourceCraftingId() {
@@ -540,12 +445,13 @@ final class ParallelCraftingCpuLogic {
             return;
         }
 
-        finishDeferredUntilProviderPushCompletes = false;
-        synchronousProviderPushDepth = 0;
-        flushPendingReinjectInputsWithoutBudget();
         var finishedJob = job;
+        UUID finishedCraftingId = finishedJob.link == null ? null : finishedJob.link.getCraftingID();
         if (success) {
             finishedJob.link.markDone();
+            if (requesterLink != null) {
+                requesterLink.markDone();
+            }
         } else {
             finishedJob.link.cancel();
             if (requesterLink != null) {
@@ -567,26 +473,8 @@ final class ParallelCraftingCpuLogic {
 
         this.job = null;
         this.requesterLink = null;
+        FormalMachineCraftingDispatchService.clearSourceCpu(finishedCraftingId);
         this.storeItems();
-    }
-
-    private void finishJobIfReady() {
-        if (job == null || job.remainingAmount > 0L || hasOutstandingWaiting()) {
-            return;
-        }
-        finishJob(true);
-    }
-
-    private boolean hasOutstandingWaiting() {
-        if (job == null) {
-            return false;
-        }
-        for (var entry : job.waitingFor.list) {
-            if (entry.getKey() != null && entry.getLongValue() > 0L) {
-                return true;
-            }
-        }
-        return false;
     }
 
     void storeItems() {
@@ -637,6 +525,36 @@ final class ParallelCraftingCpuLogic {
         return requesterLink;
     }
 
+    void restoreRequesterLink(Iterable<ICraftingRequester> requesters) {
+        if (requesterLink != null || job == null || job.link == null || job.link.isStandalone()) {
+            return;
+        }
+        requesterLink = findRequesterLink(requesters, job.link.getCraftingID());
+    }
+
+    @Nullable
+    static CraftingLink findRequesterLink(
+            @Nullable Iterable<ICraftingRequester> requesters,
+            @Nullable UUID craftingId
+    ) {
+        if (requesters == null || craftingId == null) {
+            return null;
+        }
+        for (ICraftingRequester requester : requesters) {
+            if (requester == null) {
+                continue;
+            }
+            for (ICraftingLink link : requester.getRequestedJobs()) {
+                if (link instanceof CraftingLink craftingLink
+                        && !craftingLink.isStandalone()
+                        && craftingId.equals(craftingLink.getCraftingID())) {
+                    return craftingLink;
+                }
+            }
+        }
+        return null;
+    }
+
     boolean hasJob() {
         return job != null;
     }
@@ -668,12 +586,33 @@ final class ParallelCraftingCpuLogic {
         return lastModifiedOnTick;
     }
 
-    ElapsedTimeTracker getElapsedTimeTracker() {
-        return job != null ? job.timeTracker : new ElapsedTimeTracker();
+    ParallelElapsedTimeTracker getElapsedTimeTracker() {
+        return job != null ? job.timeTracker : new ParallelElapsedTimeTracker();
     }
 
     long getStored(@Nullable AEKey template) {
         return template == null ? 0L : inventory.extract(template, Long.MAX_VALUE, Actionable.SIMULATE);
+    }
+
+    long getBufferedAmount(@Nullable AEKey template) {
+        return getStored(template);
+    }
+
+    long extractBuffered(@Nullable AEKey what, long amount, Actionable mode) {
+        if (what == null || amount <= 0L || mode == null) {
+            return 0L;
+        }
+        return Math.max(0L, Math.min(amount, inventory.extract(what, amount, mode)));
+    }
+
+    long insertBuffered(@Nullable AEKey what, long amount, Actionable mode) {
+        if (what == null || amount <= 0L || mode == null) {
+            return 0L;
+        }
+        if (mode == Actionable.MODULATE) {
+            inventory.insert(what, amount, Actionable.MODULATE);
+        }
+        return amount;
     }
 
     long getWaitingFor(@Nullable AEKey template) {
@@ -690,6 +629,18 @@ final class ParallelCraftingCpuLogic {
         for (var entry : job.waitingFor.list) {
             waitingFor.add(entry.getKey());
         }
+    }
+
+    boolean hasWaitingFor() {
+        if (job == null) {
+            return false;
+        }
+        for (var entry : job.waitingFor.list) {
+            if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                return true;
+            }
+        }
+        return false;
     }
 
     long getPendingOutputs(@Nullable AEKey template) {

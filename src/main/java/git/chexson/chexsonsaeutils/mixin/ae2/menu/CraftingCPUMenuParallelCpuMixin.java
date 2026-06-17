@@ -145,11 +145,7 @@ public abstract class CraftingCPUMenuParallelCpuMixin {
     @Unique
     private static void chexsonsaeutils$sendStatus(CraftingCPUMenu menu, CraftingStatus status) {
         if (menu.getPlayer() instanceof ServerPlayer serverPlayer) {
-            try {
-                serverPlayer.connection.send(new CraftingStatusPacket(menu.containerId, status));
-            } catch (UnsupportedOperationException ignored) {
-                // GameTest mock connections can reject mod payloads that are valid for a real client.
-            }
+            serverPlayer.connection.send(new CraftingStatusPacket(menu.containerId, status));
         }
     }
 

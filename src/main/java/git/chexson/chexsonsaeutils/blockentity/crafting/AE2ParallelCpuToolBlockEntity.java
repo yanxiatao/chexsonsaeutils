@@ -102,12 +102,14 @@ public class AE2ParallelCpuToolBlockEntity extends AENetworkedBlockEntity implem
     public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.saveAdditional(data, registries);
         configManager.writeToNBT(data, registries);
+        parallelCpuCluster.writeToNBT(data, registries);
     }
 
     @Override
     public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
         super.loadTag(data, registries);
         configManager.readFromNBT(data, registries);
+        parallelCpuCluster.readFromNBT(data, registries);
     }
 
     @Override

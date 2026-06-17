@@ -33,7 +33,9 @@ import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingD
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineFastPathResult;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingTimingService;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineCraftingProvider;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
 import git.chexson.chexsonsaeutils.crafting.persistence.HighCapacityPatternHostSavedData;
 import net.minecraft.core.BlockPos;
@@ -58,6 +60,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -92,8 +95,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private static final int QUEUE_PROGRESS_SAVE_INTERVAL = 128;
     private static final int LOCAL_EXECUTION_QUEUE_CAPACITY = 1_024;
     private static final int FAST_BATCH_BACKPRESSURE_TASK_LIMIT = LOCAL_EXECUTION_QUEUE_CAPACITY;
-    private static final int PENDING_RETURN_MAX_STACKS_PER_TICK = 4;
-    private static final long PENDING_RETURN_MAX_AMOUNT_PER_STACK = 4_096L;
     private static final long TICK_SOFT_BUDGET_NANOS = 4_000_000L;
     private static final long TICK_HARD_BUDGET_NANOS = 5_000_000L;
     private static final long TICK_ABSOLUTE_BUDGET_NANOS = 6_000_000L;
@@ -417,12 +418,16 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     @Override
     public boolean pushPattern(IPatternDetails patternDetails, KeyCounter[] inputHolder) {
         localPatternProviderFacade.refreshDirtyPatterns();
-        if (!this.getMainNode().isActive()
-                || pendingAeReturn != null
-                || !localPatternProviderFacade.contains(unwrapFormalScaledPattern(patternDetails))) {
+        if (!this.getMainNode().isActive() || pendingAeReturn != null) {
             return false;
         }
         if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern supportedPattern)) {
+            return false;
+        }
+        if (supportedPattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+            return pushAggregatedPattern(aggregatedPattern, inputHolder);
+        }
+        if (!localPatternProviderFacade.contains(unwrapFormalDelegatingPattern(patternDetails))) {
             return false;
         }
         return offerCompiledTask(patternDetails.getDefinition().toStack(), supportedPattern, inputHolder, 1);
@@ -514,6 +519,30 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         return downscaled;
     }
 
+    private boolean pushAggregatedPattern(
+            IFormalMachineAggregatedPattern aggregatedPattern,
+            KeyCounter[] inputHolder
+    ) {
+        if (aggregatedPattern == null
+                || inputHolder == null
+                || !aggregatedPattern.hostLocator().matches(this)) {
+            return false;
+        }
+        CompiledTask compiledTask = CompiledTask.compile(
+                aggregatedPattern,
+                inputHolder,
+                aggregatedPattern.totalTicks(),
+                1
+        );
+        if (compiledTask == null) {
+            debugFormalIngress("aggregated pattern compile rejected rawInputHolder=" + describeInputHolder(inputHolder)
+                    + " patternInputs=" + aggregatedPattern.aggregatedInputs());
+            return false;
+        }
+        attachAggregatedCompletionTemplate(aggregatedPattern, compiledTask);
+        return offerPrecompiledTask(compiledTask);
+    }
+
     protected boolean offerPrecompiledTask(CompiledTask compiledTask) {
         if (compiledTask == null) {
             return false;
@@ -546,15 +575,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     @Override
     public boolean supportsFastBatch(IPatternDetails patternDetails) {
-        if (!formalMachineDispatchHost || patternDetails == null) {
-            return false;
-        }
-        localPatternProviderFacade.refreshDirtyPatterns();
-        if (!this.getMainNode().isActive() || pendingAeReturn != null || isCompletionBacklogHardPressured()) {
-            return false;
-        }
-        return patternDetails instanceof IMolecularAssemblerSupportedPattern
-                && localPatternProviderFacade.contains(unwrapFormalScaledPattern(patternDetails));
+        return false;
     }
 
     @Override
@@ -589,63 +610,8 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     @Override
     public FormalMachineFastPathResult offerFastBatch(FormalMachineBatchRequest request) {
-        if (!formalMachineDispatchHost || request == null || request.compiledTask() == null || request.batchKey() == null) {
-            fastPathFallbackCount++;
-            return FormalMachineFastPathResult.fallback();
-        }
-        localPatternProviderFacade.refreshDirtyPatterns();
-        Level currentLevel = getLevel();
-        if (currentLevel == null) {
-            compiledTaskResolveRejectCount++;
-            fastPathFallbackCount++;
-            return FormalMachineFastPathResult.fallback();
-        }
-        if (!this.getMainNode().isActive()) {
-            providerInactiveRejectCount++;
-            fastPathFallbackCount++;
-            return FormalMachineFastPathResult.fallback();
-        }
-        if (pendingAeReturn != null || isCompletionBacklogHardPressured()) {
-            backpressureRejectCount++;
-            fastPathFallbackCount++;
-            return FormalMachineFastPathResult.fallback();
-        }
-        IMolecularAssemblerSupportedPattern supportedPattern = request.compiledTask().resolvePattern(currentLevel);
-        if (supportedPattern == null) {
-            IPatternDetails patternDetails = PatternDetailsHelper.decodePattern(
-                    request.compiledTask().getPatternDefinition(),
-                    currentLevel
-            );
-            if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern decodedPattern)) {
-                compiledTaskResolveRejectCount++;
-                fastPathFallbackCount++;
-                return FormalMachineFastPathResult.fallback();
-            }
-            supportedPattern = decodedPattern;
-        } else {
-            compileCacheHitCount++;
-        }
-        request.compiledTask().setCompletionRoute(TaskCompletionRoute.CPU_WAITING);
-        IPatternDetails providerPattern = unwrapFormalScaledPattern(supportedPattern);
-        if (!localPatternProviderFacade.contains(providerPattern)) {
-            providerPatternMissingRejectCount++;
-            fastPathFallbackCount++;
-            return FormalMachineFastPathResult.rejected();
-        }
-        if (!request.batchKey().matchesCompiledTask(supportedPattern, request.compiledTask())) {
-            batchKeyMismatchRejectCount++;
-            fastPathFallbackCount++;
-            return FormalMachineFastPathResult.rejected();
-        }
-        request.compiledTask().setSourceCraftingId(request.jobId());
-        if (!offerPrecompiledTask(request.compiledTask())) {
-            queueRejectCount++;
-            fastPathFallbackCount++;
-            return FormalMachineFastPathResult.rejected();
-        }
-        formalMachineOptimizationHitCount++;
-        fastPathAcceptedCount += Math.max(0, request.logicalExecutions());
-        return FormalMachineFastPathResult.accepted(request.logicalExecutions());
+        fastPathFallbackCount++;
+        return FormalMachineFastPathResult.fallback();
     }
 
     @Override
@@ -2019,9 +1985,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (payload.isEmpty()) {
             return null;
         }
-        PayloadSlice payloadSlice = pending.completionRoute() == TaskCompletionRoute.CPU_WAITING
-                ? new PayloadSlice(List.copyOf(payload), List.of())
-                : takePendingPayloadSlice(payload);
+        PayloadSlice payloadSlice = takePendingPayload(payload);
         cpuWaitingReturnStoppedThisTick = false;
         List<GenericStack> slicePayload = pending.completionRoute() == TaskCompletionRoute.CPU_WAITING
                 ? routePayloadThroughCpu(pending, payloadSlice.slice(), hardDeadlineNanos)
@@ -2051,39 +2015,18 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         return pending.withPendingPayload(nextPayload);
     }
 
-    private PayloadSlice takePendingPayloadSlice(List<GenericStack> payload) {
-        return takePendingPayloadSlice(payload, PENDING_RETURN_MAX_STACKS_PER_TICK, PENDING_RETURN_MAX_AMOUNT_PER_STACK);
-    }
-
-    private PayloadSlice takePendingPayloadSlice(
-            List<GenericStack> payload,
-            int maxStacksPerTick,
-            long maxAmountPerStack
-    ) {
+    private PayloadSlice takePendingPayload(List<GenericStack> payload) {
         if (payload.isEmpty()) {
             return new PayloadSlice(List.of(), List.of());
         }
-        int stackLimit = Math.max(1, maxStacksPerTick);
-        long amountLimit = Math.max(1L, maxAmountPerStack);
-        List<GenericStack> slice = new ArrayList<>(Math.min(payload.size(), stackLimit));
-        List<GenericStack> remainder = new ArrayList<>(payload.size());
-        int processedStacks = 0;
+        List<GenericStack> slice = new ArrayList<>(payload.size());
         for (GenericStack genericStack : payload) {
             if (genericStack == null || genericStack.amount() <= 0L) {
                 continue;
             }
-            if (processedStacks >= stackLimit) {
-                remainder.add(genericStack);
-                continue;
-            }
-            long slicedAmount = Math.min(genericStack.amount(), amountLimit);
-            slice.add(new GenericStack(genericStack.what(), slicedAmount));
-            if (slicedAmount < genericStack.amount()) {
-                remainder.add(new GenericStack(genericStack.what(), genericStack.amount() - slicedAmount));
-            }
-            processedStacks++;
+            slice.add(genericStack);
         }
-        return new PayloadSlice(List.copyOf(slice), List.copyOf(remainder));
+        return new PayloadSlice(List.copyOf(slice), List.of());
     }
 
     private static long countPayloadAmount(List<GenericStack> payload) {
@@ -2107,19 +2050,51 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private static void debugFormalIngress(String message) {
-        if (Boolean.getBoolean("chexsonsaeutils.debugFormalIngress")) {
-            System.out.println("[CHEXSONSAEUTILS][FORMAL_INGRESS] " + message);
+        if (!Boolean.getBoolean("chexsonsaeutils.debugFormalIngress")) {
+            return;
         }
+        String line = "[CHEXSONSAEUTILS][FORMAL_INGRESS] " + message;
+        System.out.println(line);
+        System.err.println(line);
+    }
+
+    private static String describeInputHolder(@Nullable KeyCounter[] inputHolder) {
+        if (inputHolder == null) {
+            return "null";
+        }
+        List<List<GenericStack>> snapshot = new ArrayList<>(inputHolder.length);
+        for (KeyCounter slot : inputHolder) {
+            snapshot.add(slot == null ? List.of() : flattenInputHolder(new KeyCounter[]{slot}));
+        }
+        return Arrays.toString(snapshot.toArray());
     }
 
     private record PayloadSlice(List<GenericStack> slice, List<GenericStack> remainder) {
     }
 
-    private static IPatternDetails unwrapFormalScaledPattern(IPatternDetails patternDetails) {
-        if (patternDetails instanceof IFormalMachineScaledPattern scaledPattern) {
-            return scaledPattern.basePattern();
+    private static IPatternDetails unwrapFormalDelegatingPattern(IPatternDetails patternDetails) {
+        if (patternDetails instanceof IFormalMachineDelegatingPattern delegatingPattern) {
+            return delegatingPattern.basePattern();
         }
         return patternDetails;
+    }
+
+    private static List<GenericStack> flattenInputHolder(@Nullable KeyCounter[] inputHolder) {
+        if (inputHolder == null || inputHolder.length == 0) {
+            return List.of();
+        }
+        List<GenericStack> flattened = new ArrayList<>();
+        for (KeyCounter slot : inputHolder) {
+            if (slot == null) {
+                continue;
+            }
+            for (var entry : slot) {
+                if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                    flattened.add(new GenericStack(entry.getKey(), entry.getLongValue()));
+                }
+            }
+        }
+        return List.copyOf(flattened);
     }
 
     private List<GenericStack> orderCpuWaitingPayload(PendingAeReturn pending) {
@@ -2158,17 +2133,13 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (payload.isEmpty()) {
             return List.of();
         }
-        CraftingService craftingService = getGridCraftingService();
-        IStorageService storageService = getGridStorageService();
-        if (craftingService == null && storageService == null) {
+        SourceCpuHandle sourceCpu = FormalMachineCraftingDispatchService.getSourceCpuHandle(
+                getGridCraftingService(),
+                pending.sourceCraftingId()
+        );
+        if (sourceCpu == null || !sourceCpu.isActive()) {
             return payload;
         }
-        SourceCpuHandle sourceCpu = craftingService == null
-                ? null
-                : FormalMachineCraftingDispatchService.getSourceCpuHandle(
-                        craftingService,
-                        pending.sourceCraftingId()
-                );
         List<GenericStack> remainingPayload = new ArrayList<>(payload.size());
         for (GenericStack genericStack : payload) {
             if (genericStack == null || genericStack.what() == null || genericStack.amount() <= 0L) {
@@ -2180,16 +2151,13 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 appendRemainingCpuWaitingPayload(payload, genericStack, remainingPayload, true);
                 break;
             }
-            AeCpuIngressRouter.StackRoutingResult routingResult = AeCpuIngressRouter.routeStack(
-                    craftingService,
-                    storageService,
+            AeCpuIngressRouter.StackRoutingResult routingResult = AeCpuIngressRouter.routeStackIntoSourceCpu(
                     actionSource,
                     genericStack,
                     sourceCpu
             );
             debugFormalIngress("routePayloadThroughCpu stack=" + genericStack
                     + " sourceCraftingId=" + pending.sourceCraftingId()
-                    + " sourceCpu=" + (sourceCpu == null ? "null" : sourceCpu.craftingId())
                     + " acceptedBySourceCpu=" + routingResult.acceptedBySourceCpu()
                     + " acceptedByAnyCpu=" + routingResult.acceptedByAnyCpu()
                     + " insertedIntoAe=" + routingResult.insertedIntoAe()
@@ -2246,7 +2214,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return payload;
         }
         AeCpuIngressRouter.RoutingResult routingResult = AeCpuIngressRouter.routePayload(
-                craftingService,
                 storageService,
                 actionSource,
                 payload,
@@ -2844,6 +2811,10 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (compiledTask == null) {
             return;
         }
+        if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+            attachAggregatedCompletionTemplate(aggregatedPattern, compiledTask);
+            return;
+        }
         if (compiledTask.hasCompletionTemplate()) {
             compiledTask.setSupportsTemplatedCompletion(true);
             return;
@@ -2859,6 +2830,28 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             compiledTask.setCompletionTemplate(template.primary(), template.remainders());
             templatedDispatchHitCount++;
         }
+    }
+
+    private void attachAggregatedCompletionTemplate(
+            IFormalMachineAggregatedPattern aggregatedPattern,
+            CompiledTask compiledTask
+    ) {
+        if (aggregatedPattern == null || compiledTask == null || aggregatedPattern.aggregatedOutputs().isEmpty()) {
+            return;
+        }
+        GenericStack primaryOutput = aggregatedPattern.aggregatedOutputs().getFirst();
+        if (primaryOutput == null || primaryOutput.what() == null || primaryOutput.amount() <= 0L) {
+            compiledTask.setSupportsTemplatedCompletion(false);
+            return;
+        }
+        Map<AEItemKey, Long> remainderTotals = new LinkedHashMap<>();
+        for (GenericStack remainder : aggregatedPattern.aggregatedRemainders()) {
+            if (remainder != null && remainder.what() instanceof AEItemKey itemKey && remainder.amount() > 0L) {
+                remainderTotals.merge(itemKey, remainder.amount(), AbstractHighCapacityCraftingHostBlockEntity::safeAdd);
+            }
+        }
+        compiledTask.setCompletionTemplate(primaryOutput, remainderTotals);
+        compiledTask.setSupportsTemplatedCompletion(true);
     }
 
     private record SingleExecutionResult(GenericStack primary, Map<AEItemKey, Long> remainders) {
@@ -2878,4 +2871,5 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             Map<AEItemKey, Long> remainders
     ) {
     }
+
 }

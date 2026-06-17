@@ -17,4 +17,17 @@ public interface SourceCpuHandle {
     long getRequestedAmount(@Nullable AEKey what);
 
     long insert(@Nullable AEKey what, long amount, Actionable mode, IActionSource source);
+
+    default long getBufferedAmount(@Nullable AEKey what) {
+        return 0L;
+    }
+
+    default long extractBuffered(@Nullable AEKey what, long amount, Actionable mode) {
+        return 0L;
+    }
+
+    default long insertBuffered(@Nullable AEKey what, long amount, Actionable mode) {
+        return 0L;
+    }
+
 }

@@ -178,6 +178,9 @@ public final class MachineRecipeIndex {
         if (activeKinds <= 1 && fluid) {
             return "Fluid";
         }
+        if (activeKinds <= 1 && other) {
+            return "Other";
+        }
         if (activeKinds == 0) {
             return "-";
         }

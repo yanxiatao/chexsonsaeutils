@@ -32,7 +32,7 @@ public final class MachineRecipeDiscoveryService {
     public static MachineRecipeDiscoveryService fromConfig() {
         return new MachineRecipeDiscoveryService(
                 MachineAdapterRegistry.directProcessingDefaults(),
-                new GenericRecipeShapeReader(reflectiveDiscoveryEnabled()),
+                new GenericRecipeShapeReader(),
                 genericDiscoveryEnabled()
         );
     }
@@ -68,7 +68,11 @@ public final class MachineRecipeDiscoveryService {
         }
         RecipeTypeCandidateResolver.Resolution resolution = candidateResolver.resolve(identity);
         MachineRecipeUserConfigStore.LoadedImportedSignatures imported =
-                MachineRecipeUserConfigStore.instance().loadImportedSignatures(identity);
+                MachineRecipeUserConfigStore.instance().loadImportedSignatures(
+                        level.registryAccess(),
+                        identity,
+                        List.of()
+                );
         if (!resolution.hasCandidates()) {
             return buildImportedOrUnsupportedIndex(
                     identity,
@@ -114,6 +118,9 @@ public final class MachineRecipeDiscoveryService {
         }
         Map<ResourceLocation, RecipeTypeCandidate> candidates = new LinkedHashMap<>();
         for (ResourceLocation recipeTypeId : recipeTypeIds) {
+            if (!DirectProcessingJeiImportRecipeTypeGuard.isSupportedRecipeType(recipeTypeId)) {
+                continue;
+            }
             RecipeType<?> recipeType = recipeTypeId == null ? null : BuiltInRegistries.RECIPE_TYPE.get(recipeTypeId);
             if (recipeType == null) {
                 continue;
@@ -139,6 +146,7 @@ public final class MachineRecipeDiscoveryService {
             return null;
         }
         List<MachineRecipeImportedSignature> importedSignatures = validateImportedSignatures(
+                level.registryAccess(),
                 request.signatureHintsJson(),
                 request.recipeTypeIds()
         );
@@ -157,7 +165,7 @@ public final class MachineRecipeDiscoveryService {
                 request.ioMode(),
                 request.keyTypes(),
                 request.enabled(),
-                MachineRecipeImportedSignature.toJson(importedSignatures)
+                MachineRecipeImportedSignature.toJson(level.registryAccess(), importedSignatures)
         );
     }
 
@@ -187,17 +195,13 @@ public final class MachineRecipeDiscoveryService {
                     0L
             );
         }
-        MachineSupportStatus status = result.unsafeDynamic() 
-                ? MachineSupportStatus.UNSAFE_DYNAMIC 
-                : MachineSupportStatus.NEEDS_CONFIG_MAPPING; 
-        MachineSupportReasonCode reason = result.unsafeDynamic() 
-                ? MachineSupportReasonCode.DYNAMIC_RECIPE_SHAPE 
-                : result.hadUnreadableCandidates()
+        MachineSupportStatus status = MachineSupportStatus.NEEDS_CONFIG_MAPPING;
+        MachineSupportReasonCode reason = result.hadUnreadableCandidates()
                 ? MachineSupportReasonCode.IDENTIFIED_RECIPE_TYPE_UNREADABLE
-                : fallbackReason; 
-        if (reason == MachineSupportReasonCode.NONE) { 
-            reason = MachineSupportReasonCode.MAPPING_MISSING; 
-        } 
+                : fallbackReason;
+        if (reason == MachineSupportReasonCode.NONE) {
+            reason = MachineSupportReasonCode.MAPPING_MISSING;
+        }
         return new MachineRecipeIndex(
                 identity,
                 kinds,
@@ -221,38 +225,35 @@ public final class MachineRecipeDiscoveryService {
             MachineIdentity identity,
             Iterable<RecipeTypeCandidate> candidates
     ) {
-        Map<ResourceLocation, RecipeTypeCandidate> matchedCandidates = new LinkedHashMap<>(); 
-        Set<RecipeSignature> signatures = new LinkedHashSet<>(); 
-        boolean unsafeDynamic = false; 
-        boolean hadUnreadableCandidates = false; 
-        if (candidates == null) { 
-            return new CandidateScanResult(List.of(), Set.of(), false, false); 
-        } 
-        for (RecipeTypeCandidate candidate : candidates) { 
-            if (candidate == null || candidate.recipeType() == null) { 
-                continue; 
-            } 
+        Map<ResourceLocation, RecipeTypeCandidate> matchedCandidates = new LinkedHashMap<>();
+        Set<RecipeSignature> signatures = new LinkedHashSet<>();
+        boolean hadUnreadableCandidates = false;
+        if (candidates == null) {
+            return new CandidateScanResult(List.of(), Set.of(), false);
+        }
+        for (RecipeTypeCandidate candidate : candidates) {
+            if (candidate == null || candidate.recipeType() == null) {
+                continue;
+            }
             ResourceLocation recipeTypeId = BuiltInRegistries.RECIPE_TYPE.getKey(candidate.recipeType());
             if (recipeTypeId == null || matchedCandidates.containsKey(recipeTypeId)) {
                 continue;
             }
-            ShapeScanState shapeScanState = new ShapeScanState(); 
-            Set<RecipeSignature> candidateSignatures = new LinkedHashSet<>(); 
-            collectSignatures(level, identity, candidate, candidateSignatures, shapeScanState); 
-            unsafeDynamic |= shapeScanState.unsafeDynamic; 
-            hadUnreadableCandidates |= shapeScanState.unreadableShape; 
-            if (!candidateSignatures.isEmpty()) { 
-                matchedCandidates.put(recipeTypeId, candidate); 
-                signatures.addAll(candidateSignatures); 
-            } 
-        } 
-        return new CandidateScanResult( 
-                recipeTypeIds(new ArrayList<>(matchedCandidates.values())), 
-                signatures, 
-                unsafeDynamic,
+            ShapeScanState shapeScanState = new ShapeScanState();
+            Set<RecipeSignature> candidateSignatures = new LinkedHashSet<>();
+            collectSignatures(level, identity, candidate, candidateSignatures, shapeScanState);
+            hadUnreadableCandidates |= shapeScanState.unreadableShape;
+            if (!candidateSignatures.isEmpty()) {
+                matchedCandidates.put(recipeTypeId, candidate);
+                signatures.addAll(candidateSignatures);
+            }
+        }
+        return new CandidateScanResult(
+                recipeTypeIds(new ArrayList<>(matchedCandidates.values())),
+                signatures,
                 hadUnreadableCandidates
-        ); 
-    } 
+        );
+    }
 
     private MachineRecipeIndex tryResolveNamingConventionCandidates(
             Level level,
@@ -290,16 +291,12 @@ public final class MachineRecipeDiscoveryService {
                     0L
             );
         }
-        MachineSupportStatus status = result.unsafeDynamic() 
-                ? MachineSupportStatus.UNSAFE_DYNAMIC 
-                : MachineSupportStatus.NEEDS_CONFIG_MAPPING; 
-        MachineSupportReasonCode reason = result.unsafeDynamic() 
-                ? MachineSupportReasonCode.DYNAMIC_RECIPE_SHAPE 
-                : result.hadUnreadableCandidates()
+        MachineSupportStatus status = MachineSupportStatus.NEEDS_CONFIG_MAPPING;
+        MachineSupportReasonCode reason = result.hadUnreadableCandidates()
                 ? MachineSupportReasonCode.IDENTIFIED_RECIPE_TYPE_UNREADABLE
-                : MachineSupportReasonCode.NAMING_CONVENTION_NEEDS_MAPPING; 
-        return new MachineRecipeIndex( 
-                identity, 
+                : MachineSupportReasonCode.NAMING_CONVENTION_NEEDS_MAPPING;
+        return new MachineRecipeIndex(
+                identity,
                 EnumSet.noneOf(MachineRecipeKind.class),
                 List.of(),
                 Set.of(),
@@ -329,11 +326,8 @@ public final class MachineRecipeDiscoveryService {
         if (signature != null) {
             return PatternCompatibility.supported(index.status(), pattern, signature);
         }
-        if (index.status() == MachineSupportStatus.UNSAFE_DYNAMIC) {
-            return PatternCompatibility.unsupported(index.status(), index.reasonCode());
-        }
-            return PatternCompatibility.unsupported(MachineSupportStatus.NEEDS_CONFIG_MAPPING, MachineSupportReasonCode.MAPPING_MISSING);
-        }
+        return PatternCompatibility.unsupported(MachineSupportStatus.NEEDS_CONFIG_MAPPING, MachineSupportReasonCode.MAPPING_MISSING);
+    }
 
     private static List<RecipeSignatureInput> collectDeterministicInputs(IPatternDetails pattern) {
         List<GenericStack> inputs = new ArrayList<>();
@@ -365,11 +359,12 @@ public final class MachineRecipeDiscoveryService {
     }
 
     private List<MachineRecipeImportedSignature> validateImportedSignatures(
+            net.minecraft.core.HolderLookup.Provider registries,
             String signatureHintsJson,
             List<ResourceLocation> requestedRecipeTypeIds
     ) {
         List<MachineRecipeImportedSignature> parsedHints =
-                MachineRecipeImportedSignature.parseJson(signatureHintsJson);
+                MachineRecipeImportedSignature.parseJson(registries, signatureHintsJson);
         if (parsedHints.isEmpty()) {
             return List.of();
         }
@@ -379,6 +374,9 @@ public final class MachineRecipeDiscoveryService {
         Set<MachineRecipeImportedSignature> acceptedHints = new LinkedHashSet<>();
         for (MachineRecipeImportedSignature hint : parsedHints) {
             if (hint == null || hint.recipeTypeId() == null) {
+                continue;
+            }
+            if (!DirectProcessingJeiImportRecipeTypeGuard.isSupportedRecipeType(hint.recipeTypeId())) {
                 continue;
             }
             if (!requestedIds.isEmpty() && !requestedIds.contains(hint.recipeTypeId())) {
@@ -488,36 +486,32 @@ public final class MachineRecipeDiscoveryService {
                 continue;
             }
             try {
-                GenericRecipeShapeReader.ShapeReadOutcome outcome = 
-                        shapeReader.readStaticItemRecipeOutcome(level, candidate, recipe, identity); 
-                signatures.addAll(outcome.signatures()); 
-                if (outcome.unsafe()) { 
-                    shapeScanState.unsafeDynamic = true; 
-                } else if (outcome.signatures().isEmpty()) {
+                GenericRecipeShapeReader.ShapeReadOutcome outcome =
+                        shapeReader.readStaticItemRecipeOutcome(level, candidate, recipe, identity);
+                signatures.addAll(outcome.signatures());
+                if (outcome.signatures().isEmpty()) {
                     shapeScanState.unreadableShape = true;
-                } 
-            } catch (RuntimeException ignored) { 
-                // Keep a single unreadable mod recipe from aborting this direct machine's local index rebuild. 
+                }
+            } catch (RuntimeException ignored) {
+                // Keep a single unreadable mod recipe from aborting this direct machine's local index rebuild.
                 shapeScanState.unreadableShape = true;
-            } 
-        } 
-    } 
+            }
+        }
+    }
 
-    private static final class ShapeScanState { 
-        private boolean unsafeDynamic; 
+    private static final class ShapeScanState {
         private boolean unreadableShape;
-    } 
+    }
 
-    static record CandidateScanResult( 
-            List<ResourceLocation> recipeTypeIds, 
-            Set<RecipeSignature> signatures, 
-            boolean unsafeDynamic,
+    static record CandidateScanResult(
+            List<ResourceLocation> recipeTypeIds,
+            Set<RecipeSignature> signatures,
             boolean hadUnreadableCandidates
-    ) { 
-        CandidateScanResult { 
-            recipeTypeIds = recipeTypeIds == null ? List.of() : List.copyOf(recipeTypeIds); 
-            signatures = signatures == null ? Set.of() : Set.copyOf(signatures); 
-        } 
+    ) {
+        CandidateScanResult {
+            recipeTypeIds = recipeTypeIds == null ? List.of() : List.copyOf(recipeTypeIds);
+            signatures = signatures == null ? Set.of() : Set.copyOf(signatures);
+        }
     }
 
     private static List<ResourceLocation> recipeTypeIds(List<RecipeTypeCandidate> candidates) {
@@ -557,9 +551,4 @@ public final class MachineRecipeDiscoveryService {
                 .get();
     }
 
-    private static boolean reflectiveDiscoveryEnabled() {
-        return ChexsonsaeutilsCompatibilityConfig
-                .AE_DIRECT_PROCESSING_MACHINE_REFLECTIVE_DISCOVERY_ENABLED
-                .get();
-    }
 }

@@ -19,18 +19,21 @@ import appeng.menu.me.crafting.CraftingStatusEntry;
 import com.google.common.collect.ImmutableSet;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class ParallelCraftingCpuCluster {
 
@@ -39,9 +42,6 @@ public final class ParallelCraftingCpuCluster {
     private final ParallelCraftingCPU remainingCapacityCpu = new ParallelCraftingCPU(this, null);
     private final Map<UUID, ParallelCraftingLaneState> lanes = new LinkedHashMap<>();
     private final Map<ICraftingPlan, ParallelCraftingLaneState> lanesByPlan = new IdentityHashMap<>();
-    private final ArrayDeque<ParallelCraftingLaneState> runnableLanes = new ArrayDeque<>();
-    private final PriorityQueue<ParallelCraftingLaneState> delayedLanes =
-            new PriorityQueue<>((left, right) -> Long.compare(left.nextEligibleTick(), right.nextEligibleTick()));
     @Nullable
     private ParallelCraftingCpuGrid gridContext;
     private long lastModifiedOnTick;
@@ -110,14 +110,12 @@ public final class ParallelCraftingCpuCluster {
         ParallelCraftingLaneState lane = new ParallelCraftingLaneState(this, UUID.randomUUID(), currentTick);
         ICraftingSubmitResult submitResult = lane.trySubmitJob(grid, plan, src == null ? source : src, requester);
         if (submitResult == null || !submitResult.successful()) {
-            lane.flushPendingReinjectInputsWithoutBudget();
             return submitResult == null ? CraftingSubmitResult.CPU_OFFLINE : submitResult;
         }
 
         lanes.put(lane.laneId(), lane);
         lanesByPlan.put(plan, lane);
         lane.markRegistered();
-        enqueueRunnable(lane);
         if (metrics != null) {
             metrics.recordSubmittedVirtualCpu();
         }
@@ -127,20 +125,10 @@ public final class ParallelCraftingCpuCluster {
     public void tick(
             IEnergyService energyGrid,
             appeng.me.service.CraftingService craftingService,
-            ParallelCpuGridBudgetLedger budgetLedger,
-            ParallelCpuProviderBackoff providerBackoff,
             ParallelCpuMetrics metrics,
             long currentTick
     ) {
-        int lanesVisited = 0;
-        int shardLimit = Math.max(1, ParallelCraftingCpuConfig.current().laneShardCount());
-        promoteDelayedLanes(currentTick, shardLimit);
-        while (!runnableLanes.isEmpty() && lanesVisited < shardLimit && !budgetLedger.isExhausted()) {
-            ParallelCraftingLaneState lane = runnableLanes.removeFirst();
-            lanesVisited++;
-            if (!lane.markRunnableDequeued()) {
-                continue;
-            }
+        for (ParallelCraftingLaneState lane : List.copyOf(lanes.values())) {
             if (!lanes.containsKey(lane.laneId())) {
                 continue;
             }
@@ -148,25 +136,19 @@ public final class ParallelCraftingCpuCluster {
                 removeLane(lane);
                 continue;
             }
-
             if (metrics != null) {
                 metrics.recordTickCraftingLogic();
             }
-            ParallelCraftingLaneState.TickResult tickResult = lane.tick(
+            lane.tick(
                     energyGrid,
                     craftingService,
-                    budgetLedger,
-                    providerBackoff,
                     metrics,
                     currentTick
             );
             if (!lane.isLaneActive()) {
                 removeLane(lane);
-            } else if (tickResult.zeroProgress()) {
-                lane.delayUntil(currentTick + nextDelayTicks(lane, shardLimit));
-                enqueueDelayed(lane);
             } else {
-                enqueueRunnable(lane);
+                refreshLaneState(lane);
             }
         }
     }
@@ -203,6 +185,89 @@ public final class ParallelCraftingCpuCluster {
         }
     }
 
+    long insertIntoActiveLanes(
+            @Nullable AEKey what,
+            long amount,
+            Actionable mode,
+            @Nullable ParallelCpuMetrics metrics
+    ) {
+        return insertIntoActiveLanes(
+                List.copyOf(lanes.values()),
+                what,
+                amount,
+                mode,
+                metrics,
+                lane -> {
+                    if (!(lane instanceof ParallelCraftingLaneState laneState)) {
+                        return;
+                    }
+                    refreshLaneState(laneState);
+                    if (laneState.isLaneActive()) {
+                        wakeLane(laneState);
+                    } else {
+                        removeLane(laneState);
+                    }
+                },
+                lane -> {
+                    if (lane instanceof ParallelCraftingLaneState laneState) {
+                        removeLane(laneState);
+                    }
+                }
+        );
+    }
+
+    static long insertIntoActiveLanes(
+            Iterable<? extends ParallelCraftingLane> activeLanes,
+            @Nullable AEKey what,
+            long amount,
+            Actionable mode,
+            @Nullable ParallelCpuMetrics metrics,
+            @Nullable Consumer<ParallelCraftingLane> modulationConsumer,
+            @Nullable Consumer<ParallelCraftingLane> inactiveLaneConsumer
+    ) {
+        if (what == null || amount <= 0L || mode == null) {
+            return 0L;
+        }
+
+        long inserted = 0L;
+        long accounted = 0L;
+        for (ParallelCraftingLane lane : activeLanes) {
+            if (accounted >= amount) {
+                break;
+            }
+            if (lane == null || !lane.isLaneActive()) {
+                if (inactiveLaneConsumer != null && lane != null) {
+                    inactiveLaneConsumer.accept(lane);
+                }
+                continue;
+            }
+
+            long remaining = amount - accounted;
+            long requestedBefore = mode == Actionable.MODULATE ? lane.getRequestedAmount(what) : 0L;
+            ParallelCraftingLane.WaitingInsertResult accepted = lane.insertIntoWaitingAndGetResult(
+                    what,
+                    remaining,
+                    mode
+            );
+            long acceptedPhysical = Math.min(accepted.physicalInserted(), remaining);
+            long acceptedAccounted = Math.min(accepted.accounted(), remaining);
+            long requestedAfter = mode == Actionable.MODULATE ? lane.getRequestedAmount(what) : requestedBefore;
+            if (acceptedAccounted > 0L) {
+                inserted = safeAdd(inserted, acceptedPhysical);
+                accounted = safeAdd(accounted, acceptedAccounted);
+                if (metrics != null) {
+                    metrics.recordIndexedInsert(acceptedAccounted);
+                }
+            }
+            if (mode == Actionable.MODULATE
+                    && (acceptedAccounted > 0L || requestedAfter < requestedBefore || !lane.isLaneActive())
+                    && modulationConsumer != null) {
+                modulationConsumer.accept(lane);
+            }
+        }
+        return inserted;
+    }
+
     public void appendActiveLaneLinks(Collection<CraftingLink> target) {
         if (target == null || lanes.isEmpty()) {
             return;
@@ -212,11 +277,123 @@ public final class ParallelCraftingCpuCluster {
         }
     }
 
+    public void restoreRequesterLinks(Iterable<ICraftingRequester> requesters) {
+        if (requesters == null || lanes.isEmpty()) {
+            return;
+        }
+        for (ParallelCraftingLaneState lane : lanes.values()) {
+            lane.restoreRequesterLink(requesters);
+        }
+    }
+
     public void appendActiveLanes(Collection<ParallelCraftingLane> target) {
         if (target == null) {
             return;
         }
         target.addAll(lanes.values());
+    }
+
+    long getRequestedAmount(@Nullable AEKey what) {
+        long requested = 0L;
+        for (ParallelCraftingLaneState lane : lanes.values()) {
+            requested = safeAdd(requested, lane.getRequestedAmount(what));
+        }
+        return requested;
+    }
+
+    boolean isRequestingAny() {
+        for (ParallelCraftingLaneState lane : lanes.values()) {
+            if (lane.hasWaitingFor()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void appendWaitingFor(Set<AEKey> target) {
+        appendWaitingFor(lanes.values(), target);
+    }
+
+    static long getRequestedAmount(Iterable<? extends ParallelCraftingLane> activeLanes, @Nullable AEKey what) {
+        if (activeLanes == null || what == null) {
+            return 0L;
+        }
+        long requested = 0L;
+        for (ParallelCraftingLane lane : activeLanes) {
+            if (lane == null || !lane.isLaneActive()) {
+                continue;
+            }
+            requested = safeAdd(requested, lane.getRequestedAmount(what));
+        }
+        return requested;
+    }
+
+    static boolean isRequestingAny(Iterable<? extends ParallelCraftingLane> activeLanes) {
+        if (activeLanes == null) {
+            return false;
+        }
+        for (ParallelCraftingLane lane : activeLanes) {
+            if (lane == null || !lane.isLaneActive()) {
+                continue;
+            }
+            for (var entry : lane.getWaitingStacks()) {
+                if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static void appendWaitingFor(Iterable<? extends ParallelCraftingLane> activeLanes, Set<AEKey> target) {
+        if (target == null) {
+            return;
+        }
+        if (activeLanes == null) {
+            return;
+        }
+        for (ParallelCraftingLane lane : activeLanes) {
+            if (lane == null || !lane.isLaneActive()) {
+                continue;
+            }
+            for (var entry : lane.getWaitingStacks()) {
+                if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                    target.add(entry.getKey());
+                }
+            }
+        }
+    }
+
+    public void readFromNBT(CompoundTag data, HolderLookup.Provider registries) {
+        lanes.clear();
+        lanesByPlan.clear();
+        ListTag laneTags = data.getList("parallelCpuLanes", Tag.TAG_COMPOUND);
+        for (int index = 0; index < laneTags.size(); index++) {
+            ParallelCraftingLaneState lane = ParallelCraftingLaneState.readFromNBT(
+                    this,
+                    laneTags.getCompound(index),
+                    registries,
+                    lastModifiedOnTick
+            );
+            if (!lane.isLaneActive()) {
+                continue;
+            }
+            lanes.put(lane.laneId(), lane);
+            lane.markRegistered();
+            if (gridContext != null) {
+                gridContext.refreshLane(lane);
+            }
+        }
+    }
+
+    public void writeToNBT(CompoundTag data, HolderLookup.Provider registries) {
+        ListTag laneTags = new ListTag();
+        for (ParallelCraftingLaneState lane : lanes.values()) {
+            if (lane != null && lane.isLaneActive()) {
+                laneTags.add(lane.writeToNBT(registries));
+            }
+        }
+        data.put("parallelCpuLanes", laneTags);
     }
 
     public int activeLaneCount() {
@@ -244,32 +421,99 @@ public final class ParallelCraftingCpuCluster {
         return lane == null ? 0L : lane.logic().getWaitingFor(what);
     }
 
-    public long insertIntoWaitingForCraft(
+    public long getBufferedAmountForCraft(@Nullable UUID craftingId, @Nullable AEKey what) {
+        ParallelCraftingLaneState lane = findLaneState(craftingId);
+        return lane == null ? 0L : lane.logic().getBufferedAmount(what);
+    }
+
+    public long extractBufferedForCraft(
             @Nullable UUID craftingId,
             @Nullable AEKey what,
             long amount,
             Actionable mode
     ) {
-        return insertIntoWaitingForCraft(craftingId, what, amount, mode, false);
+        ParallelCraftingLaneState lane = findLaneState(craftingId);
+        if (lane == null) {
+            return 0L;
+        }
+        long extracted = lane.logic().extractBuffered(what, amount, mode);
+        notifyBufferedInventoryChanged(lane, extracted, mode);
+        return extracted;
+    }
+
+    public long insertBufferedForCraft(
+            @Nullable UUID craftingId,
+            @Nullable AEKey what,
+            long amount,
+            Actionable mode
+    ) {
+        ParallelCraftingLaneState lane = findLaneState(craftingId);
+        if (lane == null) {
+            return 0L;
+        }
+        long inserted = lane.logic().insertBuffered(what, amount, mode);
+        notifyBufferedInventoryChanged(lane, inserted, mode);
+        return inserted;
     }
 
     public long insertIntoWaitingForCraft(
             @Nullable UUID craftingId,
             @Nullable AEKey what,
             long amount,
-            Actionable mode,
-            boolean preferBufferFinalOutput
+            Actionable mode
     ) {
         ParallelCraftingLaneState lane = findLaneState(craftingId);
         if (lane == null) {
             return 0L;
         }
-        long accepted = lane.logic().insert(what, amount, mode, preferBufferFinalOutput);
-        if (accepted > 0L && mode == Actionable.MODULATE) {
+        long accepted = lane.logic().insert(what, amount, mode);
+        if (mode == Actionable.MODULATE && (accepted > 0L || !lane.isLaneActive())) {
             refreshLaneState(lane);
-            wakeLane(lane);
+            if (!lane.isLaneActive()) {
+                removeLane(lane);
+            } else {
+                wakeLane(lane);
+            }
         }
         return accepted;
+    }
+
+    public long insertIntoWaitingForCraftAndGetAccountedAmount(
+            @Nullable UUID craftingId,
+            @Nullable AEKey what,
+            long amount,
+            Actionable mode
+    ) {
+        ParallelCraftingLaneState lane = findLaneState(craftingId);
+        if (lane == null) {
+            return 0L;
+        }
+        long accounted = lane.logic().insertAndGetAccountedAmount(what, amount, mode);
+        if (mode == Actionable.MODULATE && (accounted > 0L || !lane.isLaneActive())) {
+            refreshLaneState(lane);
+            if (!lane.isLaneActive()) {
+                removeLane(lane);
+            } else {
+                wakeLane(lane);
+            }
+        }
+        return accounted;
+    }
+
+    private void notifyBufferedInventoryChanged(
+            ParallelCraftingLaneState lane,
+            long changedAmount,
+            Actionable mode
+    ) {
+        if (mode != Actionable.MODULATE || changedAmount <= 0L) {
+            return;
+        }
+        refreshLaneState(lane);
+        if (lane.isLaneActive()) {
+            wakeLane(lane);
+        } else {
+            removeLane(lane);
+        }
     }
 
     @Nullable
@@ -388,7 +632,17 @@ public final class ParallelCraftingCpuCluster {
         if (lane == null || !lanes.containsKey(lane.laneId())) {
             return;
         }
-        enqueueRunnable(lane);
+        refreshLaneState(lane);
+    }
+
+    private static long safeAdd(long left, long right) {
+        if (right <= 0L) {
+            return left;
+        }
+        if (left >= Long.MAX_VALUE - right) {
+            return Long.MAX_VALUE;
+        }
+        return left + right;
     }
 
     @Nullable
@@ -397,39 +651,6 @@ public final class ParallelCraftingCpuCluster {
             return null;
         }
         return lanes.get(craftingId);
-    }
-
-    private void promoteDelayedLanes(long currentTick, int shardLimit) {
-        int promoted = 0;
-        int limit = Math.max(1, shardLimit);
-        while (promoted < limit && !delayedLanes.isEmpty() && delayedLanes.peek().nextEligibleTick() <= currentTick) {
-            ParallelCraftingLaneState lane = delayedLanes.poll();
-            promoted++;
-            if (!lane.markDelayedDequeued()) {
-                continue;
-            }
-            if (lanes.containsKey(lane.laneId())) {
-                enqueueRunnable(lane);
-            }
-        }
-    }
-
-    private void enqueueRunnable(ParallelCraftingLaneState lane) {
-        if (lane != null && lane.markRunnableQueued()) {
-            runnableLanes.addLast(lane);
-        }
-    }
-
-    private void enqueueDelayed(ParallelCraftingLaneState lane) {
-        if (lane != null && lane.markDelayedQueued()) {
-            delayedLanes.add(lane);
-        }
-    }
-
-    private static long nextDelayTicks(ParallelCraftingLaneState lane, int shardLimit) {
-        long shardWindow = Math.max(1L, shardLimit);
-        long laneHash = lane.laneId().getLeastSignificantBits() ^ lane.laneId().getMostSignificantBits();
-        return 1L + Math.floorMod(laneHash, shardWindow);
     }
 
     public long storedAmountForTest(@Nullable AEKey what) {

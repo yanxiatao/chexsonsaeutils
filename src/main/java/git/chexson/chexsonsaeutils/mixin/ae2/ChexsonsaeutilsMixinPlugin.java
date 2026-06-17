@@ -55,14 +55,16 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingStatusFormalMachineMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuFormalMachineHeartbeatMixin"
     );
-    private static final Set<String> FORMAL_MACHINE_PLANNING_ONLY_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServicePlanningAggregationMixin",
+    private static final Set<String> FORMAL_MACHINE_PLANNING_ENTRY_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServicePlanningAggregationMixin"
+    );
+    private static final Set<String> FORMAL_MACHINE_PLANNING_SCALED_PATTERN_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceAccessor",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicFormalMachineScaledPatternMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobFormalMachineScaledPatternMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceGetProvidersFormalScaledPatternMixin"
     );
     private static final Set<String> PARALLEL_CPU_ONLY_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceStorageInventoryMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingStatusMenuParallelCpuMixin",
@@ -89,14 +91,19 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         }
         if (CRAFTING_CPU_ACCESSOR_MIXINS.contains(mixinClassName)) {
             return ContinuationFeatureGate.isEnabledAtStartup()
+                    || FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
                     || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup();
         }
         if (FORMAL_MACHINE_ONLY_MIXINS.contains(mixinClassName)) {
-            return FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup();
+            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
+                    || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup();
         }
-        if (FORMAL_MACHINE_PLANNING_ONLY_MIXINS.contains(mixinClassName)) {
-            return FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()
-                    && FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();
+        if (FORMAL_MACHINE_PLANNING_ENTRY_MIXINS.contains(mixinClassName)) {
+            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();
+        }
+        if (FORMAL_MACHINE_PLANNING_SCALED_PATTERN_MIXINS.contains(mixinClassName)) {
+            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
+                    || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup();
         }
         if (PARALLEL_CPU_ONLY_MIXINS.contains(mixinClassName)) {
             return ParallelCraftingCpuFeatureGate.isEnabledAtStartup();

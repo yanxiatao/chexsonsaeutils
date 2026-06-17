@@ -89,7 +89,6 @@ public final class FormalMachineCraftingTimingService {
         }
         STATES.remove(craftingId);
         PENDING_STATES.remove(craftingId);
-        FormalMachineCraftingDispatchService.clearSourceCpu(craftingId);
     }
 
     public static boolean hasActiveState(CraftingCpuLogic logic) {

@@ -46,6 +46,9 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecution
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionQueue;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingLatencyOrigin;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTaskCompletionHost;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
+import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -65,6 +68,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         implements ICraftingProvider, IUpgradeableObject, PatternContainer, InternalInventoryHost,
@@ -80,6 +84,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private static final String NBT_DISCOVERY_EPOCH = "discoveryEpoch";
     private static final String NBT_PENDING_OUTPUT_RETRY_DELAY = "pendingOutputRetryDelay";
     private static final String NBT_PENDING_OUTPUT_RETRY_BACKOFF = "pendingOutputRetryBackoff";
+    private static final String NBT_BATCH_PAYLOAD = "payload";
+    private static final String NBT_BATCH_SOURCE_CRAFTING_ID = "sourceCraftingId";
     private static final int TOTAL_PATTERN_SLOTS = 16_384;
     private static final int PAGE_SIZE = 27;
     private static final int UPGRADE_SLOTS = 5;
@@ -116,7 +122,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private long observedRecipeReloadEpoch = Long.MIN_VALUE;
     private String observedBudgetProfile = "";
     private boolean observedGenericDiscoveryEnabled;
-    private boolean observedReflectiveDiscoveryEnabled;
     private long recipeDiscoveryCount;
     private long recipeFullScanCount;
     private long dirtyRefreshScanCount;
@@ -166,7 +171,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         observedRecipeReloadEpoch = MachineRecipeReloadTracker.recipeReloadEpoch();
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled();
-        observedReflectiveDiscoveryEnabled = currentReflectiveDiscoveryEnabled();
         markMachineRecipeIndexDirty();
         refreshMachineRecipeIndexIfReady();
         markAllPatternsDirty();
@@ -218,7 +222,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         observedRecipeReloadEpoch = MachineRecipeReloadTracker.recipeReloadEpoch();
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled();
-        observedReflectiveDiscoveryEnabled = currentReflectiveDiscoveryEnabled();
         discoveryService = MachineRecipeDiscoveryService.fromConfig();
         markMachineRecipeIndexDirty();
         markAllPatternsDirty();
@@ -266,7 +269,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         if (!this.getMainNode().isActive()
                 || pendingOutputRetryDelayTicks > 0
                 || pendingOutputBatches.size() >= MAX_PENDING_OUTPUT_BATCHES
-                || executionQueue.isBusy()) {
+                || executionQueue.totalTaskCount() >= MAX_QUEUE_TASKS) {
             pushPatternRejectedCount++;
             return false;
         }
@@ -276,6 +279,10 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 inputHolder,
                 getCurrentOperationTicks()
         );
+        UUID sourceCraftingId = FormalMachineSourceCpuContext.currentSourceCraftingId();
+        if (task != null) {
+            task.setSourceCraftingId(sourceCraftingId);
+        }
         Level currentLevel = getLevel();
         long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
         if (task == null || !executionQueue.offer(task, budgetController, acceptedTick)) {
@@ -289,7 +296,9 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public boolean isBusy() {
-        return !pendingOutputBatches.isEmpty() || !executionQueue.isIdle();
+        return pendingOutputRetryDelayTicks > 0
+                || pendingOutputBatches.size() >= MAX_PENDING_OUTPUT_BATCHES
+                || executionQueue.totalTaskCount() >= MAX_QUEUE_TASKS;
     }
 
     @Override
@@ -326,7 +335,11 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         if (task != null) {
             completedLogicalExecutionCount = saturatingAdd(completedLogicalExecutionCount, task.executionCount());
         }
-        enqueuePendingOutput(task.buildOutputPayload(), latencyOrigin);
+        enqueuePendingOutput(
+                task.buildOutputPayload(),
+                latencyOrigin,
+                task == null ? null : task.sourceCraftingId()
+        );
         tryFlushPendingOutput();
         saveChanges();
     }
@@ -558,7 +571,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         if (appliedRequest == null || appliedRequest.recipeTypeIds().isEmpty()) {
             return false;
         }
-        MachineRecipeUserConfigStore.instance().upsertMappingAndApply(appliedRequest);
+        MachineRecipeUserConfigStore.instance().upsertMappingAndApply(appliedRequest, currentLevel.registryAccess());
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         discoveryEpoch++;
         invalidatePatternExposureForIndexChange();
@@ -830,13 +843,10 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     private void refreshDiscoveryConfigIfChanged() {
         boolean currentGenericDiscoveryEnabled = currentGenericDiscoveryEnabled();
-        boolean currentReflectiveDiscoveryEnabled = currentReflectiveDiscoveryEnabled();
-        if (observedGenericDiscoveryEnabled == currentGenericDiscoveryEnabled
-                && observedReflectiveDiscoveryEnabled == currentReflectiveDiscoveryEnabled) {
+        if (observedGenericDiscoveryEnabled == currentGenericDiscoveryEnabled) {
             return;
         }
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled;
-        observedReflectiveDiscoveryEnabled = currentReflectiveDiscoveryEnabled;
         discoveryService = MachineRecipeDiscoveryService.fromConfig();
         discoveryEpoch++;
         invalidatePatternExposureForIndexChange();
@@ -846,12 +856,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private static boolean currentGenericDiscoveryEnabled() {
         return ChexsonsaeutilsCompatibilityConfig
                 .AE_DIRECT_PROCESSING_MACHINE_GENERIC_DISCOVERY_ENABLED
-                .get();
-    }
-
-    private static boolean currentReflectiveDiscoveryEnabled() {
-        return ChexsonsaeutilsCompatibilityConfig
-                .AE_DIRECT_PROCESSING_MACHINE_REFLECTIVE_DISCOVERY_ENABLED
                 .get();
     }
 
@@ -918,11 +922,15 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 IStorageService storageService = getMainNode().getGrid() == null
                         ? null
                         : getMainNode().getGrid().getStorageService();
-                List<GenericStack> rejectedSlice = outputSink.tryReturnPayload(
+                SourceCpuHandle sourceCpu = FormalMachineCraftingDispatchService.getSourceCpuHandle(
                         craftingService,
+                        batch.sourceCraftingId()
+                );
+                List<GenericStack> rejectedSlice = outputSink.tryReturnPayload(
                         storageService,
                         actionSource,
-                        batch.payload()
+                        batch.payload(),
+                        sourceCpu
                 );
                 List<GenericStack> remainingPayload = DirectProcessingStackSupport.normalizeStacks(rejectedSlice);
                 if (!remainingPayload.isEmpty()) {
@@ -954,23 +962,28 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return Math.min(MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS, currentDelay * 2);
     }
 
-    private void enqueuePendingOutput(List<GenericStack> payload, @Nullable ProcessingLatencyOrigin latencyOrigin) {
+    private void enqueuePendingOutput(
+            List<GenericStack> payload,
+            @Nullable ProcessingLatencyOrigin latencyOrigin,
+            @Nullable UUID sourceCraftingId
+    ) {
         if (payload == null || payload.isEmpty()) {
             return;
         }
         PendingOutputBatch tail = pendingOutputBatches.peekLast();
-        if (tail != null) {
+        if (tail != null && Objects.equals(tail.sourceCraftingId(), sourceCraftingId)) {
             List<GenericStack> mergedPayload = tryMergePayloads(tail.payload(), payload);
             if (!mergedPayload.isEmpty()) {
                 pendingOutputBatches.removeLast();
                 pendingOutputBatches.addLast(new PendingOutputBatch(
                         mergedPayload,
-                        mergeLatencyOrigins(tail.latencyOrigin(), latencyOrigin)
+                        mergeLatencyOrigins(tail.latencyOrigin(), latencyOrigin),
+                        sourceCraftingId
                 ));
                 return;
             }
         }
-        pendingOutputBatches.addLast(new PendingOutputBatch(payload, latencyOrigin));
+        pendingOutputBatches.addLast(new PendingOutputBatch(payload, latencyOrigin, sourceCraftingId));
     }
 
     private static List<GenericStack> tryMergePayloads(List<GenericStack> left, List<GenericStack> right) {
@@ -1099,7 +1112,10 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 continue;
             }
             CompoundTag batchTag = new CompoundTag();
-            batchTag.put("payload", writeStacks(registries, batch.payload()));
+            batchTag.put(NBT_BATCH_PAYLOAD, writeStacks(registries, batch.payload()));
+            if (batch.sourceCraftingId() != null) {
+                batchTag.putUUID(NBT_BATCH_SOURCE_CRAFTING_ID, batch.sourceCraftingId());
+            }
             tag.add(batchTag);
         }
         return tag;
@@ -1107,17 +1123,23 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     private void readPendingOutputBatches(HolderLookup.Provider registries, ListTag tag) {
         for (Tag entry : tag) {
-            if (entry instanceof CompoundTag batchTag && batchTag.contains("payload")) {
-                List<GenericStack> payload = readStacks(registries, batchTag.getList("payload", Tag.TAG_COMPOUND));
+            if (entry instanceof CompoundTag batchTag && batchTag.contains(NBT_BATCH_PAYLOAD)) {
+                List<GenericStack> payload = readStacks(
+                        registries,
+                        batchTag.getList(NBT_BATCH_PAYLOAD, Tag.TAG_COMPOUND)
+                );
+                UUID sourceCraftingId = batchTag.hasUUID(NBT_BATCH_SOURCE_CRAFTING_ID)
+                        ? batchTag.getUUID(NBT_BATCH_SOURCE_CRAFTING_ID)
+                        : null;
                 if (!payload.isEmpty()) {
-                    pendingOutputBatches.addLast(new PendingOutputBatch(payload, null));
+                    pendingOutputBatches.addLast(new PendingOutputBatch(payload, null, sourceCraftingId));
                 }
                 continue;
             }
             if (entry instanceof CompoundTag stackTag) {
                 GenericStack stack = GenericStack.readTag(registries, stackTag);
                 if (stack != null) {
-                    pendingOutputBatches.addLast(new PendingOutputBatch(List.of(stack), null));
+                    pendingOutputBatches.addLast(new PendingOutputBatch(List.of(stack), null, null));
                 }
             }
         }

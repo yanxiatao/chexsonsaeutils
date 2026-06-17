@@ -106,8 +106,6 @@ This repository uses the Gradle Wrapper. Common commands:
 ```powershell
 .\gradlew.bat build
 .\gradlew.bat test
-.\gradlew.bat continuationTest
-.\gradlew.bat patternReplacementTest
 .\gradlew.bat runClient
 .\gradlew.bat runServer
 ```
@@ -115,9 +113,7 @@ This repository uses the Gradle Wrapper. Common commands:
 Command notes:
 
 - `build`: compiles, processes resources, and packages the mod.
-- `test`: runs the currently configured regression test slice.
-- `continuationTest`: runs crafting continuation regression tests.
-- `patternReplacementTest`: runs processing pattern replacement regression tests.
+- `test`: runs the current JUnit tests.
 - `runClient` / `runServer`: starts a development client or server for in-game verification.
 
 To keep Gradle caches inside the repository during local work:
