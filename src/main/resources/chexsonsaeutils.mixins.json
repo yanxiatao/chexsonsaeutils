@@ -36,6 +36,8 @@
     "ae2.crafting.ExecutingCraftingJobFormalMachineScaledPatternMixin",
     "ae2.menu.CraftingCPUMenuAccessor",
     "ae2.menu.CraftingCPUMenuContinuationMixin",
+    "buildinggadgets2.TemplateManagerHandlerMixin",
+    "buildinggadgets2.PacketUpdateTemplateManagerMixin",
     "ftbultimine.RightClickDispatcherMemoryCardMixin"
   ],
   "client": [

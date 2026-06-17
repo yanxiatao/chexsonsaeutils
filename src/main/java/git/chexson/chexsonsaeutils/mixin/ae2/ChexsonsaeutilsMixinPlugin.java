@@ -103,8 +103,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     );
     private static final Set<String> AEA_BUILDING_GADGETS2_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.TemplateManagerHandlerMixin",
-            "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.PacketUpdateTemplateManagerMixin",
-            "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.PacketUpdateTemplateManagerAccessor"
+            "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.PacketUpdateTemplateManagerMixin"
     );
     private static final Set<String> AEA_FTB_ULTIMINE_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ftbultimine.RightClickDispatcherMemoryCardMixin"

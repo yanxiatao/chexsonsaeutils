@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class AeaMigrationFeatureGateTest {
@@ -51,8 +52,25 @@ final class AeaMigrationFeatureGateTest {
                 "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.TemplateManagerHandlerMixin"
         ));
         assertFalse(plugin.shouldApplyMixin(
+                "com.direwolf20.buildinggadgets2.common.network.handler.PacketUpdateTemplateManager",
+                "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.PacketUpdateTemplateManagerMixin"
+        ));
+        assertFalse(plugin.shouldApplyMixin(
                 "dev.ftb.mods.ftbultimine.rightclick.RightClickDispatcher",
                 "git.chexson.chexsonsaeutils.mixin.ftbultimine.RightClickDispatcherMemoryCardMixin"
         ));
+    }
+
+    @Test
+    void buildingGadgetsDependencyUsesMinecraft1211File() throws IOException {
+        Path gradleProperties = Path.of("gradle.properties");
+
+        String value = Files.readAllLines(gradleProperties).stream()
+                .filter(line -> line.startsWith("building_gadgets2_file_id="))
+                .map(line -> line.substring("building_gadgets2_file_id=".length()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals("6850515", value);
     }
 }
