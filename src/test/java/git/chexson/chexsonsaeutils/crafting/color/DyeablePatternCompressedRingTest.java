@@ -17,6 +17,56 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class DyeablePatternCompressedRingTest {
 
     @Test
+    void dyeableCalculationHelpersResolveRequestedColorAndPreparedRing() {
+        GenericStack redOutput = new GenericStack(
+                AEItemKey.of(dyedItem(Items.PAPER, 0xFFFF0000)),
+                1L
+        );
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+        providers.addProvider(new TestProvider(
+                new TestPatternDetails(
+                        AEItemKey.of(Items.PAPER),
+                        0xFFFF0000,
+                        List.of(new GenericStack(AEItemKey.of(Items.REDSTONE), 1L)),
+                        List.of(new GenericStack(AEItemKey.of(Items.COMPARATOR), 1L))
+                )
+        ));
+
+        assertEquals(0xFFFF0000, DyeablePatternCraftingCalculation.resolveRequestedColor(redOutput));
+        assertNotNull(DyeablePatternCraftingCalculation.resolvePreparedCompressedRing(redOutput, providers));
+    }
+
+    @Test
+    void rootPlanningUsesRequestedOutputColor() {
+        GenericStack redOutput = new GenericStack(
+                AEItemKey.of(dyedItem(Items.PAPER, 0xFFFF0000)),
+                1L
+        );
+
+        int preferredColor = DyeablePatternCraftingPlanner.resolvePreferredColor(null, true, redOutput);
+
+        assertEquals(0xFFFF0000, preferredColor);
+    }
+
+    @Test
+    void childPlanningKeepsParentPatternColor() {
+        TestPatternDetails blueParent = new TestPatternDetails(
+                AEItemKey.of(Items.PAPER),
+                0xFF0000FF,
+                List.of(new GenericStack(AEItemKey.of(Items.REDSTONE), 1L)),
+                List.of(new GenericStack(AEItemKey.of(Items.COMPARATOR), 1L))
+        );
+        GenericStack redOutput = new GenericStack(
+                AEItemKey.of(dyedItem(Items.MAP, 0xFFFF0000)),
+                1L
+        );
+
+        int preferredColor = DyeablePatternCraftingPlanner.resolvePreferredColor(blueParent, false, redOutput);
+
+        assertEquals(0xFF0000FF, preferredColor);
+    }
+
+    @Test
     void calculatesNetInputsOutputsAndEntryPointsForSameColorRing() {
         AEKey quartz = AEItemKey.of(Items.QUARTZ);
         AEKey redstone = AEItemKey.of(Items.REDSTONE);
@@ -204,6 +254,34 @@ final class DyeablePatternCompressedRingTest {
         assertFalse(DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring));
     }
 
+    @Test
+    void sameColorPrioritizationFallsBackWhenReplacementAwareRingCannotBePlanned() {
+        AEKey iron = AEItemKey.of(Items.IRON_INGOT);
+        AEKey copper = AEItemKey.of(Items.COPPER_INGOT);
+        AEKey piston = AEItemKey.of(Items.PISTON);
+        TestPatternDetails replacementAware = new TestPatternDetails(
+                AEItemKey.of(Items.PAPER),
+                0xFF336699,
+                List.of(new TestInput(new GenericStack(iron, 1L), new GenericStack(copper, 1L))),
+                List.of(new GenericStack(piston, 1L))
+        );
+        TestPatternDetails otherColor = new TestPatternDetails(
+                AEItemKey.of(Items.COMPASS),
+                0xFFFF0000,
+                List.of(new GenericStack(AEItemKey.of(Items.REDSTONE), 1L)),
+                List.of(new GenericStack(AEItemKey.of(Items.CLOCK), 1L))
+        );
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+        providers.addProvider(new TestProvider(replacementAware, otherColor));
+
+        DyeablePatternCompressedRing ring = providers.getOrCalculateCompressedRing(0xFF336699);
+        List<IPatternDetails> ordered = providers.getCraftingForByColor(piston, 0xFF336699);
+
+        assertNotNull(ring);
+        assertFalse(DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring));
+        assertEquals(replacementAware, ordered.getFirst());
+    }
+
     private record TestPatternDetails(
             AEItemKey definition,
             int color,
@@ -295,5 +373,12 @@ final class DyeablePatternCompressedRingTest {
         public AEKey getRemainingKey(AEKey template) {
             return null;
         }
+    }
+
+    private static net.minecraft.world.item.ItemStack dyedItem(net.minecraft.world.level.ItemLike item, int color) {
+        net.minecraft.world.item.ItemStack stack = item.asItem().getDefaultInstance();
+        stack.set(net.minecraft.core.component.DataComponents.DYED_COLOR,
+                new net.minecraft.world.item.component.DyedItemColor(color & 0x00FFFFFF, true));
+        return stack;
     }
 }

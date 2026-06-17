@@ -6,6 +6,7 @@ import appeng.api.networking.crafting.ICraftingSimulationRequester;
 import appeng.api.stacks.GenericStack;
 import appeng.crafting.CraftingCalculation;
 import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * 染色样板 planning calculation 入口。
@@ -15,6 +16,9 @@ import net.minecraft.world.level.Level;
  */
 public class DyeablePatternCraftingCalculation extends CraftingCalculation {
 
+    private final GenericStack requestedOutput;
+    private final int requestedColor;
+
     public DyeablePatternCraftingCalculation(
             Level level,
             IGrid grid,
@@ -23,5 +27,54 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             CalculationStrategy strategy
     ) {
         super(level, grid, simRequester, output, strategy);
+        this.requestedOutput = output;
+        this.requestedColor = resolveRequestedColor(output);
+    }
+
+    public GenericStack chexsonsaeutils$getRequestedOutput() {
+        return this.requestedOutput;
+    }
+
+    public int chexsonsaeutils$getRequestedColor() {
+        return this.requestedColor;
+    }
+
+    public boolean chexsonsaeutils$hasRequestedColor() {
+        return this.requestedColor != -1;
+    }
+
+    @Nullable
+    public DyeablePatternCompressedRing chexsonsaeutils$getPreparedCompressedRing(
+            @Nullable DyeablePatternCraftingProviders providers
+    ) {
+        return resolvePreparedCompressedRing(this.requestedOutput, providers);
+    }
+
+    public boolean chexsonsaeutils$canPrepareRingPlanning(@Nullable DyeablePatternCraftingProviders providers) {
+        return DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(
+                chexsonsaeutils$getPreparedCompressedRing(providers)
+        );
+    }
+
+    static int resolveRequestedColor(@Nullable GenericStack output) {
+        if (output == null || output.what() == null) {
+            return -1;
+        }
+        return PatternColorHelper.getPatternColor(output.what().wrapForDisplayOrFilter());
+    }
+
+    @Nullable
+    static DyeablePatternCompressedRing resolvePreparedCompressedRing(
+            @Nullable GenericStack output,
+            @Nullable DyeablePatternCraftingProviders providers
+    ) {
+        if (providers == null) {
+            return null;
+        }
+        int color = resolveRequestedColor(output);
+        if (color == -1) {
+            return null;
+        }
+        return providers.getOrCalculateCompressedRing(color);
     }
 }

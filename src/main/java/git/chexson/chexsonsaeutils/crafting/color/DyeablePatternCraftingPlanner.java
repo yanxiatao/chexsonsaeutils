@@ -48,6 +48,17 @@ public final class DyeablePatternCraftingPlanner {
         return true;
     }
 
+    public static int resolvePreferredColor(
+            @Nullable IPatternDetails parentDetails,
+            boolean rootNode,
+            @Nullable GenericStack requestedOutput
+    ) {
+        if (rootNode) {
+            return DyeablePatternCraftingCalculation.resolveRequestedColor(requestedOutput);
+        }
+        return PatternColorHelper.getPatternColor(parentDetails);
+    }
+
     private static boolean hasReplacementAwareAlternatives(@Nullable IPatternDetails pattern) {
         if (pattern == null) {
             return false;

@@ -3,17 +3,17 @@ package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
 import appeng.crafting.CraftingCalculation;
 import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.CraftingTreeProcess;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingCalculation;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCompressedRing;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingProviders;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingPlanner;
-import git.chexson.chexsonsaeutils.crafting.color.PatternColorHelper;
 import java.util.Collection;
 import appeng.me.service.CraftingService;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -42,20 +42,32 @@ public abstract class CraftingTreeNodeDyeablePatternMixin {
             int slot,
             CallbackInfo ci
     ) {
-        if (this.parent == null) {
+        boolean rootNode = this.parent == null;
+        IPatternDetails parentDetails = rootNode
+                ? null
+                : ((CraftingTreeProcessAccessor) this.parent).chexsonsaeutils$getDetails();
+        GenericStack requestedOutput = job instanceof DyeablePatternCraftingCalculation dyeableCalculation
+                ? dyeableCalculation.chexsonsaeutils$getRequestedOutput()
+                : null;
+        this.chexsonsaeutils$preferredColor = DyeablePatternCraftingPlanner.resolvePreferredColor(
+                parentDetails,
+                rootNode,
+                requestedOutput
+        );
+        this.chexsonsaeutils$ringCalculable = false;
+        if (this.chexsonsaeutils$preferredColor == -1) {
             return;
         }
-        IPatternDetails parentDetails = ((CraftingTreeProcessAccessor) this.parent).chexsonsaeutils$getDetails();
-        this.chexsonsaeutils$preferredColor = PatternColorHelper.getPatternColor(parentDetails);
-        this.chexsonsaeutils$ringCalculable = false;
         if (cc instanceof CraftingService craftingServiceImpl) {
             var providers = ((CraftingServiceDyeablePatternAccessor) craftingServiceImpl)
                     .chexsonsaeutils$getCraftingProviders();
             if (providers instanceof DyeablePatternCraftingProviders dyeableProviders) {
+                DyeablePatternCompressedRing ring = rootNode
+                        && job instanceof DyeablePatternCraftingCalculation dyeableCalculation
+                        ? dyeableCalculation.chexsonsaeutils$getPreparedCompressedRing(dyeableProviders)
+                        : dyeableProviders.getOrCalculateCompressedRing(this.chexsonsaeutils$preferredColor);
                 this.chexsonsaeutils$ringCalculable =
-                        DyeablePatternCraftingPlanner.isCompressedRingCalculable(
-                                dyeableProviders.getOrCalculateCompressedRing(this.chexsonsaeutils$preferredColor)
-                        );
+                        DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring);
             }
         }
     }
