@@ -63,10 +63,12 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     );
     private static final Set<String> FORMAL_MACHINE_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceFormalMachineMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicFormalMachineSourceContextMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCPUClusterFormalMachineStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingStatusFormalMachineMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuFormalMachineHeartbeatMixin"
+    );
+    private static final Set<String> CRAFTING_CPU_PUSH_CONTEXT_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicFormalMachineSourceContextMixin"
     );
     private static final Set<String> FORMAL_MACHINE_PLANNING_ENTRY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServicePlanningAggregationMixin"
@@ -93,11 +95,9 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicDyeablePatternMixin"
     );
     private static final Set<String> AEA_ENHANCED_CRAFTING_STATUS_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingStatusEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingStatusEntryEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftingStatusTableRendererEnhancedStatusMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftingCPUScreenEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingPlanSummaryEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingPlanSummaryEntryEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftConfirmTableRendererEnhancedStatusMixin"
@@ -132,11 +132,17 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         if (CRAFTING_CPU_ACCESSOR_MIXINS.contains(mixinClassName)) {
             return ContinuationFeatureGate.isEnabledAtStartup()
                     || FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                    || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup();
+                    || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()
+                    || EnhancedCraftingStatusFeatureGate.isEnabledAtStartup();
         }
         if (FORMAL_MACHINE_ONLY_MIXINS.contains(mixinClassName)) {
             return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
                     || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup();
+        }
+        if (CRAFTING_CPU_PUSH_CONTEXT_MIXINS.contains(mixinClassName)) {
+            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
+                    || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()
+                    || EnhancedCraftingStatusFeatureGate.isEnabledAtStartup();
         }
         if (FORMAL_MACHINE_PLANNING_ENTRY_MIXINS.contains(mixinClassName)) {
             return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();

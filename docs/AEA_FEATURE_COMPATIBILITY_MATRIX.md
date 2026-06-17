@@ -36,7 +36,7 @@
 | Dyeable Patterns | `CraftingService.beginCraftingCalculation` | planning / parallel / continuation mixin | `CraftingServiceDyeablePatternMixin` | 禁止 AEA overwrite；必须接入协调层或窄注入。 |
 | Dyeable Patterns | `NetworkCraftingProviders` provider 索引 | 无已登记同类 mixin | 待第 1 阶段核对 | 先解析 replacement metadata，再按颜色分组。 |
 | Dyeable Patterns | `CraftingCpuLogic` execution / return path | formal-machine CPU mixin | `CraftingCpuLogicDyeablePatternMixin` | 颜色递归只影响 planning；禁止引入内部库存回流。 |
-| Enhanced Crafting Status | `CraftingCpuLogic.executeCrafting` / `pushPattern` | formal source-context / scaled pattern mixin | `CraftingCpuLogicEnhancedStatusMixin` | 只记录 push 失败输出；不改 provider 调用和 source CPU。 |
+| Enhanced Crafting Status | `CraftingCpuLogic.executeCrafting` / `pushPattern` | formal source-context / scaled pattern mixin | 复用 `CraftingCpuLogicFormalMachineSourceContextMixin` | 只记录 push 失败输出；不改 provider 调用和 source CPU。 |
 | Enhanced Crafting Status | `CraftingStatus` / `CraftingStatusEntry` serialize | `CraftingStatusFormalMachineMixin` | status / entry enhanced mixin | 序列化字段必须集中；不得多个 mixin 各自追加 buffer 字段。 |
 | Enhanced Crafting Status | `CraftingPlanSummary` / entry serialize | 无已登记同类 mixin | summary / entry enhanced mixin | Pattern Times 只追加确认页信息，不改 submit 行为。 |
 | Enhanced Crafting Status | `CraftingStatusTableRenderer` / CPU screen | continuation UI mixin | renderer / screen enhanced mixin | Waiting 优先展示；Blocked 作为补充 tooltip 或次级视觉状态。 |
@@ -69,3 +69,8 @@
 | 第 0 阶段 | AE2 + BG2 `runClient` | 待第 3 阶段 API 适配后 smoke。 |
 | 第 0 阶段 | AE2 + FTB Ultimine `runClient` | 待第 4 阶段 API 适配后 smoke。 |
 | 第 0 阶段 | AE2 + BG2 + FTB Ultimine `runClient` | 待第 3、4 阶段 API 适配后 smoke。 |
+| 第 2 阶段 | `test --tests "*EnhancedCraftingStatusServiceTest"` | 已运行通过。 |
+| 第 2 阶段 | `test --tests "*CraftingContinuationPartialSubmitTest"` | 已运行通过。 |
+| 第 2 阶段 | `test --tests "*ParallelCraftingCpuLogicContinuationTest"` | 已运行通过。 |
+| 第 2 阶段 | 客户端 Crafting CPU 屏幕 smoke | 待人工验证。 |
+| 第 2 阶段 | Craft Confirm Pattern Times smoke | 待人工验证。 |

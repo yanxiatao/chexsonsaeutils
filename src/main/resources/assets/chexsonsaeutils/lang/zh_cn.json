@@ -41,6 +41,8 @@
   "gui.chexsonsaeutils.crafting_mode.default": "默认",
   "gui.chexsonsaeutils.crafting_mode.ignore_missing": "忽略缺料",
   "gui.chexsonsaeutils.crafting_status.waiting": "等候数量：%s",
+  "gui.chexsonsaeutils.crafting_status.blocked": "阻塞数量：%s",
+  "gui.chexsonsaeutils.crafting_status.pattern_times": "样板次数：%s",
   "block.chexsonsaeutils.high_capacity_crafting_machine": "高槽位合成机",
   "block.chexsonsaeutils.ae_direct_processing_machine": "AE直连处理机",
   "gui.chexsonsaeutils.ae_direct_processing_machine": "AE直连处理机",
