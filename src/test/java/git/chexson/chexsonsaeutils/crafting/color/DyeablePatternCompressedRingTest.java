@@ -87,6 +87,7 @@ final class DyeablePatternCompressedRingTest {
 
         assertNotNull(ring);
         assertFalse(ring.calculable());
+        assertFalse(DyeablePatternCraftingPlanner.isCompressedRingCalculable(ring));
     }
 
     @Test
@@ -105,6 +106,66 @@ final class DyeablePatternCompressedRingTest {
 
         assertNotNull(first);
         assertEquals(first, second);
+    }
+
+    @Test
+    void plannerUsesCachedRingCalculableFlagInsteadOfRingPresence() {
+        AEKey redstone = AEItemKey.of(Items.REDSTONE);
+        AEKey comparator = AEItemKey.of(Items.COMPARATOR);
+        TestPatternDetails first = new TestPatternDetails(
+                AEItemKey.of(Items.PAPER),
+                0xFF336699,
+                List.of(new GenericStack(redstone, 1L)),
+                List.of(new GenericStack(comparator, 1L))
+        );
+        TestPatternDetails second = new TestPatternDetails(
+                AEItemKey.of(Items.MAP),
+                0xFF336699,
+                List.of(new GenericStack(comparator, 1L)),
+                List.of(new GenericStack(redstone, 1L))
+        );
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+        providers.addProvider(new TestProvider(first, second));
+
+        DyeablePatternCompressedRing cachedRing = providers.getOrCalculateCompressedRing(0xFF336699);
+
+        assertNotNull(cachedRing);
+        assertFalse(DyeablePatternCraftingPlanner.isCompressedRingCalculable(cachedRing));
+    }
+
+    @Test
+    void plannerFallbackStillOrdersSameColorFirstWhenRingIsNotCalculable() {
+        AEKey redstone = AEItemKey.of(Items.REDSTONE);
+        AEKey comparator = AEItemKey.of(Items.COMPARATOR);
+        TestPatternDetails redFirst = new TestPatternDetails(
+                AEItemKey.of(Items.PAPER),
+                0xFFFF0000,
+                List.of(new GenericStack(redstone, 1L)),
+                List.of(new GenericStack(comparator, 1L))
+        );
+        TestPatternDetails redSecond = new TestPatternDetails(
+                AEItemKey.of(Items.MAP),
+                0xFFFF0000,
+                List.of(new GenericStack(comparator, 1L)),
+                List.of(new GenericStack(redstone, 1L))
+        );
+        TestPatternDetails blue = new TestPatternDetails(
+                AEItemKey.of(Items.COMPASS),
+                0xFF0000FF,
+                List.of(new GenericStack(AEItemKey.of(Items.IRON_INGOT), 1L)),
+                List.of(new GenericStack(AEItemKey.of(Items.CLOCK), 1L))
+        );
+
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(List.of(redFirst, redSecond));
+        List<IPatternDetails> ordered = DyeablePatternCraftingPlanner.prioritizeSameColorFallback(
+                List.of(blue, redFirst),
+                0xFFFF0000
+        );
+
+        assertNotNull(ring);
+        assertFalse(DyeablePatternCraftingPlanner.isCompressedRingCalculable(ring));
+        assertEquals(redFirst, ordered.getFirst());
+        assertEquals(blue, ordered.getLast());
     }
 
     private record TestPatternDetails(
@@ -140,11 +201,11 @@ final class DyeablePatternCompressedRingTest {
         }
     }
 
-    private record TestProvider(IPatternDetails pattern) implements appeng.api.networking.crafting.ICraftingProvider {
+    private record TestProvider(IPatternDetails... patterns) implements appeng.api.networking.crafting.ICraftingProvider {
 
         @Override
         public java.util.List<IPatternDetails> getAvailablePatterns() {
-            return List.of(pattern);
+            return List.of(patterns);
         }
 
         @Override

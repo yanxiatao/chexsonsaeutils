@@ -10,11 +10,22 @@ import org.jetbrains.annotations.Nullable;
 /**
  * 染色样板规划协调层。
  *
- * 只负责把同色样板优先放到前面，不改动 AE2 的执行链。
+ * 只负责 planning 阶段的同色样板选择与压缩环可用性判定，不改动 AE2 的执行链。
  */
 public final class DyeablePatternCraftingPlanner {
 
     private DyeablePatternCraftingPlanner() {
+    }
+
+    public static boolean isCompressedRingCalculable(@Nullable DyeablePatternCompressedRing ring) {
+        return ring != null && ring.calculable();
+    }
+
+    public static List<IPatternDetails> prioritizeSameColorFallback(
+            @Nullable Collection<? extends IPatternDetails> patterns,
+            int preferredColor
+    ) {
+        return PatternColorHelper.orderPatternsByColor(patterns, preferredColor);
     }
 
     public static List<IPatternDetails> prioritizeSameColorPatterns(

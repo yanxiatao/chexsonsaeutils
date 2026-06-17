@@ -6,7 +6,6 @@ import appeng.api.stacks.AEKey;
 import appeng.crafting.CraftingCalculation;
 import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.CraftingTreeProcess;
-import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCompressedRing;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingProviders;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingPlanner;
 import git.chexson.chexsonsaeutils.crafting.color.PatternColorHelper;
@@ -48,16 +47,17 @@ public abstract class CraftingTreeNodeDyeablePatternMixin {
         }
         IPatternDetails parentDetails = ((CraftingTreeProcessAccessor) this.parent).chexsonsaeutils$getDetails();
         this.chexsonsaeutils$preferredColor = PatternColorHelper.getPatternColor(parentDetails);
-        Collection<IPatternDetails> sameColorPatterns = null;
+        this.chexsonsaeutils$ringCalculable = false;
         if (cc instanceof CraftingService craftingServiceImpl) {
             var providers = ((CraftingServiceDyeablePatternAccessor) craftingServiceImpl)
                     .chexsonsaeutils$getCraftingProviders();
             if (providers instanceof DyeablePatternCraftingProviders dyeableProviders) {
-                sameColorPatterns = dyeableProviders.getPatternsByColor(this.chexsonsaeutils$preferredColor);
+                this.chexsonsaeutils$ringCalculable =
+                        DyeablePatternCraftingPlanner.isCompressedRingCalculable(
+                                dyeableProviders.getOrCalculateCompressedRing(this.chexsonsaeutils$preferredColor)
+                        );
             }
         }
-        this.chexsonsaeutils$ringCalculable =
-                DyeablePatternCompressedRing.calculate(sameColorPatterns) != null;
     }
 
     @Redirect(
@@ -84,9 +84,8 @@ public abstract class CraftingTreeNodeDyeablePatternMixin {
                 return dyeableProviders.getCraftingForByColor(whatToCraft, this.chexsonsaeutils$preferredColor);
             }
         }
-        return DyeablePatternCraftingPlanner.prioritizeSameColorPatterns(
+        return DyeablePatternCraftingPlanner.prioritizeSameColorFallback(
                 patterns,
-                PatternColorHelper.orderPatternsByColor(patterns, this.chexsonsaeutils$preferredColor),
                 this.chexsonsaeutils$preferredColor
         );
     }
