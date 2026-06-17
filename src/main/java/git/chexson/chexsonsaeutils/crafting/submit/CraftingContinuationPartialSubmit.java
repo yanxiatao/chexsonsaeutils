@@ -14,6 +14,8 @@ import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
+import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingBranch;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingDetail;
@@ -31,6 +33,24 @@ import java.util.UUID;
 
 public final class CraftingContinuationPartialSubmit {
     private CraftingContinuationPartialSubmit() {
+    }
+
+    public static boolean shouldInterceptPartialSubmit(
+            ICraftingPlan plan,
+            @Nullable ICraftingCPU target,
+            CraftingContinuationMode mode
+    ) {
+        return isPartialSubmitRequest(plan, mode) && supportsPartialSubmitTarget(target);
+    }
+
+    public static boolean isPartialSubmitRequest(ICraftingPlan plan, CraftingContinuationMode mode) {
+        return plan != null
+                && plan.simulation()
+                && mode == CraftingContinuationMode.IGNORE_MISSING;
+    }
+
+    public static boolean supportsPartialSubmitTarget(@Nullable ICraftingCPU target) {
+        return !(target instanceof ParallelCraftingCPU);
     }
 
     public static ICraftingSubmitResult submitPartialJob(
@@ -166,7 +186,7 @@ public final class CraftingContinuationPartialSubmit {
         ((ElapsedTimeTrackerAccessor) accessor.getTimeTracker()).invokeAddMaxItems(amount, key.getType());
     }
 
-    static ICraftingPlan createNativeSubmissionPlan(ICraftingPlan plan) {
+    public static ICraftingPlan createNativeSubmissionPlan(ICraftingPlan plan) {
         return new NativeJobSubmissionPlan(plan);
     }
 
