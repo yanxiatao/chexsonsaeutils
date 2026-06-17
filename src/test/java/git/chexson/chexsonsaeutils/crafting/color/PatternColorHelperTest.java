@@ -62,6 +62,20 @@ final class PatternColorHelperTest {
         assertEquals(blue, ordered.getLast());
     }
 
+    @Test
+    void prioritizesSameColorPatternsFromIndexBeforeFallbackPatterns() {
+        TestPatternDetails blue = new TestPatternDetails(AEItemKey.of(Items.PAPER), 0xFF0000FF);
+        TestPatternDetails red = new TestPatternDetails(AEItemKey.of(Items.PAPER), 0xFFFF0000);
+        List<IPatternDetails> ordered = DyeablePatternCraftingPlanner.prioritizeSameColorPatterns(
+                List.of(blue, red),
+                List.of(red),
+                0xFFFF0000
+        );
+
+        assertEquals(red, ordered.getFirst());
+        assertEquals(blue, ordered.getLast());
+    }
+
     private record TestPatternDetails(AEItemKey definition, int color) implements IPatternDetails,
             IPatternDetailsColorAccessor {
         @Override

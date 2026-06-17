@@ -25,6 +25,8 @@
     "ae2.crafting.CraftingServiceAccessor",
     "ae2.crafting.CraftingTreeProcessReplacementMixin",
     "ae2.crafting.CraftingTreeNodeReplacementMixin",
+    "ae2.crafting.CraftingServiceDyeablePatternMixin",
+    "ae2.crafting.CraftingServiceDyeablePatternAccessor",
     "ae2.crafting.CraftingTreeProcessAccessor",
     "ae2.crafting.CraftingTreeNodeDyeablePatternMixin",
     "ae2.crafting.PatternDetailsDyeablePatternMixin",

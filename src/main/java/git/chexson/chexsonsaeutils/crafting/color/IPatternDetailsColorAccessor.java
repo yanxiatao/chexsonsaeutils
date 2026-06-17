@@ -22,6 +22,6 @@ public interface IPatternDetailsColorAccessor {
      * @return 有颜色返回 true。
      */
     default boolean chexsonsaeutils$hasColor() {
-        return chexsonsaeutils$getColor() >= 0;
+        return chexsonsaeutils$getColor() != -1;
     }
 }

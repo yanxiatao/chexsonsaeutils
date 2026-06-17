@@ -86,6 +86,8 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftConfirmScreenParallelCpuMixin"
     );
     private static final Set<String> AEA_DYEABLE_PATTERN_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternAccessor",
             "git.chexson.chexsonsaeutils.mixin.ae2.item.EncodedPatternItemDyeableClientMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.style.StyleManagerDyeablePatternMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsDyeablePatternMixin",

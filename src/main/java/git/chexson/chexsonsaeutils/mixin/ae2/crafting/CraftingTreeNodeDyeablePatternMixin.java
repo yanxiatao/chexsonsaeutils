@@ -6,8 +6,12 @@ import appeng.api.stacks.AEKey;
 import appeng.crafting.CraftingCalculation;
 import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.CraftingTreeProcess;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCompressedRing;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingProviders;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingPlanner;
 import git.chexson.chexsonsaeutils.crafting.color.PatternColorHelper;
 import java.util.Collection;
+import appeng.me.service.CraftingService;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
@@ -26,6 +30,8 @@ public abstract class CraftingTreeNodeDyeablePatternMixin {
 
     @Unique
     private int chexsonsaeutils$preferredColor = -1;
+    @Unique
+    private boolean chexsonsaeutils$ringCalculable;
 
     @Inject(method = "<init>", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$capturePreferredColor(
@@ -42,6 +48,16 @@ public abstract class CraftingTreeNodeDyeablePatternMixin {
         }
         IPatternDetails parentDetails = ((CraftingTreeProcessAccessor) this.parent).chexsonsaeutils$getDetails();
         this.chexsonsaeutils$preferredColor = PatternColorHelper.getPatternColor(parentDetails);
+        Collection<IPatternDetails> sameColorPatterns = null;
+        if (cc instanceof CraftingService craftingServiceImpl) {
+            var providers = ((CraftingServiceDyeablePatternAccessor) craftingServiceImpl)
+                    .chexsonsaeutils$getCraftingProviders();
+            if (providers instanceof DyeablePatternCraftingProviders dyeableProviders) {
+                sameColorPatterns = dyeableProviders.getPatternsByColor(this.chexsonsaeutils$preferredColor);
+            }
+        }
+        this.chexsonsaeutils$ringCalculable =
+                DyeablePatternCompressedRing.calculate(sameColorPatterns) != null;
     }
 
     @Redirect(
@@ -56,8 +72,21 @@ public abstract class CraftingTreeNodeDyeablePatternMixin {
             ICraftingService craftingService,
             AEKey whatToCraft
     ) {
-        return PatternColorHelper.orderPatternsByColor(
-                craftingService.getCraftingFor(whatToCraft),
+        Collection<IPatternDetails> patterns = craftingService.getCraftingFor(whatToCraft);
+        if (this.chexsonsaeutils$preferredColor == -1 || patterns.isEmpty()) {
+            return patterns;
+        }
+        if (craftingService instanceof CraftingService craftingServiceImpl) {
+            var providers = ((CraftingServiceDyeablePatternAccessor) craftingServiceImpl)
+                    .chexsonsaeutils$getCraftingProviders();
+            if (providers instanceof DyeablePatternCraftingProviders dyeableProviders
+                    && this.chexsonsaeutils$ringCalculable) {
+                return dyeableProviders.getCraftingForByColor(whatToCraft, this.chexsonsaeutils$preferredColor);
+            }
+        }
+        return DyeablePatternCraftingPlanner.prioritizeSameColorPatterns(
+                patterns,
+                PatternColorHelper.orderPatternsByColor(patterns, this.chexsonsaeutils$preferredColor),
                 this.chexsonsaeutils$preferredColor
         );
     }
