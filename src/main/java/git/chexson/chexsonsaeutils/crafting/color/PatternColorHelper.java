@@ -1,0 +1,46 @@
+package git.chexson.chexsonsaeutils.crafting.color;
+
+import appeng.api.crafting.IPatternDetails;
+import appeng.api.ids.AEComponents;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.DyedItemColor;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * 样板染色辅助逻辑。
+ *
+ * 只处理颜色元数据读取，不改动样板定义本体。
+ */
+public final class PatternColorHelper {
+
+    private PatternColorHelper() {
+    }
+
+    public static int getPatternColor(@Nullable IPatternDetails patternDetails) {
+        if (!(patternDetails instanceof IPatternDetailsColorAccessor colorAccessor)) {
+            return -1;
+        }
+        return colorAccessor.chexsonsaeutils$getColor();
+    }
+
+    public static int getPatternColor(@Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return -1;
+        }
+        return DyedItemColor.getOrDefault(stack, -1);
+    }
+
+    public static boolean hasOnlyColorData(@Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return false;
+        }
+        return stack.has(DataComponents.DYED_COLOR)
+                && !stack.has(DataComponents.CUSTOM_NAME)
+                && !stack.has(DataComponents.CUSTOM_DATA)
+                && !stack.has(AEComponents.ENCODED_CRAFTING_PATTERN)
+                && !stack.has(AEComponents.ENCODED_PROCESSING_PATTERN)
+                && !stack.has(AEComponents.ENCODED_STONECUTTING_PATTERN)
+                && !stack.has(AEComponents.ENCODED_SMITHING_TABLE_PATTERN);
+    }
+}

@@ -40,3 +40,17 @@ formalMachinePlanningAggregationEnabled = true
 	#Enable generic recipe type discovery for the AE direct processing machine.
 	#When disabled, only explicit adapters and config/datapack mappings are used.
 	genericDiscoveryEnabled = true
+
+[aeaMigration]
+	#Enable AEA dyeable pattern migration. Takes effect after restart.
+	#Default on only extends AE2 pattern color handling and must preserve existing replacement, continuation, formal-machine, and parallel CPU planning semantics.
+	dyeablePatternsEnabled = true
+	#Enable AEA enhanced crafting status migration. Takes effect after restart.
+	#Default on only adds Blocked and Pattern Times status data and must not replace existing continuation, formal-machine, or parallel CPU UI state.
+	enhancedCraftingStatusEnabled = true
+	#Enable AEA Building Gadgets 2 template-to-processing-pattern integration. Takes effect after restart.
+	#Default on has no effect unless Building Gadgets 2 is installed and must generate standard AE2 processing patterns without replacement metadata.
+	buildingGadgets2IntegrationEnabled = true
+	#Enable AEA FTB Ultimine memory-card compatibility. Takes effect after restart.
+	#Default on has no effect unless FTB Ultimine is installed and must not change AE2 single-target memory-card behavior.
+	ftbUltimineMemoryCardEnabled = true
