@@ -106,9 +106,6 @@ processingPatternReplacementEnabled = true
 ```powershell
 .\gradlew.bat build
 .\gradlew.bat test
-.\gradlew.bat continuationTest
-.\gradlew.bat patternReplacementTest
-.\gradlew.bat runGameTestServer
 .\gradlew.bat runClient
 .\gradlew.bat runServer
 ```
@@ -116,10 +113,7 @@ processingPatternReplacementEnabled = true
 命令说明：
 
 - `build`：编译、处理资源并打包。
-- `test`：运行当前配置的回归测试切片。
-- `continuationTest`：运行合成续跑相关回归测试。
-- `patternReplacementTest`：运行处理样板替换相关回归测试。
-- `runGameTestServer`：以代码驱动的真实游戏内测试主入口，优先用于自动化 smoke / GameTest 验收。
+- `test`：运行现有 JUnit 测试。
 - `runClient` / `runServer`：启动开发客户端或服务端进行补充游戏内验证。
 
 如需把 Gradle 缓存固定到仓库本地目录：

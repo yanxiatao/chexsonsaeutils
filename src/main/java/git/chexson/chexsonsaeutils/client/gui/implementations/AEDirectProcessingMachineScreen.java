@@ -11,14 +11,17 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedSignature;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
+import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -54,13 +57,13 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
     protected void init() {
         super.init();
         previousPageButton = addRenderableWidget(Button.builder(Component.literal("<"), button -> menu.previousPage())
-                .bounds(leftPos + 164, topPos + 74, 14, 16)
+                .bounds(leftPos + 164, topPos + 62, 14, 16)
                 .build());
         nextPageButton = addRenderableWidget(Button.builder(Component.literal(">"), button -> menu.nextPage())
-                .bounds(leftPos + 182, topPos + 74, 14, 16)
+                .bounds(leftPos + 182, topPos + 62, 14, 16)
                 .build());
         importJeiButton = addRenderableWidget(Button.builder(Component.literal("JEI"), button -> importCurrentJeiHints())
-                .bounds(leftPos + 150, topPos + 28, 42, 16)
+                .bounds(leftPos + 150, topPos + 16, 42, 16)
                 .build());
     }
 
@@ -195,7 +198,10 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
     private void importCurrentJeiHints() {
         MachineRecipeConfigImportRequest request = buildJeiImportRequest();
         if (request != null) {
-            menu.importJeiHints(request);
+            PacketDistributor.sendToServer(new DirectProcessingJeiImportPayload(
+                    menu.getContainerIdForPayload(),
+                    request
+            ));
         }
         dismissJeiTooltipThisFrame = true;
         clearJeiButtonFocus();
@@ -238,7 +244,11 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
         if (recipeTypeIds.isEmpty()) {
             return null;
         }
+        RegistryAccess registries = minecraft != null && minecraft.level != null
+                ? minecraft.level.registryAccess()
+                : RegistryAccess.EMPTY;
         String signatureHintsJson = MachineRecipeImportedSignature.toJson(
+                registries,
                 JeiRuntimeHolder.collectSignatureHintsForMachine(identity.machineItemId(), identity.blockId())
         );
         return new MachineRecipeConfigImportRequest(

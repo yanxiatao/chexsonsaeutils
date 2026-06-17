@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.client.integration.jei;
 
+import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingJeiImportRecipeTypeGuard;
 import mezz.jei.api.recipe.IRecipeManager;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.runtime.IJeiRuntime;
@@ -63,7 +64,7 @@ public final class JeiMachineRecipeTypeHintBridge {
             return;
         }
         ResourceLocation recipeTypeId = category.getRecipeType().getUid();
-        if (recipeTypeId == null) {
+        if (!DirectProcessingJeiImportRecipeTypeGuard.isSupportedRecipeType(recipeTypeId)) {
             return;
         }
         List<ResourceLocation> machineIds = new ArrayList<>();

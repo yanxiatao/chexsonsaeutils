@@ -70,52 +70,56 @@ public final class ParallelCpuWaitingIndex {
             Actionable mode,
             @Nullable ParallelCpuMetrics metrics
     ) {
-        return insertIntoLanes(what, amount, mode, metrics, false);
+        return insertIntoLanesAndGetResult(what, amount, mode, metrics).physicalInserted();
     }
 
-    public long insertIntoLanes(
+    public InsertResult insertIntoLanesAndGetResult(
             @Nullable AEKey what,
             long amount,
             Actionable mode,
-            @Nullable ParallelCpuMetrics metrics,
-            boolean preferBufferFinalOutput
+            @Nullable ParallelCpuMetrics metrics
     ) {
         if (what == null || amount <= 0L || mode == null) {
-            return 0L;
+            return InsertResult.EMPTY;
         }
 
         Set<ParallelCraftingLane> indexedLanes = lanesByKey.get(what);
         if (indexedLanes == null || indexedLanes.isEmpty()) {
-            return 0L;
+            return InsertResult.EMPTY;
         }
 
         return mode == Actionable.MODULATE
-                ? insertIntoLanesModulating(what, amount, metrics, preferBufferFinalOutput)
-                : simulateInsertIntoLanes(what, amount, indexedLanes, metrics, preferBufferFinalOutput);
+                ? insertIntoLanesModulating(what, amount, metrics)
+                : simulateInsertIntoLanes(what, amount, indexedLanes, metrics);
     }
 
-    private long insertIntoLanesModulating(
+    private InsertResult insertIntoLanesModulating(
             AEKey what,
             long amount,
-            @Nullable ParallelCpuMetrics metrics,
-            boolean preferBufferFinalOutput
+            @Nullable ParallelCpuMetrics metrics
     ) {
-        long inserted = 0L;
-        while (inserted < amount) {
+        long physicalInserted = 0L;
+        long accounted = 0L;
+        while (accounted < amount) {
             Set<ParallelCraftingLane> indexedLanes = lanesByKey.get(what);
             if (indexedLanes == null || indexedLanes.isEmpty()) {
                 break;
             }
 
             ParallelCraftingLane lane = indexedLanes.iterator().next();
-            long remaining = amount - inserted;
-            long accepted = Math.min(Math.max(0L,
-                            lane.insertIntoWaiting(what, remaining, Actionable.MODULATE, preferBufferFinalOutput)),
-                    remaining);
-            if (accepted > 0L) {
-                inserted += accepted;
+            long remaining = amount - accounted;
+            ParallelCraftingLane.WaitingInsertResult laneResult = lane.insertIntoWaitingAndGetResult(
+                    what,
+                    remaining,
+                    Actionable.MODULATE
+            );
+            long acceptedPhysical = Math.min(Math.max(0L, laneResult.physicalInserted()), remaining);
+            long acceptedAccounted = Math.min(Math.max(0L, laneResult.accounted()), remaining);
+            if (acceptedAccounted > 0L) {
+                physicalInserted = saturatedAdd(physicalInserted, acceptedPhysical);
+                accounted = saturatedAdd(accounted, acceptedAccounted);
                 if (metrics != null) {
-                    metrics.recordIndexedInsert(accepted);
+                    metrics.recordIndexedInsert(acceptedAccounted);
                 }
                 if (lane instanceof ParallelCraftingLaneState laneState) {
                     laneState.cluster().wakeLane(laneState);
@@ -123,37 +127,47 @@ public final class ParallelCpuWaitingIndex {
             }
 
             refreshLane(lane);
-            if (accepted <= 0L) {
+            if (acceptedAccounted <= 0L) {
                 break;
             }
         }
-        return inserted;
+        return new InsertResult(physicalInserted, accounted);
     }
 
-    private long simulateInsertIntoLanes(
+    private InsertResult simulateInsertIntoLanes(
             AEKey what,
             long amount,
             Set<ParallelCraftingLane> indexedLanes,
-            @Nullable ParallelCpuMetrics metrics,
-            boolean preferBufferFinalOutput
+            @Nullable ParallelCpuMetrics metrics
     ) {
-        long inserted = 0L;
+        long physicalInserted = 0L;
+        long accounted = 0L;
         Iterator<ParallelCraftingLane> iterator = indexedLanes.iterator();
-        while (iterator.hasNext() && inserted < amount) {
-            long remaining = amount - inserted;
+        while (iterator.hasNext() && accounted < amount) {
+            long remaining = amount - accounted;
             long accepted = Math.min(
                     Math.max(0L, iterator.next()
-                            .insertIntoWaiting(what, remaining, Actionable.SIMULATE, preferBufferFinalOutput)),
+                            .insertIntoWaiting(what, remaining, Actionable.SIMULATE)),
                     remaining
             );
             if (accepted > 0L) {
-                inserted += accepted;
+                physicalInserted = saturatedAdd(physicalInserted, accepted);
+                accounted = saturatedAdd(accounted, accepted);
                 if (metrics != null) {
                     metrics.recordIndexedInsert(accepted);
                 }
             }
         }
-        return inserted;
+        return new InsertResult(physicalInserted, accounted);
+    }
+
+    public record InsertResult(long physicalInserted, long accounted) {
+        private static final InsertResult EMPTY = new InsertResult(0L, 0L);
+
+        public InsertResult {
+            physicalInserted = Math.max(0L, physicalInserted);
+            accounted = Math.max(0L, accounted);
+        }
     }
 
     public long getRequestedAmount(@Nullable AEKey what) {

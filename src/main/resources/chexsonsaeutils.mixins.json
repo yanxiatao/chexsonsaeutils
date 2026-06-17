@@ -4,6 +4,7 @@
   "plugin": "git.chexson.chexsonsaeutils.mixin.ae2.ChexsonsaeutilsMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "ae2.automation.StorageLevelEmitterPartAccessor",
     "ae2.menu.CraftConfirmMenuContinuationMixin",
     "ae2.menu.PatternEncodingTermMenuRuleMixin",
     "ae2.crafting.PatternDetailsHelperAccessor",
@@ -12,12 +13,12 @@
     "ae2.crafting.CraftingCPUClusterFormalMachineStatusMixin",
     "ae2.crafting.CraftingStatusFormalMachineMixin",
     "ae2.menu.CraftingCPUMenuFormalMachineHeartbeatMixin",
-    "ae2.crafting.CraftingServiceStorageInventoryMixin",
     "ae2.crafting.CraftingServiceParallelCpuMixin",
     "ae2.menu.CraftingCPUMenuParallelCpuMixin",
     "ae2.menu.CraftingStatusMenuParallelCpuMixin",
     "ae2.crafting.CraftingServicePlanningAggregationMixin",
     "ae2.crafting.CraftingServiceGetProvidersFormalScaledPatternMixin",
+    "ae2.crafting.CraftingServiceAccessor",
     "ae2.crafting.CraftingTreeProcessReplacementMixin",
     "ae2.crafting.CraftingTreeNodeReplacementMixin",
     "ae2.crafting.CraftingCalculationAccessor",
@@ -25,6 +26,7 @@
     "ae2.crafting.CraftingCpuLogicAccessor",
     "ae2.crafting.CraftingCpuLogicFormalMachineScaledPatternMixin",
     "ae2.crafting.CraftingLinkAccessor",
+    "ae2.crafting.ElapsedTimeTrackerAccessor",
     "ae2.crafting.ExecutingCraftingJobAccessor",
     "ae2.crafting.ExecutingCraftingJobTaskProgressAccessor",
     "ae2.crafting.ExecutingCraftingJobFormalMachineScaledPatternMixin",
@@ -33,12 +35,14 @@
   ],
   "client": [
     "ae2.client.gui.AbstractTableRendererAccessor",
+    "ae2.client.gui.EditBoxAccessor",
     "ae2.client.gui.CraftConfirmScreenContinuationMixin",
     "ae2.client.gui.CraftConfirmScreenParallelCpuMixin",
     "ae2.client.gui.CPUSelectionListParallelCpuMixin",
     "ae2.client.gui.PatternEncodingTermScreenRuleMixin",
     "ae2.client.gui.CraftingCPUScreenContinuationMixin",
-    "ae2.client.gui.CraftingStatusTableRendererContinuationMixin"
+    "ae2.client.gui.CraftingStatusTableRendererContinuationMixin",
+    "minecraft.world.inventory.SlotAccessor"
   ],
   "minVersion": "0.8",
   "refmap": "chexsonsaeutils.refmap.json"

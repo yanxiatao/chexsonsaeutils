@@ -9,18 +9,18 @@ import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessi
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatureGate;
 import git.chexson.chexsonsaeutils.config.ProcessingPatternReplacementFeatureGate;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingReloadListener;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeUserConfigStore;
-import git.chexson.chexsonsaeutils.gametest.crafting.AE2ParallelCpuToolGameTests;
-import git.chexson.chexsonsaeutils.gametest.crafting.DirectProcessingMachineGameTests;
-import git.chexson.chexsonsaeutils.gametest.crafting.HighCapacityCraftingMachineGameTests;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
+import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacementDecoder;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.world.inventory.MenuType;
@@ -39,7 +39,7 @@ import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
-import net.neoforged.neoforge.event.RegisterGameTestsEvent;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -88,8 +88,8 @@ public class Chexsonsaeutils {
         modEventBus.addListener(this::onCommonSetup);
         modEventBus.addListener(this::onConfigLoad);
         modEventBus.addListener(this::onConfigReload);
-        modEventBus.addListener(this::onRegisterGameTests);
         modEventBus.addListener(this::onRegisterCapabilities);
+        modEventBus.addListener(this::onRegisterPayloadHandlers);
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListeners);
     }
 
@@ -98,6 +98,9 @@ public class Chexsonsaeutils {
         event.enqueueWork(Chexsonsaeutils::applyDirectProcessingMachineRecipeMappings);
         if (ProcessingPatternReplacementFeatureGate.isEnabledAtStartup()) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
+        }
+        if (FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()) {
+            event.enqueueWork(Chexsonsaeutils::registerFormalMachineAggregatedPatternDecoder);
         }
     }
 
@@ -113,23 +116,16 @@ public class Chexsonsaeutils {
         }
     }
 
-    private void onRegisterGameTests(RegisterGameTestsEvent event) {
-        boolean directProcessingGameTests = Boolean.getBoolean("chexsonsaeutils.directProcessingGameTests");
-        boolean registerHighCapacityGameTests = !directProcessingGameTests
-                || Boolean.getBoolean("chexsonsaeutils.highCapacityGameTests");
-        if (registerHighCapacityGameTests) {
-            event.register(HighCapacityCraftingMachineGameTests.class);
-        }
-        if (Boolean.getBoolean("chexsonsaeutils.parallelCpuGameTests")) {
-            event.register(AE2ParallelCpuToolGameTests.class);
-        }
-        if (directProcessingGameTests) {
-            event.register(DirectProcessingMachineGameTests.class);
-        }
-    }
-
     private void onRegisterCapabilities(RegisterCapabilitiesEvent event) {
         ChexsonsaeutilsContent.registerCapabilities(event);
+    }
+
+    private void onRegisterPayloadHandlers(RegisterPayloadHandlersEvent event) {
+        event.registrar("1").playToServer(
+                DirectProcessingJeiImportPayload.TYPE,
+                DirectProcessingJeiImportPayload.STREAM_CODEC,
+                DirectProcessingJeiImportPayload::handle
+        );
     }
 
     private void onAddReloadListeners(AddReloadListenerEvent event) {
@@ -147,6 +143,13 @@ public class Chexsonsaeutils {
 
     private static void registerProcessingPatternReplacementDecoder() {
         IPatternDetailsDecoder decoder = new ProcessingPatternReplacementDecoder();
+        List<IPatternDetailsDecoder> decoders = PatternDetailsHelperAccessor.chexsonsaeutils$getDecoders();
+        decoders.removeIf(existingDecoder -> existingDecoder.getClass() == decoder.getClass());
+        decoders.add(0, decoder);
+    }
+
+    private static void registerFormalMachineAggregatedPatternDecoder() {
+        IPatternDetailsDecoder decoder = new FormalMachineAggregatedPatternDecoder();
         List<IPatternDetailsDecoder> decoders = PatternDetailsHelperAccessor.chexsonsaeutils$getDecoders();
         decoders.removeIf(existingDecoder -> existingDecoder.getClass() == decoder.getClass());
         decoders.add(0, decoder);

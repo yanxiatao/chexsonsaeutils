@@ -1,7 +1,10 @@
 package git.chexson.chexsonsaeutils.client.integration.jei;
 
+import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingJeiImportRecipeTypeGuard;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedSignature;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedStack;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackConverterRegistry;
 import mezz.jei.api.gui.builder.IIngredientAcceptor;
 import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
 import mezz.jei.api.gui.builder.IRecipeSlotBuilder;
@@ -22,10 +25,10 @@ import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -35,11 +38,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 public final class JeiRecipeSignatureHintBridge {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(JeiRecipeSignatureHintBridge.class);
     private static final int MAX_CANDIDATE_SIGNATURES_PER_RECIPE = 256;
+    static final int MAX_IMPORTED_SIGNATURE_HINTS =
+            Math.min(1024, MachineRecipeConfigImportRequest.MAX_NETWORK_SIGNATURES);
+    private final DirectProcessingStackConverterRegistry stackConverters;
+
+    public JeiRecipeSignatureHintBridge() {
+        this(DirectProcessingStackConverterRegistry.directProcessingDefaults());
+    }
+
+    JeiRecipeSignatureHintBridge(DirectProcessingStackConverterRegistry stackConverters) {
+        this.stackConverters = stackConverters == null
+                ? DirectProcessingStackConverterRegistry.directProcessingDefaults()
+                : stackConverters;
+    }
 
     public List<MachineRecipeImportedSignature> collectSignatureHintsForMachine(
             @Nullable IJeiRuntime runtime,
@@ -67,7 +85,7 @@ public final class JeiRecipeSignatureHintBridge {
         });
         Set<MachineRecipeImportedSignature> collected = new LinkedHashSet<>();
         for (JeiMachineRecipeTypeHint hint : machineHints) {
-            if (hint == null || hint.recipeTypeId() == null) {
+            if (hint == null || !DirectProcessingJeiImportRecipeTypeGuard.isSupportedRecipeType(hint.recipeTypeId())) {
                 continue;
             }
             IRecipeCategory<?> category = categoriesById.get(hint.recipeTypeId());
@@ -75,6 +93,9 @@ public final class JeiRecipeSignatureHintBridge {
                 continue;
             }
             collected.addAll(collectCategorySignatures(recipeManager, category, hint.recipeTypeId()));
+            if (collected.size() > MAX_IMPORTED_SIGNATURE_HINTS) {
+                return List.of();
+            }
         }
         return collected.isEmpty() ? List.of() : List.copyOf(collected);
     }
@@ -85,6 +106,9 @@ public final class JeiRecipeSignatureHintBridge {
             IRecipeCategory category,
             ResourceLocation recipeTypeId
     ) {
+        if (!DirectProcessingJeiImportRecipeTypeGuard.isSupportedRecipeType(recipeTypeId)) {
+            return List.of();
+        }
         Optional<RecipeType<?>> jeiRecipeType = recipeManager.getRecipeType(recipeTypeId);
         if (jeiRecipeType.isEmpty()) {
             return List.of();
@@ -94,7 +118,12 @@ public final class JeiRecipeSignatureHintBridge {
             return List.of();
         }
         Set<MachineRecipeImportedSignature> collected = new LinkedHashSet<>();
-        lookup.get().forEach(recipe -> collected.addAll(collectRecipeSignatures(category, recipe, recipeTypeId)));
+        for (Object recipe : lookup.get().toList()) {
+            collected.addAll(collectRecipeSignatures(category, recipe, recipeTypeId));
+            if (collected.size() > MAX_IMPORTED_SIGNATURE_HINTS) {
+                return List.of();
+            }
+        }
         return collected.isEmpty() ? List.of() : List.copyOf(collected);
     }
 
@@ -104,22 +133,45 @@ public final class JeiRecipeSignatureHintBridge {
             Object recipe,
             ResourceLocation recipeTypeId
     ) {
-        CapturingRecipeLayoutBuilder builder = new CapturingRecipeLayoutBuilder();
+        if (!DirectProcessingJeiImportRecipeTypeGuard.isSupportedRecipeType(recipeTypeId)) {
+            return List.of();
+        }
+        CapturingRecipeLayoutBuilder builder = new CapturingRecipeLayoutBuilder(stackConverters);
         try {
             category.setRecipe(builder, recipe, EmptyFocusGroup.INSTANCE);
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException exception) {
+            LOGGER.debug("Failed to collect JEI recipe signature hint for {}", recipeTypeId, exception);
             return List.of();
+        }
+        return builder.toSignatures(recipeTypeId);
+    }
+
+    List<MachineRecipeImportedSignature> captureRecipeLayoutForTest(
+            ResourceLocation recipeTypeId,
+            Consumer<IRecipeLayoutBuilder> layoutPopulator
+    ) {
+        if (!DirectProcessingJeiImportRecipeTypeGuard.isSupportedRecipeType(recipeTypeId)) {
+            return List.of();
+        }
+        CapturingRecipeLayoutBuilder builder = new CapturingRecipeLayoutBuilder(stackConverters);
+        if (layoutPopulator != null) {
+            layoutPopulator.accept(builder);
         }
         return builder.toSignatures(recipeTypeId);
     }
 
     private static final class CapturingRecipeLayoutBuilder implements IRecipeLayoutBuilder {
 
+        private final DirectProcessingStackConverterRegistry stackConverters;
         private final List<CapturingRecipeSlotBuilder> slots = new ArrayList<>();
+
+        private CapturingRecipeLayoutBuilder(DirectProcessingStackConverterRegistry stackConverters) {
+            this.stackConverters = stackConverters;
+        }
 
         @Override
         public IRecipeSlotBuilder addSlot(RecipeIngredientRole role) {
-            CapturingRecipeSlotBuilder slotBuilder = new CapturingRecipeSlotBuilder(role);
+            CapturingRecipeSlotBuilder slotBuilder = new CapturingRecipeSlotBuilder(role, stackConverters);
             slots.add(slotBuilder);
             return slotBuilder;
         }
@@ -152,8 +204,8 @@ public final class JeiRecipeSignatureHintBridge {
 
         private List<MachineRecipeImportedSignature> toSignatures(ResourceLocation recipeTypeId) {
             List<List<MachineRecipeImportedStack>> inputChoices = new ArrayList<>();
+            List<List<MachineRecipeImportedStack>> catalystChoices = new ArrayList<>();
             List<MachineRecipeImportedStack> outputs = new ArrayList<>();
-            int candidateCount = 1;
             for (CapturingRecipeSlotBuilder slot : slots) {
                 List<MachineRecipeImportedStack> normalized = slot.normalizedChoices();
                 if (slot.role == RecipeIngredientRole.OUTPUT) {
@@ -172,17 +224,25 @@ public final class JeiRecipeSignatureHintBridge {
                 if (normalized.isEmpty()) {
                     continue;
                 }
+                if (slot.role == RecipeIngredientRole.INPUT) {
+                    inputChoices.add(normalized);
+                    continue;
+                }
+                catalystChoices.add(normalized);
+            }
+            List<List<MachineRecipeImportedStack>> selectedInputs = inputChoices.isEmpty() ? catalystChoices : inputChoices;
+            if (selectedInputs.isEmpty() || outputs.isEmpty()) {
+                return List.of();
+            }
+            int candidateCount = 1;
+            for (List<MachineRecipeImportedStack> normalized : selectedInputs) {
                 if (candidateCount > MAX_CANDIDATE_SIGNATURES_PER_RECIPE / normalized.size()) {
                     return List.of();
                 }
                 candidateCount *= normalized.size();
-                inputChoices.add(normalized);
-            }
-            if (inputChoices.isEmpty() || outputs.isEmpty()) {
-                return List.of();
             }
             Set<MachineRecipeImportedSignature> signatures = new LinkedHashSet<>();
-            expand(recipeTypeId, inputChoices, outputs, 0, new ArrayList<>(), signatures);
+            expand(recipeTypeId, selectedInputs, outputs, 0, new ArrayList<>(), signatures);
             return signatures.isEmpty() ? List.of() : List.copyOf(signatures);
         }
 
@@ -215,14 +275,19 @@ public final class JeiRecipeSignatureHintBridge {
     private static final class CapturingRecipeSlotBuilder implements IRecipeSlotBuilder {
 
         private final RecipeIngredientRole role;
+        private final DirectProcessingStackConverterRegistry stackConverters;
         private final List<MachineRecipeImportedStack> capturedIngredients = new ArrayList<>();
         private int x;
         private int y;
         private int width = 18;
         private int height = 18;
 
-        private CapturingRecipeSlotBuilder(RecipeIngredientRole role) {
+        private CapturingRecipeSlotBuilder(
+                RecipeIngredientRole role,
+                DirectProcessingStackConverterRegistry stackConverters
+        ) {
             this.role = role == null ? RecipeIngredientRole.RENDER_ONLY : role;
+            this.stackConverters = stackConverters;
         }
 
         private List<MachineRecipeImportedStack> normalizedChoices() {
@@ -383,26 +448,11 @@ public final class JeiRecipeSignatureHintBridge {
                 capture(typedIngredient.getIngredient());
                 return;
             }
-            if (ingredient instanceof ItemStack itemStack) {
-                MachineRecipeImportedStack imported = MachineRecipeImportedStack.fromItemStack(itemStack);
-                if (imported != null) {
-                    capturedIngredients.add(imported);
-                }
-                return;
-            }
-            if (ingredient instanceof FluidStack fluidStack) {
-                MachineRecipeImportedStack imported = MachineRecipeImportedStack.fromFluidStack(fluidStack);
-                if (imported != null) {
-                    capturedIngredients.add(imported);
-                }
-                return;
-            }
-            if (ingredient instanceof ItemLike itemLike) {
-                MachineRecipeImportedStack imported =
-                        MachineRecipeImportedStack.fromItemStack(itemLike.asItem().getDefaultInstance());
-                if (imported != null) {
-                    capturedIngredients.add(imported);
-                }
+            MachineRecipeImportedStack imported = MachineRecipeImportedStack.fromGenericStack(
+                    stackConverters == null ? null : stackConverters.convert(ingredient)
+            );
+            if (imported != null) {
+                capturedIngredients.add(imported);
             }
         }
     }

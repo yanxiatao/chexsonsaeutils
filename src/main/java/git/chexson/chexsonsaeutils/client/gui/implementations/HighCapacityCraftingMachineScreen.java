@@ -44,16 +44,16 @@ public class HighCapacityCraftingMachineScreen extends AEBaseScreen<HighCapacity
     protected void init() {
         super.init();
         previousPageButton = addRenderableWidget(Button.builder(Component.literal("<"), button -> menu.previousPage())
-                .bounds(leftPos + 166, topPos + 46, 14, 16)
+                .bounds(leftPos + 166, topPos + 34, 14, 16)
                 .build());
         nextPageButton = addRenderableWidget(Button.builder(Component.literal(">"), button -> menu.nextPage())
-                .bounds(leftPos + 184, topPos + 46, 14, 16)
+                .bounds(leftPos + 184, topPos + 34, 14, 16)
                 .build());
         clearSearchButton = addRenderableWidget(Button.builder(Component.literal("x"), button -> {
             searchBox.setValue("");
             menu.clearSearch();
-        }).bounds(leftPos + 148, topPos + 47, 14, 14).build());
-        searchBox = addRenderableWidget(new EditBox(font, leftPos + 8, topPos + 46, 136, 16, Component.literal("search")));
+        }).bounds(leftPos + 148, topPos + 35, 14, 14).build());
+        searchBox = addRenderableWidget(new EditBox(font, leftPos + 8, topPos + 34, 136, 16, Component.literal("search")));
         searchBox.setMaxLength(64);
         searchBox.setHint(Component.translatable("gui.chexsonsaeutils.high_capacity_crafting_machine.search_hint"));
     }

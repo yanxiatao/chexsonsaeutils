@@ -2,53 +2,49 @@ package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.mojang.serialization.JsonOps;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.fluids.FluidStack;
 import org.jetbrains.annotations.Nullable;
 
 public record MachineRecipeImportedStack(
-        String keyType,
-        ResourceLocation keyId,
+        @Nullable AEKey key,
         long amount
 ) {
 
     public static final String ITEM_KEY_TYPE = "item";
     public static final String FLUID_KEY_TYPE = "fluid";
+    private static final String KEY_MEMBER_NAME = "key";
+    public static final StreamCodec<RegistryFriendlyByteBuf, MachineRecipeImportedStack> STREAM_CODEC =
+            StreamCodec.composite(
+                    AEKey.STREAM_CODEC,
+                    MachineRecipeImportedStack::key,
+                    ByteBufCodecs.VAR_LONG,
+                    MachineRecipeImportedStack::amount,
+                    MachineRecipeImportedStack::new
+            );
 
     public MachineRecipeImportedStack {
-        keyType = keyType == null ? "" : keyType.trim().toLowerCase(java.util.Locale.ROOT);
         amount = Math.max(0L, amount);
+    }
+
+    boolean isStructurallyValid() {
+        return key != null && amount > 0L;
     }
 
     @Nullable
     public GenericStack toGenericStack() {
-        if (keyId == null || amount <= 0L) {
-            return null;
-        }
-        return switch (keyType) {
-            case ITEM_KEY_TYPE -> {
-                var item = BuiltInRegistries.ITEM.get(keyId);
-                if (item == null || item == net.minecraft.world.item.Items.AIR) {
-                    yield null;
-                }
-                var key = AEItemKey.of(item);
-                yield key == null ? null : new GenericStack(key, amount);
-            }
-            case FLUID_KEY_TYPE -> {
-                var fluid = BuiltInRegistries.FLUID.get(keyId);
-                if (fluid == null || fluid == net.minecraft.world.level.material.Fluids.EMPTY
-                        || amount > Integer.MAX_VALUE) {
-                    yield null;
-                }
-                var key = AEFluidKey.of(new FluidStack(fluid, (int) amount));
-                yield key == null ? null : new GenericStack(key, amount);
-            }
-            default -> null;
-        };
+        return key == null || amount <= 0L ? null : new GenericStack(key, amount);
     }
 
     @Nullable
@@ -56,61 +52,109 @@ public record MachineRecipeImportedStack(
         if (stack == null || stack.what() == null || stack.amount() <= 0L) {
             return null;
         }
-        if (stack.what() instanceof AEItemKey itemKey) {
-            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(itemKey.getItem());
-            return itemId == null ? null : new MachineRecipeImportedStack(ITEM_KEY_TYPE, itemId, stack.amount());
-        }
-        if (stack.what() instanceof AEFluidKey fluidKey) {
-            ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluidKey.getFluid());
-            return fluidId == null ? null : new MachineRecipeImportedStack(FLUID_KEY_TYPE, fluidId, stack.amount());
-        }
-        return null;
+        return new MachineRecipeImportedStack(stack.what(), stack.amount());
     }
 
     @Nullable
     public static MachineRecipeImportedStack fromItemStack(@Nullable ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return null;
-        }
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
-        if (itemId == null) {
-            return null;
-        }
-        return new MachineRecipeImportedStack(ITEM_KEY_TYPE, itemId, Math.max(1, stack.getCount()));
+        return fromGenericStack(DirectProcessingStackConverterRegistry.directProcessingDefaults().convert(stack));
     }
 
     @Nullable
     public static MachineRecipeImportedStack fromFluidStack(@Nullable FluidStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return null;
-        }
-        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(stack.getFluid());
-        if (fluidId == null) {
-            return null;
-        }
-        return new MachineRecipeImportedStack(FLUID_KEY_TYPE, fluidId, Math.max(1, stack.getAmount()));
+        return fromGenericStack(DirectProcessingStackConverterRegistry.directProcessingDefaults().convert(stack));
     }
 
-    JsonObject toJsonObject() {
-        JsonObject object = new JsonObject();
-        if (keyId != null) {
-            object.addProperty("key_id", keyId.toString());
+    @Nullable
+    JsonObject toJsonObject(HolderLookup.Provider registries) {
+        if (!isStructurallyValid()) {
+            return null;
         }
-        object.addProperty("key_type", keyType);
+        JsonElement encodedKey = encodeKey(registries, key);
+        if (encodedKey == null) {
+            return null;
+        }
+        JsonObject object = new JsonObject();
+        object.add(KEY_MEMBER_NAME, encodedKey);
         object.addProperty("amount", amount);
         return object;
     }
 
     @Nullable
-    static MachineRecipeImportedStack fromJsonObject(@Nullable JsonObject object) {
+    static MachineRecipeImportedStack fromJsonObject(HolderLookup.Provider registries, @Nullable JsonObject object) {
         if (object == null) {
             return null;
         }
+        MachineRecipeImportedStack decoded = decodeKeyObject(registries, object);
+        if (decoded != null) {
+            return decoded;
+        }
+        return decodeLegacyObject(object);
+    }
+
+    @Nullable
+    private static JsonElement encodeKey(HolderLookup.Provider registries, @Nullable AEKey key) {
+        if (registries == null || key == null) {
+            return null;
+        }
+        return AEKey.CODEC.encodeStart(registries.createSerializationContext(JsonOps.INSTANCE), key)
+                .result()
+                .orElse(null);
+    }
+
+    @Nullable
+    private static MachineRecipeImportedStack decodeKeyObject(
+            HolderLookup.Provider registries,
+            JsonObject object
+    ) {
+        if (registries == null || !object.has(KEY_MEMBER_NAME)) {
+            return null;
+        }
+        JsonElement keyElement = object.get(KEY_MEMBER_NAME);
+        AEKey decodedKey = AEKey.CODEC.parse(registries.createSerializationContext(JsonOps.INSTANCE), keyElement)
+                .result()
+                .orElse(null);
+        long decodedAmount = object.has("amount") ? object.get("amount").getAsLong() : 0L;
+        MachineRecipeImportedStack stack = new MachineRecipeImportedStack(decodedKey, decodedAmount);
+        return stack.isStructurallyValid() ? stack : null;
+    }
+
+    @Nullable
+    private static MachineRecipeImportedStack decodeLegacyObject(JsonObject object) {
         ResourceLocation keyId = readResourceLocation(object, "key_id");
         String keyType = object.has("key_type") ? object.get("key_type").getAsString() : "";
         long amount = object.has("amount") ? object.get("amount").getAsLong() : 0L;
-        MachineRecipeImportedStack stack = new MachineRecipeImportedStack(keyType, keyId, amount);
-        return stack.toGenericStack() == null ? null : stack;
+        if (keyId == null || amount <= 0L) {
+            return null;
+        }
+        return switch (keyType == null ? "" : keyType.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case ITEM_KEY_TYPE -> decodeLegacyItem(keyId, amount);
+            case FLUID_KEY_TYPE -> decodeLegacyFluid(keyId, amount);
+            default -> null;
+        };
+    }
+
+    @Nullable
+    private static MachineRecipeImportedStack decodeLegacyItem(ResourceLocation keyId, long amount) {
+        var item = BuiltInRegistries.ITEM.get(keyId);
+        if (item == null || item == net.minecraft.world.item.Items.AIR) {
+            return null;
+        }
+        AEItemKey key = AEItemKey.of(item);
+        return key == null ? null : new MachineRecipeImportedStack(key, amount);
+    }
+
+    @Nullable
+    private static MachineRecipeImportedStack decodeLegacyFluid(ResourceLocation keyId, long amount) {
+        if (amount > Integer.MAX_VALUE) {
+            return null;
+        }
+        var fluid = BuiltInRegistries.FLUID.get(keyId);
+        if (fluid == null || fluid == net.minecraft.world.level.material.Fluids.EMPTY) {
+            return null;
+        }
+        AEFluidKey key = AEFluidKey.of(new FluidStack(fluid, (int) amount));
+        return key == null ? null : new MachineRecipeImportedStack(key, amount);
     }
 
     @Nullable

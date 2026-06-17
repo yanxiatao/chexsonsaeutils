@@ -13,6 +13,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
 public final class ProcessingCompiledTask {
 
@@ -22,6 +24,7 @@ public final class ProcessingCompiledTask {
     private static final String NBT_TOTAL_TICKS = "totalTicks";
     private static final String NBT_REMAINING_TICKS = "remainingTicks";
     private static final String NBT_EXECUTION_COUNT = "executionCount";
+    private static final String NBT_SOURCE_CRAFTING_ID = "sourceCraftingId";
     private static final int MAX_EXECUTION_COUNT = ProcessingExecutionBudgetController
             .BENCHMARK_LIMITS
             .maxCoalescedExecutions();
@@ -32,6 +35,8 @@ public final class ProcessingCompiledTask {
     private final int totalTicks;
     private int executionCount;
     private int remainingTicks;
+    @Nullable
+    private UUID sourceCraftingId;
 
     public ProcessingCompiledTask(
             ItemStack patternDefinition,
@@ -47,6 +52,7 @@ public final class ProcessingCompiledTask {
         this.totalTicks = Math.max(1, totalTicks);
         this.remainingTicks = Math.max(0, remainingTicks);
         this.executionCount = normalizeExecutionCount(executionCount);
+        this.sourceCraftingId = null;
     }
 
     @Nullable
@@ -121,6 +127,15 @@ public final class ProcessingCompiledTask {
         return executionCount;
     }
 
+    @Nullable
+    public UUID sourceCraftingId() {
+        return sourceCraftingId;
+    }
+
+    public void setSourceCraftingId(@Nullable UUID sourceCraftingId) {
+        this.sourceCraftingId = sourceCraftingId;
+    }
+
     public boolean canCoalesceWith(ProcessingCompiledTask other, int maxExecutionCount) {
         if (other == null || executionCount >= normalizeMaxExecutionCount(maxExecutionCount)) {
             return false;
@@ -128,6 +143,7 @@ public final class ProcessingCompiledTask {
         return ItemStack.isSameItemSameComponents(patternDefinition, other.patternDefinition)
                 && selectedInputs.equals(other.selectedInputs)
                 && outputsPerExecution.equals(other.outputsPerExecution)
+                && Objects.equals(sourceCraftingId, other.sourceCraftingId)
                 && canBuildOutputPayloadFor(executionCount + other.executionCount);
     }
 
@@ -153,6 +169,9 @@ public final class ProcessingCompiledTask {
         tag.putInt(NBT_TOTAL_TICKS, totalTicks);
         tag.putInt(NBT_REMAINING_TICKS, remainingTicks);
         tag.putInt(NBT_EXECUTION_COUNT, executionCount);
+        if (sourceCraftingId != null) {
+            tag.putUUID(NBT_SOURCE_CRAFTING_ID, sourceCraftingId);
+        }
         return tag;
     }
 
@@ -170,7 +189,18 @@ public final class ProcessingCompiledTask {
         int totalTicks = tag.contains(NBT_TOTAL_TICKS) ? tag.getInt(NBT_TOTAL_TICKS) : 1;
         int remainingTicks = tag.contains(NBT_REMAINING_TICKS) ? tag.getInt(NBT_REMAINING_TICKS) : totalTicks;
         int executionCount = tag.contains(NBT_EXECUTION_COUNT) ? tag.getInt(NBT_EXECUTION_COUNT) : 1;
-        return new ProcessingCompiledTask(patternDefinition, inputs, outputs, totalTicks, remainingTicks, executionCount);
+        ProcessingCompiledTask task = new ProcessingCompiledTask(
+                patternDefinition,
+                inputs,
+                outputs,
+                totalTicks,
+                remainingTicks,
+                executionCount
+        );
+        if (tag.contains(NBT_SOURCE_CRAFTING_ID)) {
+            task.setSourceCraftingId(tag.getUUID(NBT_SOURCE_CRAFTING_ID));
+        }
+        return task;
     }
 
     private boolean canBuildOutputPayloadFor(int candidateExecutionCount) {

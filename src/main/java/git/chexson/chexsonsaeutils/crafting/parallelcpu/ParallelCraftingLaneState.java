@@ -11,10 +11,13 @@ import appeng.api.networking.energy.IEnergyService;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEKey;
 import appeng.crafting.CraftingLink;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
+import java.util.Set;
 import java.util.UUID;
 
 final class ParallelCraftingLaneState implements ParallelCraftingLane {
@@ -23,17 +26,35 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
     private final UUID laneId;
     private final ParallelCraftingCPU activeCpu;
     private final ParallelCraftingCpuLogic logic;
-    private long nextEligibleTick;
     @Nullable
     private ICraftingPlan submittedPlan;
-    private QueueState queueState = QueueState.NONE;
 
     ParallelCraftingLaneState(ParallelCraftingCpuCluster cluster, UUID laneId, long currentTick) {
         this.cluster = cluster;
         this.laneId = laneId;
         this.activeCpu = new ParallelCraftingCPU(cluster, laneId);
         this.logic = new ParallelCraftingCpuLogic(this);
-        this.nextEligibleTick = currentTick;
+    }
+
+    static ParallelCraftingLaneState readFromNBT(
+            ParallelCraftingCpuCluster cluster,
+            CompoundTag data,
+            HolderLookup.Provider registries,
+            long currentTick
+    ) {
+        UUID laneId = data.hasUUID("laneId") ? data.getUUID("laneId") : UUID.randomUUID();
+        ParallelCraftingLaneState lane = new ParallelCraftingLaneState(cluster, laneId, currentTick);
+        lane.logic.readFromNBT(data.getCompound("logic"), registries);
+        return lane;
+    }
+
+    CompoundTag writeToNBT(HolderLookup.Provider registries) {
+        CompoundTag data = new CompoundTag();
+        data.putUUID("laneId", laneId);
+        CompoundTag logicTag = new CompoundTag();
+        logic.writeToNBT(logicTag, registries);
+        data.put("logic", logicTag);
+        return data;
     }
 
     ICraftingSubmitResult trySubmitJob(
@@ -53,23 +74,18 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
         logic.enableNotifications();
     }
 
-    TickResult tick(
+    void tick(
             IEnergyService energyGrid,
             appeng.me.service.CraftingService craftingService,
-            ParallelCpuGridBudgetLedger budgetLedger,
-            ParallelCpuProviderBackoff providerBackoff,
             ParallelCpuMetrics metrics,
             long currentTick
     ) {
-        boolean zeroProgress = logic.tickCraftingLogic(
+        logic.tickCraftingLogic(
                 energyGrid,
                 craftingService,
-                budgetLedger,
-                providerBackoff,
                 metrics,
                 currentTick
         );
-        return new TickResult(zeroProgress);
     }
 
     @Override
@@ -112,19 +128,28 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
         return logic.getWaitingFor(what);
     }
 
-    @Override
-    public long insertIntoWaiting(AEKey what, long amount, Actionable mode) {
-        return insertIntoWaiting(what, amount, mode, false);
+    boolean hasWaitingFor() {
+        return logic.hasWaitingFor();
+    }
+
+    void appendWaitingFor(Set<AEKey> target) {
+        logic.getAllWaitingFor(target);
     }
 
     @Override
-    public long insertIntoWaiting(
-            AEKey what,
-            long amount,
-            Actionable mode,
-            boolean preferBufferFinalOutput
-    ) {
-        return logic.insert(what, amount, mode, preferBufferFinalOutput);
+    public long insertIntoWaiting(AEKey what, long amount, Actionable mode) {
+        return logic.insert(what, amount, mode);
+    }
+
+    @Override
+    public WaitingInsertResult insertIntoWaitingAndGetResult(AEKey what, long amount, Actionable mode) {
+        long waitingBefore = mode == Actionable.MODULATE ? logic.getWaitingFor(what) : 0L;
+        long physicalInserted = logic.insert(what, amount, mode);
+        if (mode != Actionable.MODULATE) {
+            return new WaitingInsertResult(physicalInserted, physicalInserted);
+        }
+        long accounted = Math.max(0L, waitingBefore - logic.getWaitingFor(what));
+        return new WaitingInsertResult(physicalInserted, accounted);
     }
 
     @Nullable
@@ -135,6 +160,10 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
     @Nullable
     CraftingLink getRequesterLink() {
         return logic.getRequesterLink();
+    }
+
+    void restoreRequesterLink(Iterable<ICraftingRequester> requesters) {
+        logic.restoreRequesterLink(requesters);
     }
 
     void appendServiceLinks(Collection<CraftingLink> target) {
@@ -177,52 +206,8 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
         return logic.isCantStoreItems();
     }
 
-    boolean markRunnableQueued() {
-        if (queueState == QueueState.RUNNABLE) {
-            return false;
-        }
-        queueState = QueueState.RUNNABLE;
-        return true;
-    }
-
-    boolean markDelayedQueued() {
-        if (queueState == QueueState.DELAYED) {
-            return false;
-        }
-        queueState = QueueState.DELAYED;
-        return true;
-    }
-
-    boolean markRunnableDequeued() {
-        if (queueState != QueueState.RUNNABLE) {
-            return false;
-        }
-        queueState = QueueState.NONE;
-        return true;
-    }
-
-    boolean markDelayedDequeued() {
-        if (queueState != QueueState.DELAYED) {
-            return false;
-        }
-        queueState = QueueState.NONE;
-        return true;
-    }
-
-    long nextEligibleTick() {
-        return nextEligibleTick;
-    }
-
-    void delayUntil(long nextEligibleTick) {
-        this.nextEligibleTick = Math.max(this.nextEligibleTick + 1L, nextEligibleTick);
-    }
-
     void cancel() {
         logic.cancel();
-    }
-
-    void flushPendingReinjectInputsWithoutBudget() {
-        logic.flushPendingReinjectInputsWithoutBudget();
     }
 
     long getLastModifiedOnTick() {
@@ -241,12 +226,4 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
         return logic.getPendingOutputs(what);
     }
 
-    record TickResult(boolean zeroProgress) {
-    }
-
-    private enum QueueState {
-        NONE,
-        RUNNABLE,
-        DELAYED
-    }
 }

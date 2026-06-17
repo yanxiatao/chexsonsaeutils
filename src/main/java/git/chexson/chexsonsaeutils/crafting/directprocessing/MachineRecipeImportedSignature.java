@@ -5,6 +5,10 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,6 +22,20 @@ public record MachineRecipeImportedSignature(
         List<MachineRecipeImportedStack> inputs,
         List<MachineRecipeImportedStack> outputs
 ) {
+    private static final int MAX_NETWORK_IO_STACKS = 64;
+    private static final StreamCodec<RegistryFriendlyByteBuf, List<MachineRecipeImportedStack>>
+            NETWORK_STACK_LIST_STREAM_CODEC =
+            MachineRecipeImportedStack.STREAM_CODEC.apply(ByteBufCodecs.list(MAX_NETWORK_IO_STACKS));
+    public static final StreamCodec<RegistryFriendlyByteBuf, MachineRecipeImportedSignature> STREAM_CODEC =
+            StreamCodec.composite(
+                    ResourceLocation.STREAM_CODEC,
+                    MachineRecipeImportedSignature::recipeTypeId,
+                    NETWORK_STACK_LIST_STREAM_CODEC,
+                    MachineRecipeImportedSignature::inputs,
+                    NETWORK_STACK_LIST_STREAM_CODEC,
+                    MachineRecipeImportedSignature::outputs,
+                    MachineRecipeImportedSignature::new
+            );
 
     public MachineRecipeImportedSignature {
         inputs = copyValid(inputs);
@@ -83,61 +101,75 @@ public record MachineRecipeImportedSignature(
                 : new MachineRecipeImportedSignature(recipeTypeId, inputPayloads, outputPayloads);
     }
 
-    JsonObject toJsonObject() {
-        JsonObject object = new JsonObject();
-        if (recipeTypeId != null) {
-            object.addProperty("recipe_type", recipeTypeId.toString());
+    @Nullable
+    JsonObject toJsonObject(HolderLookup.Provider registries) {
+        if (recipeTypeId == null || inputs.isEmpty() || outputs.isEmpty()) {
+            return null;
         }
         JsonArray inputArray = new JsonArray();
         for (MachineRecipeImportedStack input : inputs) {
-            if (input != null) {
-                inputArray.add(input.toJsonObject());
+            JsonObject encoded = input == null ? null : input.toJsonObject(registries);
+            if (encoded == null) {
+                return null;
             }
+            inputArray.add(encoded);
         }
         JsonArray outputArray = new JsonArray();
         for (MachineRecipeImportedStack output : outputs) {
-            if (output != null) {
-                outputArray.add(output.toJsonObject());
+            JsonObject encoded = output == null ? null : output.toJsonObject(registries);
+            if (encoded == null) {
+                return null;
             }
+            outputArray.add(encoded);
         }
+        JsonObject object = new JsonObject();
+        object.addProperty("recipe_type", recipeTypeId.toString());
         object.add("inputs", inputArray);
         object.add("outputs", outputArray);
         return object;
     }
 
-    public static String toJson(List<MachineRecipeImportedSignature> signatures) {
+    public static String toJson(HolderLookup.Provider registries, List<MachineRecipeImportedSignature> signatures) {
         JsonArray root = new JsonArray();
         if (signatures != null) {
             for (MachineRecipeImportedSignature signature : signatures) {
-                if (signature != null && signature.recipeTypeId() != null
-                        && !signature.inputs().isEmpty() && !signature.outputs().isEmpty()) {
-                    root.add(signature.toJsonObject());
+                JsonObject encoded = signature == null ? null : signature.toJsonObject(registries);
+                if (encoded != null) {
+                    root.add(encoded);
                 }
             }
         }
         return root.toString();
     }
 
-    public static List<MachineRecipeImportedSignature> parseJson(@Nullable String json) {
+    public static List<MachineRecipeImportedSignature> parseJson(
+            HolderLookup.Provider registries,
+            @Nullable String json
+    ) {
         if (json == null || json.isBlank()) {
             return List.of();
         }
         try {
             JsonElement root = JsonParser.parseString(json);
-            return root != null && root.isJsonArray() ? parseJsonArray(root.getAsJsonArray()) : List.of();
+            return root != null && root.isJsonArray()
+                    ? parseJsonArray(registries, root.getAsJsonArray())
+                    : List.of();
         } catch (RuntimeException ignored) {
             return List.of();
         }
     }
 
-    public static List<MachineRecipeImportedSignature> parseJsonArray(@Nullable JsonArray root) {
+    public static List<MachineRecipeImportedSignature> parseJsonArray(
+            HolderLookup.Provider registries,
+            @Nullable JsonArray root
+    ) {
         if (root == null || root.isEmpty()) {
             return List.of();
         }
         List<MachineRecipeImportedSignature> parsed = new ArrayList<>(root.size());
         for (JsonElement element : root) {
             if (element != null && element.isJsonObject()) {
-                MachineRecipeImportedSignature signature = fromJsonObject(element.getAsJsonObject());
+                MachineRecipeImportedSignature signature = fromJsonObject(registries, element.getAsJsonObject());
                 if (signature != null) {
                     parsed.add(signature);
                 }
@@ -160,15 +192,18 @@ public record MachineRecipeImportedSignature(
     }
 
     @Nullable
-    private static MachineRecipeImportedSignature fromJsonObject(@Nullable JsonObject object) {
+    private static MachineRecipeImportedSignature fromJsonObject(
+            HolderLookup.Provider registries,
+            @Nullable JsonObject object
+    ) {
         if (object == null) {
             return null;
         }
         ResourceLocation recipeTypeId = readResourceLocation(object, "recipe_type");
-        List<MachineRecipeImportedStack> inputs = readStacks(object, "inputs");
-        List<MachineRecipeImportedStack> outputs = readStacks(object, "outputs");
+        List<MachineRecipeImportedStack> inputs = readStacks(registries, object, "inputs");
+        List<MachineRecipeImportedStack> outputs = readStacks(registries, object, "outputs");
         MachineRecipeImportedSignature signature = new MachineRecipeImportedSignature(recipeTypeId, inputs, outputs);
-        return signature.toRecipeSignature() == null ? null : signature;
+        return recipeTypeId == null || signature.inputs().isEmpty() || signature.outputs().isEmpty() ? null : signature;
     }
 
     private static List<MachineRecipeImportedStack> copyValid(List<MachineRecipeImportedStack> stacks) {
@@ -177,21 +212,26 @@ public record MachineRecipeImportedSignature(
         }
         List<MachineRecipeImportedStack> copied = new ArrayList<>(stacks.size());
         for (MachineRecipeImportedStack stack : stacks) {
-            if (stack != null && stack.toGenericStack() != null) {
+            if (stack != null && stack.isStructurallyValid()) {
                 copied.add(stack);
             }
         }
         return copied.isEmpty() ? List.of() : List.copyOf(copied);
     }
 
-    private static List<MachineRecipeImportedStack> readStacks(JsonObject object, String memberName) {
+    private static List<MachineRecipeImportedStack> readStacks(
+            HolderLookup.Provider registries,
+            JsonObject object,
+            String memberName
+    ) {
         if (!object.has(memberName) || !object.get(memberName).isJsonArray()) {
             return List.of();
         }
         List<MachineRecipeImportedStack> stacks = new ArrayList<>();
         for (JsonElement element : object.getAsJsonArray(memberName)) {
             if (element != null && element.isJsonObject()) {
-                MachineRecipeImportedStack stack = MachineRecipeImportedStack.fromJsonObject(element.getAsJsonObject());
+                MachineRecipeImportedStack stack =
+                        MachineRecipeImportedStack.fromJsonObject(registries, element.getAsJsonObject());
                 if (stack != null) {
                     stacks.add(stack);
                 }

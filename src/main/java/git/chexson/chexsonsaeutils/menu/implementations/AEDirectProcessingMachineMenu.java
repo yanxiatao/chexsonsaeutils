@@ -32,7 +32,6 @@ public class AEDirectProcessingMachineMenu extends UpgradeableMenu<AEDirectProce
     private static final String ACTION_NEXT_PAGE = "nextPage";
     private static final String ACTION_PREVIOUS_PAGE = "previousPage";
     private static final String ACTION_GOTO_PAGE = "gotoPage";
-    private static final String ACTION_IMPORT_JEI_HINTS = "importJeiHints";
 
     @GuiSync(40)
     public String detectedRecipeTypeSummary = "-";
@@ -68,7 +67,6 @@ public class AEDirectProcessingMachineMenu extends UpgradeableMenu<AEDirectProce
         registerClientAction(ACTION_NEXT_PAGE, this::nextPageOnServer);
         registerClientAction(ACTION_PREVIOUS_PAGE, this::previousPageOnServer);
         registerClientAction(ACTION_GOTO_PAGE, Integer.class, this::gotoPageOnServer);
-        registerClientAction(ACTION_IMPORT_JEI_HINTS, MachineRecipeConfigImportRequest.class, this::importJeiHintsOnServer);
     }
 
     @Override
@@ -132,15 +130,19 @@ public class AEDirectProcessingMachineMenu extends UpgradeableMenu<AEDirectProce
         return pageIndex + 1 < pageCount;
     }
 
-    public void importJeiHints(MachineRecipeConfigImportRequest request) {
-        if (request == null) {
-            return;
+    public int getContainerIdForPayload() {
+        return containerId;
+    }
+
+    public boolean applyJeiImportRequestFromClient(MachineRecipeConfigImportRequest request) {
+        if (request == null || getHost() == null) {
+            return false;
         }
-        if (isClientSide()) {
-            sendClientAction(ACTION_IMPORT_JEI_HINTS, request);
-        } else {
-            importJeiHintsOnServer(request);
+        if (!getHost().importUserConfigMappingForMenu(request)) {
+            return false;
         }
+        broadcastChanges();
+        return true;
     }
 
     public Component getSummaryLine() {
@@ -282,12 +284,6 @@ public class AEDirectProcessingMachineMenu extends UpgradeableMenu<AEDirectProce
     private void gotoPageOnServer(int pageIndex) {
         getHost().setActivePage(pageIndex);
         broadcastChanges();
-    }
-
-    private void importJeiHintsOnServer(MachineRecipeConfigImportRequest request) {
-        if (getHost().importUserConfigMappingForMenu(request)) {
-            broadcastChanges();
-        }
     }
 
     private static final class MachineBindingSlot extends RestrictedInputSlot {
