@@ -112,6 +112,7 @@ final class AeaMigrationFeatureGateTest {
                 "ae2.crafting.CraftingServiceDyeablePatternMixin",
                 "ae2.crafting.CraftingTreeNodeDyeablePatternMixin",
                 "ae2.menu.CraftingStatusEntryEnhancedStatusMixin",
+                "ae2.client.gui.CraftingCPUScreenEnhancedStatusMixin",
                 "buildinggadgets2.TemplateManagerHandlerMixin",
                 "ftbultimine.RightClickDispatcherMemoryCardMixin"
         );

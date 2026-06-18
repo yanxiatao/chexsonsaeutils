@@ -53,6 +53,7 @@
     "ae2.client.gui.CPUSelectionListParallelCpuMixin",
     "ae2.client.gui.PatternEncodingTermScreenRuleMixin",
     "ae2.item.EncodedPatternItemDyeableClientMixin",
+    "ae2.client.gui.CraftingCPUScreenEnhancedStatusMixin",
     "ae2.client.gui.CraftingCPUScreenContinuationMixin",
     "ae2.client.gui.CraftingStatusTableRendererContinuationMixin",
     "ae2.client.gui.CraftingStatusTableRendererEnhancedStatusMixin",

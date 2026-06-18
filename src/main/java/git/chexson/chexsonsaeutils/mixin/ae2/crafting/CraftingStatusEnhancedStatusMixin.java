@@ -25,7 +25,8 @@ public abstract class CraftingStatusEnhancedStatusMixin {
         }
         cir.setReturnValue(EnhancedCraftingStatusService.attachBlockedAmounts(
                 cir.getReturnValue(),
-                EnhancedCraftingBlockedTracker.from(logic)
+                EnhancedCraftingBlockedTracker.from(logic),
+                changes
         ));
     }
 }

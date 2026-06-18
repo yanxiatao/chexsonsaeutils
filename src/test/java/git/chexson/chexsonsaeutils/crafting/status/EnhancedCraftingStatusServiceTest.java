@@ -10,6 +10,7 @@ import appeng.menu.me.crafting.CraftingPlanSummary;
 import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import appeng.menu.me.crafting.CraftingStatus;
 import appeng.menu.me.crafting.CraftingStatusEntry;
+import appeng.menu.me.common.IncrementalUpdateHelper;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,34 @@ final class EnhancedCraftingStatusServiceTest {
         EnhancedCraftingStatusService.attachBlockedAmounts(status, tracker);
 
         assertEquals(3L, entry.chexsonsaeutils$blockedAmount());
+    }
+
+    @Test
+    void attachesBlockedAmountsToIncrementalEntriesBySerial() {
+        AEItemKey output = AEItemKey.of(Items.CRAFTING_TABLE);
+        IncrementalUpdateHelper changes = new IncrementalUpdateHelper();
+        long serial = changes.getOrAssignSerial(output);
+        TestStatusEntry entry = new TestStatusEntry(serial, null, 0L, 0L, 4L);
+        CraftingStatus status = new CraftingStatus(false, 0L, 0L, 0L, List.of(entry), false);
+        TestBlockedTracker tracker = new TestBlockedTracker(Map.of(output, 3L));
+
+        EnhancedCraftingStatusService.attachBlockedAmounts(status, tracker, changes);
+
+        assertEquals(3L, entry.chexsonsaeutils$blockedAmount());
+    }
+
+    @Test
+    void copiesBlockedAmountsAfterClientIncrementalMerge() {
+        AEItemKey output = AEItemKey.of(Items.CRAFTING_TABLE);
+        TestStatusEntry mergedEntry = new TestStatusEntry(1L, output, 0L, 0L, 4L);
+        TestStatusEntry updateEntry = new TestStatusEntry(1L, null, 0L, 0L, 4L);
+        updateEntry.chexsonsaeutils$setBlockedAmount(3L);
+        CraftingStatus merged = new CraftingStatus(true, 0L, 0L, 0L, List.of(mergedEntry), false);
+        CraftingStatus update = new CraftingStatus(false, 0L, 0L, 0L, List.of(updateEntry), false);
+
+        EnhancedCraftingStatusService.copyBlockedAmountsBySerial(merged, update);
+
+        assertEquals(3L, mergedEntry.chexsonsaeutils$blockedAmount());
     }
 
     @Test

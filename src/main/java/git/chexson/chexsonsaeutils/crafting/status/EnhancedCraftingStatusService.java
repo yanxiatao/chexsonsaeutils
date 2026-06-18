@@ -6,6 +6,7 @@ import appeng.menu.me.crafting.CraftingPlanSummary;
 import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import appeng.menu.me.crafting.CraftingStatus;
 import appeng.menu.me.crafting.CraftingStatusEntry;
+import appeng.menu.me.common.IncrementalUpdateHelper;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -19,17 +20,50 @@ public final class EnhancedCraftingStatusService {
     }
 
     public static CraftingStatus attachBlockedAmounts(CraftingStatus status, EnhancedCraftingBlockedTracker tracker) {
+        return attachBlockedAmounts(status, tracker, null);
+    }
+
+    public static CraftingStatus attachBlockedAmounts(
+            CraftingStatus status,
+            EnhancedCraftingBlockedTracker tracker,
+            IncrementalUpdateHelper changes
+    ) {
         if (status == null || tracker == null) {
             return status;
         }
 
         for (CraftingStatusEntry entry : status.getEntries()) {
-            if (entry.getWhat() == null || !(entry instanceof EnhancedCraftingStatusEntry enhancedEntry)) {
+            AEKey what = resolveStatusEntryKey(entry, changes);
+            if (what == null || !(entry instanceof EnhancedCraftingStatusEntry enhancedEntry)) {
                 continue;
             }
-            enhancedEntry.chexsonsaeutils$setBlockedAmount(tracker.chexsonsaeutils$blockedAmount(entry.getWhat()));
+            enhancedEntry.chexsonsaeutils$setBlockedAmount(tracker.chexsonsaeutils$blockedAmount(what));
         }
         return status;
+    }
+
+    public static CraftingStatus copyBlockedAmountsBySerial(CraftingStatus target, CraftingStatus source) {
+        if (target == null || source == null) {
+            return target;
+        }
+
+        Map<Long, Long> blockedAmounts = new HashMap<>();
+        for (CraftingStatusEntry entry : source.getEntries()) {
+            if (entry instanceof EnhancedCraftingStatusEntry enhancedEntry) {
+                blockedAmounts.put(entry.getSerial(), enhancedEntry.chexsonsaeutils$blockedAmount());
+            }
+        }
+        if (blockedAmounts.isEmpty()) {
+            return target;
+        }
+
+        for (CraftingStatusEntry entry : target.getEntries()) {
+            if (entry instanceof EnhancedCraftingStatusEntry enhancedEntry
+                    && blockedAmounts.containsKey(entry.getSerial())) {
+                enhancedEntry.chexsonsaeutils$setBlockedAmount(blockedAmounts.get(entry.getSerial()));
+            }
+        }
+        return target;
     }
 
     public static CraftingPlanSummary attachPatternTimes(CraftingPlanSummary summary, ICraftingPlan plan) {
@@ -80,5 +114,15 @@ public final class EnhancedCraftingStatusService {
 
         timesByOutput.replaceAll((ignored, values) -> List.copyOf(values));
         return timesByOutput;
+    }
+
+    private static AEKey resolveStatusEntryKey(CraftingStatusEntry entry, IncrementalUpdateHelper changes) {
+        if (entry.getWhat() != null) {
+            return entry.getWhat();
+        }
+        if (changes == null) {
+            return null;
+        }
+        return changes.getBySerial(entry.getSerial());
     }
 }

@@ -97,6 +97,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> AEA_ENHANCED_CRAFTING_STATUS_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingStatusEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingStatusEntryEnhancedStatusMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftingCPUScreenEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftingStatusTableRendererEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingPlanSummaryEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingPlanSummaryEntryEnhancedStatusMixin",
