@@ -237,7 +237,7 @@ final class DyeablePatternCompressedRingTest {
     }
 
     @Test
-    void ringReplacementPlanningRejectsReplacementAwareInputs() {
+    void ringReplacementPlanningAllowsSmithingTemplateSubstitutes() {
         AEKey iron = AEItemKey.of(Items.IRON_INGOT);
         AEKey copper = AEItemKey.of(Items.COPPER_INGOT);
         AEKey piston = AEItemKey.of(Items.PISTON);
@@ -251,11 +251,11 @@ final class DyeablePatternCompressedRingTest {
 
         assertNotNull(ring);
         assertTrue(DyeablePatternCraftingPlanner.allowsRingReplacementCandidate(ring, 0xFF336699, piston));
-        assertFalse(DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring));
+        assertTrue(DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring));
     }
 
     @Test
-    void sameColorPrioritizationFallsBackWhenReplacementAwareRingCannotBePlanned() {
+    void sameColorPrioritizationUsesRingForReplacementAwareSmithingLikeInputs() {
         AEKey iron = AEItemKey.of(Items.IRON_INGOT);
         AEKey copper = AEItemKey.of(Items.COPPER_INGOT);
         AEKey piston = AEItemKey.of(Items.PISTON);
@@ -278,7 +278,7 @@ final class DyeablePatternCompressedRingTest {
         List<IPatternDetails> ordered = providers.getCraftingForByColor(piston, 0xFF336699);
 
         assertNotNull(ring);
-        assertFalse(DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring));
+        assertTrue(DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring));
         assertEquals(replacementAware, ordered.getFirst());
     }
 

@@ -37,15 +37,7 @@ public final class DyeablePatternCraftingPlanner {
     public static boolean canPlanRingReplacementWithoutSwallowingReplacement(
             @Nullable DyeablePatternCompressedRing ring
     ) {
-        if (!isCompressedRingCalculable(ring)) {
-            return false;
-        }
-        for (IPatternDetails pattern : ring.executionRatio().keySet()) {
-            if (hasReplacementAwareAlternatives(pattern)) {
-                return false;
-            }
-        }
-        return true;
+        return isCompressedRingCalculable(ring);
     }
 
     public static int resolvePreferredColor(
@@ -57,19 +49,6 @@ public final class DyeablePatternCraftingPlanner {
             return DyeablePatternCraftingCalculation.resolveRequestedColor(requestedOutput);
         }
         return PatternColorHelper.getPatternColor(parentDetails);
-    }
-
-    private static boolean hasReplacementAwareAlternatives(@Nullable IPatternDetails pattern) {
-        if (pattern == null) {
-            return false;
-        }
-        for (IPatternDetails.IInput input : pattern.getInputs()) {
-            GenericStack[] possibleInputs = input.getPossibleInputs();
-            if (possibleInputs != null && possibleInputs.length > 1) {
-                return true;
-            }
-        }
-        return false;
     }
 
     public static List<IPatternDetails> prioritizeSameColorFallback(
