@@ -247,7 +247,7 @@ final class DyeablePatternCraftingTreeNode {
         }
 
         ICraftingService craftingService = gridNode.getGrid().getCraftingService();
-        DyeablePatternCompressedRing ring = this.job.getCompressedRing(craftingService, processColor);
+        DyeablePatternCompressedRing ring = this.job.getCompressedRing(craftingService, processColor, this.what);
         return ring != null && ring.entryPoints().contains(this.what);
     }
 
@@ -308,7 +308,7 @@ final class DyeablePatternCraftingTreeNode {
         }
 
         ICraftingService craftingService = gridNode.getGrid().getCraftingService();
-        DyeablePatternCompressedRing ring = this.job.getCompressedRing(craftingService, ringColor);
+        DyeablePatternCompressedRing ring = this.job.getCompressedRing(craftingService, ringColor, this.what);
         if (!DyeablePatternCraftingPlanner.isCompressedRingCalculable(ring)) {
             this.job.markRingReplacementAsFailed(ringColor, this.what);
             return 0L;

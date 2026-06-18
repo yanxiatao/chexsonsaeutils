@@ -5,7 +5,6 @@ import appeng.api.networking.IGridNode;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.stacks.AEKey;
 import appeng.me.service.helpers.NetworkCraftingProviders;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -13,6 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * 染色样板索引服务。
@@ -69,10 +69,25 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
         );
     }
 
+    @Nullable
+    public DyeablePatternCompressedRing getOrCalculateCompressedRing(int color, @Nullable AEKey entryPoint) {
+        if (entryPoint == null) {
+            return getOrCalculateCompressedRing(color);
+        }
+        return DyeablePatternCompressedRing.calculate(collectConnectedPatterns(color, entryPoint));
+    }
+
     public List<IPatternDetails> getCraftingForByColor(AEKey whatToCraft, int color) {
+        DyeablePatternCompressedRing ring = getOrCalculateCompressedRing(color, whatToCraft);
+        if (ring == null) {
+            return DyeablePatternCraftingPlanner.prioritizeSameColorFallback(
+                    super.getCraftingFor(whatToCraft),
+                    color
+            );
+        }
         return DyeablePatternCraftingPlanner.prioritizeSameColorPatterns(
                 super.getCraftingFor(whatToCraft),
-                getPatternsByColor(color),
+                ring.executionRatio().keySet(),
                 color
         );
     }
@@ -81,15 +96,13 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
         if (catalyst == null) {
             return null;
         }
-        for (Set<IPatternDetails> patterns : this.patternsByColor.values()) {
-            List<IPatternDetails> recursivePatterns = new ArrayList<>();
-            for (IPatternDetails pattern : patterns) {
-                if (isRecursiveProducer(pattern, catalyst)) {
-                    recursivePatterns.add(pattern);
-                }
-            }
-            DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(recursivePatterns);
-            if (ring != null && ring.netOutputs().get(catalyst) > 0L) {
+        for (Map.Entry<Integer, Set<IPatternDetails>> entry : this.patternsByColor.entrySet()) {
+            DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(
+                    collectConnectedPatterns(entry.getKey(), catalyst)
+            );
+            if (ring != null
+                    && ring.netOutputs().get(catalyst) > 0L
+                    && ring.entryPoints().contains(catalyst)) {
                 return ring;
             }
         }
@@ -102,6 +115,110 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
             this.patternsByColor.computeIfAbsent(color, ignored -> new HashSet<>()).add(pattern);
         }
         this.compressedRingCache.clear();
+    }
+
+    private static boolean containsEntryPoint(IPatternDetails pattern, AEKey entryPoint) {
+        if (pattern == null || entryPoint == null) {
+            return false;
+        }
+        for (var output : pattern.getOutputs()) {
+            if (output != null && output.what() != null && entryPoint.matches(output)) {
+                return true;
+            }
+        }
+        for (var input : pattern.getInputs()) {
+            if (input == null || input.getPossibleInputs() == null) {
+                continue;
+            }
+            for (var possibleInput : input.getPossibleInputs()) {
+                if (possibleInput != null && possibleInput.what() != null && entryPoint.matches(possibleInput)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private Collection<IPatternDetails> collectConnectedPatterns(int color, AEKey entryPoint) {
+        Set<IPatternDetails> remaining = new HashSet<>(getPatternsByColor(color));
+        Set<AEKey> producedKeys = collectProducedKeys(remaining);
+        Set<IPatternDetails> connected = new HashSet<>();
+        Set<AEKey> connectedKeys = new HashSet<>();
+        connectedKeys.add(entryPoint);
+
+        boolean changed;
+        do {
+            changed = false;
+            for (var iterator = remaining.iterator(); iterator.hasNext();) {
+                IPatternDetails pattern = iterator.next();
+                if (!sharesAnyKey(pattern, connectedKeys)) {
+                    continue;
+                }
+                iterator.remove();
+                connected.add(pattern);
+                collectPatternConnectorKeys(pattern, producedKeys, connectedKeys);
+                changed = true;
+            }
+        } while (changed);
+
+        return connected;
+    }
+
+    private static Set<AEKey> collectProducedKeys(Collection<IPatternDetails> patterns) {
+        Set<AEKey> producedKeys = new HashSet<>();
+        if (patterns == null) {
+            return producedKeys;
+        }
+        for (IPatternDetails pattern : patterns) {
+            if (pattern == null) {
+                continue;
+            }
+            for (var output : pattern.getOutputs()) {
+                if (output != null && output.what() != null) {
+                    producedKeys.add(output.what());
+                }
+            }
+        }
+        return producedKeys;
+    }
+
+    private static boolean sharesAnyKey(IPatternDetails pattern, Set<AEKey> keys) {
+        if (pattern == null || keys == null || keys.isEmpty()) {
+            return false;
+        }
+        for (AEKey key : keys) {
+            if (containsEntryPoint(pattern, key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void collectPatternConnectorKeys(
+            IPatternDetails pattern,
+            Set<AEKey> producedKeys,
+            Set<AEKey> target
+    ) {
+        if (pattern == null || producedKeys == null || target == null) {
+            return;
+        }
+        for (var output : pattern.getOutputs()) {
+            if (output != null && output.what() != null) {
+                target.add(output.what());
+            }
+        }
+        for (var input : pattern.getInputs()) {
+            if (input == null || input.getPossibleInputs() == null) {
+                continue;
+            }
+            for (var possibleInput : input.getPossibleInputs()) {
+                if (possibleInput != null
+                        && possibleInput.what() != null
+                        && producedKeys.contains(possibleInput.what())) {
+                    target.add(possibleInput.what());
+                }
+            }
+        }
     }
 
     private void unindexProvider(ICraftingProvider provider) {
@@ -118,26 +235,4 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
         this.compressedRingCache.clear();
     }
 
-    private static boolean isRecursiveProducer(IPatternDetails pattern, AEKey catalyst) {
-        if (pattern == null || catalyst == null || !outputsKey(pattern, catalyst)) {
-            return false;
-        }
-        for (var input : pattern.getInputs()) {
-            for (var possibleInput : input.getPossibleInputs()) {
-                if (possibleInput != null && possibleInput.what() != null && catalyst.matches(possibleInput)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static boolean outputsKey(IPatternDetails pattern, AEKey key) {
-        for (var output : pattern.getOutputs()) {
-            if (output != null && output.what() != null && key.matches(output)) {
-                return true;
-            }
-        }
-        return false;
-    }
 }

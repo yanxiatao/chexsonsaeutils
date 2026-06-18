@@ -31,6 +31,8 @@ public abstract class CraftingTreeNodeDyeablePatternMixin {
     private int chexsonsaeutils$preferredColor = -1;
     @Unique
     private boolean chexsonsaeutils$ringCalculable;
+    @Unique
+    private AEKey chexsonsaeutils$whatToCraft;
 
     @Inject(method = "<init>", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$capturePreferredColor(
@@ -43,6 +45,7 @@ public abstract class CraftingTreeNodeDyeablePatternMixin {
             CallbackInfo ci
     ) {
         boolean rootNode = this.parent == null;
+        this.chexsonsaeutils$whatToCraft = what;
         IPatternDetails parentDetails = rootNode
                 ? null
                 : ((CraftingTreeProcessAccessor) this.parent).chexsonsaeutils$getDetails();
@@ -65,7 +68,10 @@ public abstract class CraftingTreeNodeDyeablePatternMixin {
                 DyeablePatternCompressedRing ring = rootNode
                         && job instanceof DyeablePatternCraftingCalculation dyeableCalculation
                         ? dyeableCalculation.chexsonsaeutils$getPreparedCompressedRing(dyeableProviders)
-                        : dyeableProviders.getOrCalculateCompressedRing(this.chexsonsaeutils$preferredColor);
+                        : dyeableProviders.getOrCalculateCompressedRing(
+                                this.chexsonsaeutils$preferredColor,
+                                this.chexsonsaeutils$whatToCraft
+                        );
                 this.chexsonsaeutils$ringCalculable =
                         DyeablePatternCraftingPlanner.canPlanRingReplacementWithoutSwallowingReplacement(ring);
             }

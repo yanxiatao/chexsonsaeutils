@@ -1,12 +1,14 @@
 package git.chexson.chexsonsaeutils.crafting.color;
 
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.Fluids;
@@ -92,6 +94,36 @@ final class DyeablePatternCompressedRingTest {
         )));
     }
 
+    @Test
+    void sameColorUnrelatedRecursivePatternsStayInDifferentRings() {
+        AEKey seedA = AEItemKey.of(Items.REDSTONE);
+        AEKey seedB = AEItemKey.of(Items.GLOWSTONE_DUST);
+        AEKey sharedInput = AEItemKey.of(Items.COPPER_INGOT);
+        IPatternDetails ringA = pattern(
+                input(stack(sharedInput, 1L)),
+                input(stack(seedA, 1L)),
+                List.of(stack(seedA, 2L))
+        );
+        IPatternDetails ringB = pattern(
+                input(stack(sharedInput, 1L)),
+                input(stack(seedB, 1L)),
+                List.of(stack(seedB, 2L))
+        );
+
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+        providers.addProvider(new TestProvider(ringA, ringB));
+
+        DyeablePatternCompressedRing ringForA = providers.getOrCalculateCompressedRing(-1, seedA);
+        DyeablePatternCompressedRing ringForB = providers.getOrCalculateCompressedRing(-1, seedB);
+
+        assertNotNull(ringForA);
+        assertNotNull(ringForB);
+        assertTrue(ringForA.entryPoints().contains(seedA));
+        assertFalse(ringForA.entryPoints().contains(seedB));
+        assertTrue(ringForB.entryPoints().contains(seedB));
+        assertFalse(ringForB.entryPoints().contains(seedA));
+    }
+
     private static IPatternDetails pattern(
             IPatternDetails.IInput firstInput,
             IPatternDetails.IInput secondInput,
@@ -154,6 +186,34 @@ final class DyeablePatternCompressedRingTest {
         @Override
         public AEKey getRemainingKey(AEKey template) {
             return null;
+        }
+    }
+
+    private record TestProvider(IPatternDetails... patterns) implements ICraftingProvider {
+
+        @Override
+        public List<IPatternDetails> getAvailablePatterns() {
+            return List.of(patterns);
+        }
+
+        @Override
+        public boolean pushPattern(IPatternDetails patternDetails, appeng.api.stacks.KeyCounter[] inputHolder) {
+            return false;
+        }
+
+        @Override
+        public boolean isBusy() {
+            return false;
+        }
+
+        @Override
+        public Set<AEKey> getEmitableItems() {
+            return Set.of();
+        }
+
+        @Override
+        public int getPatternPriority() {
+            return 0;
         }
     }
 

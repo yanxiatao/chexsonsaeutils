@@ -597,8 +597,17 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
 
     @Nullable
     DyeablePatternCompressedRing getCompressedRing(ICraftingService craftingService, int color) {
+        return getCompressedRing(craftingService, color, null);
+    }
+
+    @Nullable
+    DyeablePatternCompressedRing getCompressedRing(
+            ICraftingService craftingService,
+            int color,
+            @Nullable AEKey entryPoint
+    ) {
         DyeablePatternCraftingProviders providers = getDyeableProviders(craftingService);
-        return providers == null ? null : providers.getOrCalculateCompressedRing(color);
+        return providers == null ? null : providers.getOrCalculateCompressedRing(color, entryPoint);
     }
 
     @Nullable
@@ -631,7 +640,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         if (color == -1) {
             return null;
         }
-        return providers.getOrCalculateCompressedRing(color);
+        return providers.getOrCalculateCompressedRing(color, output.what());
     }
 
     private static KeyCounter copyCounter(KeyCounter original) {
