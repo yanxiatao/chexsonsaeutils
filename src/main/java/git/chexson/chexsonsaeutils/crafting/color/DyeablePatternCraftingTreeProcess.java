@@ -101,13 +101,13 @@ final class DyeablePatternCraftingTreeProcess {
         return false;
     }
 
-    void request(CraftingSimulationState inventory, long times, boolean captureRing)
+    void request(CraftingSimulationState inventory, long times)
             throws CraftBranchFailure, InterruptedException {
         this.job.handlePausing();
         KeyCounter containerItems = this.containerItems ? new KeyCounter() : null;
 
         for (var entry : this.nodes.entrySet()) {
-            entry.getKey().request(inventory, entry.getValue() * times, containerItems, captureRing);
+            entry.getKey().request(inventory, entry.getValue() * times, containerItems);
         }
 
         if (containerItems != null) {

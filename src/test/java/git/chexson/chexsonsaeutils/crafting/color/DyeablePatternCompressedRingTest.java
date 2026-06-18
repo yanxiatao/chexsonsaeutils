@@ -88,32 +88,46 @@ final class DyeablePatternCompressedRingTest {
     }
 
     @Test
-    void crossColorChainPlanningKeepsCapturedRecursiveRingActive() {
+    void processRingReplacementOnlyStartsForDyedFallbackEntryPoint() {
         int parentColor = 0xFF00AA00;
-        int laterProcessColor = 0xFFAA0000;
+        int processColor = 0xFFAA0000;
+        AEKey output = AEItemKey.of(Items.DIAMOND);
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        IPatternDetails recursiveProducer = pattern(
+                input(stack(seed, 1L)),
+                input(stack(AEItemKey.of(Items.GLOWSTONE_DUST), 1L)),
+                List.of(stack(output, 2L))
+        );
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(
+                List.of(recursiveProducer)
+        );
 
-        assertTrue(DyeablePatternCraftingPlanner.shouldAbortCapturedRingAtProcess(
+        assertTrue(DyeablePatternCraftingPlanner.shouldTryProcessRingReplacement(
                 parentColor,
-                laterProcessColor,
-                true,
+                processColor,
+                ring,
+                output,
                 false
         ));
-        assertFalse(DyeablePatternCraftingPlanner.shouldAbortCapturedRingAtProcess(
+        assertFalse(DyeablePatternCraftingPlanner.shouldTryProcessRingReplacement(
                 parentColor,
-                laterProcessColor,
-                true,
-                true
+                -1,
+                ring,
+                output,
+                false
         ));
-        assertTrue(DyeablePatternCraftingPlanner.canStartRingCaptureAtProcess(
+        assertFalse(DyeablePatternCraftingPlanner.shouldTryProcessRingReplacement(
                 parentColor,
-                laterProcessColor,
-                true,
-                true
+                processColor,
+                ring,
+                seed,
+                false
         ));
-        assertFalse(DyeablePatternCraftingPlanner.canStartRingCaptureAtProcess(
+        assertFalse(DyeablePatternCraftingPlanner.shouldTryProcessRingReplacement(
                 parentColor,
-                parentColor,
-                true,
+                processColor,
+                ring,
+                output,
                 true
         ));
     }

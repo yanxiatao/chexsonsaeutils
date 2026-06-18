@@ -10,7 +10,6 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class DyeablePatternRecursiveConfig {
     public static final int DEFAULT_RETAINED_CATALYST_AMOUNT = 1;
     public static final int MAX_RETAINED_CATALYST_AMOUNT = 1_000_000;
-    public static final boolean DEFAULT_CROSS_COLOR_CHAIN_PLANNING_ENABLED = false;
 
     private DyeablePatternRecursiveConfig() {
     }
@@ -26,23 +25,7 @@ public final class DyeablePatternRecursiveConfig {
         );
     }
 
-    /**
-     * 返回链式合成后续不同色样板是否继续参与递归环计算。
-     */
-    public static boolean crossColorChainPlanningEnabled() {
-        return booleanValue(
-                ChexsonsaeutilsCompatibilityConfig.DYEABLE_RECURSIVE_CROSS_COLOR_CHAIN_PLANNING_ENABLED
-        );
-    }
-
     private static int intValue(ModConfigSpec.ConfigValue<Integer> value) {
-        if (ChexsonsaeutilsCompatibilityConfig.SPEC.isLoaded()) {
-            return value.get();
-        }
-        return value.getDefault();
-    }
-
-    private static boolean booleanValue(ModConfigSpec.BooleanValue value) {
         if (ChexsonsaeutilsCompatibilityConfig.SPEC.isLoaded()) {
             return value.get();
         }

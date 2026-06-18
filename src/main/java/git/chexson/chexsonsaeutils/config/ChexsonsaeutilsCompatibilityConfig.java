@@ -13,7 +13,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
     public static final ModConfigSpec.BooleanValue DYEABLE_PATTERNS_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT;
-    public static final ModConfigSpec.BooleanValue DYEABLE_RECURSIVE_CROSS_COLOR_CHAIN_PLANNING_ENABLED;
     public static final ModConfigSpec.BooleanValue ENHANCED_CRAFTING_STATUS_ENABLED;
     public static final ModConfigSpec.BooleanValue BUILDING_GADGETS2_INTEGRATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FTB_ULTIMINE_MEMORY_CARD_ENABLED;
@@ -62,16 +61,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 )
                 .define("dyeableRecursiveRetainedCatalystAmount",
                         DyeablePatternRecursiveConfig.DEFAULT_RETAINED_CATALYST_AMOUNT);
-        DYEABLE_RECURSIVE_CROSS_COLOR_CHAIN_PLANNING_ENABLED = builder
-                .comment(
-                        "Allow dyeable recursive ring planning to pass through later chain steps with a different"
-                                + " pattern color.",
-                        "When disabled, recursive ring capture keeps the original same-color boundary."
-                )
-                .define(
-                        "dyeableRecursiveCrossColorChainPlanningEnabled",
-                        DyeablePatternRecursiveConfig.DEFAULT_CROSS_COLOR_CHAIN_PLANNING_ENABLED
-                );
         ENHANCED_CRAFTING_STATUS_ENABLED = builder
                 .comment(
                         "Enable AEA enhanced crafting status migration. Takes effect after restart.",

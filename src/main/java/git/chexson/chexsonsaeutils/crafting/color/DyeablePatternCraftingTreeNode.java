@@ -12,7 +12,6 @@ import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.ChildCraftingSimulationState;
 import appeng.crafting.inv.CraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
-import git.chexson.chexsonsaeutils.config.DyeablePatternRecursiveConfig;
 import git.chexson.chexsonsaeutils.pattern.replacement.PlanningReplacementSelector;
 import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
 import org.jetbrains.annotations.Nullable;
@@ -149,8 +148,7 @@ final class DyeablePatternCraftingTreeNode {
     void request(
             CraftingSimulationState inventory,
             long requestedAmount,
-            @Nullable KeyCounter containerItems,
-            boolean captureRing
+            @Nullable KeyCounter containerItems
     ) throws CraftBranchFailure, InterruptedException {
         this.job.handlePausing();
         inventory.addStackBytes(this.what, this.amount, requestedAmount);
@@ -184,23 +182,9 @@ final class DyeablePatternCraftingTreeNode {
         }
 
         for (DyeablePatternCraftingTreeProcess process : Objects.requireNonNull(this.nodes)) {
-            int processColor = PatternColorHelper.getPatternColor(process.details);
-            boolean shouldCaptureRing = shouldCaptureRing(processColor, captureRing);
-
-            if (shouldCaptureRing) {
-                try {
-                    totalRequestedItems -= executeProcess(inventory, process, totalRequestedItems, true);
-                } catch (DyeablePatternRingReplacementTriggeredException exception) {
-                    long fulfilledByRing = tryRingReplacement(inventory, totalRequestedItems, processColor);
-                    if (fulfilledByRing > 0L) {
-                        totalRequestedItems -= fulfilledByRing;
-                    } else {
-                        this.job.markRingReplacementAsFailed(processColor, this.what);
-                        totalRequestedItems -= executeProcess(inventory, process, totalRequestedItems, false);
-                    }
-                }
-            } else {
-                totalRequestedItems -= executeProcess(inventory, process, totalRequestedItems, captureRing);
+            totalRequestedItems -= executeProcess(inventory, process, totalRequestedItems);
+            if (totalRequestedItems > 0L) {
+                totalRequestedItems -= tryProcessRingReplacement(inventory, process, totalRequestedItems);
             }
 
             if (totalRequestedItems <= 0L) {
@@ -231,41 +215,11 @@ final class DyeablePatternCraftingTreeNode {
         return tryRingReplacement(inventory, requestedAmount, requestedColor);
     }
 
-    private boolean shouldCaptureRing(int processColor, boolean captureRing) {
-        if (!DyeablePatternCraftingPlanner.canStartRingCaptureAtProcess(
-                this.color,
-                processColor,
-                captureRing,
-                DyeablePatternRecursiveConfig.crossColorChainPlanningEnabled()
-        ) || this.job.hasRingReplacementFailed(processColor, this.what)) {
-            return false;
-        }
-
-        var gridNode = this.job.simRequester.getGridNode();
-        if (gridNode == null) {
-            return false;
-        }
-
-        ICraftingService craftingService = gridNode.getGrid().getCraftingService();
-        DyeablePatternCompressedRing ring = this.job.getCompressedRing(craftingService, processColor, this.what);
-        return ring != null && ring.entryPoints().contains(this.what);
-    }
-
     private long executeProcess(
             CraftingSimulationState inventory,
             DyeablePatternCraftingTreeProcess process,
-            long neededAmount,
-            boolean captureRing
+            long neededAmount
     ) throws InterruptedException {
-        if (DyeablePatternCraftingPlanner.shouldAbortCapturedRingAtProcess(
-                this.color,
-                PatternColorHelper.getPatternColor(process.details),
-                captureRing,
-                DyeablePatternRecursiveConfig.crossColorChainPlanningEnabled()
-        )) {
-            throw new DyeablePatternRingReplacementTriggeredException();
-        }
-
         long totalProduced = 0L;
         while (neededAmount > 0L) {
             long producedInAttempt = 0L;
@@ -279,7 +233,7 @@ final class DyeablePatternCraftingTreeNode {
                 long times = process.limitsQuantity()
                         ? 1L
                         : (neededAmount + craftedPerPattern - 1L) / craftedPerPattern;
-                process.request(attemptInventory, times, captureRing);
+                process.request(attemptInventory, times);
 
                 producedInAttempt = attemptInventory.extract(this.what, neededAmount, Actionable.MODULATE);
                 if (producedInAttempt > 0L) {
@@ -288,9 +242,7 @@ final class DyeablePatternCraftingTreeNode {
                     totalProduced += producedInAttempt;
                 }
             } catch (CraftBranchFailure failure) {
-                if (captureRing) {
-                    throw new DyeablePatternRingReplacementTriggeredException();
-                }
+                break;
             }
 
             if (producedInAttempt == 0L) {
@@ -298,6 +250,37 @@ final class DyeablePatternCraftingTreeNode {
             }
         }
         return totalProduced;
+    }
+
+    private long tryProcessRingReplacement(
+            CraftingSimulationState inventory,
+            DyeablePatternCraftingTreeProcess process,
+            long requestedAmount
+    ) throws InterruptedException {
+        int processColor = PatternColorHelper.getPatternColor(process.details);
+        boolean previousFailure = this.job.hasRingReplacementFailed(processColor, this.what);
+        if (requestedAmount <= 0L || previousFailure) {
+            return 0L;
+        }
+
+        var gridNode = this.job.simRequester.getGridNode();
+        if (gridNode == null) {
+            return 0L;
+        }
+
+        ICraftingService craftingService = gridNode.getGrid().getCraftingService();
+        DyeablePatternCompressedRing ring = this.job.getCompressedRing(craftingService, processColor, this.what);
+        if (!DyeablePatternCraftingPlanner.shouldTryProcessRingReplacement(
+                this.color,
+                processColor,
+                ring,
+                this.what,
+                previousFailure
+        )) {
+            return 0L;
+        }
+
+        return tryRingReplacement(inventory, requestedAmount, processColor);
     }
 
     private long tryRingReplacement(CraftingSimulationState inventory, long requestedAmount, int ringColor)

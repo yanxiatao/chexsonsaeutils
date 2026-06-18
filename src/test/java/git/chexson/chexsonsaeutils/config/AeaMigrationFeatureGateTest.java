@@ -27,15 +27,12 @@ final class AeaMigrationFeatureGateTest {
         assertTrue(EnhancedCraftingStatusFeatureGate.isEnabledAtStartup(config));
         assertTrue(BuildingGadgets2IntegrationFeatureGate.isEnabledAtStartup(config));
         assertTrue(FtbUltimineMemoryCardFeatureGate.isEnabledAtStartup(config));
-        assertFalse(DyeablePatternRecursiveConfig.DEFAULT_CROSS_COLOR_CHAIN_PLANNING_ENABLED);
     }
 
     @Test
-    void dyeableRecursiveCrossColorChainPlanningDefaultsOff() {
-        assertFalse(ChexsonsaeutilsCompatibilityConfig
-                .DYEABLE_RECURSIVE_CROSS_COLOR_CHAIN_PLANNING_ENABLED
-                .getDefault());
-        assertFalse(DyeablePatternRecursiveConfig.crossColorChainPlanningEnabled());
+    void dyeableRecursiveRetainedCatalystAmountDefaultsToOne() {
+        assertEquals(1, DyeablePatternRecursiveConfig.DEFAULT_RETAINED_CATALYST_AMOUNT);
+        assertEquals(1, DyeablePatternRecursiveConfig.retainedCatalystAmount());
     }
 
     @Test
@@ -91,7 +88,6 @@ final class AeaMigrationFeatureGateTest {
         Files.writeString(config, String.join(System.lineSeparator(),
                 "[aeaMigration]",
                 "dyeablePatternsEnabled = false",
-                "dyeableRecursiveCrossColorChainPlanningEnabled = true",
                 "enhancedCraftingStatusEnabled = true",
                 "buildingGadgets2IntegrationEnabled = false",
                 "ftbUltimineMemoryCardEnabled = true"
@@ -101,7 +97,6 @@ final class AeaMigrationFeatureGateTest {
 
         assertTrue(content.contains("[aeaMigration]"));
         assertTrue(content.contains("dyeablePatternsEnabled = false"));
-        assertTrue(content.contains("dyeableRecursiveCrossColorChainPlanningEnabled = true"));
         assertTrue(content.contains("enhancedCraftingStatusEnabled = true"));
         assertTrue(content.contains("buildingGadgets2IntegrationEnabled = false"));
         assertTrue(content.contains("ftbUltimineMemoryCardEnabled = true"));

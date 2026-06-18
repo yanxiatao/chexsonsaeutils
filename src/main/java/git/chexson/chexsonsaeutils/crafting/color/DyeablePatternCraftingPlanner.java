@@ -40,31 +40,17 @@ public final class DyeablePatternCraftingPlanner {
         return isCompressedRingCalculable(ring);
     }
 
-    public static boolean shouldAbortCapturedRingAtProcess(
+    public static boolean shouldTryProcessRingReplacement(
             int parentColor,
             int processColor,
-            boolean captureRing,
-            boolean crossColorChainPlanningEnabled
+            @Nullable DyeablePatternCompressedRing ring,
+            @Nullable AEKey entryPoint,
+            boolean previousFailure
     ) {
-        return captureRing
-                && parentColor != -1
-                && !crossColorChainPlanningEnabled
-                && processColor != parentColor;
-    }
-
-    public static boolean canStartRingCaptureAtProcess(
-            int parentColor,
-            int processColor,
-            boolean captureRing,
-            boolean crossColorChainPlanningEnabled
-    ) {
-        if (processColor == -1) {
-            return false;
-        }
-        if (!captureRing) {
-            return true;
-        }
-        return crossColorChainPlanningEnabled && processColor != parentColor;
+        return processColor != -1
+                && parentColor != processColor
+                && !previousFailure
+                && allowsRingReplacementCandidate(ring, processColor, entryPoint);
     }
 
     public static int resolvePreferredColor(

@@ -164,7 +164,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         craftingInventory.ignore(this.output);
 
         try {
-            this.tree.request(craftingInventory, amount, null, false);
+            this.tree.request(craftingInventory, amount, null);
             CraftingPlan preliminaryPlan = CraftingSimulationState.buildCraftingPlan(craftingInventory, this, amount);
             retainRecursiveCatalysts(craftingInventory, preliminaryPlan);
         } catch (CraftBranchFailure failure) {
@@ -332,7 +332,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             }
             if (extracted < requiredAmount) {
                 new DyeablePatternCraftingTreeNode(craftingService, this, key, 1L, null, -1)
-                        .request(sandbox, requiredAmount - extracted, null, false);
+                        .request(sandbox, requiredAmount - extracted, null);
             }
         }
 
@@ -340,7 +340,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             long required = (long) Math.ceil(stack.getLongValue() * scale);
             if (required > 0L) {
                 new DyeablePatternCraftingTreeNode(craftingService, this, stack.getKey(), 1L, null, -1)
-                        .request(sandbox, required, null, false);
+                        .request(sandbox, required, null);
             }
         }
     }
