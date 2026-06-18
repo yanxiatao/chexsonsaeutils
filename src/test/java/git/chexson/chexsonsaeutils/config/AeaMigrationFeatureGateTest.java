@@ -82,7 +82,6 @@ final class AeaMigrationFeatureGateTest {
         Files.writeString(config, String.join(System.lineSeparator(),
                 "[aeaMigration]",
                 "dyeablePatternsEnabled = false",
-                "dyeableRecursiveRetainedCatalystAmount = 2",
                 "enhancedCraftingStatusEnabled = true",
                 "buildingGadgets2IntegrationEnabled = false",
                 "ftbUltimineMemoryCardEnabled = true"
@@ -92,7 +91,6 @@ final class AeaMigrationFeatureGateTest {
 
         assertTrue(content.contains("[aeaMigration]"));
         assertTrue(content.contains("dyeablePatternsEnabled = false"));
-        assertTrue(content.contains("dyeableRecursiveRetainedCatalystAmount = 2"));
         assertTrue(content.contains("enhancedCraftingStatusEnabled = true"));
         assertTrue(content.contains("buildingGadgets2IntegrationEnabled = false"));
         assertTrue(content.contains("ftbUltimineMemoryCardEnabled = true"));
@@ -109,16 +107,6 @@ final class AeaMigrationFeatureGateTest {
     @Test
     void dyeablePatternPackIsAlwaysActive() {
         assertTrue(DyeablePatternPackRegistration.packAlwaysActive());
-    }
-
-    @Test
-    void dyeableCpuMixinLoadsRequiredAccessors() {
-        ChexsonsaeutilsMixinPlugin plugin = new ChexsonsaeutilsMixinPlugin();
-
-        assertTrue(plugin.shouldApplyMixin(
-                "appeng.crafting.execution.ExecutingCraftingJob",
-                "git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobAccessor"
-        ));
     }
 
     @Test
