@@ -6,6 +6,7 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.Fluids;
@@ -58,6 +59,25 @@ final class DyeablePatternCompressedRingTest {
                 true,
                 true
         ));
+    }
+
+    @Test
+    void recursiveCompletionRequiresPositivePendingTaskProgress() {
+        AEKey output = AEItemKey.of(Items.DIAMOND);
+        IPatternDetails producer = pattern(
+                input(stack(AEItemKey.of(Items.REDSTONE), 1L)),
+                input(stack(AEItemKey.of(Items.GLOWSTONE_DUST), 1L)),
+                List.of(stack(output, 1L))
+        );
+
+        assertTrue(DyeablePatternRecursiveTaskOrdering.hasPendingTasks(Map.of(
+                producer,
+                new TestTaskProgress(1L)
+        )));
+        assertFalse(DyeablePatternRecursiveTaskOrdering.hasPendingTasks(Map.of(
+                producer,
+                new TestTaskProgress(0L)
+        )));
     }
 
     private static IPatternDetails pattern(
@@ -122,6 +142,15 @@ final class DyeablePatternCompressedRingTest {
         @Override
         public AEKey getRemainingKey(AEKey template) {
             return null;
+        }
+    }
+
+    private record TestTaskProgress(long value)
+            implements DyeablePatternRecursiveTaskOrdering.ParallelTaskProgressView {
+
+        @Override
+        public long chexsonsaeutils$dyeableRecursiveTaskProgressValue() {
+            return value;
         }
     }
 }

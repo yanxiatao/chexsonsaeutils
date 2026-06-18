@@ -118,11 +118,33 @@ public final class DyeablePatternRecursiveTaskOrdering {
     }
 
     /**
+     * 判断任务表里是否还存在正数剩余次数。
+     */
+    public static boolean hasPendingTasks(Map<IPatternDetails, ?> tasks) {
+        if (tasks == null || tasks.isEmpty()) {
+            return false;
+        }
+        for (Object value : tasks.values()) {
+            if (taskProgressValue(value) > 0L) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 返回普通 CPU 任务剩余次数。
      */
     public static long mixinTaskProgressValue(@Nullable Object taskProgress) {
+        return taskProgressValue(taskProgress);
+    }
+
+    private static long taskProgressValue(@Nullable Object taskProgress) {
         if (taskProgress instanceof ExecutingCraftingJobTaskProgressAccessor accessor) {
             return accessor.getValue();
+        }
+        if (taskProgress instanceof ParallelTaskProgressView progressView) {
+            return progressView.chexsonsaeutils$dyeableRecursiveTaskProgressValue();
         }
         return 0L;
     }

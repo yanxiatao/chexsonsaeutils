@@ -202,6 +202,7 @@ public abstract class CraftingCpuLogicDyeablePatternMixin {
             jobAccessor.getWaitingFor().extract(what, accepted, Actionable.MODULATE);
             this.inventory.insert(what, accepted, Actionable.MODULATE);
             this.cluster.markDirty();
+            this.chexsonsaeutils$updateRecursiveDisplayedOutput(jobAccessor);
             chexsonsaeutils$finishRecursiveJobIfComplete();
         }
         cir.setReturnValue(accepted);
@@ -301,20 +302,14 @@ public abstract class CraftingCpuLogicDyeablePatternMixin {
             return false;
         }
         ExecutingCraftingJobAccessor jobAccessor = (ExecutingCraftingJobAccessor) this.job;
-        if (!chexsonsaeutils$isRecursiveInternalItem(what)) {
-            return false;
-        }
-        if (jobAccessor.getFinalOutput() != null
-                && what.matches(jobAccessor.getFinalOutput())
-                && chexsonsaeutils$recursiveJobReadyToFinish(jobAccessor)) {
-            return false;
-        }
-        return true;
+        return chexsonsaeutils$isRecursiveInternalItem(what)
+                || jobAccessor.getFinalOutput() != null && what.matches(jobAccessor.getFinalOutput());
     }
 
     @Unique
     private boolean chexsonsaeutils$recursiveJobReadyToFinish(ExecutingCraftingJobAccessor jobAccessor) {
-        return jobAccessor.getTasks().isEmpty() && jobAccessor.getWaitingFor().list.isEmpty();
+        return !DyeablePatternRecursiveTaskOrdering.hasPendingTasks(jobAccessor.getTasks())
+                && jobAccessor.getWaitingFor().list.isEmpty();
     }
 
     @Unique
@@ -329,6 +324,23 @@ public abstract class CraftingCpuLogicDyeablePatternMixin {
         jobAccessor.setRemainingAmount(0L);
         this.cluster.updateOutput((GenericStack) null);
         ((CraftingCpuLogicAccessor) this).invokeFinishJob(true);
+    }
+
+    @Unique
+    private void chexsonsaeutils$updateRecursiveDisplayedOutput(ExecutingCraftingJobAccessor jobAccessor) {
+        GenericStack finalOutput = jobAccessor.getFinalOutput();
+        if (finalOutput == null || finalOutput.what() == null) {
+            return;
+        }
+        long available = this.inventory.extract(finalOutput.what(), Long.MAX_VALUE, Actionable.SIMULATE);
+        long amountToFlush = chexsonsaeutils$finalOutputAmountToFlush(jobAccessor);
+        long remaining = Math.max(0L, amountToFlush - available);
+        jobAccessor.setRemainingAmount(remaining);
+        if (remaining <= 0L) {
+            this.cluster.updateOutput((GenericStack) null);
+        } else {
+            this.cluster.updateOutput(new GenericStack(finalOutput.what(), remaining));
+        }
     }
 
     @Unique
