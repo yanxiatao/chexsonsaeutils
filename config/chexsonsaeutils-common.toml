@@ -57,3 +57,6 @@ formalMachinePlanningAggregationEnabled = true
 	#Enable AEA FTB Ultimine memory-card compatibility. Takes effect after restart.
 	#Default on has no effect unless FTB Ultimine is installed and must not change AE2 single-target memory-card behavior.
 	ftbUltimineMemoryCardEnabled = true
+	#Allow dyeable recursive ring planning to pass through later chain steps with a different pattern color.
+	#When disabled, recursive ring capture keeps the original same-color boundary.
+	dyeableRecursiveCrossColorChainPlanningEnabled = false

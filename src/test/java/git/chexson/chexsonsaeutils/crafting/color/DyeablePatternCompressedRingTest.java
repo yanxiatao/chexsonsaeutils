@@ -12,6 +12,7 @@ import net.minecraft.world.level.material.Fluids;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,6 +39,25 @@ final class DyeablePatternCompressedRingTest {
         assertEquals(1L, ring.catalysts().get(water));
         assertTrue(ring.entryPoints().contains(water));
         assertEquals(1L, ring.netInputs().get(dust));
+    }
+
+    @Test
+    void crossColorChainPlanningKeepsCapturedRecursiveRingActive() {
+        int parentColor = 0xFF00AA00;
+        int laterProcessColor = 0xFFAA0000;
+
+        assertTrue(DyeablePatternCraftingPlanner.shouldAbortCapturedRingAtProcess(
+                parentColor,
+                laterProcessColor,
+                true,
+                false
+        ));
+        assertFalse(DyeablePatternCraftingPlanner.shouldAbortCapturedRingAtProcess(
+                parentColor,
+                laterProcessColor,
+                true,
+                true
+        ));
     }
 
     private static IPatternDetails pattern(

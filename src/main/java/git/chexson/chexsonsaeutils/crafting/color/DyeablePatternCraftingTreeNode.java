@@ -12,6 +12,7 @@ import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.ChildCraftingSimulationState;
 import appeng.crafting.inv.CraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
+import git.chexson.chexsonsaeutils.config.DyeablePatternRecursiveConfig;
 import git.chexson.chexsonsaeutils.pattern.replacement.PlanningReplacementSelector;
 import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
 import org.jetbrains.annotations.Nullable;
@@ -251,7 +252,12 @@ final class DyeablePatternCraftingTreeNode {
             long neededAmount,
             boolean captureRing
     ) throws InterruptedException {
-        if (captureRing && this.color != -1 && PatternColorHelper.getPatternColor(process.details) != this.color) {
+        if (DyeablePatternCraftingPlanner.shouldAbortCapturedRingAtProcess(
+                this.color,
+                PatternColorHelper.getPatternColor(process.details),
+                captureRing,
+                DyeablePatternRecursiveConfig.crossColorChainPlanningEnabled()
+        )) {
             throw new DyeablePatternRingReplacementTriggeredException();
         }
 

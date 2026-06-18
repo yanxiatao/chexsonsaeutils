@@ -40,6 +40,18 @@ public final class DyeablePatternCraftingPlanner {
         return isCompressedRingCalculable(ring);
     }
 
+    public static boolean shouldAbortCapturedRingAtProcess(
+            int parentColor,
+            int processColor,
+            boolean captureRing,
+            boolean crossColorChainPlanningEnabled
+    ) {
+        return captureRing
+                && parentColor != -1
+                && !crossColorChainPlanningEnabled
+                && processColor != parentColor;
+    }
+
     public static int resolvePreferredColor(
             @Nullable IPatternDetails parentDetails,
             boolean rootNode,
