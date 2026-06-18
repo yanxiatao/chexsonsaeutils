@@ -74,14 +74,7 @@ final class DyeablePatternCraftingTreeProcess {
     private void updateLimitQty() {
         for (IPatternDetails.IInput input : details.getInputs()) {
             var primaryInput = input.getPossibleInputs()[0];
-            boolean inputAlsoOutput = false;
-
-            for (var output : details.getOutputs()) {
-                if (output.what().matches(primaryInput)) {
-                    inputAlsoOutput = true;
-                    break;
-                }
-            }
+            boolean inputAlsoOutput = inputMatchesAnyOutput(input);
 
             if (inputAlsoOutput) {
                 this.limitQty = true;
@@ -92,6 +85,20 @@ final class DyeablePatternCraftingTreeProcess {
                 this.containerItems = true;
             }
         }
+    }
+
+    private boolean inputMatchesAnyOutput(IPatternDetails.IInput input) {
+        for (var possibleInput : input.getPossibleInputs()) {
+            if (possibleInput == null || possibleInput.what() == null) {
+                continue;
+            }
+            for (var output : details.getOutputs()) {
+                if (output != null && output.what() != null && output.what().matches(possibleInput)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     void request(CraftingSimulationState inventory, long times, boolean captureRing)

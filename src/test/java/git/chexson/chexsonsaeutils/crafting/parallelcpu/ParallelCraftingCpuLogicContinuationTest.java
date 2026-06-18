@@ -16,6 +16,7 @@ import appeng.api.stacks.GenericStack;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.inv.ListCraftingInventory;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Items;
@@ -93,6 +94,70 @@ final class ParallelCraftingCpuLogicContinuationTest {
         assertEquals(0L, storage.get(missing));
     }
 
+    @Test
+    void recursiveFinalOutputIsNotCompleteWhileWaitingForMoreIntermediateOutputs() {
+        AEItemKey seed = AEItemKey.of(Items.PAPER);
+        ICraftingPlan plan = recursivePlan(seed, 5L, 5L);
+        ParallelExecutingCraftingJob job = new ParallelExecutingCraftingJob(
+                plan,
+                ignored -> {
+                },
+                new CraftingLink(
+                        CraftingCpuHelper.generateLinkData(UUID.randomUUID(), true, false),
+                        new TestCraftingCpu()
+                ),
+                null
+        );
+
+        job.waitingFor.insert(seed, 2L, Actionable.MODULATE);
+        job.waitingFor.extract(seed, 1L, Actionable.MODULATE);
+
+        assertEquals(5L, job.remainingAmount);
+        assertEquals(1L, job.waitingFor.extract(seed, Long.MAX_VALUE, Actionable.SIMULATE));
+        assertTrue(!ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
+
+        job.waitingFor.extract(seed, 1L, Actionable.MODULATE);
+
+        assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
+    }
+
+    @Test
+    void recursiveInternalSeedIsTrackedWhenFinalOutputDiffers() {
+        AEItemKey seed = AEItemKey.of(Items.PAPER);
+        AEItemKey finalOutput = AEItemKey.of(Items.MAP);
+        ICraftingPlan plan = new TestRecursiveCraftingPlan(
+                new GenericStack(finalOutput, 1L),
+                1024L,
+                false,
+                false,
+                new KeyCounter(),
+                new KeyCounter(),
+                new KeyCounter(),
+                Map.of(),
+                1L,
+                seed
+        );
+        ParallelExecutingCraftingJob job = new ParallelExecutingCraftingJob(
+                plan,
+                ignored -> {
+                },
+                new CraftingLink(
+                        CraftingCpuHelper.generateLinkData(UUID.randomUUID(), true, false),
+                        new TestCraftingCpu()
+                ),
+                null
+        );
+
+        job.waitingFor.insert(seed, 1L, Actionable.MODULATE);
+
+        assertEquals(1L, job.dyeableRecursiveInternalItems.get(seed));
+        assertTrue(!ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
+
+        job.waitingFor.extract(seed, 1L, Actionable.MODULATE);
+
+        assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
+    }
+
     private static ICraftingPlan plan(KeyCounter usedItems, KeyCounter missingItems) {
         return new TestCraftingPlan(
                 new GenericStack(AEItemKey.of(Items.CRAFTING_TABLE), 1L),
@@ -103,6 +168,21 @@ final class ParallelCraftingCpuLogicContinuationTest {
                 new KeyCounter(),
                 missingItems,
                 Map.of()
+        );
+    }
+
+    private static ICraftingPlan recursivePlan(AEItemKey finalOutput, long amount, long finalOutputAmount) {
+        return new TestRecursiveCraftingPlan(
+                new GenericStack(finalOutput, amount),
+                1024L,
+                false,
+                false,
+                new KeyCounter(),
+                new KeyCounter(),
+                new KeyCounter(),
+                Map.of(),
+                finalOutputAmount,
+                finalOutput
         );
     }
 
@@ -122,6 +202,38 @@ final class ParallelCraftingCpuLogicContinuationTest {
             KeyCounter missingItems,
             Map<IPatternDetails, Long> patternTimes
     ) implements ICraftingPlan {
+    }
+
+    private record TestRecursiveCraftingPlan(
+            GenericStack finalOutput,
+            long bytes,
+            boolean simulation,
+            boolean multiplePaths,
+            KeyCounter usedItems,
+            KeyCounter emittedItems,
+            KeyCounter missingItems,
+            Map<IPatternDetails, Long> patternTimes,
+            long recursiveFinalOutputAmount,
+            AEKey recursiveInternalItem
+    ) implements ICraftingPlan, DyeablePatternRecursivePlan {
+        @Override
+        public boolean chexsonsaeutils$usesDyeableRecursivePlanning() {
+            return true;
+        }
+
+        @Override
+        public long chexsonsaeutils$dyeableRecursiveFinalOutputAmount() {
+            return recursiveFinalOutputAmount;
+        }
+
+        @Override
+        public KeyCounter chexsonsaeutils$dyeableRecursiveInternalItems() {
+            KeyCounter counter = new KeyCounter();
+            if (recursiveInternalItem != null) {
+                counter.add(recursiveInternalItem, 1L);
+            }
+            return counter;
+        }
     }
 
     private static final class TestCraftingCpu implements appeng.api.networking.crafting.ICraftingCPU {

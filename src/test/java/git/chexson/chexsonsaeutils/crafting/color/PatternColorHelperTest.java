@@ -6,8 +6,10 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import java.util.List;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.DyedItemColor;
 import org.junit.jupiter.api.Test;
 
@@ -41,6 +43,32 @@ final class PatternColorHelperTest {
 
         assertTrue(PatternColorHelper.hasOnlyColorData(stack));
         assertEquals(0xFF336699, PatternColorHelper.getPatternColor(stack));
+    }
+
+    @Test
+    void readsLegacyAeaDisplayColorFromCustomData() {
+        ItemStack stack = new ItemStack(Items.PAPER);
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
+            CompoundTag display = new CompoundTag();
+            display.putInt("color", 0x336699);
+            tag.put("display", display);
+        });
+
+        assertTrue(PatternColorHelper.hasOnlyColorData(stack));
+        assertEquals(0xFF336699, PatternColorHelper.getPatternColor(stack));
+    }
+
+    @Test
+    void rejectsLegacyColorDataWithAdditionalCustomData() {
+        ItemStack stack = new ItemStack(Items.PAPER);
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
+            CompoundTag display = new CompoundTag();
+            display.putInt("color", 0x336699);
+            tag.put("display", display);
+            tag.putString("other", "value");
+        });
+
+        assertFalse(PatternColorHelper.hasOnlyColorData(stack));
     }
 
     @Test

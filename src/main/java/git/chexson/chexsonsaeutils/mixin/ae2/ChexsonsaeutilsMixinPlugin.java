@@ -88,6 +88,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> AEA_DYEABLE_PATTERN_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternAccessor",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicDyeablePatternMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.item.EncodedPatternItemDyeableClientMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.style.StyleManagerDyeablePatternMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsDyeablePatternMixin",
@@ -130,6 +131,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         }
         if (CRAFTING_CPU_ACCESSOR_MIXINS.contains(mixinClassName)) {
             return ContinuationFeatureGate.isEnabledAtStartup()
+                    || DyeablePatternsFeatureGate.isEnabledAtStartup()
                     || FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
                     || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()
                     || EnhancedCraftingStatusFeatureGate.isEnabledAtStartup();

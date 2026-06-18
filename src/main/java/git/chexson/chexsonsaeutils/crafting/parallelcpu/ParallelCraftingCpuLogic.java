@@ -28,6 +28,7 @@ import appeng.me.service.CraftingService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import com.google.common.base.Preconditions;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursiveTaskOrdering;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -229,16 +230,33 @@ final class ParallelCraftingCpuLogic {
         }
 
         long pushedPatterns = 0L;
-        var iterator = job.tasks.entrySet().iterator();
+        var orderedTasks = DyeablePatternRecursiveTaskOrdering.orderedEntries(
+                job.tasks,
+                job.dyeableRecursivePlan ? job.dyeableRecursiveInternalItems : null
+        );
         taskLoop:
-        while (iterator.hasNext() && pushedPatterns < maxPatterns) {
-            var task = iterator.next();
+        for (var task : orderedTasks) {
+            if (pushedPatterns >= maxPatterns) {
+                break;
+            }
             if (task.getValue().value <= 0L) {
-                iterator.remove();
+                job.tasks.remove(task.getKey());
                 continue;
             }
 
             var details = task.getKey();
+            if (job.dyeableRecursivePlan
+                    && DyeablePatternRecursiveTaskOrdering.hasPendingProducer(
+                            job.tasks,
+                            job.dyeableRecursiveInternalItems
+                    )
+                    && DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                            details,
+                            job.dyeableRecursiveInternalItems,
+                            inventory
+                    )) {
+                continue;
+            }
             var expectedOutputs = new KeyCounter();
             var expectedContainerItems = new KeyCounter();
 
@@ -310,7 +328,7 @@ final class ParallelCraftingCpuLogic {
 
                     task.getValue().value--;
                     if (task.getValue().value <= 0L) {
-                        iterator.remove();
+                        job.tasks.remove(task.getKey());
                         continue taskLoop;
                     }
                     if (pushedPatterns >= maxPatterns) {
@@ -461,22 +479,70 @@ final class ParallelCraftingCpuLogic {
         }
 
         long inserted = amount;
-        if (what.matches(job.finalOutput)) {
-            inserted = job.link.insert(what, amount, type);
+        if (isDyeableRecursiveInternalItem(job, what)) {
             if (type == Actionable.MODULATE) {
-                job.remainingAmount = Math.max(0L, job.remainingAmount - amount);
-                if (job.remainingAmount <= 0L) {
-                    finishJob(true);
+                inventory.insert(what, amount, Actionable.MODULATE);
+                finishDyeableRecursiveJobIfComplete();
+            }
+        } else if (what.matches(job.finalOutput)) {
+            inserted = insertFinalOutput(what, amount, type);
+            if (type == Actionable.MODULATE) {
+                if (job.dyeableRecursivePlan) {
+                    finishDyeableRecursiveJobIfComplete();
+                } else {
+                    job.remainingAmount = Math.max(0L, job.remainingAmount - amount);
+                    if (job.remainingAmount <= 0L) {
+                        finishJob(true);
+                    }
                 }
             }
         } else if (type == Actionable.MODULATE) {
             inventory.insert(what, amount, Actionable.MODULATE);
-            if (job.remainingAmount <= 0L) {
+            if (job.dyeableRecursivePlan) {
+                finishDyeableRecursiveJobIfComplete();
+            } else if (job.remainingAmount <= 0L) {
                 finishJob(true);
             }
         }
 
         return new InsertResult(inserted, amount);
+    }
+
+    private static boolean isDyeableRecursiveInternalItem(ParallelExecutingCraftingJob job, AEKey what) {
+        if (job == null || !job.dyeableRecursivePlan || what == null) {
+            return false;
+        }
+        for (var entry : job.dyeableRecursiveInternalItems) {
+            if (entry.getKey() != null && entry.getLongValue() > 0L && what.equals(entry.getKey())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private long insertFinalOutput(AEKey what, long amount, Actionable type) {
+        if (job == null || !job.dyeableRecursivePlan) {
+            return job == null || job.link == null ? 0L : job.link.insert(what, amount, type);
+        }
+        if (type == Actionable.MODULATE) {
+            inventory.insert(what, amount, Actionable.MODULATE);
+        }
+        return amount;
+    }
+
+    private void finishDyeableRecursiveJobIfComplete() {
+        if (!isDyeableRecursiveJobComplete(job)) {
+            return;
+        }
+        job.remainingAmount = 0L;
+        finishJob(true);
+    }
+
+    static boolean isDyeableRecursiveJobComplete(@Nullable ParallelExecutingCraftingJob job) {
+        return job != null
+                && job.dyeableRecursivePlan
+                && job.tasks.isEmpty()
+                && job.waitingFor.list.isEmpty();
     }
 
     record InsertResult(long insertedAmount, long accountedAmount) {
@@ -502,6 +568,7 @@ final class ParallelCraftingCpuLogic {
         var finishedJob = job;
         UUID finishedCraftingId = finishedJob.link == null ? null : finishedJob.link.getCraftingID();
         if (success) {
+            flushDyeableRecursiveFinalOutput(finishedJob);
             finishedJob.link.markDone();
             if (requesterLink != null) {
                 requesterLink.markDone();
@@ -529,6 +596,39 @@ final class ParallelCraftingCpuLogic {
         this.requesterLink = null;
         FormalMachineCraftingDispatchService.clearSourceCpu(finishedCraftingId);
         this.storeItems();
+    }
+
+    private void flushDyeableRecursiveFinalOutput(ParallelExecutingCraftingJob finishedJob) {
+        if (finishedJob == null
+                || !finishedJob.dyeableRecursivePlan
+                || finishedJob.finalOutput == null
+                || finishedJob.finalOutput.what() == null
+                || finishedJob.link == null) {
+            return;
+        }
+
+        AEKey finalKey = finishedJob.finalOutput.what();
+        long amountToFlush = dyeableRecursiveFinalOutputAmountToFlush(finishedJob);
+        if (amountToFlush <= 0L) {
+            return;
+        }
+
+        long available = inventory.extract(finalKey, amountToFlush, Actionable.SIMULATE);
+        if (available <= 0L) {
+            return;
+        }
+
+        long accepted = finishedJob.link.insert(finalKey, available, Actionable.MODULATE);
+        if (accepted > 0L) {
+            inventory.extract(finalKey, accepted, Actionable.MODULATE);
+        }
+    }
+
+    private static long dyeableRecursiveFinalOutputAmountToFlush(ParallelExecutingCraftingJob finishedJob) {
+        if (finishedJob.dyeableRecursiveFinalOutputAmount > 0L) {
+            return finishedJob.dyeableRecursiveFinalOutputAmount;
+        }
+        return finishedJob.finalOutput == null ? 0L : finishedJob.finalOutput.amount();
     }
 
     void storeItems() {

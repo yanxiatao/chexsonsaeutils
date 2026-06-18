@@ -176,6 +176,13 @@ final class DyeablePatternCraftingTreeNode {
 
         buildChildPatterns();
         long totalRequestedItems = requestedAmount * this.amount;
+        long fulfilledByRootRing = tryRootRingReplacement(inventory, totalRequestedItems);
+        if (fulfilledByRootRing > 0L) {
+            totalRequestedItems -= fulfilledByRootRing;
+            if (totalRequestedItems <= 0L) {
+                return;
+            }
+        }
 
         for (DyeablePatternCraftingTreeProcess process : Objects.requireNonNull(this.nodes)) {
             int processColor = PatternColorHelper.getPatternColor(process.details);
@@ -211,6 +218,20 @@ final class DyeablePatternCraftingTreeNode {
         }
     }
 
+    private long tryRootRingReplacement(CraftingSimulationState inventory, long requestedAmount)
+            throws InterruptedException {
+        if (this.parent != null || requestedAmount <= 0L) {
+            return 0L;
+        }
+
+        int requestedColor = this.job.chexsonsaeutils$getRequestedColor();
+        if (requestedColor == -1 || this.job.hasRingReplacementFailed(requestedColor, this.what)) {
+            return 0L;
+        }
+
+        return tryRingReplacement(inventory, requestedAmount, requestedColor);
+    }
+
     private boolean shouldCaptureRing(int processColor, boolean captureRing) {
         if (processColor == -1 || captureRing || this.job.hasRingReplacementFailed(processColor, this.what)) {
             return false;
@@ -222,17 +243,7 @@ final class DyeablePatternCraftingTreeNode {
         }
 
         ICraftingService craftingService = gridNode.getGrid().getCraftingService();
-        if (!(craftingService instanceof appeng.me.service.CraftingService craftingServiceImpl)) {
-            return false;
-        }
-
-        var providers = ((git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternAccessor)
-                craftingServiceImpl).chexsonsaeutils$getCraftingProviders();
-        if (!(providers instanceof DyeablePatternCraftingProviders dyeableProviders)) {
-            return false;
-        }
-
-        DyeablePatternCompressedRing ring = dyeableProviders.getOrCalculateCompressedRing(processColor);
+        DyeablePatternCompressedRing ring = this.job.getCompressedRing(craftingService, processColor);
         return ring != null && ring.entryPoints().contains(this.what);
     }
 
@@ -288,17 +299,7 @@ final class DyeablePatternCraftingTreeNode {
         }
 
         ICraftingService craftingService = gridNode.getGrid().getCraftingService();
-        if (!(craftingService instanceof appeng.me.service.CraftingService craftingServiceImpl)) {
-            return 0L;
-        }
-
-        var providers = ((git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternAccessor)
-                craftingServiceImpl).chexsonsaeutils$getCraftingProviders();
-        if (!(providers instanceof DyeablePatternCraftingProviders dyeableProviders)) {
-            return 0L;
-        }
-
-        DyeablePatternCompressedRing ring = dyeableProviders.getOrCalculateCompressedRing(ringColor);
+        DyeablePatternCompressedRing ring = this.job.getCompressedRing(craftingService, ringColor);
         if (!DyeablePatternCraftingPlanner.isCompressedRingCalculable(ring)) {
             this.job.markRingReplacementAsFailed(ringColor, this.what);
             return 0L;
@@ -317,6 +318,8 @@ final class DyeablePatternCraftingTreeNode {
         }
 
         ChildCraftingSimulationState sandbox = new ChildCraftingSimulationState(inventory);
+        KeyCounter ringExtractionsSnapshot = this.job.copyRingExtractions();
+        boolean applied = false;
         try {
             long ringNetOutputAmount = ring.netOutputs().get(entryNode.what);
             if (ringNetOutputAmount <= 0L) {
@@ -325,17 +328,21 @@ final class DyeablePatternCraftingTreeNode {
             }
 
             double scale = (double) requestedAmount / ringNetOutputAmount;
-            requestRingDependencies(sandbox, craftingService, ring, scale);
-            unpackRingOperations(sandbox, ring, scale);
+            this.job.requestRingDependencies(sandbox, craftingService, ring, scale);
+            this.job.unpackRingOperations(sandbox, ring, scale);
 
             long fulfilled = sandbox.extract(this.what, requestedAmount, Actionable.MODULATE);
             if (fulfilled > 0L) {
                 sandbox.applyDiff(inventory);
+                applied = true;
                 return fulfilled;
             }
         } catch (CraftBranchFailure failure) {
             this.job.markRingReplacementAsFailed(ringColor, this.what);
         } finally {
+            if (!applied) {
+                this.job.restoreRingExtractions(ringExtractionsSnapshot);
+            }
             ringsBeingReplaced.remove(ringColor);
         }
 
@@ -353,50 +360,6 @@ final class DyeablePatternCraftingTreeNode {
             cursor = cursor.parent != null ? cursor.parent.parent : null;
         }
         return entryNode;
-    }
-
-    private void requestRingDependencies(
-            CraftingSimulationState sandbox,
-            ICraftingService craftingService,
-            DyeablePatternCompressedRing ring,
-            double scale
-    ) throws CraftBranchFailure, InterruptedException {
-        for (var stack : ring.catalysts()) {
-            AEKey key = stack.getKey();
-            long amountNeeded = stack.getLongValue();
-            if (key.equals(this.job.getOutput())) {
-                long extracted = this.job.trackRingUsage(key, amountNeeded);
-                if (extracted > 0L) {
-                    sandbox.insert(key, extracted, Actionable.MODULATE);
-                }
-            }
-            new DyeablePatternCraftingTreeNode(craftingService, this.job, key, amountNeeded, null, -1)
-                    .request(sandbox, 1L, null, false);
-        }
-
-        for (var stack : ring.netInputs()) {
-            long required = (long) Math.ceil(stack.getLongValue() * scale);
-            if (required > 0L) {
-                new DyeablePatternCraftingTreeNode(craftingService, this.job, stack.getKey(), 1L, null, -1)
-                        .request(sandbox, required, null, false);
-            }
-        }
-    }
-
-    private void unpackRingOperations(CraftingSimulationState sandbox, DyeablePatternCompressedRing ring, double scale) {
-        for (var entry : ring.executionRatio().entrySet()) {
-            long times = (long) Math.ceil(entry.getValue() * scale);
-            if (times > 0L) {
-                sandbox.addCrafting(entry.getKey(), times);
-            }
-        }
-
-        for (var stack : ring.netOutputs()) {
-            long produced = (long) Math.floor(stack.getLongValue() * scale);
-            if (produced > 0L) {
-                sandbox.insert(stack.getKey(), produced, Actionable.MODULATE);
-            }
-        }
     }
 
     private Iterable<InputTemplate> getValidItemTemplates(ICraftingInventory inventory, long requestedAmount) {
@@ -443,7 +406,8 @@ final class DyeablePatternCraftingTreeNode {
                 amount,
                 null,
                 (candidate, requiredAmount) ->
-                        job.networkInventory().extract(candidate, requiredAmount, Actionable.SIMULATE) >= requiredAmount,
+                        job.networkInventory().extract(candidate, requiredAmount, Actionable.SIMULATE)
+                                >= requiredAmount,
                 craftingService::canEmitFor,
                 whatToCraft -> !craftingService.getCraftingFor(whatToCraft).isEmpty(),
                 craftingService::getFuzzyCraftable

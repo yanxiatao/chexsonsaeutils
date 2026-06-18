@@ -77,6 +77,25 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
         );
     }
 
+    public DyeablePatternCompressedRing getRetainingRing(AEKey catalyst) {
+        if (catalyst == null) {
+            return null;
+        }
+        for (Set<IPatternDetails> patterns : this.patternsByColor.values()) {
+            List<IPatternDetails> recursivePatterns = new ArrayList<>();
+            for (IPatternDetails pattern : patterns) {
+                if (isRecursiveProducer(pattern, catalyst)) {
+                    recursivePatterns.add(pattern);
+                }
+            }
+            DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(recursivePatterns);
+            if (ring != null && ring.netOutputs().get(catalyst) > 0L) {
+                return ring;
+            }
+        }
+        return null;
+    }
+
     private void indexProvider(ICraftingProvider provider) {
         for (var pattern : provider.getAvailablePatterns()) {
             int color = PatternColorHelper.getPatternColor(pattern);
@@ -97,5 +116,28 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
             );
         }
         this.compressedRingCache.clear();
+    }
+
+    private static boolean isRecursiveProducer(IPatternDetails pattern, AEKey catalyst) {
+        if (pattern == null || catalyst == null || !outputsKey(pattern, catalyst)) {
+            return false;
+        }
+        for (var input : pattern.getInputs()) {
+            for (var possibleInput : input.getPossibleInputs()) {
+                if (possibleInput != null && possibleInput.what() != null && catalyst.matches(possibleInput)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean outputsKey(IPatternDetails pattern, AEKey key) {
+        for (var output : pattern.getOutputs()) {
+            if (output != null && output.what() != null && key.matches(output)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -1,11 +1,17 @@
 package git.chexson.chexsonsaeutils.crafting.color;
 
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
+import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternSlotReplacementRule;
+import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleValidation;
+import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotTagService;
+import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
 import java.util.List;
 import java.util.Set;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.Test;
 
@@ -282,6 +288,33 @@ final class DyeablePatternCompressedRingTest {
         assertEquals(replacementAware, ordered.getFirst());
     }
 
+    @Test
+    void compressedRingUsesNonPrimaryReplacementCandidateWhenCandidateIsRingOutput() {
+        AEItemKey primary = AEItemKey.of(Items.PAPER);
+        AEItemKey seed = AEItemKey.of(Items.MAP);
+        AEItemKey diamond = AEItemKey.of(Items.DIAMOND);
+        AEItemKey netherBricks = AEItemKey.of(Items.NETHER_BRICKS);
+        ReplacementAwareProcessingPattern pattern = replacementAwareRecursivePattern(
+                primary,
+                seed,
+                List.of(
+                        new GenericStack(primary, 1L),
+                        new GenericStack(diamond, 7L),
+                        new GenericStack(netherBricks, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(List.of(pattern));
+
+        assertNotNull(ring);
+        assertEquals(1L, ring.catalysts().get(seed));
+        assertEquals(7L, ring.netInputs().get(diamond));
+        assertEquals(1L, ring.netInputs().get(netherBricks));
+        assertEquals(1L, ring.netOutputs().get(seed));
+        assertTrue(ring.entryPoints().contains(seed));
+    }
+
     private record TestPatternDetails(
             AEItemKey definition,
             int color,
@@ -380,5 +413,37 @@ final class DyeablePatternCompressedRingTest {
         stack.set(net.minecraft.core.component.DataComponents.DYED_COLOR,
                 new net.minecraft.world.item.component.DyedItemColor(color & 0x00FFFFFF, true));
         return stack;
+    }
+
+    private static ReplacementAwareProcessingPattern replacementAwareRecursivePattern(
+            AEItemKey primary,
+            AEItemKey seed,
+            List<GenericStack> inputs,
+            List<GenericStack> outputs
+    ) {
+        net.minecraft.world.item.ItemStack definitionStack =
+                PatternDetailsHelper.encodeProcessingPattern(inputs, outputs);
+        definitionStack.set(net.minecraft.core.component.DataComponents.DYED_COLOR,
+                new net.minecraft.world.item.component.DyedItemColor(0x336699, true));
+        AEItemKey definition = AEItemKey.of(definitionStack);
+        ResourceLocation primaryId = primary.getId();
+        ResourceLocation seedId = seed.getId();
+        ResourceLocation tag = ResourceLocation.fromNamespaceAndPath("chexsonsaeutils", "recursive_test");
+        ProcessingSlotTagService tagService = new ProcessingSlotTagService(
+                ignored -> List.of(tag),
+                ignored -> List.of(primaryId, seedId),
+                itemId -> primaryId.equals(itemId) || seedId.equals(itemId) ? Set.of(tag) : Set.of()
+        );
+        return new ReplacementAwareProcessingPattern(
+                definition,
+                List.of(new ProcessingPatternSlotReplacementRule(
+                        0,
+                        primaryId,
+                        Set.of(),
+                        Set.of(seedId)
+                )),
+                tagService,
+                new ProcessingSlotRuleValidation(tagService)
+        );
     }
 }

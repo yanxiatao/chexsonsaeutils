@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -31,8 +32,19 @@ public record DyeablePatternCompressedRing(
             return null;
         }
 
-        KeyCounter totalInputs = new KeyCounter();
         KeyCounter totalOutputs = new KeyCounter();
+        for (var pattern : patterns) {
+            if (pattern == null) {
+                continue;
+            }
+            for (GenericStack output : pattern.getOutputs()) {
+                if (output != null && output.what() != null && output.amount() > 0L) {
+                    totalOutputs.add(output.what(), output.amount());
+                }
+            }
+        }
+
+        KeyCounter totalInputs = new KeyCounter();
         Map<IPatternDetails, Integer> executionRatio = new HashMap<>();
 
         for (var pattern : patterns) {
@@ -41,18 +53,8 @@ public record DyeablePatternCompressedRing(
             }
             executionRatio.put(pattern, 1);
 
-            for (GenericStack output : pattern.getOutputs()) {
-                if (output != null && output.what() != null && output.amount() > 0L) {
-                    totalOutputs.add(output.what(), output.amount());
-                }
-            }
-
             for (var input : pattern.getInputs()) {
-                GenericStack[] possibleInputs = input.getPossibleInputs();
-                if (possibleInputs == null || possibleInputs.length == 0) {
-                    continue;
-                }
-                GenericStack baseStack = possibleInputs[0];
+                GenericStack baseStack = selectRingInput(pattern, input, totalOutputs);
                 if (baseStack == null || baseStack.what() == null || baseStack.amount() <= 0L) {
                     continue;
                 }
@@ -99,5 +101,36 @@ public record DyeablePatternCompressedRing(
                 Set.copyOf(netOutputs.keySet()),
                 calculable
         );
+    }
+
+    @Nullable
+    private static GenericStack selectRingInput(
+            IPatternDetails pattern,
+            IPatternDetails.IInput input,
+            KeyCounter totalOutputs
+    ) {
+        GenericStack[] possibleInputs = input.getPossibleInputs();
+        if (possibleInputs == null || possibleInputs.length == 0) {
+            return null;
+        }
+
+        GenericStack primary = possibleInputs[0];
+        if (!(pattern instanceof ReplacementAwareProcessingPattern) || totalOutputs == null || totalOutputs.isEmpty()) {
+            return primary;
+        }
+
+        long acceptableAmount = primary == null ? -1L : primary.amount();
+        for (GenericStack possibleInput : possibleInputs) {
+            if (possibleInput == null || possibleInput.what() == null || possibleInput.amount() <= 0L) {
+                continue;
+            }
+            if (acceptableAmount > 0L && possibleInput.amount() != acceptableAmount) {
+                continue;
+            }
+            if (totalOutputs.get(possibleInput.what()) > 0L) {
+                return possibleInput;
+            }
+        }
+        return primary;
     }
 }
