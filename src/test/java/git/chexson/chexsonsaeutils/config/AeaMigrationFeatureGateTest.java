@@ -105,6 +105,11 @@ final class AeaMigrationFeatureGateTest {
     }
 
     @Test
+    void dyeablePatternPackIsAlwaysActive() {
+        assertTrue(DyeablePatternPackRegistration.packAlwaysActive());
+    }
+
+    @Test
     void mixinConfigStillListsAllOptionalMigrationMixins() throws IOException {
         String mixinConfig = Files.readString(Path.of("src/main/resources/chexsonsaeutils.mixins.json"));
 

@@ -25,11 +25,15 @@ public final class DyeablePatternPackRegistration {
         return "resourcePack.chexsonsaeutils.dyeable_pattern";
     }
 
+    public static boolean packAlwaysActive() {
+        return true;
+    }
+
     public static void register(AddPackFindersEvent event) {
         if (event.getPackType() != PackType.CLIENT_RESOURCES) {
             return;
         }
-        event.addPackFinders(PACK_LOCATION, PackType.CLIENT_RESOURCES, PACK_TITLE, PackSource.BUILT_IN, false,
+        event.addPackFinders(PACK_LOCATION, PackType.CLIENT_RESOURCES, PACK_TITLE, PackSource.BUILT_IN, packAlwaysActive(),
                 net.minecraft.server.packs.repository.Pack.Position.TOP);
     }
 }
