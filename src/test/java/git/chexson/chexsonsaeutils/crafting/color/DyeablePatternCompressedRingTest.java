@@ -2,10 +2,13 @@ package git.chexson.chexsonsaeutils.crafting.color;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingProvider;
+import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
+import appeng.api.stacks.KeyCounter;
+import appeng.crafting.CraftingPlan;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +45,46 @@ final class DyeablePatternCompressedRingTest {
         assertEquals(1L, ring.catalysts().get(water));
         assertTrue(ring.entryPoints().contains(water));
         assertEquals(1L, ring.netInputs().get(dust));
+    }
+
+    @Test
+    void recursivePlanKeepsRequestedFinalOutputVisible() {
+        AEKey output = AEItemKey.of(Items.DIAMOND);
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        IPatternDetails producer = pattern(
+                input(stack(seed, 1L)),
+                input(stack(AEItemKey.of(Items.GLOWSTONE_DUST), 1L)),
+                List.of(stack(output, 2L))
+        );
+        KeyCounter usedItems = new KeyCounter();
+        usedItems.add(output, 3L);
+        usedItems.add(seed, 1L);
+        KeyCounter ringExtractions = new KeyCounter();
+        ringExtractions.add(output, 3L);
+        CraftingPlan basePlan = new CraftingPlan(
+                stack(output, 4L),
+                8L,
+                false,
+                false,
+                usedItems,
+                new KeyCounter(),
+                new KeyCounter(),
+                Map.of(producer, 2L)
+        );
+
+        ICraftingPlan recursivePlan = DyeablePatternCraftingCalculation.createRecursivePlanForRingExtractions(
+                basePlan,
+                ringExtractions
+        );
+
+        assertEquals(4L, recursivePlan.finalOutput().amount());
+        assertTrue(recursivePlan instanceof DyeablePatternRecursivePlan);
+        assertEquals(
+                4L,
+                ((DyeablePatternRecursivePlan) recursivePlan).chexsonsaeutils$dyeableRecursiveFinalOutputAmount()
+        );
+        assertEquals(3L, recursivePlan.usedItems().get(output));
+        assertEquals(1L, recursivePlan.usedItems().get(seed));
     }
 
     @Test

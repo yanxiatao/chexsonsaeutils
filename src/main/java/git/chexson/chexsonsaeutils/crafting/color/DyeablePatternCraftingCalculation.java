@@ -181,12 +181,19 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
     }
 
     private ICraftingPlan mergeRingExtractions(CraftingPlan basePlan) {
+        return createRecursivePlanForRingExtractions(basePlan, this.ringExtractions);
+    }
+
+    static ICraftingPlan createRecursivePlanForRingExtractions(
+            CraftingPlan basePlan,
+            KeyCounter ringExtractions
+    ) {
         KeyCounter combinedUsedItems = new KeyCounter();
         addRewrittenUsedItems(basePlan, combinedUsedItems);
-        mergeRecursiveInitialItems(combinedUsedItems, this.ringExtractions);
+        mergeRecursiveInitialItems(combinedUsedItems, ringExtractions);
 
         CraftingPlan merged = new CraftingPlan(
-                resolveFinalOutput(basePlan),
+                basePlan.finalOutput(),
                 basePlan.bytes(),
                 basePlan.simulation(),
                 basePlan.multiplePaths(),
@@ -197,13 +204,13 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         );
         return new RecursiveCraftingPlan(
                 merged,
-                copyCounter(this.ringExtractions),
-                copyCounter(this.ringExtractions),
+                copyCounter(ringExtractions),
+                copyCounter(ringExtractions),
                 basePlan.finalOutput().amount()
         );
     }
 
-    private void addRewrittenUsedItems(CraftingPlan basePlan, KeyCounter target) {
+    private static void addRewrittenUsedItems(CraftingPlan basePlan, KeyCounter target) {
         if (basePlan == null || target == null || basePlan.usedItems() == null) {
             return;
         }
@@ -217,22 +224,6 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             }
             target.add(entry.getKey(), entry.getLongValue());
         }
-    }
-
-    private GenericStack resolveFinalOutput(CraftingPlan basePlan) {
-        AEKey targetKey = basePlan.finalOutput().what();
-        long totalOutput = 0L;
-        for (var entry : basePlan.patternTimes().entrySet()) {
-            long times = entry.getValue();
-            for (GenericStack outputStack : entry.getKey().getOutputs()) {
-                if (outputStack.what().equals(targetKey)) {
-                    totalOutput += outputStack.amount() * times;
-                }
-            }
-        }
-        return totalOutput > basePlan.finalOutput().amount()
-                ? new GenericStack(targetKey, totalOutput)
-                : basePlan.finalOutput();
     }
 
     private void retainRecursiveCatalysts(
