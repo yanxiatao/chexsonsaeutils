@@ -52,6 +52,21 @@ public final class DyeablePatternCraftingPlanner {
                 && processColor != parentColor;
     }
 
+    public static boolean canStartRingCaptureAtProcess(
+            int parentColor,
+            int processColor,
+            boolean captureRing,
+            boolean crossColorChainPlanningEnabled
+    ) {
+        if (processColor == -1) {
+            return false;
+        }
+        if (!captureRing) {
+            return true;
+        }
+        return crossColorChainPlanningEnabled && processColor != parentColor;
+    }
+
     public static int resolvePreferredColor(
             @Nullable IPatternDetails parentDetails,
             boolean rootNode,

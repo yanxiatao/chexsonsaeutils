@@ -232,7 +232,12 @@ final class DyeablePatternCraftingTreeNode {
     }
 
     private boolean shouldCaptureRing(int processColor, boolean captureRing) {
-        if (processColor == -1 || captureRing || this.job.hasRingReplacementFailed(processColor, this.what)) {
+        if (!DyeablePatternCraftingPlanner.canStartRingCaptureAtProcess(
+                this.color,
+                processColor,
+                captureRing,
+                DyeablePatternRecursiveConfig.crossColorChainPlanningEnabled()
+        ) || this.job.hasRingReplacementFailed(processColor, this.what)) {
             return false;
         }
 

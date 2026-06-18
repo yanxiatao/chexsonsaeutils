@@ -59,6 +59,18 @@ final class DyeablePatternCompressedRingTest {
                 true,
                 true
         ));
+        assertTrue(DyeablePatternCraftingPlanner.canStartRingCaptureAtProcess(
+                parentColor,
+                laterProcessColor,
+                true,
+                true
+        ));
+        assertFalse(DyeablePatternCraftingPlanner.canStartRingCaptureAtProcess(
+                parentColor,
+                parentColor,
+                true,
+                true
+        ));
     }
 
     @Test
