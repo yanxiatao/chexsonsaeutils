@@ -131,15 +131,13 @@ final class DyeablePatternCraftingTreeNode {
         }
 
         for (var input : details.getInputs()) {
-            if (this.what.matches(input.getPossibleInputs()[0])) {
-                return false;
+            GenericStack[] possibleInputs = input.getPossibleInputs();
+            if (possibleInputs == null) {
+                continue;
             }
-            if (details instanceof ReplacementAwareProcessingPattern) {
-                GenericStack[] possibleInputs = input.getPossibleInputs();
-                for (int index = 1; index < possibleInputs.length; index++) {
-                    if (this.what.matches(possibleInputs[index])) {
-                        return false;
-                    }
+            for (GenericStack possibleInput : possibleInputs) {
+                if (this.what.matches(possibleInput)) {
+                    return false;
                 }
             }
         }

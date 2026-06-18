@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -54,7 +53,7 @@ public record DyeablePatternCompressedRing(
             executionRatio.put(pattern, 1);
 
             for (var input : pattern.getInputs()) {
-                GenericStack baseStack = selectRingInput(pattern, input, totalOutputs);
+                GenericStack baseStack = selectRingInput(input, totalOutputs);
                 if (baseStack == null || baseStack.what() == null || baseStack.amount() <= 0L) {
                     continue;
                 }
@@ -105,7 +104,6 @@ public record DyeablePatternCompressedRing(
 
     @Nullable
     private static GenericStack selectRingInput(
-            IPatternDetails pattern,
             IPatternDetails.IInput input,
             KeyCounter totalOutputs
     ) {
@@ -115,16 +113,12 @@ public record DyeablePatternCompressedRing(
         }
 
         GenericStack primary = possibleInputs[0];
-        if (!(pattern instanceof ReplacementAwareProcessingPattern) || totalOutputs == null || totalOutputs.isEmpty()) {
+        if (totalOutputs == null || totalOutputs.isEmpty()) {
             return primary;
         }
 
-        long acceptableAmount = primary == null ? -1L : primary.amount();
         for (GenericStack possibleInput : possibleInputs) {
             if (possibleInput == null || possibleInput.what() == null || possibleInput.amount() <= 0L) {
-                continue;
-            }
-            if (acceptableAmount > 0L && possibleInput.amount() != acceptableAmount) {
                 continue;
             }
             if (totalOutputs.get(possibleInput.what()) > 0L) {
