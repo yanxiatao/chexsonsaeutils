@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class DyeablePatternCompressedRingTest {
@@ -152,6 +153,82 @@ final class DyeablePatternCompressedRingTest {
     }
 
     @Test
+    void retainedCatalystCandidatesIgnorePlanOutputsAndMissingItems() {
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        AEKey extractedSeed = AEItemKey.of(Items.GLOWSTONE_DUST);
+        AEKey zeroExtraction = AEItemKey.of(Items.LAPIS_LAZULI);
+        AEKey finalProduct = AEItemKey.of(Items.DIAMOND);
+        AEKey emitted = AEItemKey.of(Items.EMERALD);
+        AEKey missing = AEItemKey.of(Items.IRON_INGOT);
+        AEKey patternInput = AEItemKey.of(Items.COPPER_INGOT);
+        AEKey patternOutput = AEItemKey.of(Items.GOLD_INGOT);
+        IPatternDetails downstreamPattern = pattern(
+                input(stack(patternInput, 1L)),
+                input(stack(seed, 1L)),
+                List.of(stack(patternOutput, 1L))
+        );
+        KeyCounter usedItems = new KeyCounter();
+        usedItems.add(seed, 1L);
+        KeyCounter emittedItems = new KeyCounter();
+        emittedItems.add(emitted, 1L);
+        KeyCounter missingItems = new KeyCounter();
+        missingItems.add(missing, 1L);
+        KeyCounter recursiveExtractions = new KeyCounter();
+        recursiveExtractions.add(extractedSeed, 1L);
+        recursiveExtractions.add(zeroExtraction, 0L);
+        CraftingPlan plan = new CraftingPlan(
+                stack(finalProduct, 1L),
+                8L,
+                false,
+                false,
+                usedItems,
+                emittedItems,
+                missingItems,
+                Map.of(downstreamPattern, 1L)
+        );
+
+        Set<AEKey> candidates = DyeablePatternCraftingCalculation.collectRetainedCatalystCandidates(
+                plan,
+                recursiveExtractions
+        );
+
+        assertEquals(Set.of(seed, extractedSeed), candidates);
+    }
+
+    @Test
+    void retainingRingOnlyMatchesDyedSelfRecursiveCatalysts() {
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        AEKey downstreamParticipant = AEItemKey.of(Items.GLOWSTONE_DUST);
+        AEKey finalProduct = AEItemKey.of(Items.DIAMOND);
+        IPatternDetails recursiveSeed = coloredPattern(
+                0xFF336699,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        IPatternDetails colorlessDownstream = coloredPattern(
+                -1,
+                input(stack(downstreamParticipant, 1L)),
+                List.of(stack(finalProduct, 1L))
+        );
+        IPatternDetails dyedNonRecursiveDownstream = coloredPattern(
+                0xFF336699,
+                input(stack(downstreamParticipant, 1L)),
+                List.of(stack(finalProduct, 1L))
+        );
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+        providers.addProvider(new TestProvider(
+                recursiveSeed,
+                colorlessDownstream,
+                dyedNonRecursiveDownstream
+        ));
+
+        DyeablePatternCompressedRing seedRing = providers.getRetainingRing(seed);
+        assertNotNull(seedRing);
+        assertEquals(1L, seedRing.catalysts().get(seed));
+        assertNull(providers.getRetainingRing(downstreamParticipant));
+    }
+
+    @Test
     void sameColorUnrelatedRecursivePatternsStayInDifferentRings() {
         AEKey seedA = AEItemKey.of(Items.REDSTONE);
         AEKey seedB = AEItemKey.of(Items.GLOWSTONE_DUST);
@@ -189,6 +266,14 @@ final class DyeablePatternCompressedRingTest {
         return new TestPattern(new IPatternDetails.IInput[] { firstInput, secondInput }, outputs);
     }
 
+    private static IPatternDetails coloredPattern(
+            int color,
+            IPatternDetails.IInput input,
+            List<GenericStack> outputs
+    ) {
+        return new ColoredTestPattern(new IPatternDetails.IInput[] { input }, outputs, color);
+    }
+
     private static IPatternDetails.IInput input(GenericStack... possibleInputs) {
         return new TestInput(possibleInputs);
     }
@@ -215,6 +300,33 @@ final class DyeablePatternCompressedRingTest {
         @Override
         public List<GenericStack> getOutputs() {
             return outputs;
+        }
+    }
+
+    private record ColoredTestPattern(
+            IPatternDetails.IInput[] inputs,
+            List<GenericStack> outputs,
+            int color
+    ) implements IPatternDetails, IPatternDetailsColorAccessor {
+
+        @Override
+        public AEItemKey getDefinition() {
+            return AEItemKey.of(Items.PAPER);
+        }
+
+        @Override
+        public IInput[] getInputs() {
+            return inputs.clone();
+        }
+
+        @Override
+        public List<GenericStack> getOutputs() {
+            return outputs;
+        }
+
+        @Override
+        public int chexsonsaeutils$getColor() {
+            return color;
         }
     }
 

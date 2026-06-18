@@ -245,7 +245,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             return;
         }
 
-        Set<AEKey> candidateKeys = collectPlanKeys(preliminaryPlan);
+        Set<AEKey> candidateKeys = collectRetainedCatalystCandidates(preliminaryPlan, this.ringExtractions);
         for (AEKey candidateKey : candidateKeys) {
             DyeablePatternCompressedRing retainingRing = providers.getRetainingRing(candidateKey);
             if (!DyeablePatternCraftingPlanner.isCompressedRingCalculable(retainingRing)) {
@@ -261,28 +261,27 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         }
     }
 
-    private Set<AEKey> collectPlanKeys(CraftingPlan plan) {
+    static Set<AEKey> collectRetainedCatalystCandidates(
+            CraftingPlan plan,
+            KeyCounter recursiveInitialItems
+    ) {
         Set<AEKey> keys = new HashSet<>();
-        if (plan.finalOutput() != null && plan.finalOutput().what() != null) {
-            keys.add(plan.finalOutput().what());
-        }
-        collectCounterKeys(plan.usedItems(), keys);
-        collectCounterKeys(plan.emittedItems(), keys);
-        collectCounterKeys(plan.missingItems(), keys);
-        if (plan.patternTimes() != null) {
-            for (var entry : plan.patternTimes().entrySet()) {
-                if (entry.getKey() == null || entry.getValue() == null || entry.getValue() <= 0L) {
-                    continue;
-                }
-                collectPatternInputKeys(entry.getKey(), keys);
-                for (GenericStack outputStack : entry.getKey().getOutputs()) {
-                    if (outputStack != null && outputStack.what() != null) {
-                        keys.add(outputStack.what());
-                    }
-                }
-            }
+        collectCounterKeys(recursiveInitialItems, keys);
+        if (plan != null) {
+            collectCounterKeys(plan.usedItems(), keys);
         }
         return keys;
+    }
+
+    private static void collectCounterKeys(KeyCounter counter, Set<AEKey> target) {
+        if (counter == null || target == null) {
+            return;
+        }
+        for (var entry : counter) {
+            if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                target.add(entry.getKey());
+            }
+        }
     }
 
     private long projectNetworkAmountAfterPlan(CraftingPlan plan, AEKey key) {
@@ -372,33 +371,6 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         for (var entry : recursiveInitialItems) {
             if (entry.getKey() != null && entry.getLongValue() > 0L) {
                 target.set(entry.getKey(), Math.max(target.get(entry.getKey()), entry.getLongValue()));
-            }
-        }
-    }
-
-    private static void collectCounterKeys(KeyCounter counter, Set<AEKey> target) {
-        if (counter == null || target == null) {
-            return;
-        }
-        for (var entry : counter) {
-            if (entry.getKey() != null && entry.getLongValue() > 0L) {
-                target.add(entry.getKey());
-            }
-        }
-    }
-
-    private static void collectPatternInputKeys(appeng.api.crafting.IPatternDetails pattern, Set<AEKey> target) {
-        if (pattern == null || target == null) {
-            return;
-        }
-        for (var input : pattern.getInputs()) {
-            if (input == null || input.getPossibleInputs() == null) {
-                continue;
-            }
-            for (GenericStack possibleInput : input.getPossibleInputs()) {
-                if (possibleInput != null && possibleInput.what() != null) {
-                    target.add(possibleInput.what());
-                }
             }
         }
     }

@@ -97,10 +97,14 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
             return null;
         }
         for (Map.Entry<Integer, Set<IPatternDetails>> entry : this.patternsByColor.entrySet()) {
+            if (entry.getKey() == -1) {
+                continue;
+            }
             DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(
                     collectConnectedPatterns(entry.getKey(), catalyst)
             );
             if (ring != null
+                    && ring.catalysts().get(catalyst) > 0L
                     && ring.netOutputs().get(catalyst) > 0L
                     && ring.entryPoints().contains(catalyst)) {
                 return ring;

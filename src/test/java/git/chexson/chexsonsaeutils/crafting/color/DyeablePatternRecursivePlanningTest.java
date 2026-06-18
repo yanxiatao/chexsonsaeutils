@@ -106,8 +106,8 @@ final class DyeablePatternRecursivePlanningTest {
         DyeablePatternRecursivePlan recursivePlan = (DyeablePatternRecursivePlan) plan;
         assertFalse(plan.simulation());
         assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems().get(seed));
-        assertTrue(plan.patternTimes().get(recursivePattern) >= 1L);
-        assertTrue(plan.patternTimes().get(downstreamPattern) >= 1L);
+        assertEquals(1L, plan.patternTimes().get(recursivePattern));
+        assertEquals(1L, plan.patternTimes().get(downstreamPattern));
     }
 
     private static TestCalculation createCalculation(
