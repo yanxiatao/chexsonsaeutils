@@ -2,28 +2,42 @@ name: Codex PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  codex:
-    if: ${{ !github.event.pull_request.draft }}
+  codex_review:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-    outputs:
-      final_message: ${{ steps.run_codex.outputs.final-message }}
+      pull-requests: write
+      issues: write
 
     steps:
-      - uses: actions/checkout@v5
+      - name: Check out PR merge ref
+        uses: actions/checkout@v5
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           persist-credentials: false
+          fetch-depth: 1
 
-      - name: Pre-fetch base and head refs for the PR
+      - name: Fetch base and head refs
         env:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          set -euo pipefail
           git fetch --no-tags origin \
             "$PR_BASE_REF" \
             "+refs/pull/$PR_NUMBER/head"
@@ -33,48 +47,293 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.CODEX_API_KEY }}
+          responses-api-endpoint: >-
+            ${{ secrets.CODEX_RESPONSES_API_ENDPOINT }}
+          # 改成你的模型 ID 或 deployment 名称。
           model: gpt-5.4
           effort: high
-          responses-api-endpoint: ${{ secrets.CODEX_RESPONSES_API_ENDPOINT }}
+          sandbox: read-only
           safety-strategy: drop-sudo
+          output-schema: |
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "summary": {
+                  "type": "string"
+                },
+                "findings": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "path": { "type": "string" },
+                      "line": { "type": "integer", "minimum": 1 },
+                      "severity": {
+                        "type": "string",
+                        "enum": ["P0", "P1", "P2", "P3"]
+                      },
+                      "title": { "type": "string" },
+                      "body": { "type": "string" }
+                    },
+                    "required": [
+                      "path",
+                      "line",
+                      "severity",
+                      "title",
+                      "body"
+                    ]
+                  }
+                }
+              },
+              "required": ["summary", "findings"]
+            }
           prompt: |
             你在审查 PR #${{ github.event.pull_request.number }}。
             只审查这个 PR 引入的改动。
+            只输出单行 JSON。
+            不要输出 Markdown 代码块。
+            输出必须严格匹配 JSON Schema。
 
-            变更范围：
-            git log --oneline \
+            只参考这段提交范围：
+            git diff --unified=0 \
             ${{ github.event.pull_request.base.sha }}...\
             ${{ github.event.pull_request.head.sha }}
 
-            输出要求：
-            1. 只报真实问题。
-            2. 优先报 bug、回归、安全问题、缺失测试。
-            3. 结论精简，给出可执行建议。
+            规则：
+            1. 只报告真实、可复现、可行动的问题。
+            2. 优先报告 bug、回归、安全问题、缺失测试。
+            3. 忽略纯风格问题、命名偏好、无明确影响的猜测。
+            4. 每条 finding 必须定位到当前 PR diff 的新增行。
+            5. line 必须是 GitHub PR diff 右侧的行号。
+            6. body 必须写清影响和建议修复方向。
+            7. 最多输出 10 条 finding。
+            8. 没有真实问题时，返回：
+            {"summary":"未发现需要指出的真实问题。","findings":[]}
 
-            PR 标题和描述：
-            ----
+            PR 标题：
             ${{ github.event.pull_request.title }}
+
+            PR 描述：
             ${{ github.event.pull_request.body }}
 
-  post_feedback:
-    runs-on: ubuntu-latest
-    needs: codex
-    if: needs.codex.outputs.final_message != ''
-    permissions:
-      issues: write
-      pull-requests: write
-
-    steps:
-      - name: Post review comment
+      - name: Publish review
         uses: actions/github-script@v7
         env:
-          CODEX_FINAL_MESSAGE: ${{ needs.codex.outputs.final_message }}
+          REVIEW_JSON: ${{ steps.run_codex.outputs.final-message }}
         with:
           github-token: ${{ github.token }}
           script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pullNumber = context.payload.pull_request.number;
+            const headSha = context.payload.pull_request.head.sha;
+            const raw = (process.env.REVIEW_JSON || "").trim();
+
+            if (!raw) {
+              core.info("审查结果为空，跳过发布。");
+              return;
+            }
+
+            let parsed;
+            try {
+              parsed = JSON.parse(raw);
+            } catch (error) {
+              core.setFailed(`审查结果不是有效 JSON: ${error.message}`);
+              return;
+            }
+
+            const summary =
+              typeof parsed.summary === "string" && parsed.summary.trim()
+                ? parsed.summary.trim()
+                : "Codex 已完成审查。";
+
+            const findings = Array.isArray(parsed.findings)
+              ? parsed.findings
+              : [];
+
+            if (findings.length === 0) {
+              core.info("未发现需要发布的问题。");
+              return;
+            }
+
+            function collectAddedLines(patch) {
+              const added = new Set();
+              let newLine = 0;
+
+              for (const line of patch.split(/\r?\n/)) {
+                const hunk = line.match(
+                  /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/
+                );
+
+                if (hunk) {
+                  newLine = Number(hunk[1]);
+                  continue;
+                }
+
+                if (line.startsWith("+") && !line.startsWith("+++")) {
+                  added.add(newLine);
+                  newLine += 1;
+                  continue;
+                }
+
+                if (line.startsWith("-") && !line.startsWith("---")) {
+                  continue;
+                }
+
+                if (!line.startsWith("\\")) {
+                  newLine += 1;
+                }
+              }
+
+              return added;
+            }
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner,
+                repo,
+                pull_number: pullNumber,
+                per_page: 100,
+              }
+            );
+
+            const addedLinesByPath = new Map();
+            for (const file of files) {
+              if (typeof file.patch !== "string") {
+                continue;
+              }
+
+              addedLinesByPath.set(
+                file.filename,
+                collectAddedLines(file.patch)
+              );
+            }
+
+            const comments = [];
+            const invalid = [];
+            const seen = new Set();
+
+            for (const finding of findings) {
+              const path =
+                typeof finding.path === "string"
+                  ? finding.path.trim()
+                  : "";
+
+              const line = Number(finding.line);
+              const severity =
+                typeof finding.severity === "string" &&
+                ["P0", "P1", "P2", "P3"].includes(finding.severity)
+                  ? finding.severity
+                  : "P2";
+
+              const title =
+                typeof finding.title === "string"
+                  ? finding.title.trim()
+                  : "";
+
+              const body =
+                typeof finding.body === "string"
+                  ? finding.body.trim()
+                  : "";
+
+              if (!path || !Number.isInteger(line) || line < 1) {
+                invalid.push(finding);
+                continue;
+              }
+
+              if (!title || !body) {
+                invalid.push(finding);
+                continue;
+              }
+
+              const addedLines = addedLinesByPath.get(path);
+              if (!addedLines || !addedLines.has(line)) {
+                invalid.push(finding);
+                continue;
+              }
+
+              const key = `${path}:${line}:${title}`;
+              if (seen.has(key)) {
+                continue;
+              }
+              seen.add(key);
+
+              comments.push({
+                path,
+                line,
+                side: "RIGHT",
+                body: `**[${severity}] ${title}**\n\n${body}`,
+              });
+            }
+
+            if (comments.length > 0) {
+              const body =
+                invalid.length === 0
+                  ? summary
+                  : `${summary}\n\n另有 ${invalid.length} 条结果` +
+                    `未能定位到可评论 diff 行，已跳过。`;
+
+              await github.rest.pulls.createReview({
+                owner,
+                repo,
+                pull_number: pullNumber,
+                commit_id: headSha,
+                event: "COMMENT",
+                body,
+                comments,
+              });
+
+              core.info(`已发布 ${comments.length} 条行内审查意见。`);
+              return;
+            }
+
+            const lines = [
+              summary,
+              "",
+              "以下结果未能定位到当前 PR diff 的新增行，改为普通评论：",
+              "",
+            ];
+
+            for (const [index, finding] of invalid.slice(0, 10).entries()) {
+              const severity =
+                typeof finding.severity === "string"
+                  ? finding.severity
+                  : "P2";
+
+              const title =
+                typeof finding.title === "string" && finding.title.trim()
+                  ? finding.title.trim()
+                  : `问题 ${index + 1}`;
+
+              const path =
+                typeof finding.path === "string" && finding.path.trim()
+                  ? finding.path.trim()
+                  : "unknown";
+
+              const line =
+                Number.isInteger(finding.line) && finding.line > 0
+                  ? finding.line
+                  : "?";
+
+              const body =
+                typeof finding.body === "string" && finding.body.trim()
+                  ? finding.body.trim()
+                  : "未提供详细说明。";
+
+              lines.push(`- [${severity}] \`${path}:${line}\` ${title}`);
+              lines.push(body);
+              lines.push("");
+            }
+
             await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body: process.env.CODEX_FINAL_MESSAGE,
+              owner,
+              repo,
+              issue_number: pullNumber,
+              body: lines.join("\n"),
             });
+
+            core.info("未找到可锚定行，已发布普通 PR 评论。");
