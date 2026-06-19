@@ -9,6 +9,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -23,35 +24,34 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
 
     private final Map<Integer, Set<IPatternDetails>> patternsByColor = new HashMap<>();
     private final Map<Integer, DyeablePatternCompressedRing> compressedRingCache = new HashMap<>();
+    private final Map<IGridNode, List<IPatternDetails>> indexedNodeProviders = new HashMap<>();
+    private final Map<ICraftingProvider, List<IPatternDetails>> indexedGlobalProviders = new IdentityHashMap<>();
 
     @Override
     public void addProvider(IGridNode node) {
         var provider = node.getService(ICraftingProvider.class);
         super.addProvider(node);
         if (provider != null) {
-            indexProvider(provider);
+            replaceIndexedNodeProvider(node, snapshotPatterns(provider));
         }
     }
 
     @Override
     public void addProvider(ICraftingProvider provider) {
         super.addProvider(provider);
-        indexProvider(provider);
+        replaceIndexedGlobalProvider(provider, snapshotPatterns(provider));
     }
 
     @Override
     public void removeProvider(IGridNode node) {
-        var provider = node.getService(ICraftingProvider.class);
         super.removeProvider(node);
-        if (provider != null) {
-            unindexProvider(provider);
-        }
+        unindexNodeProvider(node);
     }
 
     @Override
     public void removeProvider(ICraftingProvider provider) {
         super.removeProvider(provider);
-        unindexProvider(provider);
+        unindexGlobalProvider(provider);
     }
 
     public Collection<IPatternDetails> getPatternsByColor(int color) {
@@ -113,8 +113,28 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
         return null;
     }
 
-    private void indexProvider(ICraftingProvider provider) {
-        for (var pattern : provider.getAvailablePatterns()) {
+    private static List<IPatternDetails> snapshotPatterns(ICraftingProvider provider) {
+        return List.copyOf(provider.getAvailablePatterns());
+    }
+
+    private void replaceIndexedNodeProvider(IGridNode node, List<IPatternDetails> patterns) {
+        List<IPatternDetails> previousPatterns = this.indexedNodeProviders.put(node, patterns);
+        if (previousPatterns != null) {
+            unindexPatterns(previousPatterns);
+        }
+        indexPatterns(patterns);
+    }
+
+    private void replaceIndexedGlobalProvider(ICraftingProvider provider, List<IPatternDetails> patterns) {
+        List<IPatternDetails> previousPatterns = this.indexedGlobalProviders.put(provider, patterns);
+        if (previousPatterns != null) {
+            unindexPatterns(previousPatterns);
+        }
+        indexPatterns(patterns);
+    }
+
+    private void indexPatterns(Collection<IPatternDetails> patterns) {
+        for (var pattern : patterns) {
             int color = PatternColorHelper.getPatternColor(pattern);
             this.patternsByColor.computeIfAbsent(color, ignored -> new HashSet<>()).add(pattern);
         }
@@ -225,14 +245,28 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
         }
     }
 
-    private void unindexProvider(ICraftingProvider provider) {
-        for (var pattern : provider.getAvailablePatterns()) {
+    private void unindexNodeProvider(IGridNode node) {
+        List<IPatternDetails> patterns = this.indexedNodeProviders.remove(node);
+        if (patterns != null) {
+            unindexPatterns(patterns);
+        }
+    }
+
+    private void unindexGlobalProvider(ICraftingProvider provider) {
+        List<IPatternDetails> patterns = this.indexedGlobalProviders.remove(provider);
+        if (patterns != null) {
+            unindexPatterns(patterns);
+        }
+    }
+
+    private void unindexPatterns(Collection<IPatternDetails> patterns) {
+        for (var pattern : patterns) {
             int color = PatternColorHelper.getPatternColor(pattern);
             this.patternsByColor.computeIfPresent(
                     color,
-                    (ignored, patterns) -> {
-                        patterns.remove(pattern);
-                        return patterns.isEmpty() ? null : patterns;
+                    (ignored, indexedPatterns) -> {
+                        indexedPatterns.remove(pattern);
+                        return indexedPatterns.isEmpty() ? null : indexedPatterns;
                     }
             );
         }

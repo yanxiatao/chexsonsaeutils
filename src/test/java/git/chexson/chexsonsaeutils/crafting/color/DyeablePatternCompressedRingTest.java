@@ -1,6 +1,12 @@
 package git.chexson.chexsonsaeutils.crafting.color;
 
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.networking.GridFlags;
+import appeng.api.networking.IGrid;
+import appeng.api.networking.IGridConnection;
+import appeng.api.networking.IGridNode;
+import appeng.api.networking.IGridNodeService;
+import appeng.api.networking.IGridVisitor;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.stacks.AEFluidKey;
@@ -12,9 +18,14 @@ import appeng.crafting.CraftingPlan;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import net.minecraft.CrashReportCategory;
+import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.Fluids;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -258,6 +269,69 @@ final class DyeablePatternCompressedRingTest {
         assertFalse(ringForB.entryPoints().contains(seedA));
     }
 
+    @Test
+    void providerRemovalUsesSnapshotIndexedAtMountTime() {
+        int color = 0xFF336699;
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        IPatternDetails initialPattern = identityColoredPattern(
+                color,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        IPatternDetails refreshedPattern = identityColoredPattern(
+                color,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        MutableTestProvider provider = new MutableTestProvider(initialPattern);
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+
+        providers.addProvider(provider);
+        provider.setPatterns(refreshedPattern);
+        providers.removeProvider(provider);
+
+        assertNull(providers.getOrCalculateCompressedRing(color, seed));
+
+        providers.addProvider(provider);
+        DyeablePatternCompressedRing ring = providers.getOrCalculateCompressedRing(color, seed);
+
+        assertNotNull(ring);
+        assertEquals(1, ring.executionRatio().size());
+        assertTrue(ring.executionRatio().containsKey(refreshedPattern));
+    }
+
+    @Test
+    void nodeProviderRemovalUsesSnapshotIndexedAtMountTime() {
+        int color = 0xFF336699;
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        IPatternDetails initialPattern = identityColoredPattern(
+                color,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        IPatternDetails refreshedPattern = identityColoredPattern(
+                color,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        MutableTestProvider provider = new MutableTestProvider(initialPattern);
+        TestGridNode node = new TestGridNode(provider);
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+
+        providers.addProvider(node);
+        provider.setPatterns(refreshedPattern);
+        providers.removeProvider(node);
+
+        assertNull(providers.getOrCalculateCompressedRing(color, seed));
+
+        providers.addProvider(node);
+        DyeablePatternCompressedRing ring = providers.getOrCalculateCompressedRing(color, seed);
+
+        assertNotNull(ring);
+        assertEquals(1, ring.executionRatio().size());
+        assertTrue(ring.executionRatio().containsKey(refreshedPattern));
+    }
+
     private static IPatternDetails pattern(
             IPatternDetails.IInput firstInput,
             IPatternDetails.IInput secondInput,
@@ -272,6 +346,14 @@ final class DyeablePatternCompressedRingTest {
             List<GenericStack> outputs
     ) {
         return new ColoredTestPattern(new IPatternDetails.IInput[] { input }, outputs, color);
+    }
+
+    private static IPatternDetails identityColoredPattern(
+            int color,
+            IPatternDetails.IInput input,
+            List<GenericStack> outputs
+    ) {
+        return new IdentityColoredTestPattern(new IPatternDetails.IInput[] { input }, outputs, color);
     }
 
     private static IPatternDetails.IInput input(GenericStack... possibleInputs) {
@@ -330,6 +412,42 @@ final class DyeablePatternCompressedRingTest {
         }
     }
 
+    private static final class IdentityColoredTestPattern implements IPatternDetails, IPatternDetailsColorAccessor {
+        private final IPatternDetails.IInput[] inputs;
+        private final List<GenericStack> outputs;
+        private final int color;
+
+        private IdentityColoredTestPattern(
+                IPatternDetails.IInput[] inputs,
+                List<GenericStack> outputs,
+                int color
+        ) {
+            this.inputs = inputs;
+            this.outputs = outputs;
+            this.color = color;
+        }
+
+        @Override
+        public AEItemKey getDefinition() {
+            return AEItemKey.of(Items.PAPER);
+        }
+
+        @Override
+        public IInput[] getInputs() {
+            return inputs.clone();
+        }
+
+        @Override
+        public List<GenericStack> getOutputs() {
+            return outputs;
+        }
+
+        @Override
+        public int chexsonsaeutils$getColor() {
+            return color;
+        }
+    }
+
     private record TestInput(GenericStack[] possibleInputs) implements IPatternDetails.IInput {
 
         @Override
@@ -355,6 +473,146 @@ final class DyeablePatternCompressedRingTest {
         @Override
         public AEKey getRemainingKey(AEKey template) {
             return null;
+        }
+    }
+
+    private static final class MutableTestProvider implements ICraftingProvider {
+        private List<IPatternDetails> patterns;
+
+        private MutableTestProvider(IPatternDetails... patterns) {
+            setPatterns(patterns);
+        }
+
+        private void setPatterns(IPatternDetails... patterns) {
+            this.patterns = List.of(patterns);
+        }
+
+        @Override
+        public List<IPatternDetails> getAvailablePatterns() {
+            return patterns;
+        }
+
+        @Override
+        public boolean pushPattern(IPatternDetails patternDetails, appeng.api.stacks.KeyCounter[] inputHolder) {
+            return false;
+        }
+
+        @Override
+        public boolean isBusy() {
+            return false;
+        }
+
+        @Override
+        public Set<AEKey> getEmitableItems() {
+            return Set.of();
+        }
+
+        @Override
+        public int getPatternPriority() {
+            return 0;
+        }
+    }
+
+    private record TestGridNode(ICraftingProvider provider) implements IGridNode {
+        @Override
+        public <T extends IGridNodeService> T getService(Class<T> serviceClass) {
+            if (serviceClass == ICraftingProvider.class) {
+                return serviceClass.cast(provider);
+            }
+            return null;
+        }
+
+        @Override
+        public Object getOwner() {
+            return this;
+        }
+
+        @Override
+        public void beginVisit(IGridVisitor visitor) {
+        }
+
+        @Override
+        public IGrid getGrid() {
+            return null;
+        }
+
+        @Override
+        public ServerLevel getLevel() {
+            return null;
+        }
+
+        @Override
+        public Set<Direction> getConnectedSides() {
+            return Set.of();
+        }
+
+        @Override
+        public Map<Direction, IGridConnection> getInWorldConnections() {
+            return Map.of();
+        }
+
+        @Override
+        public List<IGridConnection> getConnections() {
+            return List.of();
+        }
+
+        @Override
+        public boolean hasGridBooted() {
+            return true;
+        }
+
+        @Override
+        public boolean isPowered() {
+            return true;
+        }
+
+        @Override
+        public boolean meetsChannelRequirements() {
+            return true;
+        }
+
+        @Override
+        public boolean hasFlag(GridFlags flag) {
+            return false;
+        }
+
+        @Override
+        public int getOwningPlayerId() {
+            return 0;
+        }
+
+        @Override
+        public @Nullable UUID getOwningPlayerProfileId() {
+            return null;
+        }
+
+        @Override
+        public double getIdlePowerUsage() {
+            return 0D;
+        }
+
+        @Override
+        public @Nullable AEItemKey getVisualRepresentation() {
+            return null;
+        }
+
+        @Override
+        public appeng.api.util.AEColor getGridColor() {
+            return appeng.api.util.AEColor.TRANSPARENT;
+        }
+
+        @Override
+        public void fillCrashReportCategory(CrashReportCategory category) {
+        }
+
+        @Override
+        public int getMaxChannels() {
+            return 0;
+        }
+
+        @Override
+        public int getUsedChannels() {
+            return 0;
         }
     }
 
