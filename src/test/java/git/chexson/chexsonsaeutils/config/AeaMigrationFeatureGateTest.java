@@ -1,7 +1,9 @@
 package git.chexson.chexsonsaeutils.config;
 
 import git.chexson.chexsonsaeutils.client.ae2.DyeablePatternPackRegistration;
+import git.chexson.chexsonsaeutils.client.ae2.PatternItemColorRegistration;
 import git.chexson.chexsonsaeutils.mixin.ae2.ChexsonsaeutilsMixinPlugin;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,8 +18,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class AeaMigrationFeatureGateTest {
 
+    private static final String CONFIG_DIR_PROPERTY = "chexsonsaeutils.configDir";
+
     @TempDir
     private Path tempDir;
+
+    @AfterEach
+    void clearConfigDirOverride() {
+        System.clearProperty(CONFIG_DIR_PROPERTY);
+    }
 
     @Test
     void aeaMigrationGatesDefaultToEnabled() throws IOException {
@@ -153,6 +162,19 @@ final class AeaMigrationFeatureGateTest {
     @Test
     void dyeablePatternPackIsAlwaysActive() {
         assertTrue(DyeablePatternPackRegistration.packAlwaysActive());
+    }
+
+    @Test
+    void dyeableClientRegistrationsRespectFeatureGate() throws IOException {
+        Path config = tempDir.resolve("chexsonsaeutils-common.toml");
+        Files.writeString(config, String.join(System.lineSeparator(),
+                "[aeaMigration]",
+                "dyeablePatternsEnabled = false"
+        ));
+        System.setProperty(CONFIG_DIR_PROPERTY, tempDir.toString());
+
+        assertFalse(DyeablePatternPackRegistration.shouldRegister());
+        assertFalse(PatternItemColorRegistration.shouldRegister());
     }
 
     @Test

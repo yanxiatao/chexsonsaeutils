@@ -1,6 +1,7 @@
 package git.chexson.chexsonsaeutils.client.ae2;
 
 import appeng.core.definitions.AEItems;
+import git.chexson.chexsonsaeutils.config.DyeablePatternsFeatureGate;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.util.FastColor;
 import net.minecraft.world.item.ItemStack;
@@ -16,7 +17,14 @@ public final class PatternItemColorRegistration {
     private PatternItemColorRegistration() {
     }
 
+    public static boolean shouldRegister() {
+        return DyeablePatternsFeatureGate.isEnabledAtStartup();
+    }
+
     public static void register(RegisterColorHandlersEvent.Item event) {
+        if (!shouldRegister()) {
+            return;
+        }
         event.register(PatternItemColorRegistration::getColor, AEItems.CRAFTING_PATTERN, AEItems.PROCESSING_PATTERN,
                 AEItems.STONECUTTING_PATTERN, AEItems.SMITHING_TABLE_PATTERN);
     }
