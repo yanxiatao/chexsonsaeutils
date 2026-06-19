@@ -33,6 +33,8 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.CODEX_API_KEY }}
+          model: gpt-5.4
+          effort: high
           responses-api-endpoint: ${{ secrets.CODEX_RESPONSES_API_ENDPOINT }}
           safety-strategy: drop-sudo
           prompt: |
