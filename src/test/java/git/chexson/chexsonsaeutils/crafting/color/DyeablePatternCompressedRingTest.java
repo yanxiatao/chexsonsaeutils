@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class DyeablePatternCompressedRingTest {
@@ -423,6 +424,111 @@ final class DyeablePatternCompressedRingTest {
         assertTrue(ring.executionRatio().containsKey(refreshedPattern));
     }
 
+    @Test
+    void staleGlobalProviderPatternsRefreshBeforeRecursiveRingLookup() {
+        int color = 0xFF336699;
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        IPatternDetails recursiveSeed = identityColoredPattern(
+                color,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        MutableTestProvider provider = new MutableTestProvider();
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+
+        providers.addProvider(provider);
+        provider.setPatterns(recursiveSeed);
+
+        DyeablePatternCompressedRing ring = providers.getOrCalculateCompressedRing(color, seed);
+
+        assertNotNull(ring);
+        assertTrue(ring.executionRatio().containsKey(recursiveSeed));
+        assertTrue(providers.getCraftingFor(seed).contains(recursiveSeed));
+    }
+
+    @Test
+    void staleNodeProviderPatternsRefreshBeforeRecursiveRingLookup() {
+        int color = 0xFF336699;
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        IPatternDetails recursiveSeed = identityColoredPattern(
+                color,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        MutableTestProvider provider = new MutableTestProvider();
+        TestGridNode node = new TestGridNode(provider);
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+
+        providers.addProvider(node);
+        provider.setPatterns(recursiveSeed);
+
+        DyeablePatternCompressedRing ring = providers.getOrCalculateCompressedRing(color, seed);
+
+        assertNotNull(ring);
+        assertTrue(ring.executionRatio().containsKey(recursiveSeed));
+        assertTrue(providers.getCraftingFor(seed).contains(recursiveSeed));
+    }
+
+    @Test
+    void movedProviderPatternRefreshesRecursiveRingAndExecutionMedium() {
+        int color = 0xFF336699;
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        IPatternDetails recursiveSeed = identityColoredPattern(
+                color,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        MutableTestProvider sourceProvider = new MutableTestProvider(recursiveSeed);
+        MutableTestProvider targetProvider = new MutableTestProvider();
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+
+        providers.addProvider(sourceProvider);
+        providers.addProvider(targetProvider);
+        sourceProvider.setPatterns();
+        targetProvider.setPatterns(recursiveSeed);
+
+        DyeablePatternCompressedRing ring = providers.getOrCalculateCompressedRing(color, seed);
+
+        assertNotNull(ring);
+        assertTrue(ring.executionRatio().containsKey(recursiveSeed));
+        boolean sourceStillRegistered = false;
+        boolean targetRegistered = false;
+        for (ICraftingProvider medium : providers.getMediums(recursiveSeed)) {
+            sourceStillRegistered |= medium == sourceProvider;
+            targetRegistered |= medium == targetProvider;
+        }
+        assertFalse(sourceStillRegistered);
+        assertTrue(targetRegistered);
+    }
+
+    @Test
+    void recoloredEqualDefinitionPatternRefreshesRecursiveRingColor() {
+        int blue = 0xFF336699;
+        int red = 0xFF993333;
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        IPatternDetails bluePattern = definitionEqualsColoredPattern(
+                blue,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        IPatternDetails redPattern = definitionEqualsColoredPattern(
+                red,
+                input(stack(seed, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        MutableTestProvider provider = new MutableTestProvider(bluePattern);
+        DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
+
+        providers.addProvider(provider);
+        provider.setPatterns(redPattern);
+
+        assertNull(providers.getOrCalculateCompressedRing(blue, seed));
+        DyeablePatternCompressedRing redRing = providers.getOrCalculateCompressedRing(red, seed);
+
+        assertNotNull(redRing);
+        assertSame(redPattern, redRing.executionRatio().keySet().iterator().next());
+    }
+
     private static IPatternDetails pattern(
             IPatternDetails.IInput firstInput,
             IPatternDetails.IInput secondInput,
@@ -452,6 +558,14 @@ final class DyeablePatternCompressedRingTest {
             List<GenericStack> outputs
     ) {
         return new IdentityColoredTestPattern(new IPatternDetails.IInput[] { input }, outputs, color);
+    }
+
+    private static IPatternDetails definitionEqualsColoredPattern(
+            int color,
+            IPatternDetails.IInput input,
+            List<GenericStack> outputs
+    ) {
+        return new DefinitionEqualsColoredTestPattern(new IPatternDetails.IInput[] { input }, outputs, color);
     }
 
     private static IPatternDetails.IInput input(GenericStack... possibleInputs) {
@@ -543,6 +657,55 @@ final class DyeablePatternCompressedRingTest {
         @Override
         public int chexsonsaeutils$getColor() {
             return color;
+        }
+    }
+
+    private static final class DefinitionEqualsColoredTestPattern
+            implements IPatternDetails, IPatternDetailsColorAccessor {
+        private final IPatternDetails.IInput[] inputs;
+        private final List<GenericStack> outputs;
+        private final int color;
+
+        private DefinitionEqualsColoredTestPattern(
+                IPatternDetails.IInput[] inputs,
+                List<GenericStack> outputs,
+                int color
+        ) {
+            this.inputs = inputs;
+            this.outputs = outputs;
+            this.color = color;
+        }
+
+        @Override
+        public AEItemKey getDefinition() {
+            return AEItemKey.of(Items.PAPER);
+        }
+
+        @Override
+        public IInput[] getInputs() {
+            return inputs.clone();
+        }
+
+        @Override
+        public List<GenericStack> getOutputs() {
+            return outputs;
+        }
+
+        @Override
+        public int chexsonsaeutils$getColor() {
+            return color;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other != null
+                    && other.getClass() == getClass()
+                    && ((DefinitionEqualsColoredTestPattern) other).getDefinition().equals(getDefinition());
+        }
+
+        @Override
+        public int hashCode() {
+            return getDefinition().hashCode();
         }
     }
 

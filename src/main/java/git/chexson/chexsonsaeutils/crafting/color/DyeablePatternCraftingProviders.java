@@ -4,7 +4,10 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
+import appeng.api.storage.AEKeyFilter;
 import appeng.me.service.helpers.NetworkCraftingProviders;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -24,37 +27,92 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
 
     private final Map<Integer, Set<IPatternDetails>> patternsByColor = new HashMap<>();
     private final Map<Integer, DyeablePatternCompressedRing> compressedRingCache = new HashMap<>();
-    private final Map<IGridNode, List<IPatternDetails>> indexedNodeProviders = new HashMap<>();
-    private final Map<ICraftingProvider, List<IPatternDetails>> indexedGlobalProviders = new IdentityHashMap<>();
+    private final Map<IGridNode, ProviderSnapshot> indexedNodeProviders = new HashMap<>();
+    private final Map<ICraftingProvider, ProviderSnapshot> indexedGlobalProviders = new IdentityHashMap<>();
 
     @Override
     public void addProvider(IGridNode node) {
         var provider = node.getService(ICraftingProvider.class);
         super.addProvider(node);
         if (provider != null) {
-            replaceIndexedNodeProvider(node, snapshotPatterns(provider));
+            this.indexedNodeProviders.put(node, snapshotProvider(provider));
+            rebuildColorIndex();
         }
     }
 
     @Override
     public void addProvider(ICraftingProvider provider) {
         super.addProvider(provider);
-        replaceIndexedGlobalProvider(provider, snapshotPatterns(provider));
+        this.indexedGlobalProviders.put(provider, snapshotProvider(provider));
+        rebuildColorIndex();
     }
 
     @Override
     public void removeProvider(IGridNode node) {
         super.removeProvider(node);
-        unindexNodeProvider(node);
+        if (this.indexedNodeProviders.remove(node) != null) {
+            rebuildColorIndex();
+        }
     }
 
     @Override
     public void removeProvider(ICraftingProvider provider) {
         super.removeProvider(provider);
-        unindexGlobalProvider(provider);
+        if (this.indexedGlobalProviders.remove(provider) != null) {
+            rebuildColorIndex();
+        }
+    }
+
+    @Override
+    public Set<AEKey> getCraftableKeys() {
+        synchronizeIndexedProviders();
+        return super.getCraftableKeys();
+    }
+
+    @Override
+    public Set<AEKey> getEmittableKeys() {
+        synchronizeIndexedProviders();
+        return super.getEmittableKeys();
+    }
+
+    @Override
+    public Set<AEKey> getCraftables(AEKeyFilter filter) {
+        synchronizeIndexedProviders();
+        return super.getCraftables(filter);
+    }
+
+    @Override
+    public Collection<IPatternDetails> getCraftingFor(AEKey whatToCraft) {
+        synchronizeIndexedProviders();
+        return super.getCraftingFor(whatToCraft);
+    }
+
+    @Override
+    public @Nullable AEKey getFuzzyCraftable(AEKey whatToCraft, AEKeyFilter filter) {
+        synchronizeIndexedProviders();
+        return super.getFuzzyCraftable(whatToCraft, filter);
+    }
+
+    @Override
+    public boolean canEmitFor(AEKey someItem) {
+        synchronizeIndexedProviders();
+        return super.canEmitFor(someItem);
+    }
+
+    @Override
+    public Iterable<ICraftingProvider> getMediums(IPatternDetails key) {
+        synchronizeIndexedProviders();
+        return super.getMediums(key);
+    }
+
+    @Override
+    public long getLastModifiedOnTick() {
+        synchronizeIndexedProviders();
+        return super.getLastModifiedOnTick();
     }
 
     public Collection<IPatternDetails> getPatternsByColor(int color) {
+        synchronizeIndexedProviders();
         var patterns = this.patternsByColor.get(color);
         return patterns == null ? Collections.emptySet() : Collections.unmodifiableSet(patterns);
     }
@@ -63,6 +121,7 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
         if (color == -1) {
             return null;
         }
+        synchronizeIndexedProviders();
         return this.compressedRingCache.computeIfAbsent(
                 color,
                 key -> DyeablePatternCompressedRing.calculate(this.patternsByColor.get(key))
@@ -71,6 +130,7 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
 
     @Nullable
     public DyeablePatternCompressedRing getOrCalculateCompressedRing(int color, @Nullable AEKey entryPoint) {
+        synchronizeIndexedProviders();
         if (entryPoint == null) {
             return getOrCalculateCompressedRing(color);
         }
@@ -101,6 +161,7 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
         if (catalyst == null) {
             return null;
         }
+        synchronizeIndexedProviders();
         for (Map.Entry<Integer, Set<IPatternDetails>> entry : this.patternsByColor.entrySet()) {
             if (entry.getKey() == -1) {
                 continue;
@@ -121,24 +182,145 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
     public record RetainingRing(int color, DyeablePatternCompressedRing ring) {
     }
 
-    private static List<IPatternDetails> snapshotPatterns(ICraftingProvider provider) {
-        return List.copyOf(provider.getAvailablePatterns());
+    private static ProviderSnapshot snapshotProvider(ICraftingProvider provider) {
+        List<IPatternDetails> patterns = List.copyOf(provider.getAvailablePatterns());
+        List<PatternFingerprint> patternFingerprints = new ArrayList<>(patterns.size());
+        for (IPatternDetails pattern : patterns) {
+            patternFingerprints.add(PatternFingerprint.capture(pattern));
+        }
+        return new ProviderSnapshot(
+                patterns,
+                Collections.unmodifiableList(patternFingerprints),
+                Set.copyOf(provider.getEmitableItems()),
+                provider.getPatternPriority()
+        );
     }
 
-    private void replaceIndexedNodeProvider(IGridNode node, List<IPatternDetails> patterns) {
-        List<IPatternDetails> previousPatterns = this.indexedNodeProviders.put(node, patterns);
-        if (previousPatterns != null) {
-            unindexPatterns(previousPatterns);
+    private record ProviderSnapshot(
+            List<IPatternDetails> patterns,
+            List<PatternFingerprint> patternFingerprints,
+            Set<AEKey> emitableItems,
+            int priority
+    ) {
+        private boolean sameProviderState(ProviderSnapshot other) {
+            return other != null
+                    && this.patternFingerprints.equals(other.patternFingerprints)
+                    && this.emitableItems.equals(other.emitableItems)
+                    && this.priority == other.priority;
         }
-        indexPatterns(patterns);
     }
 
-    private void replaceIndexedGlobalProvider(ICraftingProvider provider, List<IPatternDetails> patterns) {
-        List<IPatternDetails> previousPatterns = this.indexedGlobalProviders.put(provider, patterns);
-        if (previousPatterns != null) {
-            unindexPatterns(previousPatterns);
+    private record PatternFingerprint(
+            Class<?> type,
+            AEKey definition,
+            int color,
+            List<InputFingerprint> inputs,
+            List<GenericStack> outputs
+    ) {
+        private static PatternFingerprint capture(IPatternDetails pattern) {
+            return new PatternFingerprint(
+                    pattern.getClass(),
+                    pattern.getDefinition(),
+                    PatternColorHelper.getPatternColor(pattern),
+                    captureInputs(pattern),
+                    copyStacks(pattern.getOutputs())
+            );
         }
-        indexPatterns(patterns);
+
+        private static List<InputFingerprint> captureInputs(IPatternDetails pattern) {
+            IPatternDetails.IInput[] inputs = pattern.getInputs();
+            if (inputs == null || inputs.length == 0) {
+                return List.of();
+            }
+            List<InputFingerprint> fingerprints = new ArrayList<>(inputs.length);
+            for (IPatternDetails.IInput input : inputs) {
+                fingerprints.add(InputFingerprint.capture(input));
+            }
+            return Collections.unmodifiableList(fingerprints);
+        }
+    }
+
+    private record InputFingerprint(long multiplier, List<GenericStack> possibleInputs) {
+        private static InputFingerprint capture(IPatternDetails.IInput input) {
+            if (input == null) {
+                return new InputFingerprint(1L, List.of());
+            }
+            return new InputFingerprint(input.getMultiplier(), copyStacks(input.getPossibleInputs()));
+        }
+    }
+
+    private static List<GenericStack> copyStacks(@Nullable GenericStack[] stacks) {
+        if (stacks == null || stacks.length == 0) {
+            return List.of();
+        }
+        List<GenericStack> copy = new ArrayList<>(stacks.length);
+        Collections.addAll(copy, stacks);
+        return Collections.unmodifiableList(copy);
+    }
+
+    private static List<GenericStack> copyStacks(@Nullable Collection<GenericStack> stacks) {
+        if (stacks == null || stacks.isEmpty()) {
+            return List.of();
+        }
+        return Collections.unmodifiableList(new ArrayList<>(stacks));
+    }
+
+    private void synchronizeIndexedProviders() {
+        boolean changed = false;
+        if (!this.indexedNodeProviders.isEmpty()) {
+            for (Map.Entry<IGridNode, ProviderSnapshot> entry
+                    : new ArrayList<>(this.indexedNodeProviders.entrySet())) {
+                IGridNode node = entry.getKey();
+                ICraftingProvider provider = node.getService(ICraftingProvider.class);
+                if (provider == null) {
+                    continue;
+                }
+                ProviderSnapshot currentSnapshot = snapshotProvider(provider);
+                if (!entry.getValue().sameProviderState(currentSnapshot)) {
+                    refreshIndexedNodeProvider(node, currentSnapshot);
+                    changed = true;
+                }
+            }
+        }
+
+        if (!this.indexedGlobalProviders.isEmpty()) {
+            for (Map.Entry<ICraftingProvider, ProviderSnapshot> entry
+                    : new ArrayList<>(this.indexedGlobalProviders.entrySet())) {
+                ICraftingProvider provider = entry.getKey();
+                ProviderSnapshot currentSnapshot = snapshotProvider(provider);
+                if (!entry.getValue().sameProviderState(currentSnapshot)) {
+                    refreshIndexedGlobalProvider(provider, currentSnapshot);
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            rebuildColorIndex();
+        }
+    }
+
+    private void refreshIndexedNodeProvider(IGridNode node, ProviderSnapshot snapshot) {
+        super.removeProvider(node);
+        super.addProvider(node);
+        this.indexedNodeProviders.put(node, snapshot);
+    }
+
+    private void refreshIndexedGlobalProvider(ICraftingProvider provider, ProviderSnapshot snapshot) {
+        super.removeProvider(provider);
+        super.addProvider(provider);
+        this.indexedGlobalProviders.put(provider, snapshot);
+    }
+
+    private void rebuildColorIndex() {
+        this.patternsByColor.clear();
+        for (ProviderSnapshot snapshot : this.indexedNodeProviders.values()) {
+            indexPatterns(snapshot.patterns());
+        }
+        for (ProviderSnapshot snapshot : this.indexedGlobalProviders.values()) {
+            indexPatterns(snapshot.patterns());
+        }
+        this.compressedRingCache.clear();
     }
 
     private void indexPatterns(Collection<IPatternDetails> patterns) {
@@ -146,7 +328,6 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
             int color = PatternColorHelper.getPatternColor(pattern);
             this.patternsByColor.computeIfAbsent(color, ignored -> new HashSet<>()).add(pattern);
         }
-        this.compressedRingCache.clear();
     }
 
     private static boolean containsEntryPoint(IPatternDetails pattern, AEKey entryPoint) {
@@ -251,34 +432,6 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
                 }
             }
         }
-    }
-
-    private void unindexNodeProvider(IGridNode node) {
-        List<IPatternDetails> patterns = this.indexedNodeProviders.remove(node);
-        if (patterns != null) {
-            unindexPatterns(patterns);
-        }
-    }
-
-    private void unindexGlobalProvider(ICraftingProvider provider) {
-        List<IPatternDetails> patterns = this.indexedGlobalProviders.remove(provider);
-        if (patterns != null) {
-            unindexPatterns(patterns);
-        }
-    }
-
-    private void unindexPatterns(Collection<IPatternDetails> patterns) {
-        for (var pattern : patterns) {
-            int color = PatternColorHelper.getPatternColor(pattern);
-            this.patternsByColor.computeIfPresent(
-                    color,
-                    (ignored, indexedPatterns) -> {
-                        indexedPatterns.remove(pattern);
-                        return indexedPatterns.isEmpty() ? null : indexedPatterns;
-                    }
-            );
-        }
-        this.compressedRingCache.clear();
     }
 
 }
