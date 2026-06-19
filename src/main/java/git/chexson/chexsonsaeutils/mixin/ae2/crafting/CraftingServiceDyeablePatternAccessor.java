@@ -1,0 +1,13 @@
+package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
+
+import appeng.me.service.CraftingService;
+import appeng.me.service.helpers.NetworkCraftingProviders;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.gen.Accessor;
+
+@Mixin(value = CraftingService.class, remap = false)
+public interface CraftingServiceDyeablePatternAccessor {
+
+    @Accessor(value = "craftingProviders", remap = false)
+    NetworkCraftingProviders chexsonsaeutils$getCraftingProviders();
+}

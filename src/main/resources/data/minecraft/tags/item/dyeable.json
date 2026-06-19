@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    "ae2:crafting_pattern",
+    "ae2:processing_pattern",
+    "ae2:stonecutting_pattern",
+    "ae2:smithing_table_pattern"
+  ]
+}

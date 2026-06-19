@@ -15,6 +15,8 @@ import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregate
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingReloadListener;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeUserConfigStore;
+import git.chexson.chexsonsaeutils.client.ae2.PatternItemColorRegistration;
+import git.chexson.chexsonsaeutils.client.ae2.DyeablePatternPackRegistration;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
@@ -138,6 +140,16 @@ public class Chexsonsaeutils {
         @SubscribeEvent
         public static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
             ChexsonsaeutilsContent.registerClientScreens(event);
+        }
+
+        @SubscribeEvent
+        public static void onRegisterItemColors(net.neoforged.neoforge.client.event.RegisterColorHandlersEvent.Item event) {
+            PatternItemColorRegistration.register(event);
+        }
+
+        @SubscribeEvent
+        public static void onAddPackFinders(net.neoforged.neoforge.event.AddPackFindersEvent event) {
+            DyeablePatternPackRegistration.register(event);
         }
     }
 

@@ -15,6 +15,7 @@ import appeng.me.service.CraftingService;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AbstractHighCapacityCraftingHostBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.TaskCompletionRoute;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
@@ -64,6 +65,16 @@ public final class FormalMachinePlanningAggregationService {
                 || !supportsStrategy(strategy)) {
             return nativeFuture;
         }
+        return wrapNativeFuture(craftingService, level, what, amount, nativeFuture);
+    }
+
+    static Future<ICraftingPlan> wrapNativeFuture(
+            CraftingService craftingService,
+            Level level,
+            AEKey what,
+            long amount,
+            Future<ICraftingPlan> nativeFuture
+    ) {
         return new AggregatingPlanningFuture(craftingService, level, what, amount, nativeFuture);
     }
 
@@ -179,10 +190,14 @@ public final class FormalMachinePlanningAggregationService {
                 rewrittenBytes,
                 !rewrittenMissingItems.isEmpty(),
                 nativePlan.multiplePaths(),
-                computeRewrittenUsedItems(rewrittenPatternTimes, rewrittenMissingItems),
+                computeRewrittenUsedItems(rewrittenPatternTimes, rewrittenMissingItems, nativePlan),
                 copyCounter(nativePlan.emittedItems()),
                 rewrittenMissingItems,
-                immutableOrderedPatternTimes(rewrittenPatternTimes)
+                immutableOrderedPatternTimes(rewrittenPatternTimes),
+                usesDyeableRecursivePlanning(nativePlan),
+                copyCounter(dyeableRecursiveInitialItems(nativePlan)),
+                copyCounter(dyeableRecursiveInternalItems(nativePlan)),
+                dyeableRecursiveFinalOutputAmount(nativePlan)
         );
     }
 
@@ -1164,7 +1179,8 @@ public final class FormalMachinePlanningAggregationService {
 
     private static KeyCounter computeRewrittenUsedItems(
             Map<IPatternDetails, Long> patternTimes,
-            KeyCounter rewrittenMissingItems
+            KeyCounter rewrittenMissingItems,
+            @Nullable ICraftingPlan nativePlan
     ) {
         Map<AEKey, Long> totalInputs = new LinkedHashMap<>();
         Map<AEKey, Long> totalOutputs = new LinkedHashMap<>();
@@ -1188,8 +1204,11 @@ public final class FormalMachinePlanningAggregationService {
             }
         }
         Map<AEKey, Long> requiredExternalInputs = subtractPositive(totalInputs, totalOutputs);
+        KeyCounter usedItems;
         if (rewrittenMissingItems == null || rewrittenMissingItems.isEmpty()) {
-            return toCounter(requiredExternalInputs);
+            usedItems = toCounter(requiredExternalInputs);
+            addUsedItems(usedItems, dyeableRecursiveInitialItems(nativePlan));
+            return usedItems;
         }
 
         Map<AEKey, Long> availableInputs = new LinkedHashMap<>();
@@ -1204,7 +1223,49 @@ public final class FormalMachinePlanningAggregationService {
                 availableInputs.put(key, usedAmount);
             }
         }
-        return toCounter(availableInputs);
+        usedItems = toCounter(availableInputs);
+        addUsedItems(usedItems, dyeableRecursiveInitialItems(nativePlan));
+        return usedItems;
+    }
+
+    private static boolean usesDyeableRecursivePlanning(@Nullable ICraftingPlan plan) {
+        return plan instanceof DyeablePatternRecursivePlan recursivePlan
+                && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning();
+    }
+
+    private static KeyCounter dyeableRecursiveInitialItems(@Nullable ICraftingPlan plan) {
+        if (plan instanceof DyeablePatternRecursivePlan recursivePlan
+                && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning()) {
+            return recursivePlan.chexsonsaeutils$dyeableRecursiveInitialItems();
+        }
+        return new KeyCounter();
+    }
+
+    private static KeyCounter dyeableRecursiveInternalItems(@Nullable ICraftingPlan plan) {
+        if (plan instanceof DyeablePatternRecursivePlan recursivePlan
+                && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning()) {
+            return recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems();
+        }
+        return new KeyCounter();
+    }
+
+    private static long dyeableRecursiveFinalOutputAmount(@Nullable ICraftingPlan plan) {
+        if (plan instanceof DyeablePatternRecursivePlan recursivePlan
+                && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning()) {
+            return recursivePlan.chexsonsaeutils$dyeableRecursiveFinalOutputAmount();
+        }
+        return -1L;
+    }
+
+    private static void addUsedItems(KeyCounter target, @Nullable KeyCounter source) {
+        if (target == null || source == null || source.isEmpty()) {
+            return;
+        }
+        for (var entry : source) {
+            if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                target.set(entry.getKey(), saturatingAdd(target.get(entry.getKey()), entry.getLongValue()));
+            }
+        }
     }
 
     private static void mergeScaledMap(Map<AEKey, Long> target, Map<AEKey, Long> source, long multiplier) {
@@ -1396,10 +1457,6 @@ public final class FormalMachinePlanningAggregationService {
         private final AEKey requestedOutput;
         private final long requestedAmount;
         private final Future<ICraftingPlan> delegate;
-        private final Object lock = new Object();
-
-        private volatile boolean transformed;
-        private @Nullable ICraftingPlan cachedPlan;
 
         private AggregatingPlanningFuture(
                 CraftingService craftingService,
@@ -1427,7 +1484,7 @@ public final class FormalMachinePlanningAggregationService {
 
         @Override
         public boolean isDone() {
-            return transformed || delegate.isDone();
+            return delegate.isDone();
         }
 
         @Override
@@ -1447,39 +1504,26 @@ public final class FormalMachinePlanningAggregationService {
 
         private ICraftingPlan awaitTransformedPlan(@Nullable Long timeout, @Nullable TimeUnit unit)
                 throws InterruptedException, ExecutionException, TimeoutException {
-            if (transformed) {
-                return cachedPlan;
-            }
+            ICraftingPlan nativePlan = timeout == null
+                    ? delegate.get()
+                    : delegate.get(timeout, unit);
 
-            synchronized (lock) {
-                if (transformed) {
-                    return cachedPlan;
-                }
-
-                ICraftingPlan nativePlan = timeout == null
-                        ? delegate.get()
-                        : delegate.get(timeout, unit);
-
-                try {
-                    cachedPlan = rewriteNativePlan(
-                            craftingService,
-                            level,
-                            requestedOutput,
-                            requestedAmount,
-                            nativePlan
-                    );
-                } catch (RuntimeException exception) {
-                    LOGGER.warn(
-                            "Failed to rewrite native AE2 crafting plan for output {} amount {}",
-                            requestedOutput,
-                            requestedAmount,
-                            exception
-                    );
-                    cachedPlan = nativePlan;
-                }
-
-                transformed = true;
-                return cachedPlan;
+            try {
+                return rewriteNativePlan(
+                        craftingService,
+                        level,
+                        requestedOutput,
+                        requestedAmount,
+                        nativePlan
+                );
+            } catch (RuntimeException exception) {
+                LOGGER.warn(
+                        "Failed to rewrite native AE2 crafting plan for output {} amount {}",
+                        requestedOutput,
+                        requestedAmount,
+                        exception
+                );
+                return nativePlan;
             }
         }
     }
