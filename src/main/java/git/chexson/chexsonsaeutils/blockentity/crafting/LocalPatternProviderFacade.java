@@ -4,6 +4,7 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.stacks.AEItemKey;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
+import git.chexson.chexsonsaeutils.crafting.color.PatternColorHelper;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -89,11 +90,8 @@ public final class LocalPatternProviderFacade {
     }
 
     public boolean contains(IPatternDetails patternDetails) {
-        if (cachedAvailablePatterns.contains(patternDetails)) {
-            return true;
-        }
         for (IPatternDetails cached : cachedAvailablePatterns) {
-            if (ItemStack.isSameItemSameComponents(cached.getDefinition().toStack(), patternDetails.getDefinition().toStack())) {
+            if (samePatternIdentity(cached, patternDetails)) {
                 return true;
             }
         }
@@ -137,9 +135,9 @@ public final class LocalPatternProviderFacade {
     }
 
     private List<IPatternDetails> rebuildUniqueAvailablePatterns() {
-        Map<AEItemKey, IMolecularAssemblerSupportedPattern> uniquePatterns = new LinkedHashMap<>();
+        Map<PatternIdentity, IMolecularAssemblerSupportedPattern> uniquePatterns = new LinkedHashMap<>();
         for (IMolecularAssemblerSupportedPattern pattern : supportedPatternsBySlot.values()) {
-            uniquePatterns.putIfAbsent(pattern.getDefinition(), pattern);
+            uniquePatterns.putIfAbsent(PatternIdentity.capture(pattern), pattern);
         }
         return List.copyOf(uniquePatterns.values());
     }
@@ -149,7 +147,7 @@ public final class LocalPatternProviderFacade {
             return false;
         }
         for (int index = 0; index < left.size(); index++) {
-            if (!left.get(index).getDefinition().equals(right.get(index).getDefinition())) {
+            if (!samePatternIdentity(left.get(index), right.get(index))) {
                 return false;
             }
         }
@@ -166,7 +164,11 @@ public final class LocalPatternProviderFacade {
         if (left == null || right == null) {
             return false;
         }
-        return left.getDefinition().equals(right.getDefinition());
+        return samePatternIdentity(left, right);
+    }
+
+    private static boolean samePatternIdentity(IPatternDetails left, IPatternDetails right) {
+        return PatternIdentity.capture(left).equals(PatternIdentity.capture(right));
     }
 
     @Nullable
@@ -175,5 +177,11 @@ public final class LocalPatternProviderFacade {
             return supportedPattern;
         }
         return null;
+    }
+
+    private record PatternIdentity(AEItemKey definition, int color) {
+        private static PatternIdentity capture(IPatternDetails pattern) {
+            return new PatternIdentity(pattern.getDefinition(), PatternColorHelper.getPatternColor(pattern));
+        }
     }
 }
