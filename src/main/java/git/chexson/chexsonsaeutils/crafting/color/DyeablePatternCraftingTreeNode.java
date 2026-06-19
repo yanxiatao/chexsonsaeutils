@@ -216,11 +216,40 @@ final class DyeablePatternCraftingTreeNode {
         }
 
         int requestedColor = this.job.chexsonsaeutils$getRequestedColor();
-        if (requestedColor == -1 || this.job.hasRingReplacementFailed(requestedColor, this.what)) {
+        if (requestedColor == -1) {
+            return tryRootRetainingRingReplacement(inventory, requestedAmount);
+        }
+        if (this.job.hasRingReplacementFailed(requestedColor, this.what)) {
             return 0L;
         }
 
         return tryRingReplacement(inventory, requestedAmount, requestedColor);
+    }
+
+    private long tryRootRetainingRingReplacement(CraftingSimulationState inventory, long requestedAmount)
+            throws InterruptedException {
+        var gridNode = this.job.simRequester.getGridNode();
+        if (gridNode == null) {
+            return 0L;
+        }
+
+        ICraftingService craftingService = gridNode.getGrid().getCraftingService();
+        DyeablePatternCraftingProviders providers = this.job.getDyeableProviders(craftingService);
+        if (providers == null) {
+            return 0L;
+        }
+
+        DyeablePatternCraftingProviders.RetainingRing retainingRing = providers.getRetainingRingCandidate(this.what);
+        if (retainingRing == null || this.job.hasRingReplacementFailed(retainingRing.color(), this.what)) {
+            return 0L;
+        }
+        return tryRingReplacement(
+                inventory,
+                craftingService,
+                requestedAmount,
+                retainingRing.color(),
+                retainingRing.ring()
+        );
     }
 
     private long executeProcess(
@@ -305,6 +334,16 @@ final class DyeablePatternCraftingTreeNode {
             return 0L;
         }
 
+        return tryRingReplacement(inventory, craftingService, requestedAmount, ringColor, ring);
+    }
+
+    private long tryRingReplacement(
+            CraftingSimulationState inventory,
+            ICraftingService craftingService,
+            long requestedAmount,
+            int ringColor,
+            DyeablePatternCompressedRing ring
+    ) throws InterruptedException {
         Set<Integer> ringsBeingReplaced = this.job.ringsBeingReplaced();
         if (ringsBeingReplaced.contains(ringColor)) {
             return 0L;

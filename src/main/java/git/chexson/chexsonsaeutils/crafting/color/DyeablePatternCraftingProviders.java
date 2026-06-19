@@ -93,6 +93,11 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
     }
 
     public DyeablePatternCompressedRing getRetainingRing(AEKey catalyst) {
+        RetainingRing retainingRing = getRetainingRingCandidate(catalyst);
+        return retainingRing == null ? null : retainingRing.ring();
+    }
+
+    public RetainingRing getRetainingRingCandidate(AEKey catalyst) {
         if (catalyst == null) {
             return null;
         }
@@ -107,10 +112,13 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
                     && ring.catalysts().get(catalyst) > 0L
                     && ring.netOutputs().get(catalyst) > 0L
                     && ring.entryPoints().contains(catalyst)) {
-                return ring;
+                return new RetainingRing(entry.getKey(), ring);
             }
         }
         return null;
+    }
+
+    public record RetainingRing(int color, DyeablePatternCompressedRing ring) {
     }
 
     private static List<IPatternDetails> snapshotPatterns(ICraftingProvider provider) {

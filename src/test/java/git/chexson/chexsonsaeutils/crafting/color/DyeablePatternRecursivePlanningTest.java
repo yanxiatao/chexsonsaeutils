@@ -81,6 +81,39 @@ final class DyeablePatternRecursivePlanningTest {
     }
 
     @Test
+    void directColorlessSeedRequestUsesColoredRecursiveRing()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(Items.PAPER);
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(dyedItem(Items.COMPARATOR, 0xFF336699)),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 1L, Actionable.MODULATE, null);
+        storage.insert(dust, 1L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(seed, 1L),
+                new TestProvider(recursivePattern),
+                storage
+        );
+
+        ICraftingPlan plan = calculation.runCraftAttempt(false, 1L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        assertFalse(plan.simulation());
+        assertEquals(1L, plan.patternTimes().get(recursivePattern));
+        assertEquals(1L, plan.usedItems().get(seed));
+        assertEquals(1L, plan.usedItems().get(dust));
+        assertEquals(1L, plan.finalOutput().amount());
+    }
+
+    @Test
     void colorlessDownstreamPatternCanUseDyedRecursiveSeed()
             throws InterruptedException {
         AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
