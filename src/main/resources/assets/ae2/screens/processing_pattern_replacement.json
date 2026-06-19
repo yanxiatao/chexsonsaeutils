@@ -1,6 +1,7 @@
 {
   "$schema": "schema.json",
   "includes": ["common/common.json"],
+  "helpTopic": "chexsonsaeutils:chexsonsaeutils_intro/processing_pattern_replacement.md",
   "generatedBackground": {
     "width": 200,
     "height": 216
