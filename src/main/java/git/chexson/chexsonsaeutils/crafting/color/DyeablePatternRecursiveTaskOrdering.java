@@ -81,8 +81,10 @@ public final class DyeablePatternRecursiveTaskOrdering {
                     || hasPositiveNetOutput(pattern, key)) {
                 continue;
             }
+            long requiredByPattern = inputAmount(pattern, key);
             long available = inventory.extract(key, Long.MAX_VALUE, appeng.api.config.Actionable.SIMULATE);
-            if (available <= retainedAmount) {
+            long remainingAfterPattern = available <= requiredByPattern ? 0L : available - requiredByPattern;
+            if (remainingAfterPattern < retainedAmount) {
                 return true;
             }
         }

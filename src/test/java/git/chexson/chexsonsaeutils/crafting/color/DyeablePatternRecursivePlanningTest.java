@@ -27,6 +27,8 @@ import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.AEKeyFilter;
 import appeng.api.storage.IStorageProvider;
 import appeng.api.storage.MEStorage;
+import appeng.crafting.execution.CraftingCpuHelper;
+import appeng.crafting.inv.ListCraftingInventory;
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
@@ -51,6 +53,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -107,6 +110,62 @@ final class DyeablePatternRecursivePlanningTest {
         assertFalse(plan.simulation());
         assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems().get(seed));
         assertEquals(1L, plan.patternTimes().get(recursivePattern));
+        assertEquals(1L, plan.patternTimes().get(downstreamPattern));
+    }
+
+    @Test
+    void colorlessDownstreamWaitsUntilDyedRecursiveSeedWillRemain()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        AEItemKey finalProduct = AEItemKey.of(Items.DIAMOND);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestPatternDetails downstreamPattern = new TestPatternDetails(
+                AEItemKey.of(Items.REPEATER),
+                -1,
+                List.of(new GenericStack(seed, 3L)),
+                List.of(new GenericStack(finalProduct, 1L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 1L, Actionable.MODULATE, null);
+        storage.insert(dust, 3L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(finalProduct, 1L),
+                new TestProvider(recursivePattern, downstreamPattern),
+                storage
+        );
+
+        ICraftingPlan plan = calculation.runCraftAttempt(false, 1L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        DyeablePatternRecursivePlan recursivePlan = (DyeablePatternRecursivePlan) plan;
+        assertFalse(plan.simulation());
+        assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInitialItems().get(seed));
+        ListCraftingInventory cpuInventory = cpuInventoryWithUsedItems(plan);
+        executePatternAndReturnOutputs(recursivePattern, cpuInventory);
+        executePatternAndReturnOutputs(recursivePattern, cpuInventory);
+        assertTrue(DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                downstreamPattern,
+                recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems(),
+                cpuInventory
+        ));
+        executePatternAndReturnOutputs(recursivePattern, cpuInventory);
+        assertFalse(DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                downstreamPattern,
+                recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems(),
+                cpuInventory
+        ));
+        executePatternAndReturnOutputs(downstreamPattern, cpuInventory);
+        assertEquals(1L, cpuInventory.extract(seed, Long.MAX_VALUE, Actionable.SIMULATE));
+        assertEquals(3L, plan.patternTimes().get(recursivePattern));
         assertEquals(1L, plan.patternTimes().get(downstreamPattern));
     }
 
@@ -189,6 +248,37 @@ final class DyeablePatternRecursivePlanningTest {
         TestStorage storage = new TestStorage();
         storage.insert(key, amount, Actionable.MODULATE, null);
         return storage;
+    }
+
+    private static ListCraftingInventory cpuInventoryWithUsedItems(ICraftingPlan plan) {
+        ListCraftingInventory inventory = new ListCraftingInventory(ignored -> {
+        });
+        for (var entry : plan.usedItems()) {
+            inventory.insert(entry.getKey(), entry.getLongValue(), Actionable.MODULATE);
+        }
+        return inventory;
+    }
+
+    private static void executePatternAndReturnOutputs(
+            IPatternDetails pattern,
+            ListCraftingInventory inventory
+    ) {
+        KeyCounter expectedOutputs = new KeyCounter();
+        KeyCounter expectedContainerItems = new KeyCounter();
+        KeyCounter[] inputHolder = CraftingCpuHelper.extractPatternInputs(
+                pattern,
+                inventory,
+                null,
+                expectedOutputs,
+                expectedContainerItems
+        );
+        assertNotNull(inputHolder);
+        for (var output : expectedOutputs) {
+            inventory.insert(output.getKey(), output.getLongValue(), Actionable.MODULATE);
+        }
+        for (var containerItem : expectedContainerItems) {
+            inventory.insert(containerItem.getKey(), containerItem.getLongValue(), Actionable.MODULATE);
+        }
     }
 
     private static final class TestCalculation extends DyeablePatternCraftingCalculation {
