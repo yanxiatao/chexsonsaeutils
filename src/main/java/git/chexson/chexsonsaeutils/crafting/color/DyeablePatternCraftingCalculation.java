@@ -7,6 +7,7 @@ import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.crafting.ICraftingSimulationRequester;
+import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
@@ -56,6 +57,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
     private final Set<Integer> ringsBeingReplaced = new HashSet<>();
     private final KeyCounter ringExtractions = new KeyCounter();
     private final KeyCounter recursiveInternalItems = new KeyCounter();
+    private final Map<AEItemKey, Map<AEKey, Long>> selectedPatternInputs = new HashMap<>();
     private boolean simulate = false;
     private boolean running = false;
     private boolean done = false;
@@ -164,6 +166,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         this.ringsBeingReplaced.clear();
         this.ringExtractions.clear();
         this.recursiveInternalItems.clear();
+        this.selectedPatternInputs.clear();
         this.missing.clear();
 
         ChildCraftingSimulationState craftingInventory = new ChildCraftingSimulationState(networkInv);
@@ -204,7 +207,12 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
     }
 
     private ICraftingPlan mergeRingExtractions(CraftingPlan basePlan) {
-        return createRecursivePlanForRingExtractions(basePlan, this.ringExtractions, this.recursiveInternalItems);
+        return createRecursivePlanForRingExtractions(
+                basePlan,
+                this.ringExtractions,
+                this.recursiveInternalItems,
+                this.selectedPatternInputs
+        );
     }
 
     static ICraftingPlan createRecursivePlanForRingExtractions(
@@ -218,6 +226,20 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             CraftingPlan basePlan,
             KeyCounter ringExtractions,
             @Nullable KeyCounter recursiveInternalItems
+    ) {
+        return createRecursivePlanForRingExtractions(
+                basePlan,
+                ringExtractions,
+                recursiveInternalItems,
+                Map.of()
+        );
+    }
+
+    static ICraftingPlan createRecursivePlanForRingExtractions(
+            CraftingPlan basePlan,
+            KeyCounter ringExtractions,
+            @Nullable KeyCounter recursiveInternalItems,
+            @Nullable Map<AEItemKey, Map<AEKey, Long>> selectedPatternInputs
     ) {
         KeyCounter combinedUsedItems = new KeyCounter();
         addRewrittenUsedItems(basePlan, combinedUsedItems);
@@ -239,8 +261,22 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
                 merged,
                 copyCounter(ringExtractions),
                 internalItems,
-                basePlan.finalOutput().amount()
+                basePlan.finalOutput().amount(),
+                copySelectedPatternInputs(selectedPatternInputs)
         );
+    }
+
+    void recordSelectedPatternInput(@Nullable IPatternDetails pattern, @Nullable AEKey key, long amount) {
+        if (pattern == null
+                || pattern.getDefinition() == null
+                || !(pattern.getDefinition() instanceof AEItemKey definition)
+                || key == null
+                || amount <= 0L) {
+            return;
+        }
+        this.selectedPatternInputs
+                .computeIfAbsent(definition, ignored -> new HashMap<>())
+                .merge(key, amount, Long::sum);
     }
 
     private static void addRewrittenUsedItems(CraftingPlan basePlan, KeyCounter target) {
@@ -755,13 +791,30 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         return copy;
     }
 
+    private static Map<AEItemKey, Map<AEKey, Long>> copySelectedPatternInputs(
+            @Nullable Map<AEItemKey, Map<AEKey, Long>> original
+    ) {
+        if (original == null || original.isEmpty()) {
+            return Map.of();
+        }
+        Map<AEItemKey, Map<AEKey, Long>> copy = new HashMap<>();
+        for (var entry : original.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null || entry.getValue().isEmpty()) {
+                continue;
+            }
+            copy.put(entry.getKey(), Map.copyOf(new HashMap<>(entry.getValue())));
+        }
+        return Map.copyOf(copy);
+    }
+
     private record RecursiveCraftingPlan(
             CraftingPlan delegate,
             KeyCounter recursiveInitialItems,
             KeyCounter recursiveInternalItems,
-            long recursiveFinalOutputAmount
+            long recursiveFinalOutputAmount,
+            Map<AEItemKey, Map<AEKey, Long>> selectedPatternInputs
     )
-            implements ICraftingPlan, DyeablePatternRecursivePlan {
+            implements ICraftingPlan, DyeablePatternRecursivePlan, DyeablePatternSelectedInputsPlan {
 
         @Override
         public GenericStack finalOutput() {
@@ -821,6 +874,11 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         @Override
         public long chexsonsaeutils$dyeableRecursiveFinalOutputAmount() {
             return recursiveFinalOutputAmount;
+        }
+
+        @Override
+        public Map<AEItemKey, Map<AEKey, Long>> chexsonsaeutils$dyeableSelectedPatternInputs() {
+            return copySelectedPatternInputs(selectedPatternInputs);
         }
     }
 }
