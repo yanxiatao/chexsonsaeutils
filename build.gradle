@@ -44,6 +44,9 @@ neoForge {
     runs {
         client {
             client()
+            systemProperty 'guideme.ae2.guide.sources',
+                    file('src/main/resources/assets/chexsonsaeutils/ae2guide').absolutePath
+            systemProperty 'guideme.ae2.guide.sourcesNamespace', 'chexsonsaeutils'
         }
 
         server {
@@ -117,6 +120,7 @@ def generateModMetadata = tasks.register('generateModMetadata', ProcessResources
         mod_authors            : mod_authors,
         mod_description        : mod_description,
         ae2_version            : ae2_version,
+        guideme_version        : guideme_version,
         mekanism_version       : mekanism_version
     ]
     inputs.properties replaceProperties

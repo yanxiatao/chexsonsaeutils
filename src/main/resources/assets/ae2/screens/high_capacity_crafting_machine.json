@@ -1,6 +1,7 @@
 {
   "$schema": "schema.json",
   "includes": ["common/common.json"],
+  "helpTopic": "chexsonsaeutils:chexsonsaeutils_intro/high_capacity_crafting_machine.md",
   "generatedBackground": {
     "width": 200,
     "height": 258

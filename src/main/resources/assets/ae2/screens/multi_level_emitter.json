@@ -1,6 +1,7 @@
 {
   "$schema": "schema.json",
   "includes": ["common/common.json"],
+  "helpTopic": "chexsonsaeutils:chexsonsaeutils_intro/multi_level_emitter.md",
   "background": {
     "texture": "guis/multi_level_emitter.png",
     "srcRect": [0, 0, 176, 236]
