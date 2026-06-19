@@ -170,6 +170,46 @@ final class DyeablePatternRecursivePlanningTest {
     }
 
     @Test
+    void simulatedColorlessDownstreamReportsDyedRecursiveMissingInputs()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        AEItemKey finalProduct = AEItemKey.of(Items.DIAMOND);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestPatternDetails downstreamPattern = new TestPatternDetails(
+                AEItemKey.of(Items.REPEATER),
+                -1,
+                List.of(new GenericStack(seed, 3L)),
+                List.of(new GenericStack(finalProduct, 1L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 1L, Actionable.MODULATE, null);
+        storage.insert(dust, 2L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(finalProduct, 1L),
+                new TestProvider(recursivePattern, downstreamPattern),
+                storage
+        );
+
+        ICraftingPlan plan = calculation.runCraftAttempt(true, 1L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        assertTrue(plan.simulation());
+        assertEquals(1L, plan.missingItems().get(dust));
+        assertEquals(0L, plan.missingItems().get(seed));
+        assertEquals(3L, plan.patternTimes().get(recursivePattern));
+        assertEquals(1L, plan.patternTimes().get(downstreamPattern));
+    }
+
+    @Test
     void failedLargeRingAttemptDoesNotPoisonLaterDyeableRingAttempt()
             throws InterruptedException {
         AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));

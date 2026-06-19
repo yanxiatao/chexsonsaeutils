@@ -438,6 +438,17 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         this.missing.add(what, amount);
     }
 
+    KeyCounter copyMissingItems() {
+        return copyCounter(this.missing);
+    }
+
+    void restoreMissingItems(KeyCounter snapshot) {
+        this.missing.clear();
+        if (snapshot != null) {
+            this.missing.addAll(snapshot);
+        }
+    }
+
     void handlePausing() throws InterruptedException {
         if (this.incTime > 100) {
             this.incTime = 0;

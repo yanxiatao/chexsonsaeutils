@@ -183,8 +183,15 @@ final class DyeablePatternCraftingTreeNode {
         }
 
         for (DyeablePatternCraftingTreeProcess process : Objects.requireNonNull(this.nodes)) {
+            if (this.job.isSimulation()) {
+                totalRequestedItems -= tryProcessRingReplacement(inventory, process, totalRequestedItems);
+                if (totalRequestedItems <= 0L) {
+                    return;
+                }
+            }
+
             totalRequestedItems -= executeProcess(inventory, process, totalRequestedItems);
-            if (totalRequestedItems > 0L) {
+            if (!this.job.isSimulation() && totalRequestedItems > 0L) {
                 totalRequestedItems -= tryProcessRingReplacement(inventory, process, totalRequestedItems);
             }
 
@@ -313,6 +320,7 @@ final class DyeablePatternCraftingTreeNode {
         ChildCraftingSimulationState sandbox = new ChildCraftingSimulationState(inventory);
         KeyCounter ringExtractionsSnapshot = this.job.copyRingExtractions();
         Map<Integer, Set<AEKey>> failedRingReplacementsSnapshot = this.job.copyFailedRingReplacements();
+        KeyCounter missingItemsSnapshot = this.job.copyMissingItems();
         boolean applied = false;
         try {
             long ringNetOutputAmount = ring.netOutputs().get(entryNode.what);
@@ -337,6 +345,7 @@ final class DyeablePatternCraftingTreeNode {
             if (!applied) {
                 this.job.restoreRingExtractions(ringExtractionsSnapshot);
                 this.job.restoreFailedRingReplacements(failedRingReplacementsSnapshot);
+                this.job.restoreMissingItems(missingItemsSnapshot);
             }
             ringsBeingReplaced.remove(ringColor);
         }
