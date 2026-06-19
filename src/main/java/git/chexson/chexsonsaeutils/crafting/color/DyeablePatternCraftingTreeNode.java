@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.crafting.color;
 import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingService;
+import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
@@ -361,6 +362,7 @@ final class DyeablePatternCraftingTreeNode {
         KeyCounter recursiveInternalItemsSnapshot = this.job.copyRecursiveInternalItems();
         Map<Integer, Set<AEKey>> failedRingReplacementsSnapshot = this.job.copyFailedRingReplacements();
         KeyCounter missingItemsSnapshot = this.job.copyMissingItems();
+        Map<AEItemKey, Map<AEKey, Long>> selectedPatternInputsSnapshot = this.job.copySelectedPatternInputs();
         boolean applied = false;
         try {
             long ringNetOutputAmount = ring.netOutputs().get(entryNode.what);
@@ -387,6 +389,7 @@ final class DyeablePatternCraftingTreeNode {
                 this.job.restoreRecursiveInternalItems(recursiveInternalItemsSnapshot);
                 this.job.restoreFailedRingReplacements(failedRingReplacementsSnapshot);
                 this.job.restoreMissingItems(missingItemsSnapshot);
+                this.job.restoreSelectedPatternInputs(selectedPatternInputsSnapshot);
             }
             ringsBeingReplaced.remove(ringColor);
         }
