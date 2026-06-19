@@ -49,6 +49,9 @@ final class DyeablePatternCraftingTreeProcess {
                         childKey
                 );
             }
+            if (childKey != null && firstInput.amount() > 0L) {
+                this.job.recordSelectedPatternInput(this.details, childKey, firstInput.amount() * input.getMultiplier());
+            }
             this.nodes.put(
                     new DyeablePatternCraftingTreeNode(
                             craftingService,
