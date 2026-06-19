@@ -105,6 +105,7 @@ processingPatternReplacementEnabled = true
 
 [aeaMigration]
 dyeablePatternsEnabled = true
+dyeableRecursiveRetainedCatalystAmount = 1
 enhancedCraftingStatusEnabled = true
 buildingGadgets2IntegrationEnabled = true
 ftbUltimineMemoryCardEnabled = true
@@ -115,6 +116,8 @@ ftbUltimineMemoryCardEnabled = true
 - `formalMachinePlanningAggregationEnabled`: enables or disables the formal-machine large-request planning aggregation fast path.
 - `processingPatternReplacementEnabled`: enables or disables the AE2 processing pattern replacement feature bundle.
 - `[aeaMigration].dyeablePatternsEnabled`: enables or disables the migrated AEA dyeable pattern feature.
+  When disabled, dyeable-pattern mixins, item color handling, and the built-in client resource pack registration are all skipped.
+- `[aeaMigration].dyeableRecursiveRetainedCatalystAmount`: sets how many recursive dyeable-pattern catalysts should remain after planning.
 - `[aeaMigration].enhancedCraftingStatusEnabled`: enables or disables the migrated AEA enhanced crafting status feature.
 - `[aeaMigration].buildingGadgets2IntegrationEnabled`: enables or disables the migrated AEA Building Gadgets 2 integration.
 - `[aeaMigration].ftbUltimineMemoryCardEnabled`: enables or disables the migrated AEA FTB Ultimine memory-card compatibility.

@@ -105,6 +105,7 @@ processingPatternReplacementEnabled = true
 
 [aeaMigration]
 dyeablePatternsEnabled = true
+dyeableRecursiveRetainedCatalystAmount = 1
 enhancedCraftingStatusEnabled = true
 buildingGadgets2IntegrationEnabled = true
 ftbUltimineMemoryCardEnabled = true
@@ -115,6 +116,8 @@ ftbUltimineMemoryCardEnabled = true
 - `formalMachinePlanningAggregationEnabled`：启用或禁用 formal-machine 的大请求 planning 聚合快路径。
 - `processingPatternReplacementEnabled`：启用或禁用 AE2 处理样板替换功能包。
 - `[aeaMigration].dyeablePatternsEnabled`：启用或禁用 AEA 染色样板迁移。
+  关闭后会同时关闭染色样板 mixin、物品染色处理和内置客户端资源包注册。
+- `[aeaMigration].dyeableRecursiveRetainedCatalystAmount`：设置递归染色样板计划结束后保留的催化物数量。
 - `[aeaMigration].enhancedCraftingStatusEnabled`：启用或禁用 AEA 增强合成状态迁移。
 - `[aeaMigration].buildingGadgets2IntegrationEnabled`：启用或禁用 AEA Building Gadgets 2 集成。
 - `[aeaMigration].ftbUltimineMemoryCardEnabled`：启用或禁用 AEA FTB Ultimine 记忆卡兼容。
