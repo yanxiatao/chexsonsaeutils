@@ -170,6 +170,158 @@ final class DyeablePatternRecursivePlanningTest {
     }
 
     @Test
+    void downstreamConsumerKeepsSeedAvailableWhenConfiguredReserveNeedsSupplementalRing()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        AEItemKey finalProduct = AEItemKey.of(Items.DIAMOND);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestPatternDetails downstreamPattern = new TestPatternDetails(
+                AEItemKey.of(Items.REPEATER),
+                -1,
+                List.of(new GenericStack(seed, 1L)),
+                List.of(new GenericStack(finalProduct, 1L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 2L, Actionable.MODULATE, null);
+        storage.insert(dust, 2L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(finalProduct, 1L),
+                new TestProvider(recursivePattern, downstreamPattern),
+                storage,
+                2L
+        );
+
+        ICraftingPlan plan = calculation.runCraftAttempt(false, 1L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        DyeablePatternRecursivePlan recursivePlan = (DyeablePatternRecursivePlan) plan;
+        assertFalse(plan.simulation());
+        assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInitialItems().get(seed));
+        assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems().get(seed));
+        assertEquals(1L, plan.usedItems().get(seed));
+        assertEquals(1L, plan.patternTimes().get(recursivePattern));
+        assertEquals(1L, plan.patternTimes().get(downstreamPattern));
+        ListCraftingInventory cpuInventory = cpuInventoryWithUsedItems(plan);
+        assertTrue(DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                downstreamPattern,
+                recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems(),
+                cpuInventory
+        ));
+        executePatternAndReturnOutputs(recursivePattern, cpuInventory);
+        assertFalse(DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                downstreamPattern,
+                recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems(),
+                cpuInventory
+        ));
+        executePatternAndReturnOutputs(downstreamPattern, cpuInventory);
+        long networkSeedNotExtracted = 2L - plan.usedItems().get(seed);
+        long cpuSeedRetained = cpuInventory.extract(seed, Long.MAX_VALUE, Actionable.SIMULATE);
+        assertEquals(2L, networkSeedNotExtracted + cpuSeedRetained);
+    }
+
+    @Test
+    void directDyeableRecursiveRequestHonorsConfiguredRetainedSeedAmount()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 1L, Actionable.MODULATE, null);
+        storage.insert(dust, 2L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(seed, 1L),
+                new TestProvider(recursivePattern),
+                storage,
+                2L
+        );
+
+        ICraftingPlan plan = calculation.runCraftAttempt(false, 1L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        DyeablePatternRecursivePlan recursivePlan = (DyeablePatternRecursivePlan) plan;
+        assertFalse(plan.simulation());
+        assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems().get(seed));
+        assertEquals(2L, plan.patternTimes().get(recursivePattern));
+    }
+
+    @Test
+    void downstreamSeedConsumerHonorsConfiguredRetainedSeedAmountWithoutInitialRingNeed()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        AEItemKey finalProduct = AEItemKey.of(Items.DIAMOND);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestPatternDetails downstreamPattern = new TestPatternDetails(
+                AEItemKey.of(Items.REPEATER),
+                -1,
+                List.of(new GenericStack(seed, 1L)),
+                List.of(new GenericStack(finalProduct, 1L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 2L, Actionable.MODULATE, null);
+        storage.insert(dust, 3L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(finalProduct, 1L),
+                new TestProvider(recursivePattern, downstreamPattern),
+                storage,
+                3L
+        );
+
+        ICraftingPlan plan = calculation.runCraftAttempt(false, 1L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        DyeablePatternRecursivePlan recursivePlan = (DyeablePatternRecursivePlan) plan;
+        assertFalse(plan.simulation());
+        assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInitialItems().get(seed));
+        assertEquals(2L, recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems().get(seed));
+        assertEquals(1L, plan.usedItems().get(seed));
+        assertEquals(2L, plan.patternTimes().get(recursivePattern));
+        assertEquals(1L, plan.patternTimes().get(downstreamPattern));
+        ListCraftingInventory cpuInventory = cpuInventoryWithUsedItems(plan);
+        executePatternAndReturnOutputs(recursivePattern, cpuInventory);
+        assertTrue(DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                downstreamPattern,
+                recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems(),
+                cpuInventory
+        ));
+        executePatternAndReturnOutputs(recursivePattern, cpuInventory);
+        assertFalse(DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                downstreamPattern,
+                recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems(),
+                cpuInventory
+        ));
+        executePatternAndReturnOutputs(downstreamPattern, cpuInventory);
+        long networkSeedNotExtracted = 2L - plan.usedItems().get(seed);
+        long cpuSeedRetained = cpuInventory.extract(seed, Long.MAX_VALUE, Actionable.SIMULATE);
+        assertEquals(3L, networkSeedNotExtracted + cpuSeedRetained);
+    }
+
+    @Test
     void simulatedColorlessDownstreamReportsDyedRecursiveMissingInputs()
             throws InterruptedException {
         AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
@@ -276,12 +428,21 @@ final class DyeablePatternRecursivePlanningTest {
             TestProvider provider,
             TestStorage storage
     ) {
+        return createCalculation(output, provider, storage, 1L);
+    }
+
+    private static TestCalculation createCalculation(
+            GenericStack output,
+            TestProvider provider,
+            TestStorage storage,
+            long retainedCatalystAmount
+    ) {
         DyeablePatternCraftingProviders providers = new DyeablePatternCraftingProviders();
         providers.addProvider(provider);
         TestCraftingService craftingService = new TestCraftingService(providers);
         TestGrid grid = new TestGrid(new TestStorageService(storage), craftingService);
         TestRequester requester = new TestRequester(new TestGridNode(grid));
-        return new TestCalculation(grid, requester, output, providers);
+        return new TestCalculation(grid, requester, output, providers, retainedCatalystAmount);
     }
 
     private static TestStorage storageWith(AEKey key, long amount) {
@@ -328,15 +489,24 @@ final class DyeablePatternRecursivePlanningTest {
                 IGrid grid,
                 ICraftingSimulationRequester requester,
                 GenericStack output,
-                DyeablePatternCraftingProviders providers
+                DyeablePatternCraftingProviders providers,
+                long retainedCatalystAmount
         ) {
             super(null, grid, requester, output, CalculationStrategy.REPORT_MISSING_ITEMS);
             this.providers = providers;
+            this.retainedCatalystAmount = retainedCatalystAmount;
         }
+
+        private final long retainedCatalystAmount;
 
         @Override
         DyeablePatternCraftingProviders getDyeableProviders(ICraftingService craftingService) {
             return providers;
+        }
+
+        @Override
+        long retainedCatalystAmount() {
+            return retainedCatalystAmount;
         }
 
         @Override

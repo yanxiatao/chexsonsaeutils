@@ -319,6 +319,7 @@ final class DyeablePatternCraftingTreeNode {
 
         ChildCraftingSimulationState sandbox = new ChildCraftingSimulationState(inventory);
         KeyCounter ringExtractionsSnapshot = this.job.copyRingExtractions();
+        KeyCounter recursiveInternalItemsSnapshot = this.job.copyRecursiveInternalItems();
         Map<Integer, Set<AEKey>> failedRingReplacementsSnapshot = this.job.copyFailedRingReplacements();
         KeyCounter missingItemsSnapshot = this.job.copyMissingItems();
         boolean applied = false;
@@ -344,6 +345,7 @@ final class DyeablePatternCraftingTreeNode {
         } finally {
             if (!applied) {
                 this.job.restoreRingExtractions(ringExtractionsSnapshot);
+                this.job.restoreRecursiveInternalItems(recursiveInternalItemsSnapshot);
                 this.job.restoreFailedRingReplacements(failedRingReplacementsSnapshot);
                 this.job.restoreMissingItems(missingItemsSnapshot);
             }

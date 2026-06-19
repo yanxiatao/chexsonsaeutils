@@ -54,6 +54,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
     private final Map<Integer, Set<AEKey>> failedRingReplacements = new HashMap<>();
     private final Set<Integer> ringsBeingReplaced = new HashSet<>();
     private final KeyCounter ringExtractions = new KeyCounter();
+    private final KeyCounter recursiveInternalItems = new KeyCounter();
     private boolean simulate = false;
     private boolean running = false;
     private boolean done = false;
@@ -160,7 +161,8 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         this.simulate = simulate;
         this.failedRingReplacements.clear();
         this.ringsBeingReplaced.clear();
-        this.ringExtractions.reset();
+        this.ringExtractions.clear();
+        this.recursiveInternalItems.clear();
 
         ChildCraftingSimulationState craftingInventory = new ChildCraftingSimulationState(networkInv);
         craftingInventory.ignore(this.output);
@@ -183,16 +185,26 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
     }
 
     private ICraftingPlan mergeRingExtractions(CraftingPlan basePlan) {
-        return createRecursivePlanForRingExtractions(basePlan, this.ringExtractions);
+        return createRecursivePlanForRingExtractions(basePlan, this.ringExtractions, this.recursiveInternalItems);
     }
 
     static ICraftingPlan createRecursivePlanForRingExtractions(
             CraftingPlan basePlan,
             KeyCounter ringExtractions
     ) {
+        return createRecursivePlanForRingExtractions(basePlan, ringExtractions, null);
+    }
+
+    static ICraftingPlan createRecursivePlanForRingExtractions(
+            CraftingPlan basePlan,
+            KeyCounter ringExtractions,
+            @Nullable KeyCounter recursiveInternalItems
+    ) {
         KeyCounter combinedUsedItems = new KeyCounter();
         addRewrittenUsedItems(basePlan, combinedUsedItems);
         mergeRecursiveInitialItems(combinedUsedItems, ringExtractions);
+        KeyCounter internalItems = copyCounter(ringExtractions);
+        mergeRecursiveInitialItems(internalItems, recursiveInternalItems);
 
         CraftingPlan merged = new CraftingPlan(
                 basePlan.finalOutput(),
@@ -207,7 +219,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         return new RecursiveCraftingPlan(
                 merged,
                 copyCounter(ringExtractions),
-                copyCounter(ringExtractions),
+                internalItems,
                 basePlan.finalOutput().amount()
         );
     }
@@ -232,7 +244,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             CraftingSimulationState inventory,
             CraftingPlan preliminaryPlan
     ) throws CraftBranchFailure, InterruptedException {
-        long retainedAmount = DyeablePatternRecursiveConfig.retainedCatalystAmount();
+        long retainedAmount = retainedCatalystAmount();
         if (retainedAmount <= 0L || preliminaryPlan == null) {
             return;
         }
@@ -260,6 +272,13 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             }
             applySupplementalRing(inventory, craftingService, retainingRing, candidateKey, deficit);
             preliminaryPlan = CraftingSimulationState.buildCraftingPlan(inventory, this, preliminaryPlan.finalOutput().amount());
+            long internalReserve = retainedAmount - networkAmountNotExtractedByPlan(preliminaryPlan, candidateKey);
+            if (internalReserve > 0L) {
+                this.recursiveInternalItems.set(
+                        candidateKey,
+                        Math.max(this.recursiveInternalItems.get(candidateKey), internalReserve)
+                );
+            }
         }
     }
 
@@ -294,6 +313,14 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             projected -= plan.finalOutput().amount();
         }
         return Math.max(0L, projected);
+    }
+
+    private long networkAmountNotExtractedByPlan(CraftingPlan plan, AEKey key) {
+        if (plan == null || key == null || plan.usedItems() == null) {
+            return 0L;
+        }
+        long available = this.networkInv.extract(key, Long.MAX_VALUE, Actionable.SIMULATE);
+        return Math.max(0L, available - plan.usedItems().get(key));
     }
 
     private void applySupplementalRing(
@@ -438,6 +465,10 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         this.missing.add(what, amount);
     }
 
+    long retainedCatalystAmount() {
+        return DyeablePatternRecursiveConfig.retainedCatalystAmount();
+    }
+
     KeyCounter copyMissingItems() {
         return copyCounter(this.missing);
     }
@@ -565,9 +596,20 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
     }
 
     void restoreRingExtractions(KeyCounter snapshot) {
-        this.ringExtractions.reset();
+        this.ringExtractions.clear();
         if (snapshot != null) {
             this.ringExtractions.addAll(snapshot);
+        }
+    }
+
+    KeyCounter copyRecursiveInternalItems() {
+        return copyCounter(this.recursiveInternalItems);
+    }
+
+    void restoreRecursiveInternalItems(KeyCounter snapshot) {
+        this.recursiveInternalItems.clear();
+        if (snapshot != null) {
+            this.recursiveInternalItems.addAll(snapshot);
         }
     }
 
