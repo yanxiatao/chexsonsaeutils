@@ -309,8 +309,34 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         collectCounterKeys(recursiveInitialItems, keys);
         if (plan != null) {
             collectCounterKeys(plan.usedItems(), keys);
+            collectPatternInputKeys(plan, keys);
         }
         return keys;
+    }
+
+    private static void collectPatternInputKeys(CraftingPlan plan, Set<AEKey> target) {
+        if (plan == null || plan.patternTimes() == null || target == null) {
+            return;
+        }
+        for (var entry : plan.patternTimes().entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null || entry.getValue() <= 0L) {
+                continue;
+            }
+            for (var input : entry.getKey().getInputs()) {
+                collectInputKeys(input, target);
+            }
+        }
+    }
+
+    private static void collectInputKeys(appeng.api.crafting.IPatternDetails.IInput input, Set<AEKey> target) {
+        if (input == null || input.getPossibleInputs() == null || target == null) {
+            return;
+        }
+        for (GenericStack possibleInput : input.getPossibleInputs()) {
+            if (possibleInput != null && possibleInput.what() != null && possibleInput.amount() > 0L) {
+                target.add(possibleInput.what());
+            }
+        }
     }
 
     private static void collectCounterKeys(KeyCounter counter, Set<AEKey> target) {

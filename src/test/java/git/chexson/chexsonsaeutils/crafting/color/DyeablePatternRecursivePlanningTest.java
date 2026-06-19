@@ -262,6 +262,50 @@ final class DyeablePatternRecursivePlanningTest {
     }
 
     @Test
+    void downstreamConsumerCraftsRecursiveSeedWhenPlanWouldConsumeLastSeed()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        AEItemKey finalProduct = AEItemKey.of(Items.GRASS_BLOCK);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestPatternDetails downstreamPattern = new TestPatternDetails(
+                AEItemKey.of(Items.REPEATER),
+                -1,
+                List.of(new GenericStack(seed, 1L)),
+                List.of(new GenericStack(finalProduct, 1L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 1L, Actionable.MODULATE, null);
+        storage.insert(dust, 1L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(finalProduct, 1L),
+                new TestProvider(recursivePattern, downstreamPattern),
+                storage,
+                1L
+        );
+
+        ICraftingPlan plan = calculation.runCraftAttempt(false, 1L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        DyeablePatternRecursivePlan recursivePlan = (DyeablePatternRecursivePlan) plan;
+        assertFalse(plan.simulation());
+        assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInitialItems().get(seed));
+        assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems().get(seed));
+        assertEquals(1L, plan.patternTimes().get(recursivePattern));
+        assertEquals(1L, plan.patternTimes().get(downstreamPattern));
+        assertEquals(1L, plan.usedItems().get(seed));
+        assertEquals(1L, plan.usedItems().get(dust));
+    }
+
+    @Test
     void directDyeableRecursiveRequestHonorsConfiguredRetainedSeedAmount()
             throws InterruptedException {
         AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));

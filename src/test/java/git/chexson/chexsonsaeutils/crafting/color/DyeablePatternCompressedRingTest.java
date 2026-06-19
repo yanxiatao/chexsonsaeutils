@@ -174,10 +174,12 @@ final class DyeablePatternCompressedRingTest {
         AEKey missing = AEItemKey.of(Items.IRON_INGOT);
         AEKey patternInput = AEItemKey.of(Items.COPPER_INGOT);
         AEKey patternOutput = AEItemKey.of(Items.GOLD_INGOT);
+        AEKey patternOnlyInput = AEItemKey.of(Items.QUARTZ);
         IPatternDetails downstreamPattern = pattern(
+                List.of(stack(patternOutput, 1L)),
                 input(stack(patternInput, 1L)),
                 input(stack(seed, 1L)),
-                List.of(stack(patternOutput, 1L))
+                input(stack(patternOnlyInput, 1L))
         );
         KeyCounter usedItems = new KeyCounter();
         usedItems.add(seed, 1L);
@@ -204,7 +206,7 @@ final class DyeablePatternCompressedRingTest {
                 recursiveExtractions
         );
 
-        assertEquals(Set.of(seed, extractedSeed), candidates);
+        assertEquals(Set.of(seed, patternInput, patternOnlyInput, extractedSeed), candidates);
     }
 
     @Test
@@ -427,6 +429,13 @@ final class DyeablePatternCompressedRingTest {
             List<GenericStack> outputs
     ) {
         return new TestPattern(new IPatternDetails.IInput[] { firstInput, secondInput }, outputs);
+    }
+
+    private static IPatternDetails pattern(
+            List<GenericStack> outputs,
+            IPatternDetails.IInput... inputs
+    ) {
+        return new TestPattern(inputs, outputs);
     }
 
     private static IPatternDetails coloredPattern(
