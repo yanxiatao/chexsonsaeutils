@@ -1,6 +1,7 @@
 {
   "$schema": "schema.json",
   "includes": ["crafting_status.json"],
+  "helpTopic": "chexsonsaeutils:chexsonsaeutils_intro/ae2_parallel_cpu_tool.md",
   "widgets": {
     "back": {
       "left": 214,

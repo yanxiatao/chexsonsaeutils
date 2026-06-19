@@ -1,6 +1,7 @@
 {
   "$schema": "schema.json",
   "includes": ["common/common.json"],
+  "helpTopic": "chexsonsaeutils:chexsonsaeutils_intro/ae_direct_processing_machine.md",
   "generatedBackground": {
     "width": 200,
     "height": 238

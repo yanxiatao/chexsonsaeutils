@@ -1,6 +1,7 @@
 {
   "$schema": "schema.json",
   "includes": ["common/common.json"],
+  "helpTopic": "chexsonsaeutils:chexsonsaeutils_intro/crafting_continuation.md",
   "background": {
     "texture": "guis/craftingreport.png",
     "srcRect": [0, 0, 238, 206]
