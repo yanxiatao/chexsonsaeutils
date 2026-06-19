@@ -471,6 +471,49 @@ final class DyeablePatternRecursivePlanningTest {
     }
 
     @Test
+    void downstreamSeedConsumerScalesRecursiveRingToConfiguredReserve()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
+        AEItemKey dust = AEItemKey.of(Items.NETHERRACK);
+        AEItemKey finalProduct = AEItemKey.of(Items.GRASS_BLOCK);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestPatternDetails downstreamPattern = new TestPatternDetails(
+                AEItemKey.of(Items.REPEATER),
+                -1,
+                List.of(new GenericStack(seed, 1L)),
+                List.of(new GenericStack(finalProduct, 1L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 1L, Actionable.MODULATE, null);
+        storage.insert(dust, 19L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(finalProduct, 10L),
+                new TestProvider(recursivePattern, downstreamPattern),
+                storage,
+                10L
+        );
+
+        ICraftingPlan plan = calculation.runCraftAttempt(false, 10L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        DyeablePatternRecursivePlan recursivePlan = (DyeablePatternRecursivePlan) plan;
+        assertFalse(plan.simulation());
+        assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInitialItems().get(seed));
+        assertEquals(10L, recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems().get(seed));
+        assertEquals(19L, plan.patternTimes().get(recursivePattern));
+        assertEquals(10L, plan.patternTimes().get(downstreamPattern));
+        assertEquals(19L, plan.usedItems().get(dust));
+    }
+
+    @Test
     void simulatedColorlessDownstreamReportsDyedRecursiveMissingInputs()
             throws InterruptedException {
         AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));

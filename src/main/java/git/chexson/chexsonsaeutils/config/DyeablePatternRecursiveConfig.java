@@ -21,23 +21,38 @@ public final class DyeablePatternRecursiveConfig {
      * 返回合成结束后应保留的递归催化物数量。
      */
     public static long retainedCatalystAmount() {
+        return retainedCatalystAmount(configuredFallbackValue());
+    }
+
+    static long retainedCatalystAmount(Path configFile) {
+        return retainedCatalystAmount(
+                configFile,
+                ChexsonsaeutilsCompatibilityConfig.DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT.getDefault()
+        );
+    }
+
+    static long retainedCatalystAmount(Path configFile, int fallbackValue) {
         return clamp(
-                intValue(ChexsonsaeutilsCompatibilityConfig.DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT),
+                StartupConfigIntReader.read(
+                        configFile,
+                        CONFIG_KEY,
+                        fallbackValue
+                ),
                 0,
                 MAX_RETAINED_CATALYST_AMOUNT
         );
     }
 
-    static long retainedCatalystAmount(Path configFile) {
+    private static long retainedCatalystAmount(int fallbackValue) {
         return clamp(
-                StartupConfigIntReader.read(
-                        configFile,
-                        CONFIG_KEY,
-                        ChexsonsaeutilsCompatibilityConfig.DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT.getDefault()
-                ),
+                StartupConfigIntReader.read(CONFIG_KEY, fallbackValue),
                 0,
                 MAX_RETAINED_CATALYST_AMOUNT
         );
+    }
+
+    private static int configuredFallbackValue() {
+        return intValue(ChexsonsaeutilsCompatibilityConfig.DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT);
     }
 
     private static int intValue(ModConfigSpec.ConfigValue<Integer> value) {

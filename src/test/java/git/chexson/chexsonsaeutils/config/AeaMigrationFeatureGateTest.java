@@ -47,6 +47,24 @@ final class AeaMigrationFeatureGateTest {
     }
 
     @Test
+    void dyeableRecursiveRetainedCatalystAmountPrefersConfigFileOverLoadedFallback() throws IOException {
+        Path config = tempDir.resolve("chexsonsaeutils-common.toml");
+        Files.writeString(config, String.join(System.lineSeparator(),
+                "[aeaMigration]",
+                "dyeableRecursiveRetainedCatalystAmount = 10"
+        ));
+
+        assertEquals(10, DyeablePatternRecursiveConfig.retainedCatalystAmount(config, 1));
+    }
+
+    @Test
+    void dyeableRecursiveRetainedCatalystAmountFallsBackToLoadedValue() {
+        Path missingConfig = tempDir.resolve("missing.toml");
+
+        assertEquals(12, DyeablePatternRecursiveConfig.retainedCatalystAmount(missingConfig, 12));
+    }
+
+    @Test
     void dyeableRecursiveRetainedCatalystAmountClampsStartupConfigFile() throws IOException {
         Path lowConfig = tempDir.resolve("low.toml");
         Files.writeString(lowConfig, "dyeableRecursiveRetainedCatalystAmount = -5");
