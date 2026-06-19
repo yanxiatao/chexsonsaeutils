@@ -16,6 +16,7 @@ import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AbstractHighCapacityCraftingHostBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.TaskCompletionRoute;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternSelectedInputsPlan;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
@@ -99,6 +100,7 @@ public final class FormalMachinePlanningAggregationService {
 
         SelectedPlanGraph selectedGraph = buildSelectedPlanGraph(
                 craftingService,
+                nativePlan,
                 nativePlan.finalOutput().what(),
                 nativePlan.patternTimes()
         );
@@ -159,7 +161,8 @@ public final class FormalMachinePlanningAggregationService {
         }
 
         Map<IPatternDetails, Long> dependencyOrderedPatternTimes = orderPatternTimesByDependencies(
-                rewrittenPatternTimes
+                rewrittenPatternTimes,
+                nativePlan
         );
         if (dependencyOrderedPatternTimes == null) {
             LOGGER.warn(
@@ -203,6 +206,7 @@ public final class FormalMachinePlanningAggregationService {
 
     private static @Nullable SelectedPlanGraph buildSelectedPlanGraph(
             CraftingService craftingService,
+            ICraftingPlan nativePlan,
             AEKey rootOutput,
             Map<IPatternDetails, Long> selectedPatternTimes
     ) {
@@ -223,7 +227,7 @@ public final class FormalMachinePlanningAggregationService {
                 return null;
             }
 
-            Map<AEKey, Long> inputs = describePatternInputs(pattern);
+            Map<AEKey, Long> inputs = describeAggregationInputs(nativePlan, pattern);
             if (inputs == null) {
                 LOGGER.warn("Selected crafting pattern {} has non-deterministic inputs", pattern.getDefinition());
                 return null;
@@ -359,17 +363,7 @@ public final class FormalMachinePlanningAggregationService {
     static List<Set<AEKey>> splitPerPatternFormalAggregationSegments(
             Map<AEKey, ? extends Collection<AEKey>> formalInputsByOutput
     ) {
-        if (formalInputsByOutput == null || formalInputsByOutput.isEmpty()) {
-            return List.of();
-        }
-
-        List<Set<AEKey>> segments = new ArrayList<>();
-        for (AEKey output : formalInputsByOutput.keySet()) {
-            if (output != null) {
-                segments.add(Set.of(output));
-            }
-        }
-        return List.copyOf(segments);
+        return splitFormalDependencySegments(formalInputsByOutput);
     }
 
     static List<Set<AEKey>> splitFormalDependencySegments(
@@ -547,12 +541,19 @@ public final class FormalMachinePlanningAggregationService {
         Map<AEKey, Long> totalProduced = new LinkedHashMap<>(totalPrimaryOutputs);
         mergeStackMaps(totalProduced, totalRemainders);
 
-        Map<AEKey, Long> boundaryInputs = subtractPositive(totalInputs, totalProduced);
+        KeyCounter recursiveInitialItems = filterCandidateRecursiveInitialItems(nativePlan, totalProduced);
+
+        Map<AEKey, Long> boundaryInputs = describeAggregatedBoundaryInputs(steps);
+        if (boundaryInputs == null) {
+            return null;
+        }
         Map<AEKey, Long> externalMissingInputs = extractExternalMissingInputs(
                 nativePlan.missingItems(),
-                totalPrimaryOutputs
+                totalProduced,
+                recursiveInitialItems
         );
         Map<AEKey, Long> boundaryOutputs = subtractPositive(totalProduced, totalInputs);
+        restoreRecursiveInitialBoundaryOutputs(boundaryOutputs, recursiveInitialItems);
         if (boundaryOutputs.isEmpty()) {
             return null;
         }
@@ -592,19 +593,30 @@ public final class FormalMachinePlanningAggregationService {
         );
     }
 
-    private static @Nullable List<SelectedGraphNode> topoSortHostNodes(Map<AEKey, SelectedGraphNode> hostNodes) {
+    static @Nullable List<AEKey> topoSortDependencyOutputs(
+            Map<AEKey, ? extends Collection<AEKey>> inputsByOutput
+    ) {
+        if (inputsByOutput == null || inputsByOutput.isEmpty()) {
+            return List.of();
+        }
+
         Map<AEKey, Integer> indegree = new LinkedHashMap<>();
         Map<AEKey, List<AEKey>> adjacency = new LinkedHashMap<>();
-
-        for (AEKey output : hostNodes.keySet()) {
+        for (AEKey output : inputsByOutput.keySet()) {
+            if (output == null) {
+                continue;
+            }
             indegree.putIfAbsent(output, 0);
             adjacency.putIfAbsent(output, new ArrayList<>());
         }
 
-        for (Map.Entry<AEKey, SelectedGraphNode> entry : hostNodes.entrySet()) {
+        for (Map.Entry<AEKey, ? extends Collection<AEKey>> entry : inputsByOutput.entrySet()) {
             AEKey consumerOutput = entry.getKey();
-            for (AEKey inputKey : entry.getValue().inputs().keySet()) {
-                if (!hostNodes.containsKey(inputKey)) {
+            if (consumerOutput == null || !adjacency.containsKey(consumerOutput) || entry.getValue() == null) {
+                continue;
+            }
+            for (AEKey inputKey : entry.getValue()) {
+                if (inputKey == null || inputKey.equals(consumerOutput) || !adjacency.containsKey(inputKey)) {
                     continue;
                 }
                 adjacency.computeIfAbsent(inputKey, ignored -> new ArrayList<>()).add(consumerOutput);
@@ -619,10 +631,10 @@ public final class FormalMachinePlanningAggregationService {
             }
         }
 
-        List<SelectedGraphNode> ordered = new ArrayList<>(hostNodes.size());
+        List<AEKey> ordered = new ArrayList<>(indegree.size());
         while (!ready.isEmpty()) {
             AEKey current = ready.removeFirst();
-            ordered.add(hostNodes.get(current));
+            ordered.add(current);
             for (AEKey consumer : adjacency.getOrDefault(current, List.of())) {
                 int next = indegree.getOrDefault(consumer, 0) - 1;
                 indegree.put(consumer, next);
@@ -632,11 +644,29 @@ public final class FormalMachinePlanningAggregationService {
             }
         }
 
-        return ordered.size() == hostNodes.size() ? List.copyOf(ordered) : null;
+        return ordered.size() == indegree.size() ? List.copyOf(ordered) : null;
+    }
+
+    private static @Nullable List<SelectedGraphNode> topoSortHostNodes(Map<AEKey, SelectedGraphNode> hostNodes) {
+        List<AEKey> orderedOutputs = topoSortDependencyOutputs(formalInputsByOutput(hostNodes));
+        if (orderedOutputs == null || orderedOutputs.size() != hostNodes.size()) {
+            return null;
+        }
+
+        List<SelectedGraphNode> ordered = new ArrayList<>(orderedOutputs.size());
+        for (AEKey output : orderedOutputs) {
+            SelectedGraphNode node = hostNodes.get(output);
+            if (node == null) {
+                return null;
+            }
+            ordered.add(node);
+        }
+        return List.copyOf(ordered);
     }
 
     private static @Nullable Map<IPatternDetails, Long> orderPatternTimesByDependencies(
-            Map<IPatternDetails, Long> patternTimes
+            Map<IPatternDetails, Long> patternTimes,
+            @Nullable ICraftingPlan nativePlan
     ) {
         if (patternTimes == null || patternTimes.size() <= 1) {
             return patternTimes;
@@ -653,7 +683,7 @@ public final class FormalMachinePlanningAggregationService {
                 return null;
             }
 
-            Map<AEKey, Long> inputs = describePatternInputs(pattern);
+            Map<AEKey, Long> inputs = describeAggregationInputs(nativePlan, pattern);
             if (inputs == null) {
                 LOGGER.warn("Rewritten crafting pattern {} has non-deterministic inputs", pattern.getDefinition());
                 return null;
@@ -849,6 +879,108 @@ public final class FormalMachinePlanningAggregationService {
         return Map.copyOf(mergedInputs);
     }
 
+    static @Nullable Map<AEKey, Long> describeAggregatedBoundaryInputs(
+            @Nullable List<FormalMachineAggregationStep> steps
+    ) {
+        if (steps == null || steps.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<AEKey, Long> requiredExternalInputs = new LinkedHashMap<>();
+        Map<AEKey, Long> availableInternalInputs = new LinkedHashMap<>();
+        for (FormalMachineAggregationStep step : steps) {
+            if (step == null || step.executionCount() <= 0L) {
+                return null;
+            }
+
+            Map<AEKey, Long> perRunInputs = downscaleStacks(step.stepInputs(), step.executionCount());
+            Map<AEKey, Long> perRunRemainders = downscaleStacks(step.stepRemainders(), step.executionCount());
+            if (perRunInputs == null || perRunRemainders == null) {
+                return null;
+            }
+
+            Map<AEKey, Long> perRunOutputs = new LinkedHashMap<>(perRunRemainders);
+            if (step.stepPrimaryOutput() != null) {
+                if (step.stepPrimaryOutput().what() == null) {
+                    return null;
+                }
+                long perRunPrimaryAmount = downscaleAmount(step.stepPrimaryOutput().amount(), step.executionCount());
+                if (perRunPrimaryAmount <= 0L) {
+                    return null;
+                }
+                mergeStack(perRunOutputs, step.stepPrimaryOutput().what(), perRunPrimaryAmount);
+            }
+
+            Set<AEKey> affectedKeys = new LinkedHashSet<>();
+            affectedKeys.addAll(perRunInputs.keySet());
+            affectedKeys.addAll(perRunOutputs.keySet());
+            for (AEKey key : affectedKeys) {
+                if (key == null) {
+                    continue;
+                }
+
+                long startingAvailable = Math.max(0L, availableInternalInputs.getOrDefault(key, 0L));
+                long consumePerRun = Math.max(0L, perRunInputs.getOrDefault(key, 0L));
+                long producePerRun = Math.max(0L, perRunOutputs.getOrDefault(key, 0L));
+                long requiredStartup = minimalExecutionStartupAmount(
+                        consumePerRun,
+                        producePerRun,
+                        step.executionCount()
+                );
+                if (startingAvailable < requiredStartup) {
+                    mergeStack(requiredExternalInputs, key, requiredStartup - startingAvailable);
+                    startingAvailable = requiredStartup;
+                }
+
+                long endingAvailable = advanceExecutionBalance(
+                        startingAvailable,
+                        consumePerRun,
+                        producePerRun,
+                        step.executionCount()
+                );
+                if (endingAvailable > 0L) {
+                    availableInternalInputs.put(key, endingAvailable);
+                } else {
+                    availableInternalInputs.remove(key);
+                }
+            }
+        }
+        return Map.copyOf(requiredExternalInputs);
+    }
+
+    static @Nullable Map<AEKey, Long> describeAggregationInputs(
+            @Nullable ICraftingPlan nativePlan,
+            @Nullable IPatternDetails pattern
+    ) {
+        Map<AEKey, Long> selectedInputs = describeSelectedPatternInputs(nativePlan, pattern);
+        if (selectedInputs != null) {
+            return selectedInputs;
+        }
+        return describePatternInputs(pattern);
+    }
+
+    private static @Nullable Map<AEKey, Long> describeSelectedPatternInputs(
+            @Nullable ICraftingPlan nativePlan,
+            @Nullable IPatternDetails pattern
+    ) {
+        if (!(nativePlan instanceof DyeablePatternSelectedInputsPlan selectedInputsPlan)
+                || pattern == null
+                || pattern.getDefinition() == null
+                || !(pattern.getDefinition() instanceof AEItemKey definition)) {
+            return null;
+        }
+        Map<AEItemKey, Map<AEKey, Long>> selectedInputs =
+                selectedInputsPlan.chexsonsaeutils$dyeableSelectedPatternInputs();
+        if (selectedInputs == null || selectedInputs.isEmpty()) {
+            return null;
+        }
+        Map<AEKey, Long> selected = selectedInputs.get(definition);
+        if (selected == null || selected.isEmpty()) {
+            return null;
+        }
+        return Map.copyOf(new LinkedHashMap<>(selected));
+    }
+
     private static @Nullable AECraftingPattern unwrapBaseCraftingPattern(@Nullable IPatternDetails pattern) {
         IPatternDetails unwrapped = unwrapDelegatingPattern(pattern);
         return unwrapped instanceof AECraftingPattern craftingPattern ? craftingPattern : null;
@@ -1020,20 +1152,59 @@ public final class FormalMachinePlanningAggregationService {
         return extractCounterAmounts(missingItems);
     }
 
-    private static Map<AEKey, Long> extractExternalMissingInputs(
+    static Map<AEKey, Long> extractExternalMissingInputs(
             @Nullable KeyCounter missingItems,
-            Map<AEKey, Long> internallyCraftedOutputs
+            Map<AEKey, Long> internallyCraftedOutputs,
+            @Nullable KeyCounter recursiveInitialItems
     ) {
         Map<AEKey, Long> missing = extractCounterAmounts(missingItems);
         if (missing.isEmpty() || internallyCraftedOutputs == null || internallyCraftedOutputs.isEmpty()) {
             return missing;
         }
+        Set<AEKey> startupKeys = extractCounterAmounts(recursiveInitialItems).keySet();
         for (AEKey craftedOutput : internallyCraftedOutputs.keySet()) {
-            if (craftedOutput != null) {
+            if (craftedOutput != null && !startupKeys.contains(craftedOutput)) {
                 missing.remove(craftedOutput);
             }
         }
         return missing;
+    }
+
+    private static KeyCounter filterCandidateRecursiveInitialItems(
+            @Nullable ICraftingPlan nativePlan,
+            Map<AEKey, Long> candidateProducedKeys
+    ) {
+        KeyCounter filtered = new KeyCounter();
+        if (candidateProducedKeys == null || candidateProducedKeys.isEmpty()) {
+            return filtered;
+        }
+        KeyCounter recursiveInitialItems = dyeableRecursiveInitialItems(nativePlan);
+        if (recursiveInitialItems.isEmpty()) {
+            return filtered;
+        }
+        for (var entry : recursiveInitialItems) {
+            if (entry.getKey() == null
+                    || entry.getLongValue() <= 0L
+                    || !candidateProducedKeys.containsKey(entry.getKey())) {
+                continue;
+            }
+            filtered.set(entry.getKey(), entry.getLongValue());
+        }
+        return filtered;
+    }
+
+    static void restoreRecursiveInitialBoundaryOutputs(
+            Map<AEKey, Long> boundaryOutputs,
+            @Nullable KeyCounter recursiveInitialItems
+    ) {
+        if (boundaryOutputs == null || recursiveInitialItems == null || recursiveInitialItems.isEmpty()) {
+            return;
+        }
+        for (var entry : recursiveInitialItems) {
+            if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                mergeStack(boundaryOutputs, entry.getKey(), entry.getLongValue());
+            }
+        }
     }
 
     private static KeyCounter snapshotLiveVisibleStacks(CraftingService craftingService) {
@@ -1177,7 +1348,7 @@ public final class FormalMachinePlanningAggregationService {
         return copy;
     }
 
-    private static KeyCounter computeRewrittenUsedItems(
+    static KeyCounter computeRewrittenUsedItems(
             Map<IPatternDetails, Long> patternTimes,
             KeyCounter rewrittenMissingItems,
             @Nullable ICraftingPlan nativePlan
@@ -1207,7 +1378,7 @@ public final class FormalMachinePlanningAggregationService {
         KeyCounter usedItems;
         if (rewrittenMissingItems == null || rewrittenMissingItems.isEmpty()) {
             usedItems = toCounter(requiredExternalInputs);
-            addUsedItems(usedItems, dyeableRecursiveInitialItems(nativePlan));
+            mergeRecursiveInitialUsedItems(usedItems, dyeableRecursiveInitialItems(nativePlan));
             return usedItems;
         }
 
@@ -1224,7 +1395,7 @@ public final class FormalMachinePlanningAggregationService {
             }
         }
         usedItems = toCounter(availableInputs);
-        addUsedItems(usedItems, dyeableRecursiveInitialItems(nativePlan));
+        mergeRecursiveInitialUsedItems(usedItems, dyeableRecursiveInitialItems(nativePlan));
         return usedItems;
     }
 
@@ -1264,6 +1435,24 @@ public final class FormalMachinePlanningAggregationService {
         for (var entry : source) {
             if (entry.getKey() != null && entry.getLongValue() > 0L) {
                 target.set(entry.getKey(), saturatingAdd(target.get(entry.getKey()), entry.getLongValue()));
+            }
+        }
+    }
+
+    private static void mergeRecursiveInitialUsedItems(
+            KeyCounter target,
+            @Nullable KeyCounter recursiveInitialItems
+    ) {
+        if (target == null || recursiveInitialItems == null || recursiveInitialItems.isEmpty()) {
+            return;
+        }
+        for (var entry : recursiveInitialItems) {
+            if (entry.getKey() == null || entry.getLongValue() <= 0L) {
+                continue;
+            }
+            long existing = Math.max(0L, target.get(entry.getKey()));
+            if (entry.getLongValue() > existing) {
+                target.set(entry.getKey(), entry.getLongValue());
             }
         }
     }
@@ -1369,6 +1558,76 @@ public final class FormalMachinePlanningAggregationService {
             return Long.MAX_VALUE;
         }
         return left * right;
+    }
+
+    private static long downscaleAmount(long scaledAmount, long divisor) {
+        if (scaledAmount <= 0L || divisor <= 0L || scaledAmount % divisor != 0L) {
+            return 0L;
+        }
+        return scaledAmount / divisor;
+    }
+
+    private static @Nullable Map<AEKey, Long> downscaleStacks(
+            @Nullable List<GenericStack> scaledStacks,
+            long divisor
+    ) {
+        if (divisor <= 0L) {
+            return null;
+        }
+        if (scaledStacks == null || scaledStacks.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<AEKey, Long> downscaled = new LinkedHashMap<>();
+        for (GenericStack stack : scaledStacks) {
+            if (stack == null) {
+                continue;
+            }
+            if (stack.what() == null || stack.amount() <= 0L) {
+                return null;
+            }
+            long downscaledAmount = downscaleAmount(stack.amount(), divisor);
+            if (downscaledAmount <= 0L) {
+                return null;
+            }
+            mergeStack(downscaled, stack.what(), downscaledAmount);
+        }
+        return Map.copyOf(downscaled);
+    }
+
+    private static long minimalExecutionStartupAmount(
+            long consumePerRun,
+            long producePerRun,
+            long executionCount
+    ) {
+        if (consumePerRun <= 0L || executionCount <= 0L) {
+            return 0L;
+        }
+        if (executionCount == 1L || producePerRun >= consumePerRun) {
+            return consumePerRun;
+        }
+        return saturatingAdd(
+                consumePerRun,
+                multiply(executionCount - 1L, consumePerRun - producePerRun)
+        );
+    }
+
+    private static long advanceExecutionBalance(
+            long startingAmount,
+            long consumePerRun,
+            long producePerRun,
+            long executionCount
+    ) {
+        if (executionCount <= 0L) {
+            return Math.max(0L, startingAmount);
+        }
+        if (producePerRun >= consumePerRun) {
+            return saturatingAdd(startingAmount, multiply(executionCount, producePerRun - consumePerRun));
+        }
+        return Math.max(
+                0L,
+                startingAmount - multiply(executionCount, consumePerRun - producePerRun)
+        );
     }
 
     private static long saturatingAdd(long left, long right) {
