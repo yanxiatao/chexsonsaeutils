@@ -263,8 +263,8 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             CraftingSimulationState inventory,
             CraftingPlan preliminaryPlan
     ) throws CraftBranchFailure, InterruptedException {
-        long retainedAmount = retainedCatalystAmount();
-        if (retainedAmount <= 0L || preliminaryPlan == null) {
+        long configuredRetainedSeedCount = retainedCatalystAmount();
+        if (configuredRetainedSeedCount <= 0L || preliminaryPlan == null) {
             return;
         }
 
@@ -284,6 +284,11 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             if (!DyeablePatternCraftingPlanner.isCompressedRingCalculable(retainingRing)) {
                 continue;
             }
+            long retainedAmount = retainedSeedAmount(
+                    configuredRetainedSeedCount,
+                    retainingRing,
+                    candidateKey
+            );
             long projectedAmount = projectNetworkAmountAfterPlan(preliminaryPlan, candidateKey);
             long deficit = retainedAmount - projectedAmount;
             if (deficit <= 0L) {
@@ -299,6 +304,18 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
                 );
             }
         }
+    }
+
+    private static long retainedSeedAmount(
+            long configuredRetainedSeedCount,
+            DyeablePatternCompressedRing retainingRing,
+            AEKey seedKey
+    ) {
+        long seedAmount = retainingRing.catalysts().get(seedKey);
+        if (seedAmount <= 0L) {
+            throw new IllegalStateException("Retaining ring does not expose a positive seed amount for " + seedKey);
+        }
+        return Math.multiplyExact(configuredRetainedSeedCount, seedAmount);
     }
 
     static Set<AEKey> collectRetainedCatalystCandidates(

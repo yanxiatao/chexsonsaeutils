@@ -20,6 +20,7 @@ import appeng.api.networking.crafting.ICraftingSubmitResult;
 import appeng.api.networking.events.GridEvent;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.storage.IStorageService;
+import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
@@ -47,6 +48,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.level.ItemLike;
+import net.minecraft.world.level.material.Fluids;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -335,6 +337,39 @@ final class DyeablePatternRecursivePlanningTest {
         DyeablePatternRecursivePlan recursivePlan = (DyeablePatternRecursivePlan) plan;
         assertFalse(plan.simulation());
         assertEquals(1L, recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems().get(seed));
+        assertEquals(2L, plan.patternTimes().get(recursivePattern));
+    }
+
+    @Test
+    void directDyeableRecursiveRequestScalesRetainedSeedByGenericStackAmount()
+            throws InterruptedException {
+        AEKey seed = AEFluidKey.of(Fluids.WATER);
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1_000L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2_000L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 1_000L, Actionable.MODULATE, null);
+        storage.insert(dust, 2L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(seed, 1_000L),
+                new TestProvider(recursivePattern),
+                storage,
+                2L
+        );
+
+        ICraftingPlan plan = calculation.runCraftAttempt(false, 1_000L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        DyeablePatternRecursivePlan recursivePlan = (DyeablePatternRecursivePlan) plan;
+        assertFalse(plan.simulation());
+        assertEquals(1_000L, recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems().get(seed));
         assertEquals(2L, plan.patternTimes().get(recursivePattern));
     }
 

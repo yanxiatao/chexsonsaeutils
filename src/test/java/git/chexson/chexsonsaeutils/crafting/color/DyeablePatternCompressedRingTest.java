@@ -256,6 +256,26 @@ final class DyeablePatternCompressedRingTest {
     }
 
     @Test
+    void samePatternReturnedFluidInputKeepsGenericStackAmountAsInitialCatalyst() {
+        AEKey seed = AEFluidKey.of(Fluids.WATER);
+        AEKey dust = AEItemKey.of(Items.GLOWSTONE_DUST);
+        AEKey output = AEItemKey.of(Items.DIAMOND);
+        IPatternDetails pattern = pattern(
+                input(stack(seed, 1_000L)),
+                input(stack(dust, 1L)),
+                List.of(stack(seed, 1_000L), stack(output, 1L))
+        );
+
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(List.of(pattern));
+
+        assertNotNull(ring);
+        assertEquals(1_000L, ring.catalysts().get(seed));
+        assertEquals(0L, ring.netOutputs().get(seed));
+        assertEquals(1L, ring.netOutputs().get(output));
+        assertEquals(1L, ring.netInputs().get(dust));
+    }
+
+    @Test
     void ringUpstreamConsumerFeedingPendingProducerIsNotDeferred() {
         AEKey seed = AEItemKey.of(Items.REDSTONE);
         AEKey dust = AEItemKey.of(Items.GLOWSTONE_DUST);

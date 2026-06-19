@@ -86,7 +86,7 @@ public record DyeablePatternCompressedRing(
                     netInputs.add(key, in - out);
                 } else {
                     if (hasSelfContainedInputAndOutput(key, inputPatternsByKey, outputPatternsByKey)) {
-                        catalysts.add(key, 1L);
+                        catalysts.add(key, in);
                     }
                 }
             } else if (in > 0L) {
