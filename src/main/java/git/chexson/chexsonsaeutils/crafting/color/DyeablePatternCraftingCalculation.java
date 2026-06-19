@@ -728,6 +728,27 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         }
     }
 
+    Map<AEItemKey, Map<AEKey, Long>> copySelectedPatternInputs() {
+        Map<AEItemKey, Map<AEKey, Long>> copy = new HashMap<>();
+        for (var entry : this.selectedPatternInputs.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null && !entry.getValue().isEmpty()) {
+                copy.put(entry.getKey(), new HashMap<>(entry.getValue()));
+            }
+        }
+        return copy;
+    }
+
+    void restoreSelectedPatternInputs(Map<AEItemKey, Map<AEKey, Long>> snapshot) {
+        this.selectedPatternInputs.clear();
+        if (snapshot != null) {
+            for (var entry : snapshot.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null && !entry.getValue().isEmpty()) {
+                    this.selectedPatternInputs.put(entry.getKey(), new HashMap<>(entry.getValue()));
+                }
+            }
+        }
+    }
+
     @Nullable
     DyeablePatternCompressedRing getCompressedRing(ICraftingService craftingService, int color) {
         return getCompressedRing(craftingService, color, null);
