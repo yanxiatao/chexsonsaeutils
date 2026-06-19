@@ -1,6 +1,7 @@
 package git.chexson.chexsonsaeutils.crafting.color;
 
 import appeng.api.config.Actionable;
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingService;
@@ -163,13 +164,14 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         this.ringsBeingReplaced.clear();
         this.ringExtractions.clear();
         this.recursiveInternalItems.clear();
+        this.missing.clear();
 
         ChildCraftingSimulationState craftingInventory = new ChildCraftingSimulationState(networkInv);
         craftingInventory.ignore(this.output);
 
         try {
             this.tree.request(craftingInventory, amount, null);
-            CraftingPlan preliminaryPlan = CraftingSimulationState.buildCraftingPlan(craftingInventory, this, amount);
+            CraftingPlan preliminaryPlan = buildCraftingPlanSnapshot(craftingInventory, amount);
             retainRecursiveCatalysts(craftingInventory, preliminaryPlan);
         } catch (CraftBranchFailure failure) {
             LOGGER.debug("Dyeable pattern craft attempt failed for {} x{}", this.output, amount, failure);
@@ -177,11 +179,28 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         }
 
         craftingInventory.addBytes(this.tree.getNodeCount() * 8.0D);
-        CraftingPlan basePlan = CraftingSimulationState.buildCraftingPlan(craftingInventory, this, amount);
+        CraftingPlan basePlan = buildCraftingPlanSnapshot(craftingInventory, amount);
         if (this.ringExtractions.isEmpty()) {
             return basePlan;
         }
         return mergeRingExtractions(basePlan);
+    }
+
+    private CraftingPlan buildCraftingPlanSnapshot(CraftingSimulationState craftingInventory, long amount) {
+        return snapshotPlan(CraftingSimulationState.buildCraftingPlan(craftingInventory, this, amount));
+    }
+
+    private static CraftingPlan snapshotPlan(CraftingPlan plan) {
+        return new CraftingPlan(
+                plan.finalOutput(),
+                plan.bytes(),
+                plan.simulation(),
+                plan.multiplePaths(),
+                copyCounter(plan.usedItems()),
+                copyCounter(plan.emittedItems()),
+                copyCounter(plan.missingItems()),
+                copyPatternTimes(plan.patternTimes())
+        );
     }
 
     private ICraftingPlan mergeRingExtractions(CraftingPlan basePlan) {
@@ -212,9 +231,9 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
                 basePlan.simulation(),
                 basePlan.multiplePaths(),
                 combinedUsedItems,
-                basePlan.emittedItems(),
-                basePlan.missingItems(),
-                basePlan.patternTimes()
+                copyCounter(basePlan.emittedItems()),
+                copyCounter(basePlan.missingItems()),
+                copyPatternTimes(basePlan.patternTimes())
         );
         return new RecursiveCraftingPlan(
                 merged,
@@ -271,7 +290,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
                 continue;
             }
             applySupplementalRing(inventory, craftingService, retainingRing, candidateKey, deficit);
-            preliminaryPlan = CraftingSimulationState.buildCraftingPlan(inventory, this, preliminaryPlan.finalOutput().amount());
+            preliminaryPlan = buildCraftingPlanSnapshot(inventory, preliminaryPlan.finalOutput().amount());
             long internalReserve = retainedAmount - networkAmountNotExtractedByPlan(preliminaryPlan, candidateKey);
             if (internalReserve > 0L) {
                 this.recursiveInternalItems.set(
@@ -676,6 +695,13 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
             return null;
         }
         return providers.getOrCalculateCompressedRing(color, output.what());
+    }
+
+    private static Map<IPatternDetails, Long> copyPatternTimes(Map<IPatternDetails, Long> original) {
+        if (original == null || original.isEmpty()) {
+            return Map.of();
+        }
+        return new HashMap<>(original);
     }
 
     private static KeyCounter copyCounter(KeyCounter original) {
