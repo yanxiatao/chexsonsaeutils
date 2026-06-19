@@ -65,6 +65,16 @@ public final class FormalMachinePlanningAggregationService {
                 || !supportsStrategy(strategy)) {
             return nativeFuture;
         }
+        return wrapNativeFuture(craftingService, level, what, amount, nativeFuture);
+    }
+
+    static Future<ICraftingPlan> wrapNativeFuture(
+            CraftingService craftingService,
+            Level level,
+            AEKey what,
+            long amount,
+            Future<ICraftingPlan> nativeFuture
+    ) {
         return new AggregatingPlanningFuture(craftingService, level, what, amount, nativeFuture);
     }
 
@@ -1447,10 +1457,6 @@ public final class FormalMachinePlanningAggregationService {
         private final AEKey requestedOutput;
         private final long requestedAmount;
         private final Future<ICraftingPlan> delegate;
-        private final Object lock = new Object();
-
-        private volatile boolean transformed;
-        private @Nullable ICraftingPlan cachedPlan;
 
         private AggregatingPlanningFuture(
                 CraftingService craftingService,
@@ -1478,7 +1484,7 @@ public final class FormalMachinePlanningAggregationService {
 
         @Override
         public boolean isDone() {
-            return transformed || delegate.isDone();
+            return delegate.isDone();
         }
 
         @Override
@@ -1498,39 +1504,26 @@ public final class FormalMachinePlanningAggregationService {
 
         private ICraftingPlan awaitTransformedPlan(@Nullable Long timeout, @Nullable TimeUnit unit)
                 throws InterruptedException, ExecutionException, TimeoutException {
-            if (transformed) {
-                return cachedPlan;
-            }
+            ICraftingPlan nativePlan = timeout == null
+                    ? delegate.get()
+                    : delegate.get(timeout, unit);
 
-            synchronized (lock) {
-                if (transformed) {
-                    return cachedPlan;
-                }
-
-                ICraftingPlan nativePlan = timeout == null
-                        ? delegate.get()
-                        : delegate.get(timeout, unit);
-
-                try {
-                    cachedPlan = rewriteNativePlan(
-                            craftingService,
-                            level,
-                            requestedOutput,
-                            requestedAmount,
-                            nativePlan
-                    );
-                } catch (RuntimeException exception) {
-                    LOGGER.warn(
-                            "Failed to rewrite native AE2 crafting plan for output {} amount {}",
-                            requestedOutput,
-                            requestedAmount,
-                            exception
-                    );
-                    cachedPlan = nativePlan;
-                }
-
-                transformed = true;
-                return cachedPlan;
+            try {
+                return rewriteNativePlan(
+                        craftingService,
+                        level,
+                        requestedOutput,
+                        requestedAmount,
+                        nativePlan
+                );
+            } catch (RuntimeException exception) {
+                LOGGER.warn(
+                        "Failed to rewrite native AE2 crafting plan for output {} amount {}",
+                        requestedOutput,
+                        requestedAmount,
+                        exception
+                );
+                return nativePlan;
             }
         }
     }
