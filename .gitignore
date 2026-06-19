@@ -122,6 +122,8 @@ runs/
 
 
 TODO.md
+VERSIONING.md
+MOD_DESCRIPTION.md
 
 # Local planning, agent, MCP, and IDE metadata
 .planning/
@@ -130,5 +132,9 @@ CLAUDE.md
 .mcp.json
 .vscode/
 .codex/
+docs/
 
 reference-sources/
+
+# Local config backups
+config/*.bak

@@ -2,7 +2,7 @@
 
 [中文 README](README.md)
 
-`Chexson's AE Utils` is a utility add-on mod for Applied Energistics 2. The current target stack is `Minecraft 1.21.1 + NeoForge 21.1.222 + AE2 19.2.17 + Java 21`. It adds a multi-slot ME emitter, processing pattern replacement rules, and ignore-missing autocrafting continuation for players and modpacks that need more precise ME network automation.
+`Chexson's AE Utils` is a utility add-on mod for Applied Energistics 2. The current target stack is `Minecraft 1.21.1 + NeoForge 21.1.222 + AE2 19.2.17 + Java 21`. It adds a multi-slot ME emitter, processing pattern replacement rules, ignore-missing autocrafting continuation, and the migrated AEA dyeable pattern, enhanced crafting status, Building Gadgets 2, and FTB Ultimine compatibility features.
 
 This repository is the `Minecraft 1.21.1 + NeoForge` migration branch. It is not a direct release note for the old `1.20.1 + Forge` branch. Treat the actual build artifact, changelog, and verification results as the source of truth for releases.
 
@@ -22,6 +22,24 @@ This mod's code, documentation, and some assets were primarily written, migrated
 This branch integrates with current NeoForge and AE2 APIs, menus, mixins, and runtime behavior. Re-run tests and in-game verification after updating AE2, NeoForge, or Minecraft.
 
 ## Features
+
+### Migrated AEA Features
+
+The current branch keeps the following AEA migrations:
+
+- `Dyeable Patterns`:
+  AE2 encoded patterns can be dyed.
+  A built-in client resource pack overrides pattern models and textures.
+  Planning prefers same-color patterns while preserving the existing replacement, continuation, formal-machine, and parallel CPU main-path semantics.
+- `Enhanced Crafting Status`:
+  Adds `Blocked` and `Pattern Times` data to crafting status and Craft Confirm views.
+  This only extends status data and serialization, without replacing the existing continuation, formal-machine, or parallel CPU UI behavior in this repository.
+- `Building Gadgets 2 Integration`:
+  Encodes BG2 template material requirements into standard AE2 processing patterns.
+  Generated patterns stay standard AE2 processing patterns and do not inject replacement metadata.
+- `FTB Ultimine & Memory Card Compatibility`:
+  FTB Ultimine bulk right-click flows can reuse AE memory-card targets.
+  When FTB Ultimine is absent, the corresponding mixin stays unloaded.
 
 ### ME Multi-Level Emitter
 
@@ -81,13 +99,30 @@ Current options:
 
 ```toml
 craftingContinuationEnabled = true
+formalMachineCraftingDispatchEnabled = false
+formalMachinePlanningAggregationEnabled = true
 processingPatternReplacementEnabled = true
+
+[aeaMigration]
+dyeablePatternsEnabled = true
+dyeableRecursiveRetainedCatalystAmount = 1
+enhancedCraftingStatusEnabled = true
+buildingGadgets2IntegrationEnabled = true
+ftbUltimineMemoryCardEnabled = true
 ```
 
 - `craftingContinuationEnabled`: enables or disables the AE2 crafting continuation / ignore-missing feature bundle.
+- `formalMachineCraftingDispatchEnabled`: enables or disables the formal-machine AE2 crafting dispatch fast path.
+- `formalMachinePlanningAggregationEnabled`: enables or disables the formal-machine large-request planning aggregation fast path.
 - `processingPatternReplacementEnabled`: enables or disables the AE2 processing pattern replacement feature bundle.
+- `[aeaMigration].dyeablePatternsEnabled`: enables or disables the migrated AEA dyeable pattern feature.
+  When disabled, dyeable-pattern mixins, item color handling, and the built-in client resource pack registration are all skipped.
+- `[aeaMigration].dyeableRecursiveRetainedCatalystAmount`: sets how many recursive dyeable-pattern catalysts should remain after planning.
+- `[aeaMigration].enhancedCraftingStatusEnabled`: enables or disables the migrated AEA enhanced crafting status feature.
+- `[aeaMigration].buildingGadgets2IntegrationEnabled`: enables or disables the migrated AEA Building Gadgets 2 integration.
+- `[aeaMigration].ftbUltimineMemoryCardEnabled`: enables or disables the migrated AEA FTB Ultimine memory-card compatibility.
 
-Both options are read at startup. Restart the game or server after changing them.
+All of these options are read at startup. Restart the game or server after changing them.
 
 ## Installation
 
@@ -95,7 +130,7 @@ Both options are read at startup. Restart the game or server after changing them
 2. Install Applied Energistics 2 `19.2.17+`.
 3. Put this mod's jar into the `mods` directory.
 4. Check `config/chexsonsaeutils-common.toml` after the first launch.
-5. Test the multi-level emitter, processing pattern replacement, and crafting continuation features in a test world before using them in an important world or server.
+5. Test the multi-level emitter, processing pattern replacement, crafting continuation, and migrated AEA features in a test world before using them in an important world or server.
 
 For server deployments, validate the mod on a staging server before moving it to a production save.
 
@@ -141,6 +176,8 @@ Project files are expected to use UTF-8 encoding and CRLF line endings.
 - Features depend on AE2 menu, pattern, crafting service, and part-system behavior; AE2 updates may require compatibility work.
 - Back up important worlds before relying on modified processing pattern metadata or multi-level emitter NBT.
 - If a modpack also changes AE2 crafting, patterns, or terminal screens, test those interactions carefully.
+- The BG2 and FTB Ultimine integrations are optional dependency paths.
+  When the corresponding mod is absent, this mod should still start and must not load the related mixins.
 
 ## Issue Reports
 
