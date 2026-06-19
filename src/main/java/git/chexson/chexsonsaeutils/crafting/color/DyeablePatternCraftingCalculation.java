@@ -158,6 +158,8 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
     @Nullable
     ICraftingPlan runCraftAttempt(boolean simulate, long amount) throws InterruptedException {
         this.simulate = simulate;
+        this.failedRingReplacements.clear();
+        this.ringsBeingReplaced.clear();
         this.ringExtractions.reset();
 
         ChildCraftingSimulationState craftingInventory = new ChildCraftingSimulationState(networkInv);
@@ -555,6 +557,23 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         this.ringExtractions.reset();
         if (snapshot != null) {
             this.ringExtractions.addAll(snapshot);
+        }
+    }
+
+    Map<Integer, Set<AEKey>> copyFailedRingReplacements() {
+        Map<Integer, Set<AEKey>> copy = new HashMap<>();
+        for (var entry : this.failedRingReplacements.entrySet()) {
+            copy.put(entry.getKey(), new HashSet<>(entry.getValue()));
+        }
+        return copy;
+    }
+
+    void restoreFailedRingReplacements(Map<Integer, Set<AEKey>> snapshot) {
+        this.failedRingReplacements.clear();
+        if (snapshot != null) {
+            for (var entry : snapshot.entrySet()) {
+                this.failedRingReplacements.put(entry.getKey(), new HashSet<>(entry.getValue()));
+            }
         }
     }
 

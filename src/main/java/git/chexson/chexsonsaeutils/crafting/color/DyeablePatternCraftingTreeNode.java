@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -311,6 +312,7 @@ final class DyeablePatternCraftingTreeNode {
 
         ChildCraftingSimulationState sandbox = new ChildCraftingSimulationState(inventory);
         KeyCounter ringExtractionsSnapshot = this.job.copyRingExtractions();
+        Map<Integer, Set<AEKey>> failedRingReplacementsSnapshot = this.job.copyFailedRingReplacements();
         boolean applied = false;
         try {
             long ringNetOutputAmount = ring.netOutputs().get(entryNode.what);
@@ -334,6 +336,7 @@ final class DyeablePatternCraftingTreeNode {
         } finally {
             if (!applied) {
                 this.job.restoreRingExtractions(ringExtractionsSnapshot);
+                this.job.restoreFailedRingReplacements(failedRingReplacementsSnapshot);
             }
             ringsBeingReplaced.remove(ringColor);
         }

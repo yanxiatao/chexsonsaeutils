@@ -110,6 +110,68 @@ final class DyeablePatternRecursivePlanningTest {
         assertEquals(1L, plan.patternTimes().get(downstreamPattern));
     }
 
+    @Test
+    void failedLargeRingAttemptDoesNotPoisonLaterDyeableRingAttempt()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 1L, Actionable.MODULATE, null);
+        storage.insert(dust, 2L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(seed, 3L),
+                new TestProvider(recursivePattern),
+                storage
+        );
+
+        assertNull(calculation.runCraftAttempt(false, 3L));
+        ICraftingPlan plan = calculation.runCraftAttempt(false, 2L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        assertEquals(2L, plan.patternTimes().get(recursivePattern));
+    }
+
+    @Test
+    void failedRealRingAttemptDoesNotPoisonSimulatedDyeableRingAttempt()
+            throws InterruptedException {
+        AEItemKey seed = AEItemKey.of(dyedItem(Items.PAPER, 0xFF336699));
+        AEItemKey dust = AEItemKey.of(Items.REDSTONE);
+        TestPatternDetails recursivePattern = new TestPatternDetails(
+                AEItemKey.of(Items.COMPARATOR),
+                0xFF336699,
+                List.of(
+                        new GenericStack(seed, 1L),
+                        new GenericStack(dust, 1L)
+                ),
+                List.of(new GenericStack(seed, 2L))
+        );
+        TestStorage storage = new TestStorage();
+        storage.insert(seed, 1L, Actionable.MODULATE, null);
+        storage.insert(dust, 2L, Actionable.MODULATE, null);
+        TestCalculation calculation = createCalculation(
+                new GenericStack(seed, 3L),
+                new TestProvider(recursivePattern),
+                storage
+        );
+
+        assertNull(calculation.runCraftAttempt(false, 3L));
+        ICraftingPlan plan = calculation.runCraftAttempt(true, 3L);
+
+        assertInstanceOf(DyeablePatternRecursivePlan.class, plan);
+        assertTrue(plan.simulation());
+        assertEquals(3L, plan.patternTimes().get(recursivePattern));
+        assertEquals(1L, plan.missingItems().get(dust));
+    }
+
     private static TestCalculation createCalculation(
             GenericStack output,
             TestProvider provider,
