@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.color;
 
+import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.GridFlags;
 import appeng.api.networking.IGrid;
@@ -204,6 +205,94 @@ final class DyeablePatternCompressedRingTest {
         );
 
         assertEquals(Set.of(seed, extractedSeed), candidates);
+    }
+
+    @Test
+    void balancedRingIntermediateIsNotInitialCatalyst() {
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        AEKey dust = AEItemKey.of(Items.GLOWSTONE_DUST);
+        AEKey intermediate = AEItemKey.of(Items.IRON_INGOT);
+        IPatternDetails upstream = pattern(
+                input(stack(seed, 1L)),
+                input(stack(dust, 1L)),
+                List.of(stack(intermediate, 1L))
+        );
+        IPatternDetails producer = coloredPattern(
+                0xFF336699,
+                input(stack(intermediate, 1L)),
+                List.of(stack(seed, 2L))
+        );
+
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(List.of(upstream, producer));
+
+        assertNotNull(ring);
+        assertEquals(1L, ring.catalysts().get(seed));
+        assertEquals(0L, ring.catalysts().get(intermediate));
+        assertEquals(1L, ring.netOutputs().get(seed));
+        assertEquals(1L, ring.netInputs().get(dust));
+    }
+
+    @Test
+    void samePatternReturnedInputRemainsInitialCatalyst() {
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        AEKey dust = AEItemKey.of(Items.GLOWSTONE_DUST);
+        AEKey output = AEItemKey.of(Items.DIAMOND);
+        IPatternDetails pattern = pattern(
+                input(stack(seed, 1L)),
+                input(stack(dust, 1L)),
+                List.of(stack(seed, 1L), stack(output, 1L))
+        );
+
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(List.of(pattern));
+
+        assertNotNull(ring);
+        assertEquals(1L, ring.catalysts().get(seed));
+        assertEquals(0L, ring.netOutputs().get(seed));
+        assertEquals(1L, ring.netOutputs().get(output));
+        assertEquals(1L, ring.netInputs().get(dust));
+    }
+
+    @Test
+    void ringUpstreamConsumerFeedingPendingProducerIsNotDeferred() {
+        AEKey seed = AEItemKey.of(Items.REDSTONE);
+        AEKey dust = AEItemKey.of(Items.GLOWSTONE_DUST);
+        AEKey intermediate = AEItemKey.of(Items.IRON_INGOT);
+        AEKey finalProduct = AEItemKey.of(Items.DIAMOND);
+        IPatternDetails upstream = pattern(
+                input(stack(seed, 1L)),
+                input(stack(dust, 1L)),
+                List.of(stack(intermediate, 1L))
+        );
+        IPatternDetails producer = coloredPattern(
+                0xFF336699,
+                input(stack(intermediate, 1L)),
+                List.of(stack(seed, 2L))
+        );
+        IPatternDetails downstream = coloredPattern(
+                -1,
+                input(stack(seed, 1L)),
+                List.of(stack(finalProduct, 1L))
+        );
+        KeyCounter internalItems = new KeyCounter();
+        internalItems.add(seed, 1L);
+        appeng.crafting.inv.ListCraftingInventory inventory = new appeng.crafting.inv.ListCraftingInventory(
+                ignored -> {
+                }
+        );
+        inventory.insert(seed, 1L, Actionable.MODULATE);
+
+        assertFalse(DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                upstream,
+                internalItems,
+                inventory,
+                Map.of(upstream, new TestTaskProgress(1L), producer, new TestTaskProgress(1L))
+        ));
+        assertTrue(DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                downstream,
+                internalItems,
+                inventory,
+                Map.of(downstream, new TestTaskProgress(1L), producer, new TestTaskProgress(1L))
+        ));
     }
 
     @Test

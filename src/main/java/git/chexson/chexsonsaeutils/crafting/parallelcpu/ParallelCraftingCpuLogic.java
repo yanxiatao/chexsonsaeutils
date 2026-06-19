@@ -253,7 +253,8 @@ final class ParallelCraftingCpuLogic {
                     && DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
                             details,
                             job.dyeableRecursiveInternalItems,
-                            inventory
+                            inventory,
+                            job.tasks
                     )) {
                 continue;
             }

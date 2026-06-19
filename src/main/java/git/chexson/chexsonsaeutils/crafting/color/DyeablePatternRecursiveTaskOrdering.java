@@ -2,6 +2,7 @@ package git.chexson.chexsonsaeutils.crafting.color;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.inv.ICraftingInventory;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobTaskProgressAccessor;
@@ -69,6 +70,20 @@ public final class DyeablePatternRecursiveTaskOrdering {
             KeyCounter internalItems,
             ICraftingInventory inventory
     ) {
+        return shouldDeferConsumer(pattern, internalItems, inventory, null);
+    }
+
+    /**
+     * 判断样板当前是否应被内部催化物保留规则阻止。
+     *
+     * 当当前样板会直接喂给仍待执行的内部生产样板时，它属于递归环本身，不能被保留规则延后。
+     */
+    public static boolean shouldDeferConsumer(
+            IPatternDetails pattern,
+            KeyCounter internalItems,
+            ICraftingInventory inventory,
+            @Nullable Map<IPatternDetails, ?> tasks
+    ) {
         if (pattern == null || internalItems == null || internalItems.isEmpty() || inventory == null) {
             return false;
         }
@@ -81,10 +96,52 @@ public final class DyeablePatternRecursiveTaskOrdering {
                     || hasPositiveNetOutput(pattern, key)) {
                 continue;
             }
+            if (feedsPendingInternalProducer(pattern, key, tasks)) {
+                continue;
+            }
             long requiredByPattern = inputAmount(pattern, key);
             long available = inventory.extract(key, Long.MAX_VALUE, appeng.api.config.Actionable.SIMULATE);
             long remainingAfterPattern = available <= requiredByPattern ? 0L : available - requiredByPattern;
             if (remainingAfterPattern < retainedAmount) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean feedsPendingInternalProducer(
+            IPatternDetails pattern,
+            AEKey internalItem,
+            @Nullable Map<IPatternDetails, ?> tasks
+    ) {
+        if (pattern == null || internalItem == null || tasks == null || tasks.isEmpty()) {
+            return false;
+        }
+        for (GenericStack output : pattern.getOutputs()) {
+            if (output == null || output.what() == null || output.amount() <= 0L) {
+                continue;
+            }
+            if (pendingProducerConsumesKey(tasks, output.what(), internalItem) && !internalItem.matches(output)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean pendingProducerConsumesKey(
+            Map<IPatternDetails, ?> tasks,
+            AEKey key,
+            AEKey internalItem
+    ) {
+        if (tasks == null || tasks.isEmpty() || key == null || internalItem == null) {
+            return false;
+        }
+        for (Map.Entry<IPatternDetails, ?> entry : tasks.entrySet()) {
+            IPatternDetails candidate = entry.getKey();
+            if (candidate == null || !consumesKey(candidate, key) || !hasPositiveNetOutput(candidate, internalItem)) {
+                continue;
+            }
+            if (taskProgressValue(entry.getValue()) > 0L) {
                 return true;
             }
         }

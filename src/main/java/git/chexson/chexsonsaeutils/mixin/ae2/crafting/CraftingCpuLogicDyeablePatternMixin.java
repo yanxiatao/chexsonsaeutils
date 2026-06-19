@@ -163,7 +163,8 @@ public abstract class CraftingCpuLogicDyeablePatternMixin {
                 && DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
                         pattern,
                         this.chexsonsaeutils$dyeableRecursiveInternalItems,
-                        sourceInv
+                        sourceInv,
+                        ((ExecutingCraftingJobAccessor) this.job).getTasks()
                 )) {
             return null;
         }

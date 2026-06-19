@@ -32,6 +32,8 @@ public record DyeablePatternCompressedRing(
         }
 
         KeyCounter totalOutputs = new KeyCounter();
+        Map<AEKey, Set<IPatternDetails>> inputPatternsByKey = new HashMap<>();
+        Map<AEKey, Set<IPatternDetails>> outputPatternsByKey = new HashMap<>();
         for (var pattern : patterns) {
             if (pattern == null) {
                 continue;
@@ -39,6 +41,7 @@ public record DyeablePatternCompressedRing(
             for (GenericStack output : pattern.getOutputs()) {
                 if (output != null && output.what() != null && output.amount() > 0L) {
                     totalOutputs.add(output.what(), output.amount());
+                    outputPatternsByKey.computeIfAbsent(output.what(), ignored -> new HashSet<>()).add(pattern);
                 }
             }
         }
@@ -58,6 +61,7 @@ public record DyeablePatternCompressedRing(
                     continue;
                 }
                 totalInputs.add(baseStack.what(), baseStack.amount() * input.getMultiplier());
+                inputPatternsByKey.computeIfAbsent(baseStack.what(), ignored -> new HashSet<>()).add(pattern);
             }
         }
 
@@ -81,7 +85,9 @@ public record DyeablePatternCompressedRing(
                 } else if (in > out) {
                     netInputs.add(key, in - out);
                 } else {
-                    catalysts.add(key, 1L);
+                    if (hasSelfContainedInputAndOutput(key, inputPatternsByKey, outputPatternsByKey)) {
+                        catalysts.add(key, 1L);
+                    }
                 }
             } else if (in > 0L) {
                 netInputs.add(key, in);
@@ -100,6 +106,24 @@ public record DyeablePatternCompressedRing(
                 Set.copyOf(netOutputs.keySet()),
                 calculable
         );
+    }
+
+    private static boolean hasSelfContainedInputAndOutput(
+            AEKey key,
+            Map<AEKey, Set<IPatternDetails>> inputPatternsByKey,
+            Map<AEKey, Set<IPatternDetails>> outputPatternsByKey
+    ) {
+        Set<IPatternDetails> inputPatterns = inputPatternsByKey.get(key);
+        Set<IPatternDetails> outputPatterns = outputPatternsByKey.get(key);
+        if (inputPatterns == null || outputPatterns == null) {
+            return false;
+        }
+        for (IPatternDetails inputPattern : inputPatterns) {
+            if (outputPatterns.contains(inputPattern)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Nullable
