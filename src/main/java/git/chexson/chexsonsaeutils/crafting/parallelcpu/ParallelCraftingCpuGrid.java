@@ -14,7 +14,6 @@ import appeng.crafting.execution.CraftingSubmitResult;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -184,20 +183,7 @@ public final class ParallelCraftingCpuGrid {
             return 0L;
         }
 
-        long inserted = 0L;
-        for (ParallelCraftingCpuCluster cluster : List.copyOf(clusters)) {
-            long remainingForParallelCpus = remaining - inserted;
-            if (remainingForParallelCpus <= 0L) {
-                break;
-            }
-            long clusterInserted = cluster.insertIntoActiveLanes(
-                    what,
-                    remainingForParallelCpus,
-                    type,
-                    metrics
-            );
-            inserted = saturatedAdd(inserted, clusterInserted);
-        }
+        long inserted = waitingIndex.insertIntoLanesAndGetResult(what, remaining, type, metrics).physicalInserted();
         if (type == Actionable.MODULATE) {
             removeInactiveLanes();
         }
@@ -205,11 +191,7 @@ public final class ParallelCraftingCpuGrid {
     }
 
     public long getRequestedAmount(AEKey what) {
-        long requested = 0L;
-        for (ParallelCraftingCpuCluster cluster : clusters) {
-            requested = saturatedAdd(requested, cluster.getRequestedAmount(what));
-        }
-        return requested;
+        return waitingIndex.getRequestedAmount(what);
     }
 
     public boolean isRequesting(AEKey what) {
@@ -217,12 +199,7 @@ public final class ParallelCraftingCpuGrid {
     }
 
     public boolean isRequestingAny() {
-        for (ParallelCraftingCpuCluster cluster : clusters) {
-            if (cluster.isRequestingAny()) {
-                return true;
-            }
-        }
-        return false;
+        return waitingIndex.isRequestingAny();
     }
 
     public void appendCurrentlyCrafting(Set<AEKey> target) {
@@ -351,7 +328,8 @@ public final class ParallelCraftingCpuGrid {
             return new AutoSelectionResult(null, offline, busy, tooSmall, excluded);
         }
 
-        List<ParallelCraftingCpuCluster> validClusters = new ArrayList<>(clusters.size());
+        Comparator<ParallelCraftingCpuCluster> comparator = autoSelectionComparator(src, prioritizePower);
+        @Nullable ParallelCraftingCpuCluster selectedCluster = null;
         for (ParallelCraftingCpuCluster cluster : clusters) {
             if (!cluster.canProcessJobs()) {
                 offline++;
@@ -369,15 +347,12 @@ public final class ParallelCraftingCpuGrid {
                 excluded++;
                 continue;
             }
-            validClusters.add(cluster);
+            if (selectedCluster == null || comparator.compare(cluster, selectedCluster) < 0) {
+                selectedCluster = cluster;
+            }
         }
 
-        if (validClusters.isEmpty()) {
-            return new AutoSelectionResult(null, offline, busy, tooSmall, excluded);
-        }
-
-        validClusters.sort(autoSelectionComparator(src, prioritizePower));
-        return new AutoSelectionResult(validClusters.getFirst(), offline, busy, tooSmall, excluded);
+        return new AutoSelectionResult(selectedCluster, offline, busy, tooSmall, excluded);
     }
 
     private static Comparator<ParallelCraftingCpuCluster> autoSelectionComparator(

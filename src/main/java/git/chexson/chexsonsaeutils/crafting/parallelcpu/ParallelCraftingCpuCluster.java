@@ -33,7 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Consumer;
 
 public final class ParallelCraftingCpuCluster {
 
@@ -247,89 +246,6 @@ public final class ParallelCraftingCpuCluster {
         for (ParallelCraftingLaneState lane : lanes.values()) {
             target.add(lane.activeCpu());
         }
-    }
-
-    long insertIntoActiveLanes(
-            @Nullable AEKey what,
-            long amount,
-            Actionable mode,
-            @Nullable ParallelCpuMetrics metrics
-    ) {
-        return insertIntoActiveLanes(
-                List.copyOf(lanes.values()),
-                what,
-                amount,
-                mode,
-                metrics,
-                lane -> {
-                    if (!(lane instanceof ParallelCraftingLaneState laneState)) {
-                        return;
-                    }
-                    refreshLaneState(laneState);
-                    if (laneState.isLaneActive()) {
-                        wakeLane(laneState);
-                    } else {
-                        removeLane(laneState);
-                    }
-                },
-                lane -> {
-                    if (lane instanceof ParallelCraftingLaneState laneState) {
-                        removeLane(laneState);
-                    }
-                }
-        );
-    }
-
-    static long insertIntoActiveLanes(
-            Iterable<? extends ParallelCraftingLane> activeLanes,
-            @Nullable AEKey what,
-            long amount,
-            Actionable mode,
-            @Nullable ParallelCpuMetrics metrics,
-            @Nullable Consumer<ParallelCraftingLane> modulationConsumer,
-            @Nullable Consumer<ParallelCraftingLane> inactiveLaneConsumer
-    ) {
-        if (what == null || amount <= 0L || mode == null) {
-            return 0L;
-        }
-
-        long inserted = 0L;
-        long accounted = 0L;
-        for (ParallelCraftingLane lane : activeLanes) {
-            if (accounted >= amount) {
-                break;
-            }
-            if (lane == null || !lane.isLaneActive()) {
-                if (inactiveLaneConsumer != null && lane != null) {
-                    inactiveLaneConsumer.accept(lane);
-                }
-                continue;
-            }
-
-            long remaining = amount - accounted;
-            long requestedBefore = mode == Actionable.MODULATE ? lane.getRequestedAmount(what) : 0L;
-            ParallelCraftingLane.WaitingInsertResult accepted = lane.insertIntoWaitingAndGetResult(
-                    what,
-                    remaining,
-                    mode
-            );
-            long acceptedPhysical = Math.min(accepted.physicalInserted(), remaining);
-            long acceptedAccounted = Math.min(accepted.accounted(), remaining);
-            long requestedAfter = mode == Actionable.MODULATE ? lane.getRequestedAmount(what) : requestedBefore;
-            if (acceptedAccounted > 0L) {
-                inserted = safeAdd(inserted, acceptedPhysical);
-                accounted = safeAdd(accounted, acceptedAccounted);
-                if (metrics != null) {
-                    metrics.recordIndexedInsert(acceptedAccounted);
-                }
-            }
-            if (mode == Actionable.MODULATE
-                    && (acceptedAccounted > 0L || requestedAfter < requestedBefore || !lane.isLaneActive())
-                    && modulationConsumer != null) {
-                modulationConsumer.accept(lane);
-            }
-        }
-        return inserted;
     }
 
     public void appendActiveLaneLinks(Collection<CraftingLink> target) {
