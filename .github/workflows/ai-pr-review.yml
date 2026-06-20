@@ -26,7 +26,7 @@ jobs:
       # 当前仓库自测时使用本地 CLI；发布到 npm 后可改为：
       #   npx github-ai-pr-reviewer --post
       - name: Run AI PR reviewer
-        run: node ./bin/ai-pr-reviewer.js --post
+        run: npx github-ai-pr-reviewer --post
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
