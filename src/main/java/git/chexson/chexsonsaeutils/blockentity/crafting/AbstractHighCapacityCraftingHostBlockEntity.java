@@ -125,6 +125,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private long decodeCacheHitCount;
     private long dirtyRefreshScannedSlots;
     private long providerUpdateCount;
+    private long searchScannedSlots;
+    private long searchDecodeCacheHitCount;
+    private long searchDecodePatternCount;
     private long jobsSubmitted;
     private long jobsCompleted;
     private long outputBufferRetryCount;
@@ -146,6 +149,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private long planningRequestedAmountMax;
     private long planningEstimatedWorkMax;
     private long planningWorkTriggeredCount;
+    private long planningHelperCallCount;
+    private long planningNullHelperResultCount;
+    private long planningLiveSnapshotRequestCount;
     private long forcedProviderRefreshCount;
     private long deterministicPlanningHitCount;
     private long deterministicPlanningFallbackCount;
@@ -763,6 +769,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 decodeCacheHitCount,
                 dirtyRefreshScannedSlots,
                 providerUpdateCount,
+                searchScannedSlots,
+                searchDecodeCacheHitCount,
+                searchDecodePatternCount,
                 jobsSubmitted,
                 jobsCompleted,
                 outputBufferRetryCount,
@@ -784,6 +793,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 planningRequestedAmountMax,
                 planningEstimatedWorkMax,
                 planningWorkTriggeredCount,
+                planningHelperCallCount,
+                planningNullHelperResultCount,
+                planningLiveSnapshotRequestCount,
                 hasInWorldNodeHostCapabilityForTest() ? 1 : 0,
                 forcedProviderRefreshCount,
                 deterministicPlanningHitCount,
@@ -961,6 +973,15 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         providerUpdateCount++;
     }
 
+    void recordSearchMetrics(PatternSearchIndex.MatchResult matchResult) {
+        if (matchResult == null) {
+            return;
+        }
+        searchScannedSlots += Math.max(0, matchResult.scannedSlots());
+        searchDecodeCacheHitCount += Math.max(0, matchResult.decodeCacheHits());
+        searchDecodePatternCount += Math.max(0, matchResult.decodeCalls());
+    }
+
     public void recordNetworkPatternExposureForTest() {
         networkPatternExposureCount++;
     }
@@ -989,6 +1010,17 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (workTriggered) {
             planningWorkTriggeredCount++;
         }
+    }
+
+    public void recordPlanningHelperUsageForTest(boolean nullResult) {
+        planningHelperCallCount++;
+        if (nullResult) {
+            planningNullHelperResultCount++;
+        }
+    }
+
+    public void recordPlanningLiveSnapshotRequestForTest() {
+        planningLiveSnapshotRequestCount++;
     }
 
     public void recordPlanningAggregationSuccessForTest(long wallClockNanos, int chunkCount, long largestChunkSize) {
@@ -1043,6 +1075,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         decodeCacheHitCount = 0L;
         dirtyRefreshScannedSlots = 0L;
         providerUpdateCount = 0L;
+        searchScannedSlots = 0L;
+        searchDecodeCacheHitCount = 0L;
+        searchDecodePatternCount = 0L;
         jobsSubmitted = 0L;
         jobsCompleted = 0L;
         outputBufferRetryCount = 0L;
@@ -1064,6 +1099,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         planningRequestedAmountMax = 0L;
         planningEstimatedWorkMax = 0L;
         planningWorkTriggeredCount = 0L;
+        planningHelperCallCount = 0L;
+        planningNullHelperResultCount = 0L;
+        planningLiveSnapshotRequestCount = 0L;
         forcedProviderRefreshCount = 0L;
         deterministicPlanningHitCount = 0L;
         deterministicPlanningFallbackCount = 0L;
@@ -2380,7 +2418,14 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         String nextQuery = rawQuery == null ? "" : rawQuery;
         boolean sameQuery = nextQuery.equals(lastSearchQuery);
         lastSearchQuery = nextQuery;
-        List<Integer> matches = patternSearchIndex.findAllMatches(pagedPatternInventory, lastSearchQuery, getLevel());
+        PatternSearchIndex.MatchResult matchResult = patternSearchIndex.findAllMatchesWithStats(
+                pagedPatternInventory,
+                decodedPatternEntryCache,
+                lastSearchQuery,
+                getLevel()
+        );
+        recordSearchMetrics(matchResult);
+        List<Integer> matches = matchResult.matches();
         searchResultCount = matches.size();
         if (matches.isEmpty()) {
             highlightedGlobalSlot = -1;
@@ -2458,7 +2503,14 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         int pageStart = pagedPatternInventory.getActivePage() * pageSize;
         int pageEnd = Math.min(pagedPatternInventory.getTotalSlots(), pageStart + pageSize);
         int mask = 0;
-        for (int globalSlot : patternSearchIndex.findAllMatches(pagedPatternInventory, rawQuery, level)) {
+        PatternSearchIndex.MatchResult matchResult = patternSearchIndex.findAllMatchesWithStats(
+                pagedPatternInventory,
+                decodedPatternEntryCache,
+                rawQuery,
+                level
+        );
+        recordSearchMetrics(matchResult);
+        for (int globalSlot : matchResult.matches()) {
             if (globalSlot >= pageStart && globalSlot < pageEnd) {
                 mask |= 1 << (globalSlot - pageStart);
             }

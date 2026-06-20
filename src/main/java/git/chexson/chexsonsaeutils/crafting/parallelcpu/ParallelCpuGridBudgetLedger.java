@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils.crafting.parallelcpu;
 
+import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
+
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -158,6 +160,19 @@ public final class ParallelCpuGridBudgetLedger {
             maxExtractPatternInputsPerTick = Math.max(1L, maxExtractPatternInputsPerTick);
             maxReinjectPatternInputsPerTick = Math.max(1L, maxReinjectPatternInputsPerTick);
             tickBudgetNanos = Math.max(1L, Math.min(HARD_MAX_TICK_BUDGET_NANOS, tickBudgetNanos));
+        }
+
+        public static Limits fromSettings(ParallelCraftingCpuConfig.Settings settings) {
+            if (settings == null) {
+                return defaults();
+            }
+            return new Limits(
+                    settings.maxPatternPushesPerTickPerGrid(),
+                    settings.maxProviderChecksPerTickPerGrid(),
+                    settings.maxPatternPushesPerTickPerGrid(),
+                    settings.maxPatternPushesPerTickPerGrid(),
+                    settings.tickBudgetNanosPerGrid()
+            );
         }
 
         public static Limits defaults() {

@@ -33,18 +33,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Consumer;
 
 public final class ParallelCraftingCpuCluster {
 
     private final AE2ParallelCpuToolBlockEntity owner;
     private final MachineSource source;
     private final ParallelCraftingCPU remainingCapacityCpu = new ParallelCraftingCPU(this, null);
+    private final ParallelCpuProviderBackoff providerBackoff = new ParallelCpuProviderBackoff();
     private final Map<UUID, ParallelCraftingLaneState> lanes = new LinkedHashMap<>();
     private final Map<ICraftingPlan, ParallelCraftingLaneState> lanesByPlan = new IdentityHashMap<>();
     @Nullable
     private ParallelCraftingCpuGrid gridContext;
     private long lastModifiedOnTick;
+    private int nextTickLaneStartIndex;
 
     public ParallelCraftingCpuCluster(AE2ParallelCpuToolBlockEntity owner) {
         this.owner = owner;
@@ -57,6 +58,8 @@ public final class ParallelCraftingCpuCluster {
 
     public void detachGridContext() {
         this.gridContext = null;
+        providerBackoff.clear();
+        nextTickLaneStartIndex = 0;
     }
 
     public CpuSelectionMode getSelectionMode() {
@@ -165,13 +168,33 @@ public final class ParallelCraftingCpuCluster {
         return submitResult;
     }
 
-    public void tick(
+    public TickResult tick(
             IEnergyService energyGrid,
             appeng.me.service.CraftingService craftingService,
             ParallelCpuMetrics metrics,
-            long currentTick
+            long currentTick,
+            ParallelCpuGridBudgetLedger budgetLedger
     ) {
-        for (ParallelCraftingLaneState lane : List.copyOf(lanes.values())) {
+        if (!canProcessJobs()) {
+            providerBackoff.clear();
+        }
+        boolean hadActiveLane = false;
+        boolean madeProgress = false;
+        List<ParallelCraftingLaneState> laneSnapshot = List.copyOf(lanes.values());
+        if (laneSnapshot.isEmpty()) {
+            nextTickLaneStartIndex = 0;
+            return new TickResult(false, false);
+        }
+
+        int startIndex = Math.floorMod(nextTickLaneStartIndex, laneSnapshot.size());
+        int visitedLanes = 0;
+        for (int offset = 0; offset < laneSnapshot.size(); offset++) {
+            if (budgetLedger != null && !budgetLedger.hasTimeBudget(System.nanoTime())) {
+                break;
+            }
+            int laneIndex = (startIndex + offset) % laneSnapshot.size();
+            ParallelCraftingLaneState lane = laneSnapshot.get(laneIndex);
+            visitedLanes = offset + 1;
             if (!lanes.containsKey(lane.laneId())) {
                 continue;
             }
@@ -179,21 +202,32 @@ public final class ParallelCraftingCpuCluster {
                 removeLane(lane);
                 continue;
             }
+            hadActiveLane = true;
             if (metrics != null) {
                 metrics.recordTickCraftingLogic();
             }
-            lane.tick(
+            boolean zeroProgress = lane.tick(
                     energyGrid,
                     craftingService,
                     metrics,
-                    currentTick
+                    currentTick,
+                    budgetLedger,
+                    providerBackoff
             );
+            if (!zeroProgress) {
+                madeProgress = true;
+            }
             if (!lane.isLaneActive()) {
                 removeLane(lane);
             } else {
                 refreshLaneState(lane);
             }
+            if (budgetLedger != null && budgetLedger.isExhausted()) {
+                break;
+            }
         }
+        nextTickLaneStartIndex = computeNextStartIndex(laneSnapshot.size(), startIndex, visitedLanes);
+        return new TickResult(hadActiveLane, madeProgress);
     }
 
     public void appendVisibleCpus(
@@ -226,89 +260,6 @@ public final class ParallelCraftingCpuCluster {
         for (ParallelCraftingLaneState lane : lanes.values()) {
             target.add(lane.activeCpu());
         }
-    }
-
-    long insertIntoActiveLanes(
-            @Nullable AEKey what,
-            long amount,
-            Actionable mode,
-            @Nullable ParallelCpuMetrics metrics
-    ) {
-        return insertIntoActiveLanes(
-                List.copyOf(lanes.values()),
-                what,
-                amount,
-                mode,
-                metrics,
-                lane -> {
-                    if (!(lane instanceof ParallelCraftingLaneState laneState)) {
-                        return;
-                    }
-                    refreshLaneState(laneState);
-                    if (laneState.isLaneActive()) {
-                        wakeLane(laneState);
-                    } else {
-                        removeLane(laneState);
-                    }
-                },
-                lane -> {
-                    if (lane instanceof ParallelCraftingLaneState laneState) {
-                        removeLane(laneState);
-                    }
-                }
-        );
-    }
-
-    static long insertIntoActiveLanes(
-            Iterable<? extends ParallelCraftingLane> activeLanes,
-            @Nullable AEKey what,
-            long amount,
-            Actionable mode,
-            @Nullable ParallelCpuMetrics metrics,
-            @Nullable Consumer<ParallelCraftingLane> modulationConsumer,
-            @Nullable Consumer<ParallelCraftingLane> inactiveLaneConsumer
-    ) {
-        if (what == null || amount <= 0L || mode == null) {
-            return 0L;
-        }
-
-        long inserted = 0L;
-        long accounted = 0L;
-        for (ParallelCraftingLane lane : activeLanes) {
-            if (accounted >= amount) {
-                break;
-            }
-            if (lane == null || !lane.isLaneActive()) {
-                if (inactiveLaneConsumer != null && lane != null) {
-                    inactiveLaneConsumer.accept(lane);
-                }
-                continue;
-            }
-
-            long remaining = amount - accounted;
-            long requestedBefore = mode == Actionable.MODULATE ? lane.getRequestedAmount(what) : 0L;
-            ParallelCraftingLane.WaitingInsertResult accepted = lane.insertIntoWaitingAndGetResult(
-                    what,
-                    remaining,
-                    mode
-            );
-            long acceptedPhysical = Math.min(accepted.physicalInserted(), remaining);
-            long acceptedAccounted = Math.min(accepted.accounted(), remaining);
-            long requestedAfter = mode == Actionable.MODULATE ? lane.getRequestedAmount(what) : requestedBefore;
-            if (acceptedAccounted > 0L) {
-                inserted = safeAdd(inserted, acceptedPhysical);
-                accounted = safeAdd(accounted, acceptedAccounted);
-                if (metrics != null) {
-                    metrics.recordIndexedInsert(acceptedAccounted);
-                }
-            }
-            if (mode == Actionable.MODULATE
-                    && (acceptedAccounted > 0L || requestedAfter < requestedBefore || !lane.isLaneActive())
-                    && modulationConsumer != null) {
-                modulationConsumer.accept(lane);
-            }
-        }
-        return inserted;
     }
 
     public void appendActiveLaneLinks(Collection<CraftingLink> target) {
@@ -410,6 +361,8 @@ public final class ParallelCraftingCpuCluster {
     public void readFromNBT(CompoundTag data, HolderLookup.Provider registries) {
         lanes.clear();
         lanesByPlan.clear();
+        providerBackoff.clear();
+        nextTickLaneStartIndex = 0;
         ListTag laneTags = data.getList("parallelCpuLanes", Tag.TAG_COMPOUND);
         for (int index = 0; index < laneTags.size(); index++) {
             ParallelCraftingLaneState lane = ParallelCraftingLaneState.readFromNBT(
@@ -656,6 +609,12 @@ public final class ParallelCraftingCpuCluster {
             return;
         }
         lanesByPlan.values().removeIf(existing -> existing == lane);
+        providerBackoff.clear();
+        if (lanes.isEmpty()) {
+            nextTickLaneStartIndex = 0;
+        } else {
+            nextTickLaneStartIndex = Math.floorMod(nextTickLaneStartIndex, lanes.size());
+        }
         if (gridContext != null) {
             gridContext.removeLane(lane);
         }
@@ -678,6 +637,16 @@ public final class ParallelCraftingCpuCluster {
         refreshLaneState(lane);
     }
 
+    private static int computeNextStartIndex(int size, int startIndex, int visitedCount) {
+        if (size <= 0) {
+            return 0;
+        }
+        if (visitedCount <= 0) {
+            return Math.floorMod(startIndex, size);
+        }
+        return Math.floorMod(startIndex + visitedCount, size);
+    }
+
     private static long safeAdd(long left, long right) {
         if (right <= 0L) {
             return left;
@@ -686,6 +655,9 @@ public final class ParallelCraftingCpuCluster {
             return Long.MAX_VALUE;
         }
         return left + right;
+    }
+
+    record TickResult(boolean hadActiveLane, boolean madeProgress) {
     }
 
     @Nullable
