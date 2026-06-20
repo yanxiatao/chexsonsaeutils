@@ -98,9 +98,9 @@ public final class FormalMachinePlanningAggregationService {
             return nativePlan;
         }
 
+        PlanningRewriteContext rewriteContext = new PlanningRewriteContext(craftingService, nativePlan);
         SelectedPlanGraph selectedGraph = buildSelectedPlanGraph(
-                craftingService,
-                nativePlan,
+                rewriteContext,
                 nativePlan.finalOutput().what(),
                 nativePlan.patternTimes()
         );
@@ -110,7 +110,7 @@ public final class FormalMachinePlanningAggregationService {
 
         List<HostAggregationCandidate> candidates = buildHostAggregationCandidates(
                 level,
-                nativePlan,
+                rewriteContext,
                 selectedGraph
         );
         if (candidates.isEmpty()) {
@@ -121,10 +121,7 @@ public final class FormalMachinePlanningAggregationService {
         long startedAt = System.nanoTime();
         boolean changed = false;
         List<HostAggregationCandidate> appliedCandidates = new ArrayList<>();
-        for (HostAggregationCandidate candidate : candidates) {
-            candidate.host().recordPlanningLiveSnapshotRequestForTest();
-        }
-        KeyCounter liveVisibleStacks = snapshotLiveVisibleStacks(craftingService);
+        KeyCounter liveVisibleStacks = new KeyCounter();
 
         for (HostAggregationCandidate candidate : candidates) {
             FormalMachineAggregatedPattern aggregatedPattern = FormalMachineAggregatedPattern.create(
@@ -163,9 +160,16 @@ public final class FormalMachinePlanningAggregationService {
             return nativePlan;
         }
 
+        if (shouldSnapshotLiveVisibleStacks(nativePlan, !appliedCandidates.isEmpty())) {
+            for (HostAggregationCandidate candidate : appliedCandidates) {
+                candidate.host().recordPlanningLiveSnapshotRequestForTest();
+            }
+            liveVisibleStacks = rewriteContext.snapshotLiveVisibleStacks();
+        }
+
         Map<IPatternDetails, Long> dependencyOrderedPatternTimes = orderPatternTimesByDependencies(
                 rewrittenPatternTimes,
-                nativePlan
+                rewriteContext
         );
         if (dependencyOrderedPatternTimes == null) {
             LOGGER.warn(
@@ -196,7 +200,7 @@ public final class FormalMachinePlanningAggregationService {
                 rewrittenBytes,
                 !rewrittenMissingItems.isEmpty(),
                 nativePlan.multiplePaths(),
-                computeRewrittenUsedItems(rewrittenPatternTimes, rewrittenMissingItems, nativePlan),
+                computeRewrittenUsedItems(rewrittenPatternTimes, rewrittenMissingItems, rewriteContext),
                 copyCounter(nativePlan.emittedItems()),
                 rewrittenMissingItems,
                 immutableOrderedPatternTimes(rewrittenPatternTimes),
@@ -208,8 +212,7 @@ public final class FormalMachinePlanningAggregationService {
     }
 
     private static @Nullable SelectedPlanGraph buildSelectedPlanGraph(
-            CraftingService craftingService,
-            ICraftingPlan nativePlan,
+            PlanningRewriteContext rewriteContext,
             AEKey rootOutput,
             Map<IPatternDetails, Long> selectedPatternTimes
     ) {
@@ -225,15 +228,15 @@ public final class FormalMachinePlanningAggregationService {
                 continue;
             }
 
-            PatternDefinitionKey definitionKey = PatternDefinitionKey.of(pattern);
+            PatternDefinitionKey definitionKey = rewriteContext.patternDefinitionKey(pattern);
             if (definitionKey == null) {
                 return null;
             }
 
-            AbstractHighCapacityCraftingHostBlockEntity host = exclusiveFormalMachineProvider(craftingService, pattern);
+            AbstractHighCapacityCraftingHostBlockEntity host = rewriteContext.exclusiveFormalMachineProvider(pattern);
             recordPlanningHelperUsage(host, host == null);
 
-            Map<AEKey, Long> inputs = describeAggregationInputs(nativePlan, pattern);
+            Map<AEKey, Long> inputs = rewriteContext.describeAggregationInputs(pattern);
             recordPlanningHelperUsage(host, inputs == null);
             if (inputs == null) {
                 LOGGER.warn("Selected crafting pattern {} has non-deterministic inputs", pattern.getDefinition());
@@ -334,13 +337,13 @@ public final class FormalMachinePlanningAggregationService {
 
     private static List<HostAggregationCandidate> buildHostAggregationCandidates(
             Level level,
-            ICraftingPlan nativePlan,
+            PlanningRewriteContext rewriteContext,
             SelectedPlanGraph selectedGraph
     ) {
         Map<AbstractHighCapacityCraftingHostBlockEntity, Map<AEKey, SelectedGraphNode>> grouped = new LinkedHashMap<>();
         for (Map.Entry<AEKey, SelectedGraphNode> entry : selectedGraph.nodes().entrySet()) {
             SelectedGraphNode node = entry.getValue();
-            if (unwrapBaseCraftingPattern(node.pattern()) == null || node.host() == null) {
+            if (rewriteContext.unwrapBaseCraftingPattern(node.pattern()) == null || node.host() == null) {
                 continue;
             }
             grouped.computeIfAbsent(node.host(), ignored -> new LinkedHashMap<>()).put(entry.getKey(), node);
@@ -353,7 +356,7 @@ public final class FormalMachinePlanningAggregationService {
                 Map<AEKey, SelectedGraphNode> segmentNodes = selectSegmentNodes(hostNodes, segment);
                 HostAggregationCandidate candidate = buildHostAggregationCandidate(
                         level,
-                        nativePlan,
+                        rewriteContext.nativePlan(),
                         entry.getKey(),
                         segmentNodes
                 );
@@ -672,7 +675,7 @@ public final class FormalMachinePlanningAggregationService {
 
     private static @Nullable Map<IPatternDetails, Long> orderPatternTimesByDependencies(
             Map<IPatternDetails, Long> patternTimes,
-            @Nullable ICraftingPlan nativePlan
+            PlanningRewriteContext rewriteContext
     ) {
         if (patternTimes == null || patternTimes.size() <= 1) {
             return patternTimes;
@@ -689,7 +692,7 @@ public final class FormalMachinePlanningAggregationService {
                 return null;
             }
 
-            Map<AEKey, Long> inputs = describeAggregationInputs(nativePlan, pattern);
+            Map<AEKey, Long> inputs = rewriteContext.describeAggregationInputs(pattern);
             if (inputs == null) {
                 LOGGER.warn("Rewritten crafting pattern {} has non-deterministic inputs", pattern.getDefinition());
                 return null;
@@ -839,6 +842,13 @@ public final class FormalMachinePlanningAggregationService {
         if (host != null) {
             host.recordPlanningHelperUsageForTest(nullResult);
         }
+    }
+
+    static boolean shouldSnapshotLiveVisibleStacks(@Nullable ICraftingPlan nativePlan, boolean hasAppliedCandidates) {
+        return hasAppliedCandidates
+                && nativePlan != null
+                && nativePlan.missingItems() != null
+                && !nativePlan.missingItems().isEmpty();
     }
 
     private static long outputAmountFor(IPatternDetails pattern, AEKey output) {
@@ -1366,8 +1376,9 @@ public final class FormalMachinePlanningAggregationService {
     static KeyCounter computeRewrittenUsedItems(
             Map<IPatternDetails, Long> patternTimes,
             KeyCounter rewrittenMissingItems,
-            @Nullable ICraftingPlan nativePlan
+            PlanningRewriteContext rewriteContext
     ) {
+        ICraftingPlan nativePlan = rewriteContext.nativePlan();
         Map<AEKey, Long> totalInputs = new LinkedHashMap<>();
         Map<AEKey, Long> totalOutputs = new LinkedHashMap<>();
         if (patternTimes != null) {
@@ -1377,7 +1388,7 @@ public final class FormalMachinePlanningAggregationService {
                 if (pattern == null || count <= 0L) {
                     continue;
                 }
-                Map<AEKey, Long> inputs = describePatternInputs(pattern);
+                Map<AEKey, Long> inputs = rewriteContext.describeAggregationInputs(pattern);
                 if (inputs == null) {
                     continue;
                 }
@@ -1721,6 +1732,88 @@ public final class FormalMachinePlanningAggregationService {
                 return null;
             }
             return new PatternDefinitionKey(pattern.getDefinition());
+        }
+    }
+
+    static final class PlanningRewriteContext {
+
+        private final CraftingService craftingService;
+        private final ICraftingPlan nativePlan;
+        private final Map<IPatternDetails, @Nullable PatternDefinitionKey> definitionKeys = new HashMap<>();
+        private final Map<IPatternDetails, @Nullable AECraftingPattern> basePatterns = new HashMap<>();
+        private final Map<IPatternDetails, @Nullable AbstractHighCapacityCraftingHostBlockEntity> exclusiveHosts =
+                new HashMap<>();
+        private final Map<IPatternDetails, @Nullable Map<AEKey, Long>> aggregationInputs = new HashMap<>();
+        @Nullable
+        private KeyCounter liveVisibleStacks;
+
+        PlanningRewriteContext(CraftingService craftingService, ICraftingPlan nativePlan) {
+            this.craftingService = craftingService;
+            this.nativePlan = nativePlan;
+        }
+
+        ICraftingPlan nativePlan() {
+            return nativePlan;
+        }
+
+        @Nullable PatternDefinitionKey patternDefinitionKey(@Nullable IPatternDetails pattern) {
+            if (pattern == null) {
+                return null;
+            }
+            if (definitionKeys.containsKey(pattern)) {
+                return definitionKeys.get(pattern);
+            }
+            PatternDefinitionKey definitionKey = PatternDefinitionKey.of(pattern);
+            definitionKeys.put(pattern, definitionKey);
+            return definitionKey;
+        }
+
+        @Nullable AECraftingPattern unwrapBaseCraftingPattern(@Nullable IPatternDetails pattern) {
+            if (pattern == null) {
+                return null;
+            }
+            if (basePatterns.containsKey(pattern)) {
+                return basePatterns.get(pattern);
+            }
+            AECraftingPattern basePattern =
+                    FormalMachinePlanningAggregationService.unwrapBaseCraftingPattern(pattern);
+            basePatterns.put(pattern, basePattern);
+            return basePattern;
+        }
+
+        @Nullable AbstractHighCapacityCraftingHostBlockEntity exclusiveFormalMachineProvider(
+                @Nullable IPatternDetails pattern
+        ) {
+            if (pattern == null) {
+                return null;
+            }
+            if (exclusiveHosts.containsKey(pattern)) {
+                return exclusiveHosts.get(pattern);
+            }
+            AbstractHighCapacityCraftingHostBlockEntity host =
+                    FormalMachinePlanningAggregationService.exclusiveFormalMachineProvider(craftingService, pattern);
+            exclusiveHosts.put(pattern, host);
+            return host;
+        }
+
+        @Nullable Map<AEKey, Long> describeAggregationInputs(@Nullable IPatternDetails pattern) {
+            if (pattern == null) {
+                return null;
+            }
+            if (aggregationInputs.containsKey(pattern)) {
+                return aggregationInputs.get(pattern);
+            }
+            Map<AEKey, Long> inputs =
+                    FormalMachinePlanningAggregationService.describeAggregationInputs(nativePlan, pattern);
+            aggregationInputs.put(pattern, inputs);
+            return inputs;
+        }
+
+        KeyCounter snapshotLiveVisibleStacks() {
+            if (liveVisibleStacks == null) {
+                liveVisibleStacks = FormalMachinePlanningAggregationService.snapshotLiveVisibleStacks(craftingService);
+            }
+            return liveVisibleStacks;
         }
     }
 
