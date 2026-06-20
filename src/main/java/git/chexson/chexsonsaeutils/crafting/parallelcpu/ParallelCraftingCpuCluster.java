@@ -45,6 +45,7 @@ public final class ParallelCraftingCpuCluster {
     @Nullable
     private ParallelCraftingCpuGrid gridContext;
     private long lastModifiedOnTick;
+    private int nextTickLaneStartIndex;
 
     public ParallelCraftingCpuCluster(AE2ParallelCpuToolBlockEntity owner) {
         this.owner = owner;
@@ -58,6 +59,7 @@ public final class ParallelCraftingCpuCluster {
     public void detachGridContext() {
         this.gridContext = null;
         providerBackoff.clear();
+        nextTickLaneStartIndex = 0;
     }
 
     public CpuSelectionMode getSelectionMode() {
@@ -178,10 +180,21 @@ public final class ParallelCraftingCpuCluster {
         }
         boolean hadActiveLane = false;
         boolean madeProgress = false;
-        for (ParallelCraftingLaneState lane : List.copyOf(lanes.values())) {
+        List<ParallelCraftingLaneState> laneSnapshot = List.copyOf(lanes.values());
+        if (laneSnapshot.isEmpty()) {
+            nextTickLaneStartIndex = 0;
+            return new TickResult(false, false);
+        }
+
+        int startIndex = Math.floorMod(nextTickLaneStartIndex, laneSnapshot.size());
+        int visitedLanes = 0;
+        for (int offset = 0; offset < laneSnapshot.size(); offset++) {
             if (budgetLedger != null && !budgetLedger.hasTimeBudget(System.nanoTime())) {
                 break;
             }
+            int laneIndex = (startIndex + offset) % laneSnapshot.size();
+            ParallelCraftingLaneState lane = laneSnapshot.get(laneIndex);
+            visitedLanes = offset + 1;
             if (!lanes.containsKey(lane.laneId())) {
                 continue;
             }
@@ -213,6 +226,7 @@ public final class ParallelCraftingCpuCluster {
                 break;
             }
         }
+        nextTickLaneStartIndex = computeNextStartIndex(laneSnapshot.size(), startIndex, visitedLanes);
         return new TickResult(hadActiveLane, madeProgress);
     }
 
@@ -348,6 +362,7 @@ public final class ParallelCraftingCpuCluster {
         lanes.clear();
         lanesByPlan.clear();
         providerBackoff.clear();
+        nextTickLaneStartIndex = 0;
         ListTag laneTags = data.getList("parallelCpuLanes", Tag.TAG_COMPOUND);
         for (int index = 0; index < laneTags.size(); index++) {
             ParallelCraftingLaneState lane = ParallelCraftingLaneState.readFromNBT(
@@ -595,6 +610,11 @@ public final class ParallelCraftingCpuCluster {
         }
         lanesByPlan.values().removeIf(existing -> existing == lane);
         providerBackoff.clear();
+        if (lanes.isEmpty()) {
+            nextTickLaneStartIndex = 0;
+        } else {
+            nextTickLaneStartIndex = Math.floorMod(nextTickLaneStartIndex, lanes.size());
+        }
         if (gridContext != null) {
             gridContext.removeLane(lane);
         }
@@ -615,6 +635,16 @@ public final class ParallelCraftingCpuCluster {
             return;
         }
         refreshLaneState(lane);
+    }
+
+    private static int computeNextStartIndex(int size, int startIndex, int visitedCount) {
+        if (size <= 0) {
+            return 0;
+        }
+        if (visitedCount <= 0) {
+            return Math.floorMod(startIndex, size);
+        }
+        return Math.floorMod(startIndex + visitedCount, size);
     }
 
     private static long safeAdd(long left, long right) {
