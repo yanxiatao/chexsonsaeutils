@@ -6,11 +6,26 @@ public final class DirectProcessingMachineMetrics {
 
     private static final int SAMPLE_SIZE = 1024;
 
+    private long machineRecipeIndexRebuildCount;
+    private long patternCompatibilityCacheHitCount;
+    private long patternCompatibilityCacheMissCount;
     private final SampleWindow dirtyRefreshNanos = new SampleWindow();
     private final SampleWindow pushPatternCacheLookupNanos = new SampleWindow();
     private final SampleWindow outputReturnNanos = new SampleWindow();
     private final SampleWindow outputReturnLatencyTicks = new SampleWindow();
     private final SampleWindow serverTickNanos = new SampleWindow();
+
+    public synchronized void recordMachineRecipeIndexRebuild() {
+        machineRecipeIndexRebuildCount++;
+    }
+
+    public synchronized void recordPatternCompatibilityCacheLookup(boolean hit) {
+        if (hit) {
+            patternCompatibilityCacheHitCount++;
+        } else {
+            patternCompatibilityCacheMissCount++;
+        }
+    }
 
     public void recordDirtyRefreshNanos(long nanos) {
         dirtyRefreshNanos.record(nanos);
@@ -39,6 +54,9 @@ public final class DirectProcessingMachineMetrics {
         SampleWindow.Snapshot outputReturnLatency = outputReturnLatencyTicks.snapshot();
         SampleWindow.Snapshot serverTick = serverTickNanos.snapshot();
         return new Snapshot(
+                machineRecipeIndexRebuildCount,
+                patternCompatibilityCacheHitCount,
+                patternCompatibilityCacheMissCount,
                 dirtyRefresh.p95(),
                 dirtyRefresh.max(),
                 dirtyRefresh.sampleCount(),
@@ -92,6 +110,9 @@ public final class DirectProcessingMachineMetrics {
     }
 
     public record Snapshot(
+            long machineRecipeIndexRebuildCount,
+            long patternCompatibilityCacheHitCount,
+            long patternCompatibilityCacheMissCount,
             long dirtyRefreshNanosP95,
             long dirtyRefreshNanosMax,
             int dirtyRefreshNanosSampleCount,
