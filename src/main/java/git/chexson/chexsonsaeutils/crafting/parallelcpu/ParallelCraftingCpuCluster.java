@@ -40,6 +40,7 @@ public final class ParallelCraftingCpuCluster {
     private final AE2ParallelCpuToolBlockEntity owner;
     private final MachineSource source;
     private final ParallelCraftingCPU remainingCapacityCpu = new ParallelCraftingCPU(this, null);
+    private final ParallelCpuProviderBackoff providerBackoff = new ParallelCpuProviderBackoff();
     private final Map<UUID, ParallelCraftingLaneState> lanes = new LinkedHashMap<>();
     private final Map<ICraftingPlan, ParallelCraftingLaneState> lanesByPlan = new IdentityHashMap<>();
     @Nullable
@@ -57,6 +58,7 @@ public final class ParallelCraftingCpuCluster {
 
     public void detachGridContext() {
         this.gridContext = null;
+        providerBackoff.clear();
     }
 
     public CpuSelectionMode getSelectionMode() {
@@ -169,11 +171,18 @@ public final class ParallelCraftingCpuCluster {
             IEnergyService energyGrid,
             appeng.me.service.CraftingService craftingService,
             ParallelCpuMetrics metrics,
-            long currentTick
+            long currentTick,
+            ParallelCpuGridBudgetLedger budgetLedger
     ) {
+        if (!canProcessJobs()) {
+            providerBackoff.clear();
+        }
         boolean hadActiveLane = false;
         boolean madeProgress = false;
         for (ParallelCraftingLaneState lane : List.copyOf(lanes.values())) {
+            if (budgetLedger != null && !budgetLedger.hasTimeBudget(System.nanoTime())) {
+                break;
+            }
             if (!lanes.containsKey(lane.laneId())) {
                 continue;
             }
@@ -189,7 +198,9 @@ public final class ParallelCraftingCpuCluster {
                     energyGrid,
                     craftingService,
                     metrics,
-                    currentTick
+                    currentTick,
+                    budgetLedger,
+                    providerBackoff
             );
             if (!zeroProgress) {
                 madeProgress = true;
@@ -198,6 +209,9 @@ public final class ParallelCraftingCpuCluster {
                 removeLane(lane);
             } else {
                 refreshLaneState(lane);
+            }
+            if (budgetLedger != null && budgetLedger.isExhausted()) {
+                break;
             }
         }
         return new TickResult(hadActiveLane, madeProgress);
@@ -417,6 +431,7 @@ public final class ParallelCraftingCpuCluster {
     public void readFromNBT(CompoundTag data, HolderLookup.Provider registries) {
         lanes.clear();
         lanesByPlan.clear();
+        providerBackoff.clear();
         ListTag laneTags = data.getList("parallelCpuLanes", Tag.TAG_COMPOUND);
         for (int index = 0; index < laneTags.size(); index++) {
             ParallelCraftingLaneState lane = ParallelCraftingLaneState.readFromNBT(
@@ -663,6 +678,7 @@ public final class ParallelCraftingCpuCluster {
             return;
         }
         lanesByPlan.values().removeIf(existing -> existing == lane);
+        providerBackoff.clear();
         if (gridContext != null) {
             gridContext.removeLane(lane);
         }

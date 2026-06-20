@@ -42,9 +42,6 @@ public final class ParallelCpuProviderBackoff {
         }
 
         if (budgetLedger != null && !budgetLedger.tryClaimProviderCheck()) {
-            if (metrics != null) {
-                metrics.recordBudgetExhausted(ParallelCpuGridBudgetLedger.BudgetType.PROVIDER_CHECK);
-            }
             return ProviderAvailability.BUDGET_EXHAUSTED;
         }
 

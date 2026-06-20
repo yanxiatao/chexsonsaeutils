@@ -27,6 +27,7 @@ public final class ParallelCraftingCpuGrid {
     private final Set<ParallelCraftingCpuCluster> clusters = new LinkedHashSet<>();
     private final ParallelCpuWaitingIndex waitingIndex = new ParallelCpuWaitingIndex();
     private final ParallelCpuMetrics metrics = new ParallelCpuMetrics();
+    private final ParallelCpuGridBudgetLedger budgetLedger = new ParallelCpuGridBudgetLedger();
     private long currentTick = Long.MIN_VALUE;
     private int submissionsThisTick;
 
@@ -133,6 +134,7 @@ public final class ParallelCraftingCpuGrid {
         submissionsThisTick = 0;
 
         long startedAt = System.nanoTime();
+        budgetLedger.resetForTick(currentTick, startedAt);
         List<ParallelCraftingCpuCluster> clusterSnapshot = List.copyOf(clusters);
         if (clusterSnapshot.isEmpty()) {
             metrics.recordTickNanos(System.nanoTime() - startedAt);
@@ -143,17 +145,27 @@ public final class ParallelCraftingCpuGrid {
         boolean hadActiveLane = false;
         boolean madeProgress = false;
         for (ParallelCraftingCpuCluster cluster : clusterSnapshot) {
+            if (!budgetLedger.hasTimeBudget(System.nanoTime())) {
+                break;
+            }
             ParallelCraftingCpuCluster.TickResult tickResult = cluster.tick(
                     energyGrid,
                     craftingService,
                     metrics,
-                    currentTick
+                    currentTick,
+                    budgetLedger
             );
             hadActiveLane |= tickResult.hadActiveLane();
             madeProgress |= tickResult.madeProgress();
+            if (budgetLedger.isExhausted()) {
+                break;
+            }
         }
         if (hadActiveLane && !madeProgress) {
             metrics.recordZeroProgressTick();
+        }
+        if (budgetLedger.isExhausted()) {
+            metrics.recordLedgerExhaustion(budgetLedger);
         }
 
         metrics.recordTickNanos(System.nanoTime() - startedAt);

@@ -91,13 +91,17 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
             IEnergyService energyGrid,
             appeng.me.service.CraftingService craftingService,
             ParallelCpuMetrics metrics,
-            long currentTick
+            long currentTick,
+            ParallelCpuGridBudgetLedger budgetLedger,
+            ParallelCpuProviderBackoff providerBackoff
     ) {
         return logic.tickCraftingLogic(
                 energyGrid,
                 craftingService,
                 metrics,
-                currentTick
+                currentTick,
+                budgetLedger,
+                providerBackoff
         );
     }
 
