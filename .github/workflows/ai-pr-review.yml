@@ -2,6 +2,8 @@ name: AI PR Review
 
 on:
   pull_request:
+    branches:
+      - main
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -14,25 +16,31 @@ concurrency:
 
 jobs:
   ai-review:
+    name: AI PR Review
     runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 当前仓库自测时使用本地 CLI；发布到 npm 后可改为：
-      #   npx github-ai-pr-reviewer --post
+      - name: Skip when API key is not configured
+        if: ${{ env.OPENAI_API_KEY == '' }}
+        run: echo "::notice::OPENAI_API_KEY secret is not configured; skipping AI PR review."
+
       - name: Run AI PR reviewer
-        run: npx github-ai-pr-reviewer --post
+        if: ${{ env.OPENAI_API_KEY != '' }}
+        run: npx --yes github-ai-pr-reviewer@latest --post
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
-          # responses：/v1/responses；chat：/v1/chat/completions，第三方兼容服务常用 chat
           OPENAI_API_MODE: ${{ vars.OPENAI_API_MODE || 'responses' }}
-          # 第三方 / 自建 OpenAI-compatible 服务时配置，例如：https://api.example.com/v1
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || 'https://api.openai.com/v1' }}
           OPENAI_TIMEOUT_MS: ${{ vars.OPENAI_TIMEOUT_MS || '120000' }}
           OPENAI_RETRIES: ${{ vars.OPENAI_RETRIES || '2' }}
@@ -43,13 +51,11 @@ jobs:
           REVIEW_RULES: .github/ai-review.md,AGENTS.md
           REVIEW_IGNORE: .ai-reviewignore
           REVIEW_SEVERITY_THRESHOLD: P3
-          # review：每次发 review summary；comment：更新同一条 PR 评论；both：两者都发；none：只发 inline
           SUMMARY_MODE: review
-          GITHUB_TIMEOUT_MS: '30000'
-          GITHUB_RETRIES: '2'
-          # AUTO：P1/P0 自动 Request changes；P2/P3 只评论；默认不自动 Approve
           REVIEW_EVENT: AUTO
           REQUEST_CHANGES_ON: P1
           APPROVE_WHEN_CLEAN: 'false'
+          GITHUB_TIMEOUT_MS: '30000'
+          GITHUB_RETRIES: '2'
           # 可选：发现 P1/P0 时让 CI 失败
           # FAIL_ON: P1
