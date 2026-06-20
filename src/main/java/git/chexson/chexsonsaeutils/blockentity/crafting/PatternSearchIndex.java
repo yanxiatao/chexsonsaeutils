@@ -17,18 +17,41 @@ import java.util.Set;
 public final class PatternSearchIndex {
 
     public List<Integer> findAllMatches(PagedPatternInventory inventory, String rawQuery, @Nullable Level level) {
+        return findAllMatchesWithStats(inventory, null, rawQuery, level).matches();
+    }
+
+    public MatchResult findAllMatchesWithStats(
+            PagedPatternInventory inventory,
+            @Nullable DecodedPatternEntryCache decodedPatternEntryCache,
+            String rawQuery,
+            @Nullable Level level
+    ) {
         String query = normalize(rawQuery);
         if (query.isEmpty() || level == null) {
-            return List.of();
+            return new MatchResult(List.of(), 0, 0, 0);
         }
         List<Integer> matches = new ArrayList<>();
+        int scannedSlots = 0;
+        int decodeCacheHits = 0;
+        int decodeCalls = 0;
         for (int slot = 0; slot < inventory.getTotalSlots(); slot++) {
+            scannedSlots++;
             ItemStack stack = inventory.getVirtualSlot(slot);
-            if (!stack.isEmpty() && matches(stack, query, level)) {
+            if (stack.isEmpty()) {
+                continue;
+            }
+            MatchState matchState = matches(stack, slot, decodedPatternEntryCache, query, level);
+            if (matchState.decodeCacheHit()) {
+                decodeCacheHits++;
+            }
+            if (matchState.decodeCall()) {
+                decodeCalls++;
+            }
+            if (matchState.matched()) {
                 matches.add(slot);
             }
         }
-        return List.copyOf(matches);
+        return new MatchResult(List.copyOf(matches), scannedSlots, decodeCacheHits, decodeCalls);
     }
 
     @Nullable
@@ -41,27 +64,37 @@ public final class PatternSearchIndex {
         return findAllMatches(inventory, rawQuery, level).size();
     }
 
-    private boolean matches(ItemStack encodedPattern, String query, Level level) {
+    private MatchState matches(
+            ItemStack encodedPattern,
+            int slot,
+            @Nullable DecodedPatternEntryCache decodedPatternEntryCache,
+            String query,
+            Level level
+    ) {
         if (matchesItemStack(encodedPattern, query)) {
-            return true;
+            return MatchState.ITEM_MATCH;
         }
+        boolean decodeCacheHit = decodedPatternEntryCache != null
+                && decodedPatternEntryCache.matches(slot, encodedPattern)
+                && decodedPatternEntryCache.get(slot) != null;
         IPatternDetails patternDetails = PatternDetailsHelper.decodePattern(encodedPattern, level);
+        boolean decodeCall = true;
         if (patternDetails == null) {
-            return false;
+            return new MatchState(false, decodeCacheHit, decodeCall);
         }
         for (GenericStack output : patternDetails.getOutputs()) {
             if (output != null && matchesGenericStack(output, query)) {
-                return true;
+                return new MatchState(true, decodeCacheHit, decodeCall);
             }
         }
         for (IPatternDetails.IInput input : patternDetails.getInputs()) {
             for (GenericStack possibleInput : input.getPossibleInputs()) {
                 if (possibleInput != null && matchesGenericStack(possibleInput, query)) {
-                    return true;
+                    return new MatchState(true, decodeCacheHit, decodeCall);
                 }
             }
         }
-        return false;
+        return new MatchState(false, decodeCacheHit, decodeCall);
     }
 
     private boolean matchesGenericStack(GenericStack stack, String query) {
@@ -90,5 +123,17 @@ public final class PatternSearchIndex {
 
     private static String normalize(@Nullable String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    public record MatchResult(
+            List<Integer> matches,
+            int scannedSlots,
+            int decodeCacheHits,
+            int decodeCalls
+    ) {
+    }
+
+    private record MatchState(boolean matched, boolean decodeCacheHit, boolean decodeCall) {
+        private static final MatchState ITEM_MATCH = new MatchState(true, false, false);
     }
 }

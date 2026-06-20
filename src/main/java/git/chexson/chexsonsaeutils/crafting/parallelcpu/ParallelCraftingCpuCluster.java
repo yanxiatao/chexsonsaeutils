@@ -165,12 +165,14 @@ public final class ParallelCraftingCpuCluster {
         return submitResult;
     }
 
-    public void tick(
+    public TickResult tick(
             IEnergyService energyGrid,
             appeng.me.service.CraftingService craftingService,
             ParallelCpuMetrics metrics,
             long currentTick
     ) {
+        boolean hadActiveLane = false;
+        boolean madeProgress = false;
         for (ParallelCraftingLaneState lane : List.copyOf(lanes.values())) {
             if (!lanes.containsKey(lane.laneId())) {
                 continue;
@@ -179,21 +181,26 @@ public final class ParallelCraftingCpuCluster {
                 removeLane(lane);
                 continue;
             }
+            hadActiveLane = true;
             if (metrics != null) {
                 metrics.recordTickCraftingLogic();
             }
-            lane.tick(
+            boolean zeroProgress = lane.tick(
                     energyGrid,
                     craftingService,
                     metrics,
                     currentTick
             );
+            if (!zeroProgress) {
+                madeProgress = true;
+            }
             if (!lane.isLaneActive()) {
                 removeLane(lane);
             } else {
                 refreshLaneState(lane);
             }
         }
+        return new TickResult(hadActiveLane, madeProgress);
     }
 
     public void appendVisibleCpus(
@@ -686,6 +693,9 @@ public final class ParallelCraftingCpuCluster {
             return Long.MAX_VALUE;
         }
         return left + right;
+    }
+
+    record TickResult(boolean hadActiveLane, boolean madeProgress) {
     }
 
     @Nullable

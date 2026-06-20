@@ -261,6 +261,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         PatternCompatibility compatibility = patternDetails == null
                 ? null
                 : compatibilityCache.get(patternDetails.getDefinition(), recipeIndex.version());
+        metrics.recordPatternCompatibilityCacheLookup(compatibility != null);
         recordPushPatternCacheLookupNanos(startedAtNanos);
         if (compatibility == null || !compatibility.supported()) {
             pushPatternRejectedCount++;
@@ -708,6 +709,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         recipeIndex = result.index();
         if (!result.cacheHit()) {
             recipeFullScanCount++;
+            metrics.recordMachineRecipeIndexRebuild();
         }
     }
 

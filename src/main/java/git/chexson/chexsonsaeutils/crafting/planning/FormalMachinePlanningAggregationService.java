@@ -121,6 +121,9 @@ public final class FormalMachinePlanningAggregationService {
         long startedAt = System.nanoTime();
         boolean changed = false;
         List<HostAggregationCandidate> appliedCandidates = new ArrayList<>();
+        for (HostAggregationCandidate candidate : candidates) {
+            candidate.host().recordPlanningLiveSnapshotRequestForTest();
+        }
         KeyCounter liveVisibleStacks = snapshotLiveVisibleStacks(craftingService);
 
         for (HostAggregationCandidate candidate : candidates) {
@@ -227,13 +230,15 @@ public final class FormalMachinePlanningAggregationService {
                 return null;
             }
 
+            AbstractHighCapacityCraftingHostBlockEntity host = exclusiveFormalMachineProvider(craftingService, pattern);
+            recordPlanningHelperUsage(host, host == null);
+
             Map<AEKey, Long> inputs = describeAggregationInputs(nativePlan, pattern);
+            recordPlanningHelperUsage(host, inputs == null);
             if (inputs == null) {
                 LOGGER.warn("Selected crafting pattern {} has non-deterministic inputs", pattern.getDefinition());
                 return null;
             }
-
-            AbstractHighCapacityCraftingHostBlockEntity host = exclusiveFormalMachineProvider(craftingService, pattern);
             for (GenericStack output : pattern.getOutputs()) {
                 if (output == null || output.what() == null || output.amount() <= 0L) {
                     continue;
@@ -824,6 +829,15 @@ public final class FormalMachinePlanningAggregationService {
             matchedHost = host;
         }
         return sawFormalProvider ? matchedHost : null;
+    }
+
+    private static void recordPlanningHelperUsage(
+            @Nullable AbstractHighCapacityCraftingHostBlockEntity host,
+            boolean nullResult
+    ) {
+        if (host != null) {
+            host.recordPlanningHelperUsageForTest(nullResult);
+        }
     }
 
     private static long outputAmountFor(IPatternDetails pattern, AEKey output) {

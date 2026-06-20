@@ -140,8 +140,20 @@ public final class ParallelCraftingCpuGrid {
             return 0L;
         }
 
+        boolean hadActiveLane = false;
+        boolean madeProgress = false;
         for (ParallelCraftingCpuCluster cluster : clusterSnapshot) {
-            cluster.tick(energyGrid, craftingService, metrics, currentTick);
+            ParallelCraftingCpuCluster.TickResult tickResult = cluster.tick(
+                    energyGrid,
+                    craftingService,
+                    metrics,
+                    currentTick
+            );
+            hadActiveLane |= tickResult.hadActiveLane();
+            madeProgress |= tickResult.madeProgress();
+        }
+        if (hadActiveLane && !madeProgress) {
+            metrics.recordZeroProgressTick();
         }
 
         metrics.recordTickNanos(System.nanoTime() - startedAt);

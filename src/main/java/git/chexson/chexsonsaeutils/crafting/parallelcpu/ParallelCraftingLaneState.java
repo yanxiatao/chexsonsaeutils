@@ -87,13 +87,13 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
         logic.enableNotifications();
     }
 
-    void tick(
+    boolean tick(
             IEnergyService energyGrid,
             appeng.me.service.CraftingService craftingService,
             ParallelCpuMetrics metrics,
             long currentTick
     ) {
-        logic.tickCraftingLogic(
+        return logic.tickCraftingLogic(
                 energyGrid,
                 craftingService,
                 metrics,
