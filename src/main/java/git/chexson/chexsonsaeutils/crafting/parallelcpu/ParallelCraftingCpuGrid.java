@@ -217,9 +217,7 @@ public final class ParallelCraftingCpuGrid {
         if (target == null) {
             return;
         }
-        for (ParallelCraftingCpuCluster cluster : clusters) {
-            cluster.appendWaitingFor(target);
-        }
+        waitingIndex.appendRequestingKeys(target);
     }
 
     public Set<AEKey> consumeChangedRequestKeys() {

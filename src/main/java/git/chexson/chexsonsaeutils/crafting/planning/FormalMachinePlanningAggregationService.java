@@ -368,6 +368,7 @@ public final class FormalMachinePlanningAggregationService {
     static List<Set<AEKey>> splitPerPatternFormalAggregationSegments(
             Map<AEKey, ? extends Collection<AEKey>> formalInputsByOutput
     ) {
+        // ponytail: semantics hook only, still delegates to the single dependency splitter for now.
         return splitFormalDependencySegments(formalInputsByOutput);
     }
 

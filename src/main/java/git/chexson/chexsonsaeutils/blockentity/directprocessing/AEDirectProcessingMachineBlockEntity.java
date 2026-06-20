@@ -215,10 +215,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             readPendingOutputBatches(registries, data.getList(NBT_PENDING_OUTPUT, Tag.TAG_COMPOUND));
         }
         readPatternSlots(data, registries);
-        compatibilityCache.clear();
-        supportedPatternsBySlot.clear();
-        patternCompatibilityBySlot.clear();
-        patternProvider.clear();
+        clearPatternExposureCaches();
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         observedRecipeReloadEpoch = MachineRecipeReloadTracker.recipeReloadEpoch();
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled();
@@ -367,10 +364,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         }
         executionQueue.clear();
         pendingOutputBatches.clear();
-        compatibilityCache.clear();
-        supportedPatternsBySlot.clear();
-        patternCompatibilityBySlot.clear();
-        patternProvider.clear();
+        clearPatternExposureCaches();
         pendingOutputRetryDelayTicks = 0;
         pendingOutputRetryBackoffTicks = 0;
     }
@@ -671,12 +665,16 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     private void invalidatePatternExposureForIndexChange() {
         markMachineRecipeIndexDirty();
+        clearPatternExposureCaches();
+        markAllPatternsDirty();
+        requestCraftingProviderUpdate();
+    }
+
+    private void clearPatternExposureCaches() {
         compatibilityCache.clear();
         supportedPatternsBySlot.clear();
         patternCompatibilityBySlot.clear();
         patternProvider.clear();
-        markAllPatternsDirty();
-        requestCraftingProviderUpdate();
     }
 
     private void refreshMachineRecipeIndexIfReady() {

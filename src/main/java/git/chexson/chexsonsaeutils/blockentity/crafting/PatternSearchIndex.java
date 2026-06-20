@@ -74,11 +74,23 @@ public final class PatternSearchIndex {
         if (matchesItemStack(encodedPattern, query)) {
             return MatchState.ITEM_MATCH;
         }
-        boolean decodeCacheHit = decodedPatternEntryCache != null
-                && decodedPatternEntryCache.matches(slot, encodedPattern)
-                && decodedPatternEntryCache.get(slot) != null;
-        IPatternDetails patternDetails = PatternDetailsHelper.decodePattern(encodedPattern, level);
-        boolean decodeCall = true;
+        IPatternDetails patternDetails = null;
+        boolean decodeCacheHit = false;
+        if (decodedPatternEntryCache != null && decodedPatternEntryCache.matches(slot, encodedPattern)) {
+            DecodedPatternEntryCache.Entry cacheEntry = decodedPatternEntryCache.get(slot);
+            if (cacheEntry != null) {
+                patternDetails = cacheEntry.patternDetails();
+                decodeCacheHit = true;
+            }
+        }
+        boolean decodeCall = false;
+        if (patternDetails == null) {
+            patternDetails = PatternDetailsHelper.decodePattern(encodedPattern, level);
+            decodeCall = true;
+            if (decodedPatternEntryCache != null) {
+                decodedPatternEntryCache.put(slot, encodedPattern, patternDetails);
+            }
+        }
         if (patternDetails == null) {
             return new MatchState(false, decodeCacheHit, decodeCall);
         }
