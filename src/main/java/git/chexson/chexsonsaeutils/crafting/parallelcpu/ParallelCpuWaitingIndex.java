@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -21,7 +22,7 @@ public final class ParallelCpuWaitingIndex {
     private final Map<ParallelCraftingLane, Map<AEKey, Long>> waitingByLane = new IdentityHashMap<>();
     private final Set<AEKey> changedKeys = new HashSet<>();
     private final Set<AEKey> changedPresenceKeys = new HashSet<>();
-    private final Set<ParallelCraftingLane> inactiveLanes = newIdentityLaneSet();
+    private final Set<ParallelCraftingLane> inactiveLanes = newLaneSet();
 
     public void rebuild(Iterable<? extends ParallelCraftingLane> lanes) {
         Set<AEKey> previousKeys = new HashSet<>(requestedAmounts.keySet());
@@ -100,13 +101,15 @@ public final class ParallelCpuWaitingIndex {
     ) {
         long physicalInserted = 0L;
         long accounted = 0L;
-        while (accounted < amount) {
-            Set<ParallelCraftingLane> indexedLanes = lanesByKey.get(what);
-            if (indexedLanes == null || indexedLanes.isEmpty()) {
+        Set<ParallelCraftingLane> indexedLanes = lanesByKey.get(what);
+        if (indexedLanes == null || indexedLanes.isEmpty()) {
+            return new InsertResult(0L, 0L);
+        }
+
+        for (ParallelCraftingLane lane : List.copyOf(indexedLanes)) {
+            if (accounted >= amount) {
                 break;
             }
-
-            ParallelCraftingLane lane = indexedLanes.iterator().next();
             long remaining = amount - accounted;
             ParallelCraftingLane.WaitingInsertResult laneResult = lane.insertIntoWaitingAndGetResult(
                     what,
@@ -127,9 +130,6 @@ public final class ParallelCpuWaitingIndex {
             }
 
             refreshLane(lane);
-            if (acceptedAccounted <= 0L) {
-                break;
-            }
         }
         return new InsertResult(physicalInserted, accounted);
     }
@@ -271,7 +271,7 @@ public final class ParallelCpuWaitingIndex {
                     }
                 }
             } else {
-                lanesByKey.computeIfAbsent(key, ignored -> newIdentityLaneSet()).add(lane);
+                lanesByKey.computeIfAbsent(key, ignored -> newLaneSet()).add(lane);
             }
         }
 
@@ -342,8 +342,8 @@ public final class ParallelCpuWaitingIndex {
         }
     }
 
-    private static Set<ParallelCraftingLane> newIdentityLaneSet() {
-        return Collections.newSetFromMap(new IdentityHashMap<>());
+    private static Set<ParallelCraftingLane> newLaneSet() {
+        return new LinkedHashSet<>();
     }
 
     private static long saturatedAdd(long left, long right) {

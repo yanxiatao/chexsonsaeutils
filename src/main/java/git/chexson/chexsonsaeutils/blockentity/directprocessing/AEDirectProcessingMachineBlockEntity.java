@@ -7,6 +7,7 @@ import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.storage.IStorageService;
+import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.upgrades.IUpgradeInventory;
@@ -65,9 +66,11 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
@@ -112,6 +115,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private final DirectProcessingMachineMetrics metrics = new DirectProcessingMachineMetrics();
     private final Map<Integer, IPatternDetails> supportedPatternsBySlot = new LinkedHashMap<>();
     private final Map<Integer, PatternCompatibility> patternCompatibilityBySlot = new LinkedHashMap<>();
+    private final Map<Integer, AEItemKey> patternDefinitionsBySlot = new LinkedHashMap<>();
+    private final Map<AEItemKey, Set<Integer>> slotsByPatternDefinition = new LinkedHashMap<>();
 
     private MachineRecipeDiscoveryService discoveryService = MachineRecipeDiscoveryService.fromConfig();
     private MachineRecipeIndex recipeIndex = MachineRecipeIndex.empty();
@@ -215,10 +220,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             readPendingOutputBatches(registries, data.getList(NBT_PENDING_OUTPUT, Tag.TAG_COMPOUND));
         }
         readPatternSlots(data, registries);
-        compatibilityCache.clear();
-        supportedPatternsBySlot.clear();
-        patternCompatibilityBySlot.clear();
-        patternProvider.clear();
+        clearPatternExposureCaches();
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         observedRecipeReloadEpoch = MachineRecipeReloadTracker.recipeReloadEpoch();
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled();
@@ -261,6 +263,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         PatternCompatibility compatibility = patternDetails == null
                 ? null
                 : compatibilityCache.get(patternDetails.getDefinition(), recipeIndex.version());
+        metrics.recordPatternCompatibilityCacheLookup(compatibility != null);
         recordPushPatternCacheLookupNanos(startedAtNanos);
         if (compatibility == null || !compatibility.supported()) {
             pushPatternRejectedCount++;
@@ -366,10 +369,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         }
         executionQueue.clear();
         pendingOutputBatches.clear();
-        compatibilityCache.clear();
-        supportedPatternsBySlot.clear();
-        patternCompatibilityBySlot.clear();
-        patternProvider.clear();
+        clearPatternExposureCaches();
         pendingOutputRetryDelayTicks = 0;
         pendingOutputRetryBackoffTicks = 0;
     }
@@ -670,12 +670,18 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     private void invalidatePatternExposureForIndexChange() {
         markMachineRecipeIndexDirty();
+        clearPatternExposureCaches();
+        markAllPatternsDirty();
+        requestCraftingProviderUpdate();
+    }
+
+    private void clearPatternExposureCaches() {
         compatibilityCache.clear();
         supportedPatternsBySlot.clear();
         patternCompatibilityBySlot.clear();
+        patternDefinitionsBySlot.clear();
+        slotsByPatternDefinition.clear();
         patternProvider.clear();
-        markAllPatternsDirty();
-        requestCraftingProviderUpdate();
     }
 
     private void refreshMachineRecipeIndexIfReady() {
@@ -708,6 +714,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         recipeIndex = result.index();
         if (!result.cacheHit()) {
             recipeFullScanCount++;
+            metrics.recordMachineRecipeIndexRebuild();
         }
     }
 
@@ -743,12 +750,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private boolean refreshSinglePatternSlot(Level currentLevel, int slot) {
         ItemStack stack = patternInventory.getVirtualSlot(slot);
         if (stack.isEmpty()) {
-            removeCachedCompatibilityForSlot(slot);
             decodedPatternEntryCache.invalidate(slot);
-            patternCompatibilityBySlot.remove(slot);
-            IPatternDetails removedPattern = supportedPatternsBySlot.remove(slot);
-            restoreCachedCompatibilityIfStillSupported(removedPattern);
-            return removedPattern != null;
+            return replacePatternExposureForSlot(slot, null, null, null);
         }
         if (decodedPatternEntryCache.matches(slot, stack)) {
             @Nullable DecodedPatternEntryCache.Entry entry = decodedPatternEntryCache.get(slot);
@@ -763,23 +766,20 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     private boolean updateCompatibility(int slot, @Nullable IPatternDetails decodedPattern) {
         if (decodedPattern == null || !isProcessingPattern(decodedPattern.getDefinition().toStack())) {
-            removeCachedCompatibilityForSlot(slot);
-            patternCompatibilityBySlot.put(
+            return replacePatternExposureForSlot(
                     slot,
+                    decodedPattern == null ? null : decodedPattern.getDefinition(),
+                    null,
                     PatternCompatibility.unsupported(MachineSupportReasonCode.PATTERN_DECODE_FAILED)
             );
-            IPatternDetails removedPattern = supportedPatternsBySlot.remove(slot);
-            restoreCachedCompatibilityIfStillSupported(removedPattern);
-            return removedPattern != null;
         }
         PatternCompatibility compatibility = discoveryService.compileCompatibility(getLevel(), recipeIndex, decodedPattern);
-        compatibilityCache.put(decodedPattern.getDefinition(), recipeIndex.version(), compatibility);
-        patternCompatibilityBySlot.put(slot, compatibility);
-        if (!compatibility.supported()) {
-            return supportedPatternsBySlot.remove(slot) != null;
-        }
-        IPatternDetails previous = supportedPatternsBySlot.put(slot, decodedPattern);
-        return previous == null || !previous.getDefinition().equals(decodedPattern.getDefinition());
+        return replacePatternExposureForSlot(
+                slot,
+                decodedPattern.getDefinition(),
+                compatibility.supported() ? decodedPattern : null,
+                compatibility
+        );
     }
 
     private void serverTick() {
@@ -867,31 +867,96 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 && Objects.equals(currentIdentity.blockId(), request.machineBlockId());
     }
 
-    private void removeCachedCompatibilityForSlot(int slot) {
-        PatternCompatibility previousCompatibility = patternCompatibilityBySlot.get(slot);
-        if (previousCompatibility != null && previousCompatibility.pattern() != null) {
-            compatibilityCache.remove(previousCompatibility.pattern().getDefinition(), recipeIndex.version());
-            return;
+    private boolean replacePatternExposureForSlot(
+            int slot,
+            @Nullable AEItemKey patternDefinition,
+            @Nullable IPatternDetails supportedPattern,
+            @Nullable PatternCompatibility compatibility
+    ) {
+        IPatternDetails previousSupportedPattern = supportedPatternsBySlot.get(slot);
+        AEItemKey previousDefinition = patternDefinitionsBySlot.get(slot);
+        boolean sameDefinition = Objects.equals(previousDefinition, patternDefinition);
+        if (!sameDefinition) {
+            unlinkPatternDefinition(slot, previousDefinition);
         }
-        IPatternDetails previousPattern = supportedPatternsBySlot.get(slot);
-        if (previousPattern != null) {
-            compatibilityCache.remove(previousPattern.getDefinition(), recipeIndex.version());
+        if (compatibility == null) {
+            patternCompatibilityBySlot.remove(slot);
+        } else {
+            patternCompatibilityBySlot.put(slot, compatibility);
         }
+        if (supportedPattern == null || compatibility == null || !compatibility.supported()) {
+            supportedPatternsBySlot.remove(slot);
+        } else {
+            supportedPatternsBySlot.put(slot, supportedPattern);
+        }
+        if (patternDefinition == null) {
+            patternDefinitionsBySlot.remove(slot);
+        } else {
+            patternDefinitionsBySlot.put(slot, patternDefinition);
+            slotsByPatternDefinition
+                    .computeIfAbsent(patternDefinition, ignored -> new LinkedHashSet<>())
+                    .add(slot);
+            recacheCompatibilityForDefinition(patternDefinition);
+        }
+        IPatternDetails currentSupportedPattern = supportedPatternsBySlot.get(slot);
+        return !Objects.equals(
+                previousSupportedPattern == null ? null : previousSupportedPattern.getDefinition(),
+                currentSupportedPattern == null ? null : currentSupportedPattern.getDefinition()
+        );
     }
 
-    private void restoreCachedCompatibilityIfStillSupported(@Nullable IPatternDetails removedPattern) {
-        if (removedPattern == null) {
+    private void unlinkPatternDefinition(int slot, @Nullable AEItemKey patternDefinition) {
+        patternDefinitionsBySlot.remove(slot);
+        if (patternDefinition == null) {
             return;
         }
-        for (PatternCompatibility compatibility : patternCompatibilityBySlot.values()) {
-            if (compatibility != null
-                    && compatibility.supported()
-                    && compatibility.pattern() != null
-                    && removedPattern.getDefinition().equals(compatibility.pattern().getDefinition())) {
-                compatibilityCache.put(removedPattern.getDefinition(), recipeIndex.version(), compatibility);
-                return;
+        Set<Integer> slots = slotsByPatternDefinition.get(patternDefinition);
+        if (slots == null) {
+            compatibilityCache.remove(patternDefinition, recipeIndex.version());
+            return;
+        }
+        slots.remove(slot);
+        if (slots.isEmpty()) {
+            slotsByPatternDefinition.remove(patternDefinition);
+            compatibilityCache.remove(patternDefinition, recipeIndex.version());
+            return;
+        }
+        recacheCompatibilityForDefinition(patternDefinition);
+    }
+
+    private void recacheCompatibilityForDefinition(AEItemKey patternDefinition) {
+        PatternCompatibility compatibility = selectCompatibilityForDefinition(
+                slotsByPatternDefinition.get(patternDefinition),
+                patternCompatibilityBySlot
+        );
+        if (compatibility == null) {
+            compatibilityCache.remove(patternDefinition, recipeIndex.version());
+            return;
+        }
+        compatibilityCache.put(patternDefinition, recipeIndex.version(), compatibility);
+    }
+
+    static @Nullable PatternCompatibility selectCompatibilityForDefinition(
+            @Nullable Set<Integer> slots,
+            Map<Integer, PatternCompatibility> compatibilityBySlot
+    ) {
+        if (slots == null || slots.isEmpty()) {
+            return null;
+        }
+        PatternCompatibility fallback = null;
+        for (Integer slot : slots) {
+            PatternCompatibility compatibility = compatibilityBySlot.get(slot);
+            if (compatibility == null) {
+                continue;
+            }
+            if (compatibility.supported()) {
+                return compatibility;
+            }
+            if (fallback == null) {
+                fallback = compatibility;
             }
         }
+        return fallback;
     }
 
     private int getCurrentOperationTicks() {
