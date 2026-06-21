@@ -145,8 +145,7 @@ public final class ProcessingCompiledTask {
         if (!isQueued && !isRunning) {
             return false;
         }
-        return ItemStack.isSameItemSameComponents(patternDefinition, other.patternDefinition)
-                && selectedInputs.equals(other.selectedInputs)
+        return selectedInputs.equals(other.selectedInputs)
                 && outputsPerExecution.equals(other.outputsPerExecution)
                 && totalTicks == other.totalTicks
                 && Objects.equals(sourceCraftingId, other.sourceCraftingId)
@@ -160,8 +159,7 @@ public final class ProcessingCompiledTask {
         if (this.remainingTicks != this.totalTicks || other.remainingTicks != other.totalTicks) {
             return false;
         }
-        return ItemStack.isSameItemSameComponents(patternDefinition, other.patternDefinition)
-                && selectedInputs.equals(other.selectedInputs)
+        return selectedInputs.equals(other.selectedInputs)
                 && outputsPerExecution.equals(other.outputsPerExecution)
                 && totalTicks == other.totalTicks
                 && Objects.equals(sourceCraftingId, other.sourceCraftingId)
