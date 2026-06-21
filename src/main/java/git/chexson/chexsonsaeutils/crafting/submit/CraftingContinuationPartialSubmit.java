@@ -243,6 +243,11 @@ public final class CraftingContinuationPartialSubmit {
         }
 
         @Override
+        public ICraftingPlan chexsonsaeutils$getDelegate() {
+            return delegate;
+        }
+
+        @Override
         public KeyCounter chexsonsaeutils$dyeableRecursiveInitialItems() {
             if (delegate instanceof DyeablePatternRecursivePlan recursivePlan
                     && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning()) {

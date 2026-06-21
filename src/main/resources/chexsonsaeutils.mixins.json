@@ -1,5 +1,6 @@
 {
   "required": true,
+  "priority": 900,
   "package": "git.chexson.chexsonsaeutils.mixin",
   "plugin": "git.chexson.chexsonsaeutils.mixin.ae2.ChexsonsaeutilsMixinPlugin",
   "compatibilityLevel": "JAVA_21",

@@ -883,6 +883,11 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         }
 
         @Override
+        public ICraftingPlan chexsonsaeutils$getDelegate() {
+            return delegate;
+        }
+
+        @Override
         public KeyCounter chexsonsaeutils$dyeableRecursiveInitialItems() {
             return copyCounter(recursiveInitialItems);
         }
