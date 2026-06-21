@@ -371,8 +371,17 @@ public final class FormalMachinePlanningAggregationService {
     static List<Set<AEKey>> splitPerPatternFormalAggregationSegments(
             Map<AEKey, ? extends Collection<AEKey>> formalInputsByOutput
     ) {
-        // ponytail: semantics hook only, still delegates to the single dependency splitter for now.
-        return splitFormalDependencySegments(formalInputsByOutput);
+        // Each pattern should be its own segment - no aggregation across patterns
+        if (formalInputsByOutput == null || formalInputsByOutput.isEmpty()) {
+            return List.of();
+        }
+        List<Set<AEKey>> segments = new ArrayList<>();
+        for (AEKey output : formalInputsByOutput.keySet()) {
+            if (output != null) {
+                segments.add(Set.of(output));
+            }
+        }
+        return List.copyOf(segments);
     }
 
     static List<Set<AEKey>> splitFormalDependencySegments(
