@@ -62,3 +62,10 @@ type = "optional"
 versionRange = "[${mekanism_version},)"
 ordering = "AFTER"
 side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "configured"
+type = "optional"
+versionRange = "[2.6,)"
+ordering = "AFTER"
+side = "BOTH"

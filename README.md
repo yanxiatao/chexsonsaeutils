@@ -19,6 +19,10 @@
 - Mod ID: `chexsonsaeutils`
 - License: `MIT`
 
+### 可选依赖
+
+- **Configured** (`2.6+`): 提供游戏内配置 UI，可通过 Mod 菜单访问。未安装时，配置文件仍可通过 `config/chexsonsaeutils-common.toml` 手动编辑。
+
 该分支依赖 NeoForge 与 AE2 的当前内部 API 和 mixin 接缝。升级 AE2、NeoForge 或 Minecraft 后，应重新运行测试并做游戏内验证。
 
 ## 功能说明
@@ -89,6 +93,16 @@
 
 ## 配置
 
+本模组使用 NeoForge 的 `ModConfigSpec` 系统。
+
+### 游戏内配置 UI
+
+如果安装了 **Configured** mod（`2.6+` 版本），可通过以下方式访问配置 UI：
+- 主菜单或暂停菜单 → Mods → 选择 `Chexson's ae utils` → Config 按钮
+- 配置界面提供分类明确的选项、范围验证和详细注释
+
+### 配置文件
+
 公共配置文件位于：
 
 ```text
@@ -98,6 +112,7 @@ config/chexsonsaeutils-common.toml
 当前配置项：
 
 ```toml
+[features]
 craftingContinuationEnabled = true
 formalMachineCraftingDispatchEnabled = false
 formalMachinePlanningAggregationEnabled = true
@@ -109,6 +124,15 @@ dyeableRecursiveRetainedCatalystAmount = 1
 enhancedCraftingStatusEnabled = true
 buildingGadgets2IntegrationEnabled = true
 ftbUltimineMemoryCardEnabled = true
+
+[parallelCraftingCpuTool]
+parallelCraftingCpuEnabled = true
+# ... 更多参数见配置文件
+
+[aeDirectProcessingMachine]
+recipeMappings = []
+budgetProfile = "normal"
+genericDiscoveryEnabled = true
 ```
 
 - `craftingContinuationEnabled`：启用或禁用 AE2 合成续跑 / 缺料忽略功能包。
