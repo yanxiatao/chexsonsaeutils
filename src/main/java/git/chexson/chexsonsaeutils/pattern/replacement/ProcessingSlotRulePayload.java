@@ -11,8 +11,4 @@ public record ProcessingSlotRulePayload(
         Set<ResourceLocation> selectedTagIds,
         Set<ResourceLocation> explicitCandidateIds
 ) {
-    public ProcessingSlotRulePayload {
-        selectedTagIds = Collections.unmodifiableSet(new LinkedHashSet<>(selectedTagIds));
-        explicitCandidateIds = Collections.unmodifiableSet(new LinkedHashSet<>(explicitCandidateIds));
-    }
 }

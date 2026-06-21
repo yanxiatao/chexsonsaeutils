@@ -2,7 +2,6 @@ package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.me.service.CraftingService;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
