@@ -562,19 +562,11 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (pattern != null) {
             maybeAttachCompletionTemplate(pattern, compiledTask);
         }
-        LocalExecutionQueue.CoalesceOfferResult offerResult = localExecutionQueue.offerOrCoalesce(
-                compiledTask,
-                new QueueBudgetContext(batchExecutionMode, currentBudgetModel, getPreferredLaneFloor())
-        );
-        if (offerResult == LocalExecutionQueue.CoalesceOfferResult.REJECTED) {
+        if (!localExecutionQueue.offer(compiledTask)) {
             return false;
         }
         localExecutionQueue.reconfigureActiveLanes(currentBudgetModel);
         jobsSubmitted += compiledTask.getExecutionCount();
-        if (offerResult == LocalExecutionQueue.CoalesceOfferResult.COALESCED) {
-            coalescedTaskCount++;
-            coalescedJobsSaved += compiledTask.getExecutionCount();
-        }
         maxExecutionCountPerTaskObserved = Math.max(
                 maxExecutionCountPerTaskObserved,
                 findMaxExecutionCountAcrossQueue()
