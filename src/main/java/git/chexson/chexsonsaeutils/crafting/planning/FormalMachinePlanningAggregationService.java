@@ -19,6 +19,7 @@ import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternSelectedInputsPlan;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceAccessor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;

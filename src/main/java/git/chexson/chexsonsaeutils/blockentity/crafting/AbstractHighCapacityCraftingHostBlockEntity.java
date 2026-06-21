@@ -35,6 +35,7 @@ import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpu
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingTimingService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineCraftingProvider;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
 import git.chexson.chexsonsaeutils.crafting.persistence.HighCapacityPatternHostSavedData;
 import net.minecraft.core.BlockPos;
