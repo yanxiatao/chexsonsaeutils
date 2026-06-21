@@ -39,6 +39,8 @@ import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.gui.ConfigurationScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -85,6 +87,8 @@ public class Chexsonsaeutils {
 
     public Chexsonsaeutils(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, ChexsonsaeutilsCompatibilityConfig.SPEC);
+        modContainer.registerExtensionPoint(IConfigScreenFactory.class,
+                (mc, parent) -> new ConfigurationScreen(modContainer, parent));
         ChexsonsaeutilsContent.register(modEventBus);
 
         modEventBus.addListener(this::onCommonSetup);

@@ -97,7 +97,15 @@
 
 ### 游戏内配置 UI
 
-如果安装了 **Configured** mod（`2.6+` 版本），可通过以下方式访问配置 UI：
+#### NeoForge 原生配置屏幕（推荐）
+
+无需额外依赖，直接使用 NeoForge 提供的配置界面：
+- 主菜单 → Mods → 选择 `Chexson's ae utils` → **配置**按钮（右上角齿轮图标）
+- 提供标准的 NeoForge 配置编辑界面，支持所有配置项
+
+#### Configured（可选增强）
+
+如果安装了 **Configured** mod（`2.6+` 版本），可获得更友好的配置 UI：
 - 主菜单或暂停菜单 → Mods → 选择 `Chexson's ae utils` → Config 按钮
 - 配置界面提供分类明确的选项、范围验证和详细注释
 
