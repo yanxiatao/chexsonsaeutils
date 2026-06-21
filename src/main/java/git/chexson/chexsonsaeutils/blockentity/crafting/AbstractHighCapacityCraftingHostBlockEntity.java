@@ -5,6 +5,7 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.inventories.InternalInventory;
+import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.storage.IStorageService;
@@ -16,6 +17,8 @@ import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
+import appeng.crafting.execution.ExecutingCraftingJob;
+import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.core.definitions.AEItems;
@@ -26,6 +29,8 @@ import appeng.menu.AutoCraftingMenu;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
+import git.chexson.chexsonsaeutils.crafting.NativeSourceCpuHandle;
+import git.chexson.chexsonsaeutils.crafting.ParallelActiveCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchKey;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchRequest;
@@ -36,7 +41,12 @@ import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregat
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineCraftingProvider;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingLane;
 import git.chexson.chexsonsaeutils.crafting.persistence.HighCapacityPatternHostSavedData;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobAccessor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -2167,7 +2177,57 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             List<GenericStack> payload,
             long hardDeadlineNanos
     ) {
-        return payload;
+        UUID sourceCraftingId = pending.sourceCraftingId();
+        if (sourceCraftingId == null) {
+            return payload;
+        }
+        SourceCpuHandle cpuHandle = findSourceCpuHandle(sourceCraftingId);
+        if (cpuHandle == null || !cpuHandle.isActive()) {
+            return payload;
+        }
+        AeCpuIngressRouter.RoutingResult result = AeCpuIngressRouter.routePayloadIntoSourceCpu(
+                new MachineSource(this),
+                payload,
+                cpuHandle
+        );
+        return result.remainingPayload();
+    }
+
+    private @Nullable SourceCpuHandle findSourceCpuHandle(UUID craftingId) {
+        ICraftingService craftingService = getMainNode().getGrid().getCraftingService();
+        if (!(craftingService instanceof CraftingService service)) {
+            return null;
+        }
+        for (var candidate : service.getCpus()) {
+            if (candidate instanceof CraftingCPUCluster cluster) {
+                if (isMatchingNativeCpu(cluster, craftingId)) {
+                    return new NativeSourceCpuHandle(cluster, craftingId);
+                }
+            }
+            if (candidate instanceof ParallelCraftingCPU parallelCpu) {
+                if (!parallelCpu.isActiveVirtualCpu()) {
+                    continue;
+                }
+                ParallelCraftingCpuCluster cluster = parallelCpu.cluster();
+                ParallelCraftingLane lane = cluster.findLaneByCraftingId(craftingId);
+                if (lane != null && parallelCpu == cluster.findActiveCpuByCraftingId(craftingId)) {
+                    return new ParallelActiveCpuHandle(cluster, craftingId);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isMatchingNativeCpu(CraftingCPUCluster cpu, UUID craftingId) {
+        if (!cpu.isActive()) {
+            return false;
+        }
+        ExecutingCraftingJob job = ((CraftingCpuLogicAccessor) cpu.craftingLogic).getJob();
+        if (job == null) {
+            return false;
+        }
+        ExecutingCraftingJobAccessor accessor = (ExecutingCraftingJobAccessor) job;
+        return accessor.getLink() != null && craftingId.equals(accessor.getLink().getCraftingID());
     }
 
     private void appendRemainingCpuWaitingPayload(
