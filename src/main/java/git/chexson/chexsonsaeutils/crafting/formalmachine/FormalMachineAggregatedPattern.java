@@ -46,7 +46,7 @@ public final class FormalMachineAggregatedPattern implements IFormalMachineAggre
     private static final int CRAFTING_GRID_SLOTS = 9;
 
     private final AEItemKey definition;
-    private final AECraftingPattern basePattern;
+    private final IPatternDetails basePattern;
     private final FormalMachineHostLocator hostLocator;
     private final IPatternDetails.IInput[] inputs;
     private final List<GenericStack> outputs;
@@ -58,7 +58,7 @@ public final class FormalMachineAggregatedPattern implements IFormalMachineAggre
 
     private FormalMachineAggregatedPattern(
             AEItemKey definition,
-            AECraftingPattern basePattern,
+            IPatternDetails basePattern,
             FormalMachineHostLocator hostLocator,
             List<GenericStack> exposedInputStacks,
             List<GenericStack> outputStacks,
@@ -82,7 +82,7 @@ public final class FormalMachineAggregatedPattern implements IFormalMachineAggre
 
     public static @Nullable FormalMachineAggregatedPattern create(
             HolderLookup.Provider registries,
-            AECraftingPattern basePattern,
+            IPatternDetails basePattern,
             FormalMachineHostLocator hostLocator,
             List<GenericStack> inputStacks,
             List<GenericStack> aggregatedOutputs,
@@ -141,13 +141,15 @@ public final class FormalMachineAggregatedPattern implements IFormalMachineAggre
     public static boolean isEncodedDefinition(@Nullable ItemStack stack) {
         return stack != null
                 && !stack.isEmpty()
-                && stack.get(AEComponents.ENCODED_CRAFTING_PATTERN) != null
+                && (stack.get(AEComponents.ENCODED_CRAFTING_PATTERN) != null
+                    || stack.get(AEComponents.ENCODED_PROCESSING_PATTERN) != null)
                 && getMetadataTag(stack) != null;
     }
 
     public static boolean isEncodedDefinition(@Nullable AEItemKey definition) {
         return definition != null
-                && definition.get(AEComponents.ENCODED_CRAFTING_PATTERN) != null
+                && (definition.get(AEComponents.ENCODED_CRAFTING_PATTERN) != null
+                    || definition.get(AEComponents.ENCODED_PROCESSING_PATTERN) != null)
                 && getMetadataTag(definition) != null;
     }
 
@@ -162,7 +164,7 @@ public final class FormalMachineAggregatedPattern implements IFormalMachineAggre
         if (metadata == null) {
             return null;
         }
-        AECraftingPattern basePattern = decodeBasePattern(definition, level);
+        IPatternDetails basePattern = decodeBasePattern(definition, level);
         if (basePattern == null) {
             return null;
         }
@@ -185,7 +187,7 @@ public final class FormalMachineAggregatedPattern implements IFormalMachineAggre
     }
 
     @Override
-    public AECraftingPattern basePattern() {
+    public IPatternDetails basePattern() {
         return basePattern;
     }
 
@@ -243,7 +245,10 @@ public final class FormalMachineAggregatedPattern implements IFormalMachineAggre
                 return stack;
             }
         }
-        return basePattern.assemble(input, level);
+        if (basePattern instanceof AECraftingPattern craftingPattern) {
+            return craftingPattern.assemble(input, level);
+        }
+        return ItemStack.EMPTY;
     }
 
     @Override
@@ -348,7 +353,7 @@ public final class FormalMachineAggregatedPattern implements IFormalMachineAggre
         });
     }
 
-    private static @Nullable AECraftingPattern decodeBasePattern(AEItemKey definition, Level level) {
+    private static @Nullable IPatternDetails decodeBasePattern(AEItemKey definition, Level level) {
         ItemStack sanitizedDefinitionStack = definition.toStack();
         if (sanitizedDefinitionStack.isEmpty()) {
             return null;
@@ -358,8 +363,7 @@ public final class FormalMachineAggregatedPattern implements IFormalMachineAggre
         if (sanitizedDefinition == null) {
             return null;
         }
-        IPatternDetails decoded = AEPatternDecoder.INSTANCE.decodePattern(sanitizedDefinition, level);
-        return decoded instanceof AECraftingPattern craftingPattern ? craftingPattern : null;
+        return AEPatternDecoder.INSTANCE.decodePattern(sanitizedDefinition, level);
     }
 
     private static @Nullable CompoundTag getMetadataTag(@Nullable ItemStack stack) {

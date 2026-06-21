@@ -4,6 +4,7 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -85,6 +86,51 @@ public final class ProcessingCompiledTask {
                 totalTicks,
                 totalTicks,
                 executionCount
+        );
+    }
+
+    @Nullable
+    public static ProcessingCompiledTask compileAggregated(
+            IFormalMachineAggregatedPattern aggregatedPattern,
+            KeyCounter[] inputHolder,
+            int totalTicks
+    ) {
+        if (aggregatedPattern == null || inputHolder == null) {
+            return null;
+        }
+        List<GenericStack> selectedInputs = new ArrayList<>();
+        for (GenericStack input : aggregatedPattern.aggregatedInputs()) {
+            if (input == null || input.what() == null || input.amount() <= 0) {
+                return null;
+            }
+            long extracted = 0;
+            for (KeyCounter holder : inputHolder) {
+                long available = holder.get(input.what());
+                if (available > 0) {
+                    long toExtract = Math.min(available, input.amount() - extracted);
+                    holder.remove(input.what(), toExtract);
+                    extracted += toExtract;
+                    if (extracted >= input.amount()) {
+                        break;
+                    }
+                }
+            }
+            if (extracted != input.amount()) {
+                return null;
+            }
+            selectedInputs.add(input);
+        }
+        List<GenericStack> outputs = aggregatedPattern.aggregatedOutputs();
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return new ProcessingCompiledTask(
+                aggregatedPattern.getDefinition().toStack(),
+                selectedInputs,
+                outputs,
+                totalTicks,
+                totalTicks,
+                1
         );
     }
 

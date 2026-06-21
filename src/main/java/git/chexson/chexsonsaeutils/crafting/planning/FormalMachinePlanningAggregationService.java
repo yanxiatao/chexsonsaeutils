@@ -105,14 +105,17 @@ public final class FormalMachinePlanningAggregationService {
                 nativePlan.patternTimes()
         );
         if (selectedGraph == null || selectedGraph.nodes().isEmpty()) {
+            LOGGER.info("rewriteNativePlan: selectedGraph is empty");
             return nativePlan;
         }
+        LOGGER.info("rewriteNativePlan: selectedGraph has {} nodes", selectedGraph.nodes().size());
 
         List<HostAggregationCandidate> candidates = buildHostAggregationCandidates(
                 level,
                 rewriteContext,
                 selectedGraph
         );
+        LOGGER.info("rewriteNativePlan: generated {} candidates", candidates.size());
         if (candidates.isEmpty()) {
             return nativePlan;
         }
@@ -343,7 +346,7 @@ public final class FormalMachinePlanningAggregationService {
         Map<IFormalMachinePlanningProvider, Map<AEKey, SelectedGraphNode>> grouped = new LinkedHashMap<>();
         for (Map.Entry<AEKey, SelectedGraphNode> entry : selectedGraph.nodes().entrySet()) {
             SelectedGraphNode node = entry.getValue();
-            if (rewriteContext.unwrapBaseCraftingPattern(node.pattern()) == null || node.host() == null) {
+            if (rewriteContext.unwrapBasePattern(node.pattern()) == null || node.host() == null) {
                 continue;
             }
             grouped.computeIfAbsent(node.host(), ignored -> new LinkedHashMap<>()).put(entry.getKey(), node);
@@ -525,6 +528,7 @@ public final class FormalMachinePlanningAggregationService {
     ) {
         List<SelectedGraphNode> executionOrder = topoSortHostNodes(hostNodes);
         if (executionOrder == null || executionOrder.isEmpty()) {
+            LOGGER.warn("buildHostAggregationCandidate: executionOrder is null/empty");
             return null;
         }
 
@@ -537,18 +541,21 @@ public final class FormalMachinePlanningAggregationService {
         for (SelectedGraphNode node : executionOrder) {
             ItemStack patternDefinition = node.pattern().getDefinition().toStack();
             if (patternDefinition.isEmpty()) {
+                LOGGER.warn("buildHostAggregationCandidate: pattern definition is empty for ", node.outputKey());
                 return null;
             }
 
             Map<AEItemKey, Long> singleRunRemainders =
                     FormalMachineAggregationRemainderHelper.computeSingleRunRemainders(level, node.pattern());
             if (singleRunRemainders == null) {
+                LOGGER.warn("buildHostAggregationCandidate: remainder computation failed for {}", node.outputKey());
                 return null;
             }
 
             List<GenericStack> stepInputs = toScaledStacks(node.inputs(), node.craftCount());
             long primaryAmount = multiply(node.outputAmount(), node.craftCount());
             if (primaryAmount <= 0L) {
+                LOGGER.warn("buildHostAggregationCandidate: primaryAmount <= 0 for {}", node.outputKey());
                 return null;
             }
             List<GenericStack> stepRemainders = toScaledStacks(singleRunRemainders, node.craftCount());
@@ -579,6 +586,7 @@ public final class FormalMachinePlanningAggregationService {
 
         Map<AEKey, Long> boundaryInputs = describeAggregatedBoundaryInputs(steps);
         if (boundaryInputs == null) {
+            LOGGER.warn("buildHostAggregationCandidate: boundaryInputs is null");
             return null;
         }
         Map<AEKey, Long> externalMissingInputs = extractExternalMissingInputs(
@@ -589,6 +597,7 @@ public final class FormalMachinePlanningAggregationService {
         Map<AEKey, Long> boundaryOutputs = subtractPositive(totalProduced, totalInputs);
         restoreRecursiveInitialBoundaryOutputs(boundaryOutputs, recursiveInitialItems);
         if (boundaryOutputs.isEmpty()) {
+            LOGGER.warn("buildHostAggregationCandidate: boundaryOutputs is empty");
             return null;
         }
 
@@ -605,11 +614,13 @@ public final class FormalMachinePlanningAggregationService {
             splitOutputs = new SplitBoundaryOutputs(List.copyOf(outputs), List.copyOf(remainders));
         }
         if (splitOutputs.outputs().isEmpty()) {
+            LOGGER.warn("buildHostAggregationCandidate: splitOutputs.outputs() is empty");
             return null;
         }
 
-        AECraftingPattern basePattern = chooseBasePattern(nativePlan.finalOutput(), hostNodes, executionOrder);
+        IPatternDetails basePattern = chooseBasePattern(nativePlan.finalOutput(), hostNodes, executionOrder);
         if (basePattern == null) {
+            LOGGER.warn("buildHostAggregationCandidate: basePattern is null");
             return null;
         }
 
@@ -812,25 +823,25 @@ public final class FormalMachinePlanningAggregationService {
         return new SplitBoundaryOutputs(List.copyOf(outputs), List.copyOf(remainders));
     }
 
-    private static @Nullable AECraftingPattern chooseBasePattern(
+    private static @Nullable IPatternDetails chooseBasePattern(
             @Nullable GenericStack finalOutput,
             Map<AEKey, SelectedGraphNode> hostNodes,
             List<SelectedGraphNode> executionOrder
     ) {
         if (finalOutput != null && finalOutput.what() != null) {
             SelectedGraphNode finalNode = hostNodes.get(finalOutput.what());
-            AECraftingPattern craftingPattern = finalNode == null ? null : unwrapBaseCraftingPattern(finalNode.pattern());
-            if (craftingPattern != null) {
-                return craftingPattern;
+            IPatternDetails pattern = finalNode == null ? null : unwrapBasePattern(finalNode.pattern());
+            if (pattern != null) {
+                return pattern;
             }
         }
 
         List<SelectedGraphNode> reversedOrder = new ArrayList<>(executionOrder);
         Collections.reverse(reversedOrder);
         for (SelectedGraphNode node : reversedOrder) {
-            AECraftingPattern craftingPattern = unwrapBaseCraftingPattern(node.pattern());
-            if (craftingPattern != null) {
-                return craftingPattern;
+            IPatternDetails pattern = unwrapBasePattern(node.pattern());
+            if (pattern != null) {
+                return pattern;
             }
         }
         return null;
@@ -841,7 +852,7 @@ public final class FormalMachinePlanningAggregationService {
             IPatternDetails pattern
     ) {
         IPatternDetails providerPattern = unwrapDelegatingPattern(pattern);
-        if (!(providerPattern instanceof AECraftingPattern)) {
+        if (providerPattern == null) {
             return null;
         }
 
@@ -1029,6 +1040,10 @@ public final class FormalMachinePlanningAggregationService {
             return null;
         }
         return Map.copyOf(new LinkedHashMap<>(selected));
+    }
+
+    private static @Nullable IPatternDetails unwrapBasePattern(@Nullable IPatternDetails pattern) {
+        return unwrapDelegatingPattern(pattern);
     }
 
     private static @Nullable AECraftingPattern unwrapBaseCraftingPattern(@Nullable IPatternDetails pattern) {
@@ -1703,7 +1718,7 @@ public final class FormalMachinePlanningAggregationService {
 
     private record HostAggregationCandidate(
             IFormalMachinePlanningProvider host,
-            AECraftingPattern basePattern,
+            IPatternDetails basePattern,
             List<GenericStack> boundaryInputs,
             List<GenericStack> externalMissingInputs,
             List<GenericStack> aggregatedOutputs,
@@ -1765,6 +1780,7 @@ public final class FormalMachinePlanningAggregationService {
         private final CraftingService craftingService;
         private final ICraftingPlan nativePlan;
         private final Map<IPatternDetails, @Nullable PatternDefinitionKey> definitionKeys = new HashMap<>();
+        private final Map<IPatternDetails, @Nullable IPatternDetails> unwrappedPatterns = new HashMap<>();
         private final Map<IPatternDetails, @Nullable AECraftingPattern> basePatterns = new HashMap<>();
         private final Map<IPatternDetails, @Nullable IFormalMachinePlanningProvider> exclusiveHosts =
                 new HashMap<>();
@@ -1791,6 +1807,19 @@ public final class FormalMachinePlanningAggregationService {
             PatternDefinitionKey definitionKey = PatternDefinitionKey.of(pattern);
             definitionKeys.put(pattern, definitionKey);
             return definitionKey;
+        }
+
+        @Nullable IPatternDetails unwrapBasePattern(@Nullable IPatternDetails pattern) {
+            if (pattern == null) {
+                return null;
+            }
+            if (unwrappedPatterns.containsKey(pattern)) {
+                return unwrappedPatterns.get(pattern);
+            }
+            IPatternDetails unwrapped =
+                    FormalMachinePlanningAggregationService.unwrapBasePattern(pattern);
+            unwrappedPatterns.put(pattern, unwrapped);
+            return unwrapped;
         }
 
         @Nullable AECraftingPattern unwrapBaseCraftingPattern(@Nullable IPatternDetails pattern) {

@@ -36,6 +36,7 @@ import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregat
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
 import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingLane;
 import git.chexson.chexsonsaeutils.crafting.persistence.HighCapacityPatternHostSavedData;
@@ -490,9 +491,12 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return null;
         }
 
-        AECraftingPattern basePattern = scaledPattern.basePattern();
+        IPatternDetails basePattern = scaledPattern.basePattern();
+        if (!(basePattern instanceof IMolecularAssemblerSupportedPattern craftingPattern)) {
+            return null;
+        }
         return CompiledTask.compile(
-                basePattern,
+                craftingPattern,
                 baseInputHolder,
                 getCurrentOperationTicksForExecution(),
                 totalExecutions

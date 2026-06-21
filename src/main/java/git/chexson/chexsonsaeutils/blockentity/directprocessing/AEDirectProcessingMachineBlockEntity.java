@@ -28,6 +28,7 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingOut
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternInventory;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackSupport;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMachineMetrics;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
@@ -40,6 +41,7 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReaso
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibility;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibilityCache;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PendingOutputBatch;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingCompiledTask;
@@ -258,6 +260,12 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     public boolean pushPattern(IPatternDetails patternDetails, KeyCounter[] inputHolder) {
         long startedAtNanos = System.nanoTime();
         pushPatternCacheLookupCount++;
+
+        if (patternDetails instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+            recordPushPatternCacheLookupNanos(startedAtNanos);
+            return pushAggregatedPattern(aggregatedPattern, inputHolder);
+        }
+
         PatternCompatibility compatibility = patternDetails == null
                 ? null
                 : compatibilityCache.get(patternDetails.getDefinition(), recipeIndex.version());
@@ -279,6 +287,40 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 compatibility.signature(),
                 inputHolder,
                 getCurrentOperationTicks()
+        );
+        Level currentLevel = getLevel();
+        long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
+        if (task == null || !executionQueue.offer(task, budgetController, acceptedTick)) {
+            pushPatternRejectedCount++;
+            return false;
+        }
+        pushPatternAcceptedCount++;
+        saveChanges();
+        return true;
+    }
+
+    private boolean pushAggregatedPattern(
+            IFormalMachineAggregatedPattern aggregatedPattern,
+            KeyCounter[] inputHolder
+    ) {
+        if (aggregatedPattern == null
+                || inputHolder == null
+                || !aggregatedPattern.hostLocator().matches(this)) {
+            pushPatternRejectedCount++;
+            return false;
+        }
+        if (!this.getMainNode().isActive()
+                || pendingOutputRetryDelayTicks > 0
+                || pendingOutputBatches.size() >= MAX_PENDING_OUTPUT_BATCHES
+                || executionQueue.totalTaskCount() >= MAX_QUEUE_TASKS) {
+            pushPatternRejectedCount++;
+            return false;
+        }
+
+        ProcessingCompiledTask task = ProcessingCompiledTask.compileAggregated(
+                aggregatedPattern,
+                inputHolder,
+                aggregatedPattern.totalTicks()
         );
         Level currentLevel = getLevel();
         long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
@@ -953,7 +995,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return fallback;
     }
 
-    private int getCurrentOperationTicks() {
+    @Override
+    public int getCurrentOperationTicks() {
         int speedCards = getInstalledUpgrades(AEItems.SPEED_CARD);
         return Math.max(1, DEFAULT_OPERATION_TICKS >> Math.min(4, speedCards));
     }
