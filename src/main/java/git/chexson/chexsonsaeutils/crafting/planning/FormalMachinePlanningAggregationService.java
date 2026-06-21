@@ -349,11 +349,21 @@ public final class FormalMachinePlanningAggregationService {
             grouped.computeIfAbsent(node.host(), ignored -> new LinkedHashMap<>()).put(entry.getKey(), node);
         }
 
+        LOGGER.info("buildHostAggregationCandidates: total nodes={}, grouped hosts={}",
+                selectedGraph.nodes().size(), grouped.size());
+
         List<HostAggregationCandidate> candidates = new ArrayList<>();
         for (Map.Entry<AbstractHighCapacityCraftingHostBlockEntity, Map<AEKey, SelectedGraphNode>> entry : grouped.entrySet()) {
             Map<AEKey, SelectedGraphNode> hostNodes = entry.getValue();
-            for (Set<AEKey> segment : splitPerPatternFormalAggregationSegments(formalInputsByOutput(hostNodes))) {
+            LOGGER.info("Processing host at {}: {} nodes", entry.getKey().getBlockPos(), hostNodes.size());
+
+            List<Set<AEKey>> segments = splitPerPatternFormalAggregationSegments(formalInputsByOutput(hostNodes));
+            LOGGER.info("Generated {} segments for host", segments.size());
+
+            for (Set<AEKey> segment : segments) {
                 Map<AEKey, SelectedGraphNode> segmentNodes = selectSegmentNodes(hostNodes, segment);
+                LOGGER.info("Segment with {} keys yielded {} nodes", segment.size(), segmentNodes.size());
+
                 HostAggregationCandidate candidate = buildHostAggregationCandidate(
                         level,
                         rewriteContext.nativePlan(),
@@ -362,9 +372,13 @@ public final class FormalMachinePlanningAggregationService {
                 );
                 if (candidate != null) {
                     candidates.add(candidate);
+                    LOGGER.info("Created candidate with {} steps", candidate.steps().size());
+                } else {
+                    LOGGER.warn("Failed to create candidate for segment");
                 }
             }
         }
+        LOGGER.info("Total candidates created: {}", candidates.size());
         return List.copyOf(candidates);
     }
 
@@ -381,6 +395,8 @@ public final class FormalMachinePlanningAggregationService {
                 segments.add(Set.of(output));
             }
         }
+        LOGGER.info("splitPerPatternFormalAggregationSegments: inputs={}, segments={}",
+                formalInputsByOutput.size(), segments.size());
         return List.copyOf(segments);
     }
 
