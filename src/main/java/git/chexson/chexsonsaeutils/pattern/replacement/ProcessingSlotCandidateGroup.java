@@ -8,4 +8,6 @@ public record ProcessingSlotCandidateGroup(
         ResourceLocation tagId,
         List<ResourceLocation> itemIds
 ) {
-}
+public ProcessingSlotCandidateGroup {
+        itemIds = List.copyOf(itemIds);
+    }
