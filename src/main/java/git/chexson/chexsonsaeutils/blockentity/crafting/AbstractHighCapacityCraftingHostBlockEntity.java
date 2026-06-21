@@ -550,8 +550,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 1
         );
         if (compiledTask == null) {
-            debugFormalIngress("aggregated pattern compile rejected rawInputHolder=" + describeInputHolder(inputHolder)
-                    + " patternInputs=" + aggregatedPattern.aggregatedInputs());
             return false;
         }
         attachAggregatedCompletionTemplate(aggregatedPattern, compiledTask);
@@ -1725,15 +1723,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return true;
         }
 
-        if (pendingCompletionWork.completionRoute() == TaskCompletionRoute.CPU_WAITING
-                && pendingCompletionWork.isComplete()) {
-            CompiledTask completedTask = pendingCompletionWork.compiledTask();
-            pendingCompletionQueue.removeFirst();
-            completedTask.markComplete();
-            saveChanges();
-            return true;
-        }
-
         if (pendingCompletionWork.isComplete()) {
             PendingAeReturn nextPending = finalizePendingCompletionReturn(pendingCompletionWork);
             CompiledTask completedTask = pendingCompletionWork.compiledTask();
@@ -1923,10 +1912,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 pendingCompletionWork.completionRoute(),
                 pendingCompletionWork.compiledTask().getSourceCraftingId()
         );
-        debugFormalIngress("createSlicePendingReturn route=" + pendingCompletionWork.completionRoute()
-                + " sourceCraftingId=" + pendingCompletionWork.compiledTask().getSourceCraftingId()
-                + " primary=" + sliceResult.primary()
-                + " payload=" + pendingReturn.pendingPayload());
         return pendingReturn;
     }
 
@@ -2026,9 +2011,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         List<GenericStack> payload = pending.completionRoute() == TaskCompletionRoute.CPU_WAITING
                 ? orderCpuWaitingPayload(pending)
                 : List.copyOf(pending.pendingPayload());
-        debugFormalIngress("tryDeliverPendingReturn route=" + pending.completionRoute()
-                + " sourceCraftingId=" + pending.sourceCraftingId()
-                + " payload=" + payload);
         if (payload.isEmpty()) {
             return null;
         }
@@ -2094,15 +2076,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         merged.addAll(first);
         merged.addAll(second);
         return List.copyOf(merged);
-    }
-
-    private static void debugFormalIngress(String message) {
-        if (!Boolean.getBoolean("chexsonsaeutils.debugFormalIngress")) {
-            return;
-        }
-        String line = "[CHEXSONSAEUTILS][FORMAL_INGRESS] " + message;
-        System.out.println(line);
-        System.err.println(line);
     }
 
     private static String describeInputHolder(@Nullable KeyCounter[] inputHolder) {
@@ -2200,12 +2173,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                     genericStack,
                     sourceCpu
             );
-            debugFormalIngress("routePayloadThroughCpu stack=" + genericStack
-                    + " sourceCraftingId=" + pending.sourceCraftingId()
-                    + " acceptedBySourceCpu=" + routingResult.acceptedBySourceCpu()
-                    + " acceptedByAnyCpu=" + routingResult.acceptedByAnyCpu()
-                    + " insertedIntoAe=" + routingResult.insertedIntoAe()
-                    + " remaining=" + routingResult.remainingAmount());
             recordIngressRoutingResult(routingResult, true, pending.sourceCraftingId());
             if (routingResult.remainingAmount() > 0L && routingResult.key() != null) {
                 remainingPayload.add(new GenericStack(routingResult.key(), routingResult.remainingAmount()));
@@ -2249,9 +2216,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private static boolean isMatchingNativeCpu(CraftingCPUCluster cpu, UUID craftingId) {
-        if (!cpu.isActive()) {
-            return false;
-        }
         ExecutingCraftingJob job = ((CraftingCpuLogicAccessor) cpu.craftingLogic).getJob();
         if (job == null) {
             return false;

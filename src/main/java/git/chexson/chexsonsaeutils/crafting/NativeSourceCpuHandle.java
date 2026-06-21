@@ -16,7 +16,7 @@ public record NativeSourceCpuHandle(CraftingCPUCluster cpu, UUID craftingId) imp
 
     @Override
     public boolean isActive() {
-        if (cpu == null || !cpu.isActive()) {
+        if (cpu == null) {
             return false;
         }
         CraftingCpuLogic logic = cpu.craftingLogic;
