@@ -29,6 +29,11 @@ public record AggregatedCraftingPlan(
     }
 
     @Override
+    public ICraftingPlan chexsonsaeutils$getDelegate() {
+        return this;
+    }
+
+    @Override
     public KeyCounter chexsonsaeutils$dyeableRecursiveInitialItems() {
         KeyCounter copy = new KeyCounter();
         if (dyeableRecursiveInitialItems != null) {

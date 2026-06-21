@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.color;
 
+import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.stacks.KeyCounter;
 
 /**
@@ -13,6 +14,11 @@ public interface DyeablePatternRecursivePlan {
      * 返回当前计划是否使用了染色样板递归 ring replacement。
      */
     boolean chexsonsaeutils$usesDyeableRecursivePlanning();
+
+    /**
+     * 返回底层委托的 CraftingPlan 对象，用于兼容期望 CraftingPlan 类型的代码。
+     */
+    ICraftingPlan chexsonsaeutils$getDelegate();
 
     /**
      * 返回递归 ring replacement 额外要求从网络取出的初始物品。
