@@ -164,9 +164,6 @@ public final class FormalMachinePlanningAggregationService {
         }
 
         if (shouldSnapshotLiveVisibleStacks(nativePlan, !appliedCandidates.isEmpty())) {
-            for (HostAggregationCandidate candidate : appliedCandidates) {
-                candidate.host().recordPlanningLiveSnapshotRequestForTest();
-            }
             liveVisibleStacks = rewriteContext.snapshotLiveVisibleStacks();
         }
 
@@ -184,13 +181,7 @@ public final class FormalMachinePlanningAggregationService {
         }
         rewrittenPatternTimes = dependencyOrderedPatternTimes;
 
-        long wallClockNanos = Math.max(0L, System.nanoTime() - startedAt);
         long rewrittenBytes = computeRewrittenBytes(appliedCandidates);
-        for (HostAggregationCandidate candidate : appliedCandidates) {
-            candidate.host().recordPlanningAggregationRequestForTest(requestedAmount);
-            candidate.host().recordPlanningWorkEstimateForTest(candidate.estimatedWork(), true);
-            candidate.host().recordDeterministicPlanningHitForTest(wallClockNanos);
-        }
 
         KeyCounter rewrittenMissingItems = mergeMissingItems(
                 nativePlan.missingItems(),
@@ -237,10 +228,8 @@ public final class FormalMachinePlanningAggregationService {
             }
 
             IFormalMachinePlanningProvider host = rewriteContext.exclusiveFormalMachineProvider(pattern);
-            recordPlanningHelperUsage(host, host == null);
 
             Map<AEKey, Long> inputs = rewriteContext.describeAggregationInputs(pattern);
-            recordPlanningHelperUsage(host, inputs == null);
             if (inputs == null) {
                 LOGGER.warn("Selected crafting pattern {} has non-deterministic inputs", pattern.getDefinition());
                 return null;
@@ -869,15 +858,6 @@ public final class FormalMachinePlanningAggregationService {
             matchedHost = host;
         }
         return sawFormalProvider ? matchedHost : null;
-    }
-
-    private static void recordPlanningHelperUsage(
-            @Nullable IFormalMachinePlanningProvider host,
-            boolean nullResult
-    ) {
-        if (host instanceof AbstractHighCapacityCraftingHostBlockEntity craftingHost) {
-            craftingHost.recordPlanningHelperUsageForTest(nullResult);
-        }
     }
 
     static boolean shouldSnapshotLiveVisibleStacks(@Nullable ICraftingPlan nativePlan, boolean hasAppliedCandidates) {
