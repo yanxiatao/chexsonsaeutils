@@ -48,10 +48,11 @@ public abstract class AE2CTRecipeHelperCompatMixin {
 
             if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
                 for (FormalMachineAggregationStep step : aggregatedPattern.steps()) {
+                    long scaledExecutionCount = step.executionCount() * (times == null ? 1L : times);
                     recipes.add(new RecipeHelper.Recipe(
                             step.stepInputs(),
                             List.of(step.stepPrimaryOutput()),
-                            step.executionCount()
+                            scaledExecutionCount
                     ));
                 }
             } else {
