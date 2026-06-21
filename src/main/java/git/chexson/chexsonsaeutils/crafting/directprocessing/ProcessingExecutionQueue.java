@@ -41,18 +41,11 @@ public final class ProcessingExecutionQueue {
         if (task == null) {
             return false;
         }
-        int maxCoalescedExecutions = budgetController == null
-                ? ProcessingExecutionBudgetController.NORMAL_LIMITS.maxCoalescedExecutions()
-                : budgetController.maxCoalescedExecutions();
-        ProcessingLatencyOrigin latencyOrigin = acceptedTick >= 0L ? ProcessingLatencyOrigin.single(acceptedTick) : null;
-        if (tryCoalescePendingTask(task, maxCoalescedExecutions, latencyOrigin)) {
-            return true;
-        }
         if (totalTaskCount() >= maxTaskCount) {
             return false;
         }
-        if (latencyOrigin != null) {
-            latencyOrigins.put(task, latencyOrigin);
+        if (acceptedTick >= 0L) {
+            latencyOrigins.put(task, ProcessingLatencyOrigin.single(acceptedTick));
         }
         pendingTasks.offer(task);
         return true;
@@ -168,50 +161,6 @@ public final class ProcessingExecutionQueue {
                 lane.assign(pendingTasks.removeFirst());
             }
         }
-    }
-
-    private boolean tryCoalescePendingTask(
-            ProcessingCompiledTask task,
-            int maxCoalescedExecutions,
-            ProcessingLatencyOrigin latencyOrigin
-    ) {
-        ProcessingCompiledTask target = findCoalesceTarget(task);
-        if (target != null) {
-            if (target.tryAppendExecutionCount(task.executionCount(), maxCoalescedExecutions)) {
-                if (latencyOrigin != null) {
-                    latencyOrigins.merge(target, latencyOrigin, ProcessingLatencyOrigin::merge);
-                }
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private ProcessingCompiledTask findCoalesceTarget(ProcessingCompiledTask task) {
-        ProcessingCompiledTask tail = pendingTasks.peekLast();
-        if (tail != null && tail.canCoalesceWith(task, Integer.MAX_VALUE)) {
-            return tail;
-        }
-        ProcessingCompiledTask leastLoaded = null;
-        for (ProcessingExecutionLane lane : lanes) {
-            ProcessingCompiledTask candidate = lane.activeTask();
-            if (candidate != null && candidate.canDrainCoalesceWith(task)) {
-                if (leastLoaded == null || candidate.executionCount() < leastLoaded.executionCount()) {
-                    leastLoaded = candidate;
-                }
-            }
-        }
-        if (leastLoaded != null) {
-            return leastLoaded;
-        }
-        for (ProcessingCompiledTask candidate : pendingTasks) {
-            if (candidate.canDrainCoalesceWith(task)) {
-                if (leastLoaded == null || candidate.executionCount() < leastLoaded.executionCount()) {
-                    leastLoaded = candidate;
-                }
-            }
-        }
-        return leastLoaded;
     }
 
     private void ensureLaneCapacity(int laneCount) {

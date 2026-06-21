@@ -179,51 +179,6 @@ public final class ProcessingCompiledTask {
         this.sourceCraftingId = sourceCraftingId;
     }
 
-    public boolean canDrainCoalesceWith(ProcessingCompiledTask other) {
-        if (other == null) {
-            return false;
-        }
-        if (other.remainingTicks != other.totalTicks) {
-            return false;
-        }
-        boolean isQueued = this.remainingTicks == this.totalTicks;
-        boolean isRunning = this.remainingTicks > 0 && this.remainingTicks < this.totalTicks;
-        if (!isQueued && !isRunning) {
-            return false;
-        }
-        return selectedInputs.equals(other.selectedInputs)
-                && outputsPerExecution.equals(other.outputsPerExecution)
-                && totalTicks == other.totalTicks
-                && Objects.equals(sourceCraftingId, other.sourceCraftingId)
-                && canBuildOutputPayloadFor(executionCount + other.executionCount);
-    }
-
-    public boolean canCoalesceWith(ProcessingCompiledTask other, int maxExecutionCount) {
-        if (other == null) {
-            return false;
-        }
-        if (this.remainingTicks != this.totalTicks || other.remainingTicks != other.totalTicks) {
-            return false;
-        }
-        return selectedInputs.equals(other.selectedInputs)
-                && outputsPerExecution.equals(other.outputsPerExecution)
-                && totalTicks == other.totalTicks
-                && Objects.equals(sourceCraftingId, other.sourceCraftingId)
-                && canBuildOutputPayloadFor(executionCount + other.executionCount);
-    }
-
-    public boolean tryAppendExecutionCount(int additionalExecutions, int maxExecutionCount) {
-        if (additionalExecutions <= 0) {
-            return false;
-        }
-        int nextExecutionCount = executionCount + additionalExecutions;
-        if (!canBuildOutputPayloadFor(nextExecutionCount)) {
-            return false;
-        }
-        executionCount = nextExecutionCount;
-        return true;
-    }
-
     public CompoundTag writeToTag(HolderLookup.Provider registries) {
         CompoundTag tag = new CompoundTag();
         tag.put(NBT_PATTERN, patternDefinition.saveOptional(registries));
