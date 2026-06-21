@@ -324,10 +324,7 @@ final class ParallelCraftingCpuLogic {
                     }
 
                     KeyCounter[] submittedCraftingContainer = craftingContainer;
-                    boolean acceptedPush = FormalMachineSourceCpuContext.withSourceCraftingId(
-                            currentSourceCraftingId(),
-                            () -> provider.pushPattern(details, submittedCraftingContainer)
-                    );
+                    boolean acceptedPush = provider.pushPattern(details, submittedCraftingContainer);
 
                     if (!acceptedPush) {
                         if (providerBackoff != null) {
