@@ -32,13 +32,7 @@ import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
 import git.chexson.chexsonsaeutils.crafting.NativeSourceCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.ParallelActiveCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchKey;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchRequest;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineFastPathResult;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingTimingService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineCraftingProvider;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
@@ -79,8 +73,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetworkedBlockEntity
-        implements PatternContainer, IUpgradeableObject, ICraftingProvider, InternalInventoryHost,
-        IFormalMachineCraftingProvider {
+        implements PatternContainer, IUpgradeableObject, ICraftingProvider, InternalInventoryHost {
 
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_EXECUTION_QUEUE = "executionQueue";
@@ -560,7 +553,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (compiledTask == null) {
             return false;
         }
-        FormalMachineSourceCpuContext.applyToCompiledTask(compiledTask);
         IMolecularAssemblerSupportedPattern pattern = compiledTask.resolvePattern(getLevel());
         if (pattern != null) {
             maybeAttachCompletionTemplate(pattern, compiledTask);
@@ -584,47 +576,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         );
         markQueueMutationForSave(localExecutionQueue.totalTaskCount() <= 1);
         return true;
-    }
-
-    @Override
-    public boolean supportsFastBatch(IPatternDetails patternDetails) {
-        return false;
-    }
-
-    @Override
-    public boolean canAcceptBatchKey(FormalMachineBatchKey batchKey) {
-        if (!formalMachineDispatchHost || batchKey == null) {
-            return false;
-        }
-        boolean accepted = this.getMainNode().isActive()
-                && pendingAeReturn == null
-                && !isCompletionBacklogHardPressured()
-                && localExecutionQueue.totalTaskCount() < FAST_BATCH_BACKPRESSURE_TASK_LIMIT;
-        if (!accepted) {
-            providerOverpressureRejectCount++;
-        }
-        return accepted;
-    }
-
-    @Override
-    public int getDispatchBackpressure() {
-        return localExecutionQueue.totalTaskCount() + getPendingCompletionTaskCountInternal();
-    }
-
-    @Override
-    public int getDispatchOperationTicks() {
-        return getCurrentOperationTicksForExecution();
-    }
-
-    @Override
-    public String getMachineIdentity() {
-        return worldPosition.toShortString();
-    }
-
-    @Override
-    public FormalMachineFastPathResult offerFastBatch(FormalMachineBatchRequest request) {
-        fastPathFallbackCount++;
-        return FormalMachineFastPathResult.fallback();
     }
 
     @Override
@@ -1688,12 +1639,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             templatedCompletionHitCount++;
         }
 
-        FormalMachineCraftingTimingService.recordLocalCompletion(
-                pendingCompletionWork.compiledTask().getSourceCraftingId(),
-                sliceResult.primary(),
-                sliceResult.remainders()
-        );
-
         if (pendingCompletionWork.completionRoute() == TaskCompletionRoute.CPU_WAITING) {
             PendingAeReturn slicePendingReturn = createSlicePendingReturn(pendingCompletionWork, sliceResult);
             if (slicePendingReturn != null) {
@@ -2318,11 +2263,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         }
         if (cpuWaitingMetrics && routingResult.acceptedByAnyCpu() > 0L && routingResult.key() != null) {
             cpuWaitingReturnAmount = safeAdd(cpuWaitingReturnAmount, routingResult.acceptedByAnyCpu());
-            FormalMachineCraftingTimingService.recordCpuWaitingReturn(
-                    sourceCraftingId,
-                    routingResult.key(),
-                    routingResult.acceptedByAnyCpu()
-            );
         }
     }
 

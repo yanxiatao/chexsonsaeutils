@@ -47,7 +47,6 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecution
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionQueue;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingLatencyOrigin;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTaskCompletionHost;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -281,10 +280,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 inputHolder,
                 getCurrentOperationTicks()
         );
-        UUID sourceCraftingId = FormalMachineSourceCpuContext.currentSourceCraftingId();
-        if (task != null) {
-            task.setSourceCraftingId(sourceCraftingId);
-        }
         Level currentLevel = getLevel();
         long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
         if (task == null || !executionQueue.offer(task, budgetController, acceptedTick)) {
