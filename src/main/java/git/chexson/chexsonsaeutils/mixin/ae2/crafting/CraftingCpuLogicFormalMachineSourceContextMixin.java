@@ -94,16 +94,7 @@ public abstract class CraftingCpuLogicFormalMachineSourceContextMixin implements
             IPatternDetails patternDetails,
             KeyCounter[] inputHolder
     ) {
-        boolean pushed;
-        if (FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()) {
-            pushed = FormalMachineSourceCpuContext.withSourceCraftingId(
-                    chexsonsaeutils$currentCraftingId(),
-                    () -> provider.pushPattern(patternDetails, inputHolder)
-            );
-        } else {
-            pushed = provider.pushPattern(patternDetails, inputHolder);
-        }
+        boolean pushed = provider.pushPattern(patternDetails, inputHolder);
         if (pushed && EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()) {
             chexsonsaeutils$pushedCurrentPattern = true;
         }

@@ -1723,6 +1723,15 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return true;
         }
 
+        if (pendingCompletionWork.completionRoute() == TaskCompletionRoute.CPU_WAITING
+                && pendingCompletionWork.isComplete()) {
+            CompiledTask completedTask = pendingCompletionWork.compiledTask();
+            pendingCompletionQueue.removeFirst();
+            completedTask.markComplete();
+            saveChanges();
+            return true;
+        }
+
         if (pendingCompletionWork.isComplete()) {
             PendingAeReturn nextPending = finalizePendingCompletionReturn(pendingCompletionWork);
             CompiledTask completedTask = pendingCompletionWork.compiledTask();
