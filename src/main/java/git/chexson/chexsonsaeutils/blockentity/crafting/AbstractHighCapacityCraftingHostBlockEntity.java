@@ -2177,20 +2177,50 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             List<GenericStack> payload,
             long hardDeadlineNanos
     ) {
-        UUID sourceCraftingId = pending.sourceCraftingId();
-        if (sourceCraftingId == null) {
+        if (payload.isEmpty()) {
+            return List.of();
+        }
+        SourceCpuHandle sourceCpu = findSourceCpuHandle(pending.sourceCraftingId());
+        if (sourceCpu == null || !sourceCpu.isActive()) {
             return payload;
         }
-        SourceCpuHandle cpuHandle = findSourceCpuHandle(sourceCraftingId);
-        if (cpuHandle == null || !cpuHandle.isActive()) {
-            return payload;
+        List<GenericStack> remainingPayload = new ArrayList<>(payload.size());
+        for (GenericStack genericStack : payload) {
+            if (genericStack == null || genericStack.what() == null || genericStack.amount() <= 0L) {
+                continue;
+            }
+            if (isDeadlineReached(hardDeadlineNanos)) {
+                cpuWaitingReturnBudgetStopCount++;
+                cpuWaitingReturnStoppedThisTick = true;
+                appendRemainingCpuWaitingPayload(payload, genericStack, remainingPayload, true);
+                break;
+            }
+            AeCpuIngressRouter.StackRoutingResult routingResult = AeCpuIngressRouter.routeStackIntoSourceCpu(
+                    actionSource,
+                    genericStack,
+                    sourceCpu
+            );
+            debugFormalIngress("routePayloadThroughCpu stack=" + genericStack
+                    + " sourceCraftingId=" + pending.sourceCraftingId()
+                    + " acceptedBySourceCpu=" + routingResult.acceptedBySourceCpu()
+                    + " acceptedByAnyCpu=" + routingResult.acceptedByAnyCpu()
+                    + " insertedIntoAe=" + routingResult.insertedIntoAe()
+                    + " remaining=" + routingResult.remainingAmount());
+            recordIngressRoutingResult(routingResult, true, pending.sourceCraftingId());
+            if (routingResult.remainingAmount() > 0L && routingResult.key() != null) {
+                remainingPayload.add(new GenericStack(routingResult.key(), routingResult.remainingAmount()));
+            }
+            if (isDeadlineReached(hardDeadlineNanos)) {
+                cpuWaitingReturnBudgetStopCount++;
+                cpuWaitingReturnStoppedThisTick = true;
+                if (isDeadlinePastAbsoluteBudget(hardDeadlineNanos)) {
+                    cpuWaitingReturnOverBudgetCount++;
+                }
+                appendRemainingCpuWaitingPayload(payload, genericStack, remainingPayload, false);
+                break;
+            }
         }
-        AeCpuIngressRouter.RoutingResult result = AeCpuIngressRouter.routePayloadIntoSourceCpu(
-                new MachineSource(this),
-                payload,
-                cpuHandle
-        );
-        return result.remainingPayload();
+        return List.copyOf(remainingPayload);
     }
 
     private @Nullable SourceCpuHandle findSourceCpuHandle(UUID craftingId) {
