@@ -7,6 +7,7 @@ import net.minecraft.nbt.Tag;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 public final class MultiLevelEmitterUtils {
 
@@ -33,52 +34,52 @@ public final class MultiLevelEmitterUtils {
         return normalized;
     }
 
-    public static List<MultiLevelEmitterPart.LogicRelation> readLogicRelationsFromNBT(CompoundTag tag, String key) {
+    public static <T extends Enum<T>> List<T> readEnumListFromNBT(
+            CompoundTag tag,
+            String key,
+            Function<String, T> parser
+    ) {
         if (tag == null || key == null || !tag.contains(key, Tag.TAG_LIST)) {
             return new ArrayList<>();
         }
         ListTag list = tag.getList(key, Tag.TAG_STRING);
-        List<MultiLevelEmitterPart.LogicRelation> out = new ArrayList<>(list.size());
+        List<T> out = new ArrayList<>(list.size());
         for (Tag element : list) {
-            out.add(MultiLevelEmitterPart.LogicRelation.fromPersisted(element.getAsString()));
+            out.add(parser.apply(element.getAsString()));
         }
         return out;
+    }
+
+    public static <T extends Enum<T>> void writeEnumListToNBT(
+            List<T> values,
+            CompoundTag target,
+            String key,
+            T defaultValue
+    ) {
+        ListTag list = new ListTag();
+        if (values != null) {
+            for (T value : values) {
+                T safeValue = value == null ? defaultValue : value;
+                list.add(StringTag.valueOf(safeValue.name()));
+            }
+        }
+        target.put(key, list);
+    }
+
+    public static List<MultiLevelEmitterPart.LogicRelation> readLogicRelationsFromNBT(CompoundTag tag, String key) {
+        return readEnumListFromNBT(tag, key, MultiLevelEmitterPart.LogicRelation::fromPersisted);
     }
 
     public static List<MultiLevelEmitterPart.ComparisonMode> readComparisonModesFromNBT(CompoundTag tag, String key) {
-        if (tag == null || key == null || !tag.contains(key, Tag.TAG_LIST)) {
-            return new ArrayList<>();
-        }
-        ListTag list = tag.getList(key, Tag.TAG_STRING);
-        List<MultiLevelEmitterPart.ComparisonMode> out = new ArrayList<>(list.size());
-        for (Tag element : list) {
-            out.add(MultiLevelEmitterPart.ComparisonMode.fromPersisted(element.getAsString()));
-        }
-        return out;
+        return readEnumListFromNBT(tag, key, MultiLevelEmitterPart.ComparisonMode::fromPersisted);
     }
 
     public static List<MultiLevelEmitterPart.MatchingMode> readMatchingModesFromNBT(CompoundTag tag, String key) {
-        if (tag == null || key == null || !tag.contains(key, Tag.TAG_LIST)) {
-            return new ArrayList<>();
-        }
-        ListTag list = tag.getList(key, Tag.TAG_STRING);
-        List<MultiLevelEmitterPart.MatchingMode> out = new ArrayList<>(list.size());
-        for (Tag element : list) {
-            out.add(MultiLevelEmitterPart.MatchingMode.fromPersisted(element.getAsString()));
-        }
-        return out;
+        return readEnumListFromNBT(tag, key, MultiLevelEmitterPart.MatchingMode::fromPersisted);
     }
 
     public static List<MultiLevelEmitterPart.CraftingMode> readCraftingModesFromNBT(CompoundTag tag, String key) {
-        if (tag == null || key == null || !tag.contains(key, Tag.TAG_LIST)) {
-            return new ArrayList<>();
-        }
-        ListTag list = tag.getList(key, Tag.TAG_STRING);
-        List<MultiLevelEmitterPart.CraftingMode> out = new ArrayList<>(list.size());
-        for (Tag element : list) {
-            out.add(MultiLevelEmitterPart.CraftingMode.fromPersisted(element.getAsString()));
-        }
-        return out;
+        return readEnumListFromNBT(tag, key, MultiLevelEmitterPart.CraftingMode::fromPersisted);
     }
 
     public static void writeLogicRelationsToNBT(
@@ -86,15 +87,7 @@ public final class MultiLevelEmitterUtils {
             CompoundTag target,
             String key
     ) {
-        ListTag list = new ListTag();
-        if (relations != null) {
-            for (MultiLevelEmitterPart.LogicRelation relation : relations) {
-                MultiLevelEmitterPart.LogicRelation value =
-                        relation == null ? MultiLevelEmitterPart.LogicRelation.OR : relation;
-                list.add(StringTag.valueOf(value.name()));
-            }
-        }
-        target.put(key, list);
+        writeEnumListToNBT(relations, target, key, MultiLevelEmitterPart.LogicRelation.OR);
     }
 
     public static void writeComparisonModesToNBT(
@@ -102,15 +95,7 @@ public final class MultiLevelEmitterUtils {
             CompoundTag target,
             String key
     ) {
-        ListTag list = new ListTag();
-        if (modes != null) {
-            for (MultiLevelEmitterPart.ComparisonMode mode : modes) {
-                MultiLevelEmitterPart.ComparisonMode value =
-                        mode == null ? MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL : mode;
-                list.add(StringTag.valueOf(value.name()));
-            }
-        }
-        target.put(key, list);
+        writeEnumListToNBT(modes, target, key, MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL);
     }
 
     public static void writeMatchingModesToNBT(
@@ -118,15 +103,7 @@ public final class MultiLevelEmitterUtils {
             CompoundTag target,
             String key
     ) {
-        ListTag list = new ListTag();
-        if (modes != null) {
-            for (MultiLevelEmitterPart.MatchingMode mode : modes) {
-                MultiLevelEmitterPart.MatchingMode value =
-                        mode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : mode;
-                list.add(StringTag.valueOf(value.name()));
-            }
-        }
-        target.put(key, list);
+        writeEnumListToNBT(modes, target, key, MultiLevelEmitterPart.MatchingMode.STRICT);
     }
 
     public static void writeCraftingModesToNBT(
@@ -134,14 +111,6 @@ public final class MultiLevelEmitterUtils {
             CompoundTag target,
             String key
     ) {
-        ListTag list = new ListTag();
-        if (modes != null) {
-            for (MultiLevelEmitterPart.CraftingMode mode : modes) {
-                MultiLevelEmitterPart.CraftingMode value =
-                        mode == null ? MultiLevelEmitterPart.CraftingMode.NONE : mode;
-                list.add(StringTag.valueOf(value.name()));
-            }
-        }
-        target.put(key, list);
+        writeEnumListToNBT(modes, target, key, MultiLevelEmitterPart.CraftingMode.NONE);
     }
 }
