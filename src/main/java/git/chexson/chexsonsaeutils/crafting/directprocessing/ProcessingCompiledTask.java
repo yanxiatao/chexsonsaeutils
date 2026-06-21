@@ -140,7 +140,9 @@ public final class ProcessingCompiledTask {
         if (other.remainingTicks != other.totalTicks) {
             return false;
         }
-        if (this.remainingTicks <= 0) {
+        boolean isQueued = this.remainingTicks == this.totalTicks;
+        boolean isRunning = this.remainingTicks > 0 && this.remainingTicks < this.totalTicks;
+        if (!isQueued && !isRunning) {
             return false;
         }
         return ItemStack.isSameItemSameComponents(patternDefinition, other.patternDefinition)
