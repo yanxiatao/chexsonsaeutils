@@ -233,7 +233,7 @@ public final class FormalMachinePlanningAggregationService {
                 return null;
             }
 
-            AbstractHighCapacityCraftingHostBlockEntity host = rewriteContext.exclusiveFormalMachineProvider(pattern);
+            IFormalMachinePlanningProvider host = rewriteContext.exclusiveFormalMachineProvider(pattern);
             recordPlanningHelperUsage(host, host == null);
 
             Map<AEKey, Long> inputs = rewriteContext.describeAggregationInputs(pattern);
@@ -340,7 +340,7 @@ public final class FormalMachinePlanningAggregationService {
             PlanningRewriteContext rewriteContext,
             SelectedPlanGraph selectedGraph
     ) {
-        Map<AbstractHighCapacityCraftingHostBlockEntity, Map<AEKey, SelectedGraphNode>> grouped = new LinkedHashMap<>();
+        Map<IFormalMachinePlanningProvider, Map<AEKey, SelectedGraphNode>> grouped = new LinkedHashMap<>();
         for (Map.Entry<AEKey, SelectedGraphNode> entry : selectedGraph.nodes().entrySet()) {
             SelectedGraphNode node = entry.getValue();
             if (rewriteContext.unwrapBaseCraftingPattern(node.pattern()) == null || node.host() == null) {
@@ -353,7 +353,7 @@ public final class FormalMachinePlanningAggregationService {
                 selectedGraph.nodes().size(), grouped.size());
 
         List<HostAggregationCandidate> candidates = new ArrayList<>();
-        for (Map.Entry<AbstractHighCapacityCraftingHostBlockEntity, Map<AEKey, SelectedGraphNode>> entry : grouped.entrySet()) {
+        for (Map.Entry<IFormalMachinePlanningProvider, Map<AEKey, SelectedGraphNode>> entry : grouped.entrySet()) {
             Map<AEKey, SelectedGraphNode> hostNodes = entry.getValue();
             LOGGER.info("Processing host at {}: {} nodes", entry.getKey().getBlockPos(), hostNodes.size());
 
@@ -466,7 +466,7 @@ public final class FormalMachinePlanningAggregationService {
     private static Set<AEKey> externalProducedInputConsumers(
             Map<AEKey, SelectedGraphNode> hostNodes,
             Map<AEKey, SelectedGraphNode> selectedNodes,
-            AbstractHighCapacityCraftingHostBlockEntity host
+            IFormalMachinePlanningProvider host
     ) {
         if (hostNodes == null || hostNodes.isEmpty() || selectedNodes == null || selectedNodes.isEmpty()) {
             return Set.of();
@@ -520,7 +520,7 @@ public final class FormalMachinePlanningAggregationService {
     private static @Nullable HostAggregationCandidate buildHostAggregationCandidate(
             Level level,
             ICraftingPlan nativePlan,
-            AbstractHighCapacityCraftingHostBlockEntity host,
+            IFormalMachinePlanningProvider host,
             Map<AEKey, SelectedGraphNode> hostNodes
     ) {
         List<SelectedGraphNode> executionOrder = topoSortHostNodes(hostNodes);
@@ -836,7 +836,7 @@ public final class FormalMachinePlanningAggregationService {
         return null;
     }
 
-    private static @Nullable AbstractHighCapacityCraftingHostBlockEntity exclusiveFormalMachineProvider(
+    private static @Nullable IFormalMachinePlanningProvider exclusiveFormalMachineProvider(
             CraftingService craftingService,
             IPatternDetails pattern
     ) {
@@ -845,10 +845,10 @@ public final class FormalMachinePlanningAggregationService {
             return null;
         }
 
-        AbstractHighCapacityCraftingHostBlockEntity matchedHost = null;
+        IFormalMachinePlanningProvider matchedHost = null;
         boolean sawFormalProvider = false;
         for (ICraftingProvider provider : craftingService.getProviders(providerPattern)) {
-            if (!(provider instanceof AbstractHighCapacityCraftingHostBlockEntity host)) {
+            if (!(provider instanceof IFormalMachinePlanningProvider host)) {
                 continue;
             }
             sawFormalProvider = true;
@@ -861,11 +861,11 @@ public final class FormalMachinePlanningAggregationService {
     }
 
     private static void recordPlanningHelperUsage(
-            @Nullable AbstractHighCapacityCraftingHostBlockEntity host,
+            @Nullable IFormalMachinePlanningProvider host,
             boolean nullResult
     ) {
-        if (host != null) {
-            host.recordPlanningHelperUsageForTest(nullResult);
+        if (host instanceof AbstractHighCapacityCraftingHostBlockEntity craftingHost) {
+            craftingHost.recordPlanningHelperUsageForTest(nullResult);
         }
     }
 
@@ -1702,7 +1702,7 @@ public final class FormalMachinePlanningAggregationService {
     }
 
     private record HostAggregationCandidate(
-            AbstractHighCapacityCraftingHostBlockEntity host,
+            IFormalMachinePlanningProvider host,
             AECraftingPattern basePattern,
             List<GenericStack> boundaryInputs,
             List<GenericStack> externalMissingInputs,
@@ -1725,12 +1725,12 @@ public final class FormalMachinePlanningAggregationService {
             AEKey outputKey,
             long outputAmount,
             Map<AEKey, Long> inputs,
-            @Nullable AbstractHighCapacityCraftingHostBlockEntity host
+            @Nullable IFormalMachinePlanningProvider host
     ) {
     }
 
     private record EquivalentSelectedNodeKey(
-            @Nullable AbstractHighCapacityCraftingHostBlockEntity host,
+            @Nullable IFormalMachinePlanningProvider host,
             AEKey outputKey,
             long outputAmount,
             Map<AEKey, Long> inputs
@@ -1766,7 +1766,7 @@ public final class FormalMachinePlanningAggregationService {
         private final ICraftingPlan nativePlan;
         private final Map<IPatternDetails, @Nullable PatternDefinitionKey> definitionKeys = new HashMap<>();
         private final Map<IPatternDetails, @Nullable AECraftingPattern> basePatterns = new HashMap<>();
-        private final Map<IPatternDetails, @Nullable AbstractHighCapacityCraftingHostBlockEntity> exclusiveHosts =
+        private final Map<IPatternDetails, @Nullable IFormalMachinePlanningProvider> exclusiveHosts =
                 new HashMap<>();
         private final Map<IPatternDetails, @Nullable Map<AEKey, Long>> aggregationInputs = new HashMap<>();
         @Nullable
@@ -1806,7 +1806,7 @@ public final class FormalMachinePlanningAggregationService {
             return basePattern;
         }
 
-        @Nullable AbstractHighCapacityCraftingHostBlockEntity exclusiveFormalMachineProvider(
+        @Nullable IFormalMachinePlanningProvider exclusiveFormalMachineProvider(
                 @Nullable IPatternDetails pattern
         ) {
             if (pattern == null) {
@@ -1815,7 +1815,7 @@ public final class FormalMachinePlanningAggregationService {
             if (exclusiveHosts.containsKey(pattern)) {
                 return exclusiveHosts.get(pattern);
             }
-            AbstractHighCapacityCraftingHostBlockEntity host =
+            IFormalMachinePlanningProvider host =
                     FormalMachinePlanningAggregationService.exclusiveFormalMachineProvider(craftingService, pattern);
             exclusiveHosts.put(pattern, host);
             return host;

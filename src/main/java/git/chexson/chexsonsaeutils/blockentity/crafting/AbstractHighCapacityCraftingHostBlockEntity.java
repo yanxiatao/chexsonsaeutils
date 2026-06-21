@@ -36,7 +36,7 @@ import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregat
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
-import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
+import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingLane;
 import git.chexson.chexsonsaeutils.crafting.persistence.HighCapacityPatternHostSavedData;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
@@ -73,7 +73,8 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetworkedBlockEntity
-        implements PatternContainer, IUpgradeableObject, ICraftingProvider, InternalInventoryHost {
+        implements PatternContainer, IUpgradeableObject, ICraftingProvider, InternalInventoryHost,
+        IFormalMachinePlanningProvider {
 
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_EXECUTION_QUEUE = "executionQueue";

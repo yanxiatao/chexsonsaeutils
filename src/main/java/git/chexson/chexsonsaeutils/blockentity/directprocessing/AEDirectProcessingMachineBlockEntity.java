@@ -40,7 +40,7 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReaso
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibility;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibilityCache;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMachineMetrics;
+import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PendingOutputBatch;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingCompiledTask;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionBudgetController;
@@ -73,7 +73,7 @@ import java.util.UUID;
 
 public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         implements ICraftingProvider, IUpgradeableObject, PatternContainer, InternalInventoryHost,
-        ProcessingTaskCompletionHost {
+        ProcessingTaskCompletionHost, IFormalMachinePlanningProvider {
 
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_MACHINE_BINDING = "machineBinding";
