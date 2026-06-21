@@ -86,6 +86,7 @@ dependencies {
     implementation 'org.spongepowered:mixin:0.8.5'
 
     compileOnly "org.appliedenergistics:appliedenergistics2:${ae2_version}"
+    compileOnly files('libs/ae2ct-1.21.1-1.1.1.jar')
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
     compileOnly "curse.maven:applied-mekanistics-574300:${appmek_file_id}"
