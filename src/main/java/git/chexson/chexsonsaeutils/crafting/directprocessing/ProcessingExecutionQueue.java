@@ -189,6 +189,21 @@ public final class ProcessingExecutionQueue {
             }
             searched++;
         }
+        for (ProcessingExecutionLane lane : lanes) {
+            if (searched >= COALESCE_SEARCH_WINDOW) {
+                break;
+            }
+            ProcessingCompiledTask candidate = lane.activeTask();
+            if (candidate != null
+                    && candidate.canCoalesceWith(task, maxCoalescedExecutions)
+                    && candidate.tryAppendExecutionCount(task.executionCount(), maxCoalescedExecutions)) {
+                if (latencyOrigin != null) {
+                    latencyOrigins.merge(candidate, latencyOrigin, ProcessingLatencyOrigin::merge);
+                }
+                return true;
+            }
+            searched++;
+        }
         return false;
     }
 
