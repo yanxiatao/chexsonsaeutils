@@ -25,9 +25,6 @@ public final class ProcessingCompiledTask {
     private static final String NBT_REMAINING_TICKS = "remainingTicks";
     private static final String NBT_EXECUTION_COUNT = "executionCount";
     private static final String NBT_SOURCE_CRAFTING_ID = "sourceCraftingId";
-    private static final int MAX_EXECUTION_COUNT = ProcessingExecutionBudgetController
-            .BENCHMARK_LIMITS
-            .maxCoalescedExecutions();
 
     private final ItemStack patternDefinition;
     private final List<GenericStack> selectedInputs;
@@ -218,11 +215,11 @@ public final class ProcessingCompiledTask {
     }
 
     private static int normalizeExecutionCount(int executionCount) {
-        return Math.max(1, Math.min(MAX_EXECUTION_COUNT, executionCount));
+        return Math.max(1, executionCount);
     }
 
     private static int normalizeMaxExecutionCount(int maxExecutionCount) {
-        return Math.max(1, Math.min(MAX_EXECUTION_COUNT, maxExecutionCount));
+        return Math.max(1, maxExecutionCount);
     }
 
     private static long multiplyOrZero(long amount, int count) {
