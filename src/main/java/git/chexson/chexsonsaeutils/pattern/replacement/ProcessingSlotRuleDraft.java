@@ -13,9 +13,8 @@ public record ProcessingSlotRuleDraft(
         Set<ResourceLocation> selectedTagIds,
         Set<ResourceLocation> explicitCandidateIds
 ) {
-    public ProcessingSlotRuleDraft {
+public ProcessingSlotRuleDraft {
         sourceTagIds = List.copyOf(sourceTagIds);
         selectedTagIds = Collections.unmodifiableSet(new LinkedHashSet<>(selectedTagIds));
         explicitCandidateIds = Collections.unmodifiableSet(new LinkedHashSet<>(explicitCandidateIds));
     }
-}
