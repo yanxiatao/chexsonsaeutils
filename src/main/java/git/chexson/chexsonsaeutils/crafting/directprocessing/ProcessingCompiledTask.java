@@ -133,13 +133,35 @@ public final class ProcessingCompiledTask {
         this.sourceCraftingId = sourceCraftingId;
     }
 
-    public boolean canCoalesceWith(ProcessingCompiledTask other, int maxExecutionCount) {
+    public boolean canDrainCoalesceWith(ProcessingCompiledTask other) {
         if (other == null) {
+            return false;
+        }
+        if (other.remainingTicks != other.totalTicks) {
+            return false;
+        }
+        if (this.remainingTicks <= 0) {
             return false;
         }
         return ItemStack.isSameItemSameComponents(patternDefinition, other.patternDefinition)
                 && selectedInputs.equals(other.selectedInputs)
                 && outputsPerExecution.equals(other.outputsPerExecution)
+                && totalTicks == other.totalTicks
+                && Objects.equals(sourceCraftingId, other.sourceCraftingId)
+                && canBuildOutputPayloadFor(executionCount + other.executionCount);
+    }
+
+    public boolean canCoalesceWith(ProcessingCompiledTask other, int maxExecutionCount) {
+        if (other == null) {
+            return false;
+        }
+        if (this.remainingTicks != this.totalTicks || other.remainingTicks != other.totalTicks) {
+            return false;
+        }
+        return ItemStack.isSameItemSameComponents(patternDefinition, other.patternDefinition)
+                && selectedInputs.equals(other.selectedInputs)
+                && outputsPerExecution.equals(other.outputsPerExecution)
+                && totalTicks == other.totalTicks
                 && Objects.equals(sourceCraftingId, other.sourceCraftingId)
                 && canBuildOutputPayloadFor(executionCount + other.executionCount);
     }

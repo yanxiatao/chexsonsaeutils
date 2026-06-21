@@ -14,7 +14,6 @@ import java.util.Map;
 public final class ProcessingExecutionQueue {
 
     private static final String NBT_TASKS = "tasks";
-    private static final int COALESCE_SEARCH_WINDOW = 32;
 
     private final ArrayDeque<ProcessingCompiledTask> pendingTasks = new ArrayDeque<>();
     private final List<ProcessingExecutionLane> lanes = new ArrayList<>();
@@ -176,35 +175,43 @@ public final class ProcessingExecutionQueue {
             int maxCoalescedExecutions,
             ProcessingLatencyOrigin latencyOrigin
     ) {
-        int searched = 0;
-        var descendingIterator = pendingTasks.descendingIterator();
-        while (descendingIterator.hasNext() && searched < COALESCE_SEARCH_WINDOW) {
-            ProcessingCompiledTask candidate = descendingIterator.next();
-            if (candidate.canCoalesceWith(task, maxCoalescedExecutions)
-                    && candidate.tryAppendExecutionCount(task.executionCount(), maxCoalescedExecutions)) {
+        ProcessingCompiledTask target = findCoalesceTarget(task);
+        if (target != null) {
+            if (target.tryAppendExecutionCount(task.executionCount(), maxCoalescedExecutions)) {
                 if (latencyOrigin != null) {
-                    latencyOrigins.merge(candidate, latencyOrigin, ProcessingLatencyOrigin::merge);
+                    latencyOrigins.merge(target, latencyOrigin, ProcessingLatencyOrigin::merge);
                 }
                 return true;
             }
-            searched++;
-        }
-        for (ProcessingExecutionLane lane : lanes) {
-            if (searched >= COALESCE_SEARCH_WINDOW) {
-                break;
-            }
-            ProcessingCompiledTask candidate = lane.activeTask();
-            if (candidate != null
-                    && candidate.canCoalesceWith(task, maxCoalescedExecutions)
-                    && candidate.tryAppendExecutionCount(task.executionCount(), maxCoalescedExecutions)) {
-                if (latencyOrigin != null) {
-                    latencyOrigins.merge(candidate, latencyOrigin, ProcessingLatencyOrigin::merge);
-                }
-                return true;
-            }
-            searched++;
         }
         return false;
+    }
+
+    private ProcessingCompiledTask findCoalesceTarget(ProcessingCompiledTask task) {
+        ProcessingCompiledTask tail = pendingTasks.peekLast();
+        if (tail != null && tail.canCoalesceWith(task, Integer.MAX_VALUE)) {
+            return tail;
+        }
+        ProcessingCompiledTask leastLoaded = null;
+        for (ProcessingExecutionLane lane : lanes) {
+            ProcessingCompiledTask candidate = lane.activeTask();
+            if (candidate != null && candidate.canDrainCoalesceWith(task)) {
+                if (leastLoaded == null || candidate.executionCount() < leastLoaded.executionCount()) {
+                    leastLoaded = candidate;
+                }
+            }
+        }
+        if (leastLoaded != null) {
+            return leastLoaded;
+        }
+        for (ProcessingCompiledTask candidate : pendingTasks) {
+            if (candidate.canDrainCoalesceWith(task)) {
+                if (leastLoaded == null || candidate.executionCount() < leastLoaded.executionCount()) {
+                    leastLoaded = candidate;
+                }
+            }
+        }
+        return leastLoaded;
     }
 
     private void ensureLaneCapacity(int laneCount) {
