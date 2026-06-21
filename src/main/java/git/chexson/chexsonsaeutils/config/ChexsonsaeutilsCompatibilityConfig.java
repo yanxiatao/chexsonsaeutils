@@ -8,7 +8,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
 
     public static final ModConfigSpec SPEC;
     public static final ModConfigSpec.BooleanValue CRAFTING_CONTINUATION_ENABLED;
-    public static final ModConfigSpec.BooleanValue FORMAL_MACHINE_CRAFTING_DISPATCH_ENABLED;
     public static final ModConfigSpec.BooleanValue FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED;
     public static final ModConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
     public static final ModConfigSpec.BooleanValue DYEABLE_PATTERNS_ENABLED;
@@ -43,12 +42,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.craftingContinuationEnabled")
                 .define("craftingContinuationEnabled", true);
-        FORMAL_MACHINE_CRAFTING_DISPATCH_ENABLED = builder
-                .comment("Enable formal machine AE2 crafting dispatch fast path.",
-                        "Optimizes crafting dispatch for dedicated processing machines.",
-                        "Takes effect after restart.")
-                .translation("configuration.chexsonsaeutils.formalMachineCraftingDispatchEnabled")
-                .define("formalMachineCraftingDispatchEnabled", false);
         FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED = builder
                 .comment("Enable formal machine large-request planning aggregation fast path.",
                         "Optimizes planning for bulk crafting requests.",

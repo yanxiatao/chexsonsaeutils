@@ -29,7 +29,6 @@ import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchKey;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchRequest;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineFastPathResult;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingTimingService;
@@ -2168,53 +2167,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             List<GenericStack> payload,
             long hardDeadlineNanos
     ) {
-        if (payload.isEmpty()) {
-            return List.of();
-        }
-        SourceCpuHandle sourceCpu = FormalMachineCraftingDispatchService.getSourceCpuHandle(
-                getGridCraftingService(),
-                pending.sourceCraftingId()
-        );
-        if (sourceCpu == null || !sourceCpu.isActive()) {
-            return payload;
-        }
-        List<GenericStack> remainingPayload = new ArrayList<>(payload.size());
-        for (GenericStack genericStack : payload) {
-            if (genericStack == null || genericStack.what() == null || genericStack.amount() <= 0L) {
-                continue;
-            }
-            if (isDeadlineReached(hardDeadlineNanos)) {
-                cpuWaitingReturnBudgetStopCount++;
-                cpuWaitingReturnStoppedThisTick = true;
-                appendRemainingCpuWaitingPayload(payload, genericStack, remainingPayload, true);
-                break;
-            }
-            AeCpuIngressRouter.StackRoutingResult routingResult = AeCpuIngressRouter.routeStackIntoSourceCpu(
-                    actionSource,
-                    genericStack,
-                    sourceCpu
-            );
-            debugFormalIngress("routePayloadThroughCpu stack=" + genericStack
-                    + " sourceCraftingId=" + pending.sourceCraftingId()
-                    + " acceptedBySourceCpu=" + routingResult.acceptedBySourceCpu()
-                    + " acceptedByAnyCpu=" + routingResult.acceptedByAnyCpu()
-                    + " insertedIntoAe=" + routingResult.insertedIntoAe()
-                    + " remaining=" + routingResult.remainingAmount());
-            recordIngressRoutingResult(routingResult, true, pending.sourceCraftingId());
-            if (routingResult.remainingAmount() > 0L && routingResult.key() != null) {
-                remainingPayload.add(new GenericStack(routingResult.key(), routingResult.remainingAmount()));
-            }
-            if (isDeadlineReached(hardDeadlineNanos)) {
-                cpuWaitingReturnBudgetStopCount++;
-                cpuWaitingReturnStoppedThisTick = true;
-                if (isDeadlinePastAbsoluteBudget(hardDeadlineNanos)) {
-                    cpuWaitingReturnOverBudgetCount++;
-                }
-                appendRemainingCpuWaitingPayload(payload, genericStack, remainingPayload, false);
-                break;
-            }
-        }
-        return List.copyOf(remainingPayload);
+        return payload;
     }
 
     private void appendRemainingCpuWaitingPayload(

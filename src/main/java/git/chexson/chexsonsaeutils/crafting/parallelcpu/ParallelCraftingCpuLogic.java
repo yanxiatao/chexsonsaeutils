@@ -25,7 +25,6 @@ import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.crafting.inv.ListCraftingInventory;
 import appeng.hooks.ticking.TickHandler;
 import appeng.me.service.CraftingService;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import com.google.common.base.Preconditions;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursiveTaskOrdering;
@@ -707,7 +706,6 @@ final class ParallelCraftingCpuLogic {
 
         this.job = null;
         this.requesterLink = null;
-        FormalMachineCraftingDispatchService.clearSourceCpu(finishedCraftingId);
         this.storeItems();
     }
 

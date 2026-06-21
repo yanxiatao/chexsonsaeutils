@@ -114,8 +114,6 @@
   "configuration.chexsonsaeutils.section.aeDirectProcessingMachine": "AE 直连处理机",
   "configuration.chexsonsaeutils.craftingContinuationEnabled": "启用合成续跑",
   "configuration.chexsonsaeutils.craftingContinuationEnabled.tooltip": "启用 AE2 合成续跑 / 缺料忽略功能。允许缺少部分样板时继续合成。需要重启游戏。",
-  "configuration.chexsonsaeutils.formalMachineCraftingDispatchEnabled": "启用专机快速派发",
-  "configuration.chexsonsaeutils.formalMachineCraftingDispatchEnabled.tooltip": "启用专用机器的 AE2 合成派发快速路径。优化专机合成派发性能。需要重启游戏。",
   "configuration.chexsonsaeutils.formalMachinePlanningAggregationEnabled": "启用大请求聚合",
   "configuration.chexsonsaeutils.formalMachinePlanningAggregationEnabled.tooltip": "启用专机大请求计划聚合快速路径。优化批量合成请求计划性能。需要重启游戏。",
   "configuration.chexsonsaeutils.processingPatternReplacementEnabled": "启用样板替换",

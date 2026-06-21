@@ -47,7 +47,6 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecution
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionQueue;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingLatencyOrigin;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTaskCompletionHost;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import net.minecraft.core.BlockPos;
@@ -987,15 +986,11 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 IStorageService storageService = getMainNode().getGrid() == null
                         ? null
                         : getMainNode().getGrid().getStorageService();
-                SourceCpuHandle sourceCpu = FormalMachineCraftingDispatchService.getSourceCpuHandle(
-                        craftingService,
-                        batch.sourceCraftingId()
-                );
                 List<GenericStack> rejectedSlice = outputSink.tryReturnPayload(
                         storageService,
                         actionSource,
                         batch.payload(),
-                        sourceCpu
+                        null
                 );
                 List<GenericStack> remainingPayload = DirectProcessingStackSupport.normalizeStacks(rejectedSlice);
                 if (!remainingPayload.isEmpty()) {

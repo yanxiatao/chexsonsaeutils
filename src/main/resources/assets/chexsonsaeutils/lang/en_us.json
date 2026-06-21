@@ -114,8 +114,6 @@
   "configuration.chexsonsaeutils.section.aeDirectProcessingMachine": "AE Direct Processing Machine",
   "configuration.chexsonsaeutils.craftingContinuationEnabled": "Enable Crafting Continuation",
   "configuration.chexsonsaeutils.craftingContinuationEnabled.tooltip": "Enable AE2 crafting continuation / ignore-missing feature. Allows crafting to continue when some patterns are temporarily unavailable. Takes effect after restart.",
-  "configuration.chexsonsaeutils.formalMachineCraftingDispatchEnabled": "Enable Formal Machine Fast Path",
-  "configuration.chexsonsaeutils.formalMachineCraftingDispatchEnabled.tooltip": "Enable formal machine AE2 crafting dispatch fast path. Optimizes crafting dispatch for dedicated processing machines. Takes effect after restart.",
   "configuration.chexsonsaeutils.formalMachinePlanningAggregationEnabled": "Enable Large Request Aggregation",
   "configuration.chexsonsaeutils.formalMachinePlanningAggregationEnabled.tooltip": "Enable formal machine large-request planning aggregation fast path. Optimizes planning for bulk crafting requests. Takes effect after restart.",
   "configuration.chexsonsaeutils.processingPatternReplacementEnabled": "Enable Pattern Replacement",

@@ -6,7 +6,6 @@ import appeng.api.networking.crafting.ICraftingRequester;
 import appeng.api.networking.crafting.ICraftingSubmitResult;
 import appeng.api.networking.security.IActionSource;
 import appeng.me.service.CraftingService;
-import git.chexson.chexsonsaeutils.config.FormalMachineCraftingDispatchFeatureGate;
 import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatureGate;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import org.spongepowered.asm.mixin.Mixin;
@@ -39,7 +38,6 @@ public abstract class CraftingServiceFormalMachineMixin {
     }
 
     private static boolean chexsonsaeutils$shouldTrackFormalMachineSubmitContext() {
-        return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup();
+        return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();
     }
 }

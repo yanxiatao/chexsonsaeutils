@@ -43,6 +43,7 @@
     "ae2.crafting.ExecutingCraftingJobFormalMachineScaledPatternMixin",
     "ae2.menu.CraftingCPUMenuAccessor",
     "ae2.menu.CraftingCPUMenuContinuationMixin",
+    "ae2ct.AE2CraftingPlanSummaryCompatMixin",
     "buildinggadgets2.TemplateManagerHandlerMixin",
     "buildinggadgets2.PacketUpdateTemplateManagerMixin",
     "ftbultimine.RightClickDispatcherMemoryCardMixin"
