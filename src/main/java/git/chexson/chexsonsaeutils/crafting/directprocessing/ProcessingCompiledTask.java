@@ -134,7 +134,7 @@ public final class ProcessingCompiledTask {
     }
 
     public boolean canCoalesceWith(ProcessingCompiledTask other, int maxExecutionCount) {
-        if (other == null || executionCount >= normalizeMaxExecutionCount(maxExecutionCount)) {
+        if (other == null) {
             return false;
         }
         return ItemStack.isSameItemSameComponents(patternDefinition, other.patternDefinition)
@@ -145,12 +145,10 @@ public final class ProcessingCompiledTask {
     }
 
     public boolean tryAppendExecutionCount(int additionalExecutions, int maxExecutionCount) {
-        int normalizedMaxExecutionCount = normalizeMaxExecutionCount(maxExecutionCount);
-        if (additionalExecutions <= 0 || executionCount >= normalizedMaxExecutionCount) {
+        if (additionalExecutions <= 0) {
             return false;
         }
-        int acceptedExecutions = Math.min(additionalExecutions, normalizedMaxExecutionCount - executionCount);
-        int nextExecutionCount = executionCount + acceptedExecutions;
+        int nextExecutionCount = executionCount + additionalExecutions;
         if (!canBuildOutputPayloadFor(nextExecutionCount)) {
             return false;
         }
@@ -216,10 +214,6 @@ public final class ProcessingCompiledTask {
 
     private static int normalizeExecutionCount(int executionCount) {
         return Math.max(1, executionCount);
-    }
-
-    private static int normalizeMaxExecutionCount(int maxExecutionCount) {
-        return Math.max(1, maxExecutionCount);
     }
 
     private static long multiplyOrZero(long amount, int count) {
