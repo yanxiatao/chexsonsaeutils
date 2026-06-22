@@ -32,12 +32,12 @@ import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
 import git.chexson.chexsonsaeutils.crafting.NativeSourceCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.ParallelActiveCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineDelegatingPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineScaledPattern;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
-import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
+import git.chexson.chexsonsaeutils.crafting.planning.FormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingLane;
 import git.chexson.chexsonsaeutils.crafting.persistence.HighCapacityPatternHostSavedData;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
@@ -75,7 +75,7 @@ import java.util.function.Supplier;
 
 public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetworkedBlockEntity
         implements PatternContainer, IUpgradeableObject, ICraftingProvider, InternalInventoryHost,
-        IFormalMachinePlanningProvider {
+        FormalMachinePlanningProvider {
 
     protected static boolean supportsCompletionTemplate(@Nullable IMolecularAssemblerSupportedPattern pattern) {
         if (!(pattern instanceof AECraftingPattern aeCraftingPattern)) {
@@ -441,7 +441,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern supportedPattern)) {
             return false;
         }
-        if (supportedPattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+        if (supportedPattern instanceof FormalMachineAggregatedPattern aggregatedPattern) {
             return pushAggregatedPattern(aggregatedPattern, inputHolder);
         }
         if (!localPatternProviderFacade.contains(unwrapFormalDelegatingPattern(patternDetails))) {
@@ -469,7 +469,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             KeyCounter[] inputHolder,
             int executionCount
     ) {
-        if (supportedPattern instanceof IFormalMachineScaledPattern scaledPattern) {
+        if (supportedPattern instanceof FormalMachineScaledPattern scaledPattern) {
             return compileScaledProviderTask(scaledPattern, inputHolder, executionCount);
         }
         return CompiledTask.compile(
@@ -482,7 +482,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     @Nullable
     private CompiledTask compileScaledProviderTask(
-            IFormalMachineScaledPattern scaledPattern,
+            FormalMachineScaledPattern scaledPattern,
             KeyCounter[] inputHolder,
             int executionCount
     ) {
@@ -540,7 +540,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private boolean pushAggregatedPattern(
-            IFormalMachineAggregatedPattern aggregatedPattern,
+            FormalMachineAggregatedPattern aggregatedPattern,
             KeyCounter[] inputHolder
     ) {
         if (aggregatedPattern == null
@@ -1621,7 +1621,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private static IPatternDetails unwrapFormalDelegatingPattern(IPatternDetails patternDetails) {
-        if (patternDetails instanceof IFormalMachineDelegatingPattern delegatingPattern) {
+        if (patternDetails instanceof FormalMachineDelegatingPattern delegatingPattern) {
             return delegatingPattern.basePattern();
         }
         return patternDetails;
@@ -2317,7 +2317,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (compiledTask == null) {
             return;
         }
-        if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+        if (pattern instanceof FormalMachineAggregatedPattern aggregatedPattern) {
             attachAggregatedCompletionTemplate(aggregatedPattern, compiledTask);
             return;
         }
@@ -2337,7 +2337,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private void attachAggregatedCompletionTemplate(
-            IFormalMachineAggregatedPattern aggregatedPattern,
+            FormalMachineAggregatedPattern aggregatedPattern,
             CompiledTask compiledTask
     ) {
         if (aggregatedPattern == null || compiledTask == null || aggregatedPattern.aggregatedOutputs().isEmpty()) {

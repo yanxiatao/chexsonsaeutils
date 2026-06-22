@@ -17,9 +17,9 @@ import git.chexson.chexsonsaeutils.blockentity.crafting.AbstractHighCapacityCraf
 import git.chexson.chexsonsaeutils.blockentity.crafting.TaskCompletionRoute;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternSelectedInputsPlan;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternImpl;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceAccessor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -124,7 +124,7 @@ public final class FormalMachinePlanningAggregationService {
         KeyCounter liveVisibleStacks = new KeyCounter();
 
         for (HostAggregationCandidate candidate : candidates) {
-            FormalMachineAggregatedPattern aggregatedPattern = FormalMachineAggregatedPattern.create(
+            FormalMachineAggregatedPatternImpl aggregatedPattern = FormalMachineAggregatedPatternImpl.create(
                     level.registryAccess(),
                     candidate.basePattern(),
                     FormalMachineHostLocator.fromHost(candidate.host()),
@@ -224,7 +224,7 @@ public final class FormalMachinePlanningAggregationService {
                 return null;
             }
 
-            IFormalMachinePlanningProvider host = rewriteContext.exclusiveFormalMachineProvider(pattern);
+            FormalMachinePlanningProvider host = rewriteContext.exclusiveFormalMachineProvider(pattern);
 
             Map<AEKey, Long> inputs = rewriteContext.describeAggregationInputs(pattern);
             if (inputs == null) {
@@ -329,7 +329,7 @@ public final class FormalMachinePlanningAggregationService {
             PlanningRewriteContext rewriteContext,
             SelectedPlanGraph selectedGraph
     ) {
-        Map<IFormalMachinePlanningProvider, Map<AEKey, SelectedGraphNode>> grouped = new LinkedHashMap<>();
+        Map<FormalMachinePlanningProvider, Map<AEKey, SelectedGraphNode>> grouped = new LinkedHashMap<>();
         for (Map.Entry<AEKey, SelectedGraphNode> entry : selectedGraph.nodes().entrySet()) {
             SelectedGraphNode node = entry.getValue();
             if (rewriteContext.unwrapBasePattern(node.pattern()) == null || node.host() == null) {
@@ -339,7 +339,7 @@ public final class FormalMachinePlanningAggregationService {
         }
 
         List<HostAggregationCandidate> candidates = new ArrayList<>();
-        for (Map.Entry<IFormalMachinePlanningProvider, Map<AEKey, SelectedGraphNode>> entry : grouped.entrySet()) {
+        for (Map.Entry<FormalMachinePlanningProvider, Map<AEKey, SelectedGraphNode>> entry : grouped.entrySet()) {
             Map<AEKey, SelectedGraphNode> hostNodes = entry.getValue();
 
             List<Set<AEKey>> segments = splitPerPatternFormalAggregationSegments(formalInputsByOutput(hostNodes));
@@ -444,7 +444,7 @@ public final class FormalMachinePlanningAggregationService {
     private static Set<AEKey> externalProducedInputConsumers(
             Map<AEKey, SelectedGraphNode> hostNodes,
             Map<AEKey, SelectedGraphNode> selectedNodes,
-            IFormalMachinePlanningProvider host
+            FormalMachinePlanningProvider host
     ) {
         if (hostNodes == null || hostNodes.isEmpty() || selectedNodes == null || selectedNodes.isEmpty()) {
             return Set.of();
@@ -498,7 +498,7 @@ public final class FormalMachinePlanningAggregationService {
     private static @Nullable HostAggregationCandidate buildHostAggregationCandidate(
             Level level,
             ICraftingPlan nativePlan,
-            IFormalMachinePlanningProvider host,
+            FormalMachinePlanningProvider host,
             Map<AEKey, SelectedGraphNode> hostNodes
     ) {
         List<SelectedGraphNode> executionOrder = topoSortHostNodes(hostNodes);
@@ -822,7 +822,7 @@ public final class FormalMachinePlanningAggregationService {
         return null;
     }
 
-    private static @Nullable IFormalMachinePlanningProvider exclusiveFormalMachineProvider(
+    private static @Nullable FormalMachinePlanningProvider exclusiveFormalMachineProvider(
             CraftingService craftingService,
             IPatternDetails pattern
     ) {
@@ -831,10 +831,10 @@ public final class FormalMachinePlanningAggregationService {
             return null;
         }
 
-        IFormalMachinePlanningProvider matchedHost = null;
+        FormalMachinePlanningProvider matchedHost = null;
         boolean sawFormalProvider = false;
         for (ICraftingProvider provider : craftingService.getProviders(providerPattern)) {
-            if (!(provider instanceof IFormalMachinePlanningProvider host)) {
+            if (!(provider instanceof FormalMachinePlanningProvider host)) {
                 continue;
             }
             sawFormalProvider = true;
@@ -864,7 +864,7 @@ public final class FormalMachinePlanningAggregationService {
     }
 
     private static @Nullable Map<AEKey, Long> describePatternInputs(IPatternDetails pattern) {
-        if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+        if (pattern instanceof FormalMachineAggregatedPattern aggregatedPattern) {
             return describeAggregatedPatternInputs(aggregatedPattern);
         }
         AECraftingPattern craftingPattern = unwrapBaseCraftingPattern(pattern);
@@ -891,7 +891,7 @@ public final class FormalMachinePlanningAggregationService {
     }
 
     private static @Nullable Map<AEKey, Long> describeAggregatedPatternInputs(
-            IFormalMachineAggregatedPattern pattern
+            FormalMachineAggregatedPattern pattern
     ) {
         Map<AEKey, Long> mergedInputs = new LinkedHashMap<>();
         for (GenericStack input : pattern.aggregatedInputs()) {
@@ -1018,7 +1018,7 @@ public final class FormalMachinePlanningAggregationService {
     }
 
     private static @Nullable IPatternDetails unwrapDelegatingPattern(@Nullable IPatternDetails pattern) {
-        if (pattern instanceof IFormalMachineDelegatingPattern delegatingPattern) {
+        if (pattern instanceof FormalMachineDelegatingPattern delegatingPattern) {
             return delegatingPattern.basePattern();
         }
         return pattern;
@@ -1683,7 +1683,7 @@ public final class FormalMachinePlanningAggregationService {
     }
 
     private record HostAggregationCandidate(
-            IFormalMachinePlanningProvider host,
+            FormalMachinePlanningProvider host,
             IPatternDetails basePattern,
             List<GenericStack> boundaryInputs,
             List<GenericStack> externalMissingInputs,
@@ -1706,12 +1706,12 @@ public final class FormalMachinePlanningAggregationService {
             AEKey outputKey,
             long outputAmount,
             Map<AEKey, Long> inputs,
-            @Nullable IFormalMachinePlanningProvider host
+            @Nullable FormalMachinePlanningProvider host
     ) {
     }
 
     private record EquivalentSelectedNodeKey(
-            @Nullable IFormalMachinePlanningProvider host,
+            @Nullable FormalMachinePlanningProvider host,
             AEKey outputKey,
             long outputAmount,
             Map<AEKey, Long> inputs
@@ -1748,7 +1748,7 @@ public final class FormalMachinePlanningAggregationService {
         private final Map<IPatternDetails, @Nullable PatternDefinitionKey> definitionKeys = new HashMap<>();
         private final Map<IPatternDetails, @Nullable IPatternDetails> unwrappedPatterns = new HashMap<>();
         private final Map<IPatternDetails, @Nullable AECraftingPattern> basePatterns = new HashMap<>();
-        private final Map<IPatternDetails, @Nullable IFormalMachinePlanningProvider> exclusiveHosts =
+        private final Map<IPatternDetails, @Nullable FormalMachinePlanningProvider> exclusiveHosts =
                 new HashMap<>();
         private final Map<IPatternDetails, @Nullable Map<AEKey, Long>> aggregationInputs = new HashMap<>();
         @Nullable
@@ -1801,7 +1801,7 @@ public final class FormalMachinePlanningAggregationService {
             return basePattern;
         }
 
-        @Nullable IFormalMachinePlanningProvider exclusiveFormalMachineProvider(
+        @Nullable FormalMachinePlanningProvider exclusiveFormalMachineProvider(
                 @Nullable IPatternDetails pattern
         ) {
             if (pattern == null) {
@@ -1810,7 +1810,7 @@ public final class FormalMachinePlanningAggregationService {
             if (exclusiveHosts.containsKey(pattern)) {
                 return exclusiveHosts.get(pattern);
             }
-            IFormalMachinePlanningProvider host =
+            FormalMachinePlanningProvider host =
                     FormalMachinePlanningAggregationService.exclusiveFormalMachineProvider(craftingService, pattern);
             exclusiveHosts.put(pattern, host);
             return host;

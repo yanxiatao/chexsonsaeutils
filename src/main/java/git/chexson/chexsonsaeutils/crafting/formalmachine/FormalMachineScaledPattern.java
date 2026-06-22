@@ -3,7 +3,7 @@ package git.chexson.chexsonsaeutils.crafting.formalmachine;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineDelegatingPattern;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -16,7 +16,7 @@ import java.util.Map;
  * 在 High Capacity Crafting Machine 中将模式运行 multiplier 次，
  * 大幅减少调度开销。
  */
-public interface IFormalMachineScaledPattern extends IMolecularAssemblerSupportedPattern, IFormalMachineDelegatingPattern {
+public interface FormalMachineScaledPattern extends IMolecularAssemblerSupportedPattern, FormalMachineDelegatingPattern {
 
     /**
      * 返回此模式的放大倍数。

@@ -55,7 +55,7 @@ public final class ScaledCraftingPatternAnalyzer {
     }
 
     public static ItemStack[] buildScaledCraftingGrid(AECraftingPattern pattern, int multiplier) {
-        return new ScaledCraftingPattern(pattern, multiplier, null, Map.of()).getScaledCraftingGridCopies();
+        return new FormalMachineScaledPatternImpl(pattern, multiplier, null, Map.of()).getScaledCraftingGridCopies();
     }
 
     public static int capMultiplier(Eligibility eligibility, long remainingCrafts) {
@@ -72,8 +72,8 @@ public final class ScaledCraftingPatternAnalyzer {
         return (int) capped;
     }
 
-    public static ScaledCraftingPattern createScaledPattern(Eligibility eligibility, int multiplier) {
-        return new ScaledCraftingPattern(
+    public static FormalMachineScaledPatternImpl createScaledPattern(Eligibility eligibility, int multiplier) {
+        return new FormalMachineScaledPatternImpl(
                 eligibility.basePattern(),
                 multiplier,
                 eligibility.templatePrimary(),

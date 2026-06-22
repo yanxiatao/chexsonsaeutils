@@ -43,7 +43,7 @@ public final class FormalMachineScaledPatternNbtBridge {
         ExecutingCraftingJobAccessor accessor = (ExecutingCraftingJobAccessor) job;
         for (Map.Entry<IPatternDetails, Object> entry : accessor.getTasks().entrySet()) {
             CompoundTag item = entry.getKey().getDefinition().toTag(registries);
-            if (entry.getKey() instanceof IFormalMachineScaledPattern scaledPattern) {
+            if (entry.getKey() instanceof FormalMachineScaledPattern scaledPattern) {
                 item.putInt(FORMAL_MULTIPLIER_TAG, Math.max(1, scaledPattern.multiplier()));
             }
             if (entry.getValue() instanceof ExecutingCraftingJobTaskProgressAccessor progressAccessor) {

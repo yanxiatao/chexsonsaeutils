@@ -39,8 +39,8 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReaso
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibility;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibilityCache;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.planning.FormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PendingOutputBatch;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingCompiledTask;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionBudget;
@@ -74,7 +74,7 @@ import java.util.UUID;
 
 public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         implements ICraftingProvider, IUpgradeableObject, PatternContainer, InternalInventoryHost,
-        ProcessingTaskCompletionHost, IFormalMachinePlanningProvider {
+        ProcessingTaskCompletionHost, FormalMachinePlanningProvider {
 
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_MACHINE_BINDING = "machineBinding";
@@ -258,7 +258,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         long startedAtNanos = System.nanoTime();
         pushPatternCacheLookupCount++;
 
-        if (patternDetails instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+        if (patternDetails instanceof FormalMachineAggregatedPattern aggregatedPattern) {
             recordPushPatternCacheLookupNanos(startedAtNanos);
             return pushAggregatedPattern(aggregatedPattern, inputHolder);
         }
@@ -296,7 +296,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     private boolean pushAggregatedPattern(
-            IFormalMachineAggregatedPattern aggregatedPattern,
+            FormalMachineAggregatedPattern aggregatedPattern,
             KeyCounter[] inputHolder
     ) {
         if (aggregatedPattern == null

@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public final class ScaledCraftingPattern implements IFormalMachineScaledPattern {
+public final class FormalMachineScaledPatternImpl implements FormalMachineScaledPattern {
 
     private final AECraftingPattern basePattern;
     private final int multiplier;
@@ -31,7 +31,7 @@ public final class ScaledCraftingPattern implements IFormalMachineScaledPattern 
     private final GenericStack templatePrimary;
     private final Map<AEItemKey, Long> templateRemainders;
 
-    public ScaledCraftingPattern(
+    public FormalMachineScaledPatternImpl(
             AECraftingPattern basePattern,
             int multiplier,
             @Nullable GenericStack templatePrimary,
@@ -136,7 +136,7 @@ public final class ScaledCraftingPattern implements IFormalMachineScaledPattern 
         if (this == other) {
             return true;
         }
-        if (!(other instanceof ScaledCraftingPattern that)) {
+        if (!(other instanceof FormalMachineScaledPatternImpl that)) {
             return false;
         }
         return multiplier == that.multiplier
@@ -150,7 +150,7 @@ public final class ScaledCraftingPattern implements IFormalMachineScaledPattern 
 
     @Override
     public String toString() {
-        return "ScaledCraftingPattern[" + basePattern.getDefinition() + " x" + multiplier + "]";
+        return "FormalMachineScaledPatternImpl[" + basePattern.getDefinition() + " x" + multiplier + "]";
     }
 
     private static IPatternDetails.IInput[] scaleInputs(IPatternDetails.IInput[] inputs, int multiplier) {

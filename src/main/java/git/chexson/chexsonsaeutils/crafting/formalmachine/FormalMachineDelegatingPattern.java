@@ -8,7 +8,7 @@ import appeng.api.crafting.IPatternDetails;
  * 当聚合或缩放模式需要暴露其原始 AE2 模式时实现此接口，
  * 使外部代码可以通过 {@link #basePattern()} 向下钻取到最底层的原生模式。
  */
-public interface IFormalMachineDelegatingPattern {
+public interface FormalMachineDelegatingPattern {
 
     /**
      * 返回此模式所委托的底层原生模式。

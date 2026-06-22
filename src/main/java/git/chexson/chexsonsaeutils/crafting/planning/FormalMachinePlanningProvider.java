@@ -10,7 +10,7 @@ import net.minecraft.core.BlockPos;
  * {@code AEDirectProcessingMachineBlockEntity}，使规划聚合服务能够
  * 定位主机并查询其当前运行时信息。
  */
-public interface IFormalMachinePlanningProvider extends ICraftingProvider {
+public interface FormalMachinePlanningProvider extends ICraftingProvider {
 
     /**
      * 返回当前正在执行的操作已消耗的 tick 数。

@@ -27,7 +27,7 @@ public final class PatternColorHelper {
     }
 
     public static int getPatternColor(@Nullable IPatternDetails patternDetails) {
-        if (!(patternDetails instanceof IPatternDetailsColorAccessor colorAccessor)) {
+        if (!(patternDetails instanceof PatternDetailsColorAccessor colorAccessor)) {
             return -1;
         }
         return colorAccessor.chexsonsaeutils$getColor();

@@ -13,7 +13,7 @@ public record FormalMachineHostLocator(BlockPos blockPos) {
 
     private static final String NBT_BLOCK_POS = "blockPos";
 
-    public static FormalMachineHostLocator fromHost(IFormalMachinePlanningProvider host) {
+    public static FormalMachineHostLocator fromHost(FormalMachinePlanningProvider host) {
         return new FormalMachineHostLocator(host.getBlockPos().immutable());
     }
 
@@ -48,7 +48,7 @@ public record FormalMachineHostLocator(BlockPos blockPos) {
         return null;
     }
 
-    public boolean matches(@Nullable IFormalMachinePlanningProvider host) {
+    public boolean matches(@Nullable FormalMachinePlanningProvider host) {
         return host != null && blockPos != null && blockPos.equals(host.getBlockPos());
     }
 }
