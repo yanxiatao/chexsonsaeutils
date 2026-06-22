@@ -39,10 +39,6 @@ public abstract class CraftingPlanSummaryEnhancedStatusMixin {
         if (!EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()) {
             return;
         }
-        ICraftingPlan unwrappedJob = job;
-        if (job instanceof DyeablePatternRecursivePlan recursivePlan) {
-            unwrappedJob = recursivePlan.chexsonsaeutils$getDelegate();
-        }
-        EnhancedCraftingStatusService.attachPatternTimes(cir.getReturnValue(), unwrappedJob);
+        EnhancedCraftingStatusService.attachPatternTimes(cir.getReturnValue(), job);
     }
 }
