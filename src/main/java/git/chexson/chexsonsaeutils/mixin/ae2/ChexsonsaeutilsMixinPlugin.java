@@ -1,14 +1,8 @@
 package git.chexson.chexsonsaeutils.mixin.ae2;
 
 import com.mojang.logging.LogUtils;
-import git.chexson.chexsonsaeutils.config.BuildingGadgets2IntegrationFeatureGate;
-import git.chexson.chexsonsaeutils.config.ContinuationFeatureGate;
-import git.chexson.chexsonsaeutils.config.DyeablePatternsFeatureGate;
-import git.chexson.chexsonsaeutils.config.EnhancedCraftingStatusFeatureGate;
-import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatureGate;
-import git.chexson.chexsonsaeutils.config.FtbUltimineMemoryCardFeatureGate;
-import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuFeatureGate;
-import git.chexson.chexsonsaeutils.config.ProcessingPatternReplacementFeatureGate;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.FeatureGates;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.fml.loading.LoadingModList;
 import org.objectweb.asm.tree.ClassNode;
@@ -120,42 +114,42 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (REPLACEMENT_ONLY_MIXINS.contains(mixinClassName)) {
-            return ProcessingPatternReplacementFeatureGate.isEnabledAtStartup();
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled");
         }
         if (CONTINUATION_ONLY_MIXINS.contains(mixinClassName)) {
-            return ContinuationFeatureGate.isEnabledAtStartup();
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled");
         }
         if (CRAFTING_CPU_ACCESSOR_MIXINS.contains(mixinClassName)) {
-            return ContinuationFeatureGate.isEnabledAtStartup()
-                    || DyeablePatternsFeatureGate.isEnabledAtStartup()
-                    || FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                    || EnhancedCraftingStatusFeatureGate.isEnabledAtStartup();
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled")
+                    || FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled")
+                    || FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")
+                    || FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
         if (CRAFTING_CPU_PUSH_CONTEXT_MIXINS.contains(mixinClassName)) {
-            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                    || EnhancedCraftingStatusFeatureGate.isEnabledAtStartup();
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")
+                    || FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
         if (FORMAL_MACHINE_PLANNING_ENTRY_MIXINS.contains(mixinClassName)) {
-            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled");
         }
         if (FORMAL_MACHINE_PLANNING_SCALED_PATTERN_MIXINS.contains(mixinClassName)) {
-            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled");
         }
         if (PARALLEL_CPU_ONLY_MIXINS.contains(mixinClassName)) {
-            return ParallelCraftingCpuFeatureGate.isEnabledAtStartup();
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_ENABLED, "parallelCraftingCpuEnabled");
         }
         if (AEA_DYEABLE_PATTERN_MIXINS.contains(mixinClassName)) {
-            return DyeablePatternsFeatureGate.isEnabledAtStartup();
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled");
         }
         if (AEA_ENHANCED_CRAFTING_STATUS_MIXINS.contains(mixinClassName)) {
-            return EnhancedCraftingStatusFeatureGate.isEnabledAtStartup();
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
         if (AEA_BUILDING_GADGETS2_MIXINS.contains(mixinClassName)) {
-            return BuildingGadgets2IntegrationFeatureGate.isEnabledAtStartup()
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.BUILDING_GADGETS2_INTEGRATION_ENABLED, "buildingGadgets2IntegrationEnabled")
                     && isLoadedDuringMixinScan(BUILDING_GADGETS2_MOD_ID, mixinClassName);
         }
         if (AEA_FTB_ULTIMINE_MIXINS.contains(mixinClassName)) {
-            return FtbUltimineMemoryCardFeatureGate.isEnabledAtStartup()
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FTB_ULTIMINE_MEMORY_CARD_ENABLED, "ftbUltimineMemoryCardEnabled")
                     && isLoadedDuringMixinScan(FTB_ULTIMINE_MOD_ID, mixinClassName);
         }
         if (AE2CT_COMPAT_MIXINS.contains(mixinClassName)) {

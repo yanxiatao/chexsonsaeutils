@@ -3,7 +3,8 @@ package git.chexson.chexsonsaeutils.mixin.ae2.client.gui;
 import appeng.api.stacks.AmountFormat;
 import appeng.client.gui.me.crafting.CraftConfirmTableRenderer;
 import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
-import git.chexson.chexsonsaeutils.config.EnhancedCraftingStatusFeatureGate;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingPlanSummaryEntry;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusFormatting;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer;
@@ -41,7 +42,7 @@ public abstract class CraftConfirmTableRendererEnhancedStatusMixin {
             AmountFormat format,
             int maxEntries
     ) {
-        if (!EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()
+        if (!FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled")
                 || !(entry instanceof EnhancedCraftingPlanSummaryEntry enhancedEntry)) {
             return;
         }
