@@ -43,11 +43,15 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-public final class FormalMachinePlanningAggregationService {
+// ponytail: monolithic static utility (1917 loc / 74 methods).
+// Split into SelectedPlanGraphBuilder, HostAggregationBuilder,
+// PatternInputResolver, CraftingPlanRewriter, AggregationMathHelper
+// if maintenance cost exceeds rename benefit.
+public final class FormalMachinePlanningAggregator {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private FormalMachinePlanningAggregationService() {
+    private FormalMachinePlanningAggregator() {
     }
 
     public static Future<ICraftingPlan> tryBeginCraftingCalculation(
@@ -1133,7 +1137,7 @@ public final class FormalMachinePlanningAggregationService {
         if (target == null || key == null || amount <= 0L) {
             return;
         }
-        target.merge(key, amount, FormalMachinePlanningAggregationService::saturatingAdd);
+        target.merge(key, amount, FormalMachinePlanningAggregator::saturatingAdd);
     }
 
     private static void mergeStackMaps(Map<AEKey, Long> target, Map<AEKey, Long> source) {
@@ -1783,7 +1787,7 @@ public final class FormalMachinePlanningAggregationService {
                 return unwrappedPatterns.get(pattern);
             }
             IPatternDetails unwrapped =
-                    FormalMachinePlanningAggregationService.unwrapBasePattern(pattern);
+                    FormalMachinePlanningAggregator.unwrapBasePattern(pattern);
             unwrappedPatterns.put(pattern, unwrapped);
             return unwrapped;
         }
@@ -1796,7 +1800,7 @@ public final class FormalMachinePlanningAggregationService {
                 return basePatterns.get(pattern);
             }
             AECraftingPattern basePattern =
-                    FormalMachinePlanningAggregationService.unwrapBaseCraftingPattern(pattern);
+                    FormalMachinePlanningAggregator.unwrapBaseCraftingPattern(pattern);
             basePatterns.put(pattern, basePattern);
             return basePattern;
         }
@@ -1811,7 +1815,7 @@ public final class FormalMachinePlanningAggregationService {
                 return exclusiveHosts.get(pattern);
             }
             FormalMachinePlanningProvider host =
-                    FormalMachinePlanningAggregationService.exclusiveFormalMachineProvider(craftingService, pattern);
+                    FormalMachinePlanningAggregator.exclusiveFormalMachineProvider(craftingService, pattern);
             exclusiveHosts.put(pattern, host);
             return host;
         }
@@ -1824,14 +1828,14 @@ public final class FormalMachinePlanningAggregationService {
                 return aggregationInputs.get(pattern);
             }
             Map<AEKey, Long> inputs =
-                    FormalMachinePlanningAggregationService.describeAggregationInputs(nativePlan, pattern);
+                    FormalMachinePlanningAggregator.describeAggregationInputs(nativePlan, pattern);
             aggregationInputs.put(pattern, inputs);
             return inputs;
         }
 
         KeyCounter snapshotLiveVisibleStacks() {
             if (liveVisibleStacks == null) {
-                liveVisibleStacks = FormalMachinePlanningAggregationService.snapshotLiveVisibleStacks(craftingService);
+                liveVisibleStacks = FormalMachinePlanningAggregator.snapshotLiveVisibleStacks(craftingService);
             }
             return liveVisibleStacks;
         }

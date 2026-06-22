@@ -7,7 +7,7 @@ import appeng.api.stacks.AEKey;
 import appeng.me.service.CraftingService;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.FeatureGates;
-import git.chexson.chexsonsaeutils.crafting.planning.FormalMachinePlanningAggregationService;
+import git.chexson.chexsonsaeutils.crafting.planning.FormalMachinePlanningAggregator;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -31,7 +31,7 @@ public abstract class CraftingServicePlanningAggregationMixin {
         if (!FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")) {
             return;
         }
-        Future<ICraftingPlan> aggregated = FormalMachinePlanningAggregationService.tryBeginCraftingCalculation(
+        Future<ICraftingPlan> aggregated = FormalMachinePlanningAggregator.tryBeginCraftingCalculation(
                 (CraftingService) (Object) this,
                 level,
                 what,
