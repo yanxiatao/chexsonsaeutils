@@ -223,9 +223,7 @@ final class ParallelCraftingCpuLogic {
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
             @Nullable ParallelCpuProviderBackoff providerBackoff
     ) {
-        if (metrics != null) {
-            metrics.recordExecuteCraftingCall();
-        }
+
         if (job == null || job.tasks.isEmpty()) {
             return 0L;
         }
@@ -337,9 +335,7 @@ final class ParallelCraftingCpuLogic {
                     );
                     pushedPatterns++;
                     reserveExpectedWaiting(expectedOutputs, expectedContainerItems);
-                    if (metrics != null) {
-                        metrics.recordPushedPattern(1L);
-                    }
+
                     for (var expectedContainerItem : expectedContainerItems) {
                         ParallelExecutingCraftingJob.addMaxItems(
                                 job.timeTracker,
@@ -380,9 +376,7 @@ final class ParallelCraftingCpuLogic {
             if (craftingContainer != null) {
                 boolean reinjectBudgetClaimed = tryClaimReinjectPatternInputs(budgetLedger);
                 CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
-                if (metrics != null) {
-                    metrics.recordReinjectPatternInputs(1L);
-                }
+
                 if (!reinjectBudgetClaimed) {
                     break;
                 }
@@ -427,9 +421,7 @@ final class ParallelCraftingCpuLogic {
                 expectedOutputs,
                 expectedContainerItems
         );
-        if (metrics != null) {
-            metrics.recordExtractPatternInputs(1L);
-        }
+
         return craftingContainer;
     }
 
@@ -437,7 +429,7 @@ final class ParallelCraftingCpuLogic {
             @Nullable ICraftingProvider provider,
             long currentTick,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
-            @Nullable ParallelCpuProviderBackoff providerBackoff,
+            @Nullable ParallelCpuProviderBackoff providerBackoff
     ) {
         if (providerBackoff != null) {
             return providerBackoff.checkProvider(provider, currentTick, budgetLedger);
@@ -448,13 +440,9 @@ final class ParallelCraftingCpuLogic {
         if (budgetLedger != null && !budgetLedger.tryClaimProviderCheck()) {
             return ParallelCpuProviderBackoff.ProviderAvailability.BUDGET_EXHAUSTED;
         }
-        if (metrics != null) {
-            metrics.recordProviderScan();
-        }
+
         if (provider.isBusy()) {
-            if (metrics != null) {
-                metrics.recordBusyProviderSkip();
-            }
+
             return ParallelCpuProviderBackoff.ProviderAvailability.BUSY;
         }
         return ParallelCpuProviderBackoff.ProviderAvailability.READY;

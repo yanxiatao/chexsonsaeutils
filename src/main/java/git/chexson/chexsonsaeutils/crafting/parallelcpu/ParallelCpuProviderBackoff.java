@@ -26,7 +26,7 @@ public final class ParallelCpuProviderBackoff {
     public ProviderAvailability checkProvider(
             ICraftingProvider provider,
             long currentTick,
-            ParallelCpuGridBudgetLedger budgetLedger,
+            ParallelCpuGridBudgetLedger budgetLedger
     ) {
         if (provider == null) {
             return ProviderAvailability.BACKED_OFF;
@@ -34,9 +34,6 @@ public final class ParallelCpuProviderBackoff {
 
         ProviderState state = providerStates.get(provider);
         if (state != null && state.shouldSkip(currentTick)) {
-            if (metrics != null) {
-                metrics.recordBusyProviderSkip();
-            }
             return ProviderAvailability.BACKED_OFF;
         }
 
@@ -44,15 +41,8 @@ public final class ParallelCpuProviderBackoff {
             return ProviderAvailability.BUDGET_EXHAUSTED;
         }
 
-        if (metrics != null) {
-            metrics.recordProviderScan();
-        }
-
         if (provider.isBusy()) {
             recordBusy(provider, currentTick);
-            if (metrics != null) {
-                metrics.recordBusyProviderSkip();
-            }
             return ProviderAvailability.BUSY;
         }
 

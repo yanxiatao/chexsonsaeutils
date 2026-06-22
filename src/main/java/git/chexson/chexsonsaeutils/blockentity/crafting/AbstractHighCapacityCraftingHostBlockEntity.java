@@ -238,7 +238,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private int highlightedPageSlotMask;
     private boolean externalPatternsLoaded;
     private boolean providerRefreshAfterReadyPending;
-    private long lastAeStorageInsertAttemptCount;
     private long lastFastPathFallbackCount;
     private int lastEffectiveLaneCount = 1;
     private int lastCompletionBudget = 1;
@@ -575,10 +574,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         }
         localExecutionQueue.reconfigureActiveLanes(currentBudgetModel);
         jobsSubmitted += compiledTask.getExecutionCount();
-        maxExecutionCountPerTaskObserved = Math.max(
-                maxExecutionCountPerTaskObserved,
-                findMaxExecutionCountAcrossQueue()
-        );
         markQueueMutationForSave(localExecutionQueue.totalTaskCount() <= 1);
         return true;
     }
@@ -759,7 +754,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         saveChanges();
     }
 
-    boolean isLocalOptimizationEnabledForTest() {
+    boolean isLocalOptimizationEnabled() {
         return localOptimizationEnabled;
     }
 
@@ -784,32 +779,24 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     void recordLocalOptimizationHit() {
-        localOptimizationHitCount++;
     }
 
     void recordDecodeCall() {
-        decodePatternCount++;
     }
 
     void recordDecodeCacheHit() {
-        decodeCacheHitCount++;
     }
 
     void recordDirtyRefreshScan(int slotCount) {
-        dirtyRefreshScannedSlots += Math.max(0, slotCount);
     }
 
     void recordProviderUpdate() {
-        providerUpdateCount++;
     }
 
     void recordSearchMetrics(PatternSearchIndex.MatchResult matchResult) {
         if (matchResult == null) {
             return;
         }
-        searchScannedSlots += Math.max(0, matchResult.scannedSlots());
-        searchDecodeCacheHitCount += Math.max(0, matchResult.decodeCacheHits());
-        searchDecodePatternCount += Math.max(0, matchResult.decodeCalls());
     }
 
     public boolean hasInWorldNodeHostCapabilityForTest() {
@@ -822,33 +809,18 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     public void recordDeterministicPlanningHitForTest(long wallClockNanos) {
-        planningSuccessCount++;
-        planningAggregationHitCount++;
-        deterministicPlanningHitCount++;
-        planningWallClockNanosMax = Math.max(planningWallClockNanosMax, Math.max(0L, wallClockNanos));
     }
 
     public void recordDeterministicPlanningFallbackForTest() {
-        deterministicPlanningFallbackCount++;
     }
 
     public void recordVirtualScaledPatternHitForTest(int multiplier, long logicalExecutionsSaved) {
         if (multiplier <= 1) {
             return;
         }
-        virtualScaledPatternHitCount++;
-        largestVirtualPatternMultiplier = Math.max(largestVirtualPatternMultiplier, multiplier);
-        if (logicalExecutionsSaved > 0L) {
-            if (virtualScaledPatternLogicalExecutionsSaved > Long.MAX_VALUE - logicalExecutionsSaved) {
-                virtualScaledPatternLogicalExecutionsSaved = Long.MAX_VALUE;
-            } else {
-                virtualScaledPatternLogicalExecutionsSaved += logicalExecutionsSaved;
-            }
-        }
     }
 
     public void recordVirtualScaledPatternFallbackForTest() {
-        virtualScaledPatternFallbackCount++;
     }
 
     public void recordVirtualScaledPatternStatsForTest(
@@ -857,32 +829,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             int largestMultiplier,
             long logicalExecutionsSaved
     ) {
-        if (hitCount > 0L) {
-            if (virtualScaledPatternHitCount > Long.MAX_VALUE - hitCount) {
-                virtualScaledPatternHitCount = Long.MAX_VALUE;
-            } else {
-                virtualScaledPatternHitCount += hitCount;
-            }
-        }
-        if (fallbackCount > 0L) {
-            if (virtualScaledPatternFallbackCount > Long.MAX_VALUE - fallbackCount) {
-                virtualScaledPatternFallbackCount = Long.MAX_VALUE;
-            } else {
-                virtualScaledPatternFallbackCount += fallbackCount;
-            }
-        }
-        largestVirtualPatternMultiplier = Math.max(largestVirtualPatternMultiplier, Math.max(0, largestMultiplier));
-        if (logicalExecutionsSaved > 0L) {
-            if (virtualScaledPatternLogicalExecutionsSaved > Long.MAX_VALUE - logicalExecutionsSaved) {
-                virtualScaledPatternLogicalExecutionsSaved = Long.MAX_VALUE;
-            } else {
-                virtualScaledPatternLogicalExecutionsSaved += logicalExecutionsSaved;
-            }
-        }
     }
 
     public void recordScaledPatternNbtRestoreForTest() {
-        scaledPatternNbtRestoreCount++;
     }
 
     public FormalMachineTickBudgetSnapshot getTickBudgetSnapshotForTest() {
@@ -893,19 +842,12 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (actualAdditionalExecutions <= 0) {
             return;
         }
-        maxExecutableRunsHitCount++;
-        bulkExtractionLogicalExecutionsMax = Math.max(
-                bulkExtractionLogicalExecutionsMax,
-                actualAdditionalExecutions + 1
-        );
     }
 
     public void recordBulkExtractionFallback() {
-        maxExecutableRunsFallbackCount++;
     }
 
     public void recordTemplatedDispatchHitForTest() {
-        templatedDispatchHitCount++;
     }
 
     public void clearPatternsForTest() {
@@ -920,7 +862,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     public void clearPatternsDeferredRefreshForTest() {
         refreshScheduler.clear();
-        pagedPatternInventory.clearWithoutDirtyMarksForTest();
+        pagedPatternInventory.clearWithoutDirtyMarks();
         persistAllPatterns();
         decodedPatternEntryCache.clear();
         localPatternProviderFacade.clear();
@@ -1069,7 +1011,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 break;
             }
         }
-        submittedUniquePatternCount = Math.max(submittedUniquePatternCount, submittedDefinitions.size());
         updateExecutionPeaks();
         if (submitted > 0) {
             flushQueuedMutationsToDisk();
@@ -1103,7 +1044,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             submitted++;
             submittedDefinitions.add(supportedPattern.getDefinition());
         }
-        submittedUniquePatternCount = Math.max(submittedUniquePatternCount, submittedDefinitions.size());
         updateExecutionPeaks();
         if (submitted > 0) {
             saveChanges();
@@ -1163,7 +1103,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             submitted++;
             submittedDefinitions.add(supportedPattern.getDefinition());
         }
-        submittedUniquePatternCount = Math.max(submittedUniquePatternCount, submittedDefinitions.size());
         updateExecutionPeaks();
         if (submitted > 0) {
             flushQueuedMutationsToDisk();
@@ -1276,8 +1215,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             saveChanges();
             return true;
         }
-
-        pendingCompletionTicks++;
         int requestedExecutions = pendingCompletionWork.hasTemplate()
                 ? pendingCompletionWork.remainingExecutions()
                 : Math.max(1, pendingCompletionWork.remainingExecutions());
@@ -1308,7 +1245,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return false;
         }
         if (preAttachedTemplate && pendingCompletionWork.hasTemplate()) {
-            templatedCompletionHitCount++;
         }
 
         if (pendingCompletionWork.completionRoute() == TaskCompletionRoute.CPU_WAITING) {
@@ -1319,7 +1255,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                     pendingAeReturn = remainingPending;
                     waitingAeRetryDelayTicks = 1;
                     waitingAeRetryTickCountdown = 1;
-                    aeStorageInsertFallbackCount++;
                 } else {
                     finishCompletedReturn(slicePendingReturn);
                 }
@@ -1331,9 +1266,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
         pendingCompletionWork.advanceExecutions(processedExecutions);
         pendingCompletionWork.markSliceProcessed(processedExecutions);
-        completionSlicesProcessed++;
-        largestCompletionSliceExecutionsObserved =
-                Math.max(largestCompletionSliceExecutionsObserved, processedExecutions);
 
         if (pendingAeReturn != null) {
             saveChanges();
@@ -1362,7 +1294,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 pendingAeReturn = nextPending;
                 waitingAeRetryDelayTicks = 1;
                 waitingAeRetryTickCountdown = 0;
-                aeStorageInsertFallbackCount++;
                 saveChanges();
                 return true;
             }
@@ -1371,7 +1302,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 pendingAeReturn = remainingPending;
                 waitingAeRetryDelayTicks = 1;
                 waitingAeRetryTickCountdown = 1;
-                aeStorageInsertFallbackCount++;
                 saveChanges();
                 return true;
             }
@@ -1438,7 +1368,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                     pendingCompletion.compiledTask().getCompletionTemplatePrimary(),
                     pendingCompletion.compiledTask().getCompletionTemplateRemainders()
             );
-            templatedCompletionHitCount++;
             return true;
         }
         SingleExecutionResult first = executeSingleCompletion(pattern, pendingCompletion.compiledTask());
@@ -1451,7 +1380,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         }
         pendingCompletion.setTemplate(first.primary(), first.remainders());
         pendingCompletion.compiledTask().setCompletionTemplate(first.primary(), first.remainders());
-        templatedCompletionHitCount++;
         return true;
     }
 
@@ -1475,7 +1403,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             }
         }
         if (sliceExecutions > 1) {
-            templatedCompletionSavedExecutions += sliceExecutions - 1L;
         }
         return new CompletionSliceResult(sliceExecutions, scaledPrimary, Map.copyOf(scaledRemainders));
     }
@@ -1577,7 +1504,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private void finishCompletedReturn(PendingAeReturn completedReturn) {
         jobsCompleted += completedReturn.logicalExecutionCount();
         if (completedReturn.logicalExecutionCount() > 1) {
-            batchedAeReturnCount++;
         }
     }
 
@@ -1592,14 +1518,8 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             waitingAeRetryTickCountdown--;
             return;
         }
-        aeReturnRetryCount++;
         long payloadBefore = countPayloadAmount(pendingAeReturn.pendingPayload());
-        long routeStartedAt = System.nanoTime();
         PendingAeReturn remainingPending = tryDeliverPendingReturn(pendingAeReturn, hardDeadlineNanos);
-        cpuWaitingRouteNanosMax = Math.max(
-                cpuWaitingRouteNanosMax,
-                Math.max(0L, System.nanoTime() - routeStartedAt)
-        );
         if (remainingPending == null) {
             finishCompletedReturn(pendingAeReturn);
             pendingAeReturn = null;
@@ -1610,9 +1530,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         }
         pendingAeReturn = remainingPending;
         long payloadAfter = countPayloadAmount(remainingPending.pendingPayload());
-        if (payloadAfter >= payloadBefore) {
-            cpuWaitingNoProgressRetries++;
-        }
         waitingAeRetryDelayTicks = payloadAfter < payloadBefore ? 1 : Math.min(20, waitingAeRetryDelayTicks * 2);
         waitingAeRetryTickCountdown = waitingAeRetryDelayTicks;
         saveChanges();
@@ -1643,7 +1560,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         List<GenericStack> remainingSlicePayload = routePayloadIntoAeNetwork(
                 slicePayload,
                 null,
-                false,
                 pending.sourceCraftingId()
         );
         if (remainingSlicePayload.isEmpty()) {
@@ -1775,7 +1691,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 continue;
             }
             if (isDeadlineReached(hardDeadlineNanos)) {
-                cpuWaitingReturnBudgetStopCount++;
                 cpuWaitingReturnStoppedThisTick = true;
                 appendRemainingCpuWaitingPayload(payload, genericStack, remainingPayload, true);
                 break;
@@ -1785,16 +1700,11 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                     genericStack,
                     sourceCpu
             );
-            recordIngressRoutingResult(routingResult, true, pending.sourceCraftingId());
             if (routingResult.remainingAmount() > 0L && routingResult.key() != null) {
                 remainingPayload.add(new GenericStack(routingResult.key(), routingResult.remainingAmount()));
             }
             if (isDeadlineReached(hardDeadlineNanos)) {
-                cpuWaitingReturnBudgetStopCount++;
                 cpuWaitingReturnStoppedThisTick = true;
-                if (isDeadlinePastAbsoluteBudget(hardDeadlineNanos)) {
-                    cpuWaitingReturnOverBudgetCount++;
-                }
                 appendRemainingCpuWaitingPayload(payload, genericStack, remainingPayload, false);
                 break;
             }
@@ -1859,7 +1769,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private List<GenericStack> routePayloadIntoAeNetwork(
             List<GenericStack> payload,
             @Nullable SourceCpuHandle sourceCpu,
-            boolean cpuWaitingMetrics,
             @Nullable UUID sourceCraftingId
     ) {
         if (payload.isEmpty()) {
@@ -1876,51 +1785,16 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 payload,
                 sourceCpu
         );
-        recordIngressRoutingResult(routingResult, cpuWaitingMetrics, sourceCraftingId);
+        recordIngressRoutingResult(routingResult, sourceCraftingId);
         return routingResult.remainingPayload();
     }
 
     private void recordIngressRoutingResult(
             AeCpuIngressRouter.RoutingResult routingResult,
-            boolean cpuWaitingMetrics,
             @Nullable UUID sourceCraftingId
     ) {
         if (routingResult == null) {
             return;
-        }
-        for (AeCpuIngressRouter.StackRoutingResult stackResult : routingResult.stackResults()) {
-            recordIngressRoutingResult(stackResult, cpuWaitingMetrics, sourceCraftingId);
-        }
-    }
-
-    private void recordIngressRoutingResult(
-            AeCpuIngressRouter.StackRoutingResult routingResult,
-            boolean cpuWaitingMetrics,
-            @Nullable UUID sourceCraftingId
-    ) {
-        if (routingResult == null || routingResult.originalAmount() <= 0L) {
-            return;
-        }
-        if (cpuWaitingMetrics) {
-            largestCpuWaitingReturnAmount = Math.max(
-                    largestCpuWaitingReturnAmount,
-                    routingResult.originalAmount()
-            );
-        }
-        if (routingResult.attemptedAeFallback()) {
-            aeStorageInsertAttemptCount++;
-            if (routingResult.insertedIntoAe() > 0L) {
-                aeStorageInsertSuccessCount++;
-                if (routingResult.remainingAmount() > 0L) {
-                    aeStorageInsertFallbackCount++;
-                    if (cpuWaitingMetrics) {
-                        cpuWaitingAeFallbackPartialInsertCount++;
-                    }
-                }
-            }
-        }
-        if (cpuWaitingMetrics && routingResult.acceptedByAnyCpu() > 0L && routingResult.key() != null) {
-            cpuWaitingReturnAmount = safeAdd(cpuWaitingReturnAmount, routingResult.acceptedByAnyCpu());
         }
     }
 
@@ -1987,25 +1861,17 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     void updateExecutionPeaks() {
-        peakRunningTasks = Math.max(peakRunningTasks, localExecutionQueue.runningTaskCount());
         LinkedHashSet<AEItemKey> uniqueDefinitions = new LinkedHashSet<>();
-        for (CompiledTask task : localExecutionQueue.getActiveTasksForTest()) {
+        for (CompiledTask task : localExecutionQueue.getActiveTasks()) {
             if (!task.getPatternDefinition().isEmpty()) {
                 uniqueDefinitions.add(AEItemKey.of(task.getPatternDefinition()));
             }
-            maxExecutionCountPerTaskObserved = Math.max(maxExecutionCountPerTaskObserved, task.getExecutionCount());
         }
         for (PendingCompletionWork pendingCompletionWork : pendingCompletionQueue) {
             if (!pendingCompletionWork.compiledTask().getPatternDefinition().isEmpty()) {
                 uniqueDefinitions.add(AEItemKey.of(pendingCompletionWork.compiledTask().getPatternDefinition()));
-                maxExecutionCountPerTaskObserved = Math.max(
-                        maxExecutionCountPerTaskObserved,
-                        pendingCompletionWork.compiledTask().getExecutionCount()
-                );
             }
         }
-        peakRunningUniquePatterns = Math.max(peakRunningUniquePatterns, uniqueDefinitions.size());
-        maxExecutionCountPerTaskObserved = Math.max(maxExecutionCountPerTaskObserved, findMaxExecutionCountAcrossQueue());
         updateCompletionBacklogPeaks();
     }
 
@@ -2194,7 +2060,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         recalculateBudgetModel();
         localExecutionQueue.reconfigureActiveLanes(currentBudgetModel);
         if (pendingAeReturn != null) {
-            aeReturnBlockedTicks++;
             tryFlushPendingAeReturn(hardDeadlineNanos);
             updateExecutionPeaks();
             updateBudgetDeltas();
@@ -2222,16 +2087,12 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 elapsed,
                 true
         );
-        maxTickBudgetNanosObserved = Math.max(maxTickBudgetNanosObserved, elapsed);
         return true;
     }
 
     private void finishTickBudget(long tickStartedAt) {
         long elapsed = Math.max(0L, System.nanoTime() - tickStartedAt);
         boolean hardStop = elapsed >= TICK_HARD_BUDGET_NANOS;
-        if (hardStop) {
-            tickBudgetHardStopCount++;
-        }
         lastTickBudgetSnapshot = new FormalMachineTickBudgetSnapshot(
                 TICK_SOFT_BUDGET_NANOS,
                 TICK_HARD_BUDGET_NANOS,
@@ -2239,7 +2100,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 elapsed,
                 hardStop
         );
-        maxTickBudgetNanosObserved = Math.max(maxTickBudgetNanosObserved, elapsed);
     }
 
     private static long safeAdd(long left, long right) {
@@ -2280,7 +2140,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         localPatternProviderFacade.consumeProviderVisibleSetUpdatePending();
         ICraftingProvider.requestUpdate(getMainNode());
         providerRefreshAfterReadyPending = false;
-        forcedProviderRefreshCount++;
     }
 
     private void requestProviderUpdateIfLocalPatternsChanged() {
@@ -2295,7 +2154,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return;
         }
         ICraftingProvider.requestUpdate(getMainNode());
-        forcedProviderRefreshCount++;
     }
 
     public void onBlockRemovedFromWorld() {
@@ -2358,7 +2216,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             flushQueuedMutationsToDisk();
             return;
         }
-        unsavedQueueMutationCount++;
         if (unsavedQueueMutationCount >= QUEUE_PROGRESS_SAVE_INTERVAL) {
             flushQueuedMutationsToDisk();
         }
@@ -2371,7 +2228,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     private int findMaxExecutionCountAcrossQueue() {
         int max = 0;
-        for (CompiledTask task : localExecutionQueue.getAllTasksForTest()) {
+        for (CompiledTask task : localExecutionQueue.getAllTasks()) {
             max = Math.max(max, task.getExecutionCount());
         }
         for (PendingCompletionWork pendingCompletionWork : pendingCompletionQueue) {
@@ -2413,11 +2270,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private void updateCompletionBacklogPeaks() {
-        completionQueuePeak = Math.max(completionQueuePeak, pendingCompletionQueue.size());
-        completionBacklogExecutionsPeak = Math.max(
-                completionBacklogExecutionsPeak,
-                getPendingCompletionLogicalExecutionCountInternal()
-        );
     }
 
     private double getCompletionBacklogPressureRatio() {
@@ -2432,16 +2284,8 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         return getCompletionBacklogPressureRatio() >= Math.max(8.0D, getPreferredLaneFloor() * 4.0D);
     }
 
-    public long getAeStorageInsertAttemptDeltaForBudget() {
-        return Math.max(0L, aeStorageInsertAttemptCount - lastAeStorageInsertAttemptCount);
-    }
-
-    public long getFastPathFallbackDeltaForBudget() {
-        return Math.max(0L, fastPathFallbackCount - lastFastPathFallbackCount);
-    }
-
     public int getWaitingPenaltyForBudget() {
-        return (int) Math.min(16L, aeReturnBlockedTicks);
+        return 0;
     }
 
     public int getPreferredLaneFloor() {
@@ -2458,15 +2302,11 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         lastHardBudget = currentBudgetModel.hardBudget();
         lastEffectiveLaneCount = currentBudgetModel.laneActivationTarget();
         if (lastEffectiveLaneCount > previousLaneCount) {
-            dynamicScaleUpCount++;
         } else if (lastEffectiveLaneCount < previousLaneCount) {
-            dynamicScaleDownCount++;
         }
     }
 
     private void updateBudgetDeltas() {
-        lastAeStorageInsertAttemptCount = aeStorageInsertAttemptCount;
-        lastFastPathFallbackCount = fastPathFallbackCount;
         lastObservedLargestBatch = Math.max(lastObservedLargestBatch, findMaxExecutionCountAcrossQueue());
     }
 
@@ -2493,7 +2333,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         CompletionTemplate template = probeStableCompletionTemplate(getLevel(), pattern, compiledTask);
         if (template != null) {
             compiledTask.setCompletionTemplate(template.primary(), template.remainders());
-            templatedDispatchHitCount++;
         }
     }
 

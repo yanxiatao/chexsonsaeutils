@@ -25,7 +25,6 @@ public final class ParallelCraftingCpuGrid {
     private final IGrid grid;
     private final Set<ParallelCraftingCpuCluster> clusters = new LinkedHashSet<>();
     private final ParallelCpuWaitingIndex waitingIndex = new ParallelCpuWaitingIndex();
-    private final ParallelCpuMetrics metrics = new ParallelCpuMetrics();
     private long currentTick = Long.MIN_VALUE;
     private int submissionsThisTick;
     private int nextTickClusterStartIndex;
@@ -42,7 +41,6 @@ public final class ParallelCraftingCpuGrid {
 
         Set<ParallelCraftingCpuCluster> previousClusters = new LinkedHashSet<>(clusters);
         if (previousClusters.equals(clusterSnapshot)) {
-            updateMetrics();
             return;
         }
 
@@ -66,7 +64,6 @@ public final class ParallelCraftingCpuGrid {
         } else {
             nextTickClusterStartIndex = Math.floorMod(nextTickClusterStartIndex, clusters.size());
         }
-        updateMetrics();
     }
 
     public ICraftingSubmitResult submitJob(
@@ -143,8 +140,6 @@ public final class ParallelCraftingCpuGrid {
         List<ParallelCraftingCpuCluster> clusterSnapshot = List.copyOf(clusters);
         if (clusterSnapshot.isEmpty()) {
             nextTickClusterStartIndex = 0;
-            metrics.recordTickNanos(System.nanoTime() - startedAt);
-            updateMetrics();
             return 0L;
         }
 
@@ -172,15 +167,6 @@ public final class ParallelCraftingCpuGrid {
             }
         }
         nextTickClusterStartIndex = computeNextStartIndex(clusterSnapshot.size(), startIndex, visitedClusters);
-        if (hadActiveLane && !madeProgress) {
-            metrics.recordZeroProgressTick();
-        }
-        if (budgetLedger.isExhausted()) {
-            metrics.recordLedgerExhaustion(budgetLedger);
-        }
-
-        metrics.recordTickNanos(System.nanoTime() - startedAt);
-        updateMetrics();
 
         long latestChange = 0L;
         for (ParallelCraftingCpuCluster cluster : clusters) {
@@ -232,19 +218,12 @@ public final class ParallelCraftingCpuGrid {
         return clusters.contains(parallelCpu.cluster()) && parallelCpu.cluster().hasVisibleCpu(parallelCpu);
     }
 
-    public ParallelCpuMetrics.Snapshot metricsSnapshot() {
-        return metrics.snapshot();
-    }
-
     void refreshLane(ParallelCraftingLane lane) {
         waitingIndex.refreshLane(lane);
-        waitingIndex.copyMetricsTo(metrics);
     }
 
     void removeLane(ParallelCraftingLane lane) {
         waitingIndex.removeLane(lane);
-        waitingIndex.copyMetricsTo(metrics);
-        metrics.recordCompletedVirtualCpu();
     }
 
     private void removeInactiveLanes() {
@@ -398,7 +377,6 @@ public final class ParallelCraftingCpuGrid {
         for (ParallelCraftingLane lane : lanes) {
             waitingIndex.refreshLane(lane);
         }
-        waitingIndex.copyMetricsTo(metrics);
     }
 
     private void removeClusterLanes(ParallelCraftingCpuCluster cluster) {
@@ -407,18 +385,6 @@ public final class ParallelCraftingCpuGrid {
         for (ParallelCraftingLane lane : lanes) {
             waitingIndex.removeLane(lane);
         }
-        waitingIndex.copyMetricsTo(metrics);
-    }
-
-    private void updateMetrics() {
-        waitingIndex.copyMetricsTo(metrics);
-        int remainingCapacityCpuCount = 0;
-        for (ParallelCraftingCpuCluster cluster : clusters) {
-            if (cluster.canAdvertiseRemainingCapacityCpu()) {
-                remainingCapacityCpuCount = saturatedAdd(remainingCapacityCpuCount, 1);
-            }
-        }
-        metrics.setCpuGauges(activeLaneCount(), remainingCapacityCpuCount);
     }
 
     private static ParallelCpuGridBudgetLedger createBudgetLedger() {

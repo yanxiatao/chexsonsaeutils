@@ -28,7 +28,6 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingOut
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternInventory;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackSupport;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMachineMetrics;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
@@ -112,7 +111,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private final ProcessingExecutionQueue executionQueue = new ProcessingExecutionQueue(MAX_QUEUE_TASKS);
     private final DirectProcessingOutputSink outputSink = new DirectProcessingOutputSink();
     private final DirectProcessingItemHandler automationItemHandler = new DirectProcessingItemHandler(this);
-    private final DirectProcessingMachineMetrics metrics = new DirectProcessingMachineMetrics();
     private final Map<Integer, IPatternDetails> supportedPatternsBySlot = new LinkedHashMap<>();
     private final Map<Integer, PatternCompatibility> patternCompatibilityBySlot = new LinkedHashMap<>();
     private final Map<Integer, AEItemKey> patternDefinitionsBySlot = new LinkedHashMap<>();
@@ -269,7 +267,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         PatternCompatibility compatibility = patternDetails == null
                 ? null
                 : compatibilityCache.get(patternDetails.getDefinition(), recipeIndex.version());
-        metrics.recordPatternCompatibilityCacheLookup(compatibility != null);
         recordPushPatternCacheLookupNanos(startedAtNanos);
         if (compatibility == null || !compatibility.supported()) {
             pushPatternRejectedCount++;
@@ -638,7 +635,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         recipeIndex = result.index();
         if (!result.cacheHit()) {
             recipeFullScanCount++;
-            metrics.recordMachineRecipeIndexRebuild();
         }
     }
 
@@ -668,7 +664,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         }
         long elapsedNanos = System.nanoTime() - startedAtNanos;
         dirtyRefreshWallNanosMax = Math.max(dirtyRefreshWallNanosMax, elapsedNanos);
-        metrics.recordDirtyRefreshNanos(elapsedNanos);
     }
 
     private boolean refreshSinglePatternSlot(Level currentLevel, int slot) {
@@ -724,7 +719,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             executionQueue.tick(this, getProcessingLaneCount(), budgetController);
             tryFlushPendingOutput();
         } finally {
-            metrics.recordServerTickNanos(System.nanoTime() - startedAtNanos);
         }
     }
 
@@ -931,7 +925,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             pendingOutputRetryDelayTicks = 0;
             pendingOutputRetryBackoffTicks = 0;
         } finally {
-            metrics.recordOutputReturnNanos(System.nanoTime() - startedAtNanos);
         }
     }
 
@@ -1012,7 +1005,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private void recordPushPatternCacheLookupNanos(long startedAtNanos) {
         long elapsedNanos = System.nanoTime() - startedAtNanos;
         pushPatternCacheLookupNanosMax = Math.max(pushPatternCacheLookupNanosMax, elapsedNanos);
-        metrics.recordPushPatternCacheLookupNanos(elapsedNanos);
     }
 
     private void recordPushToAeReturnLatency(@Nullable ProcessingLatencyOrigin latencyOrigin) {
@@ -1030,7 +1022,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 pushToAeReturnLatencySampleCount,
                 latencyOrigin.acceptedPushCount()
         );
-        metrics.recordOutputReturnLatencyTicks(latencyTicks);
     }
 
     private void requestCraftingProviderUpdate() {

@@ -68,7 +68,7 @@ public final class ParallelCpuWaitingIndex {
     public long insertIntoLanes(
             @Nullable AEKey what,
             long amount,
-            Actionable mode,
+            Actionable mode
     ) {
         return insertIntoLanesAndGetResult(what, amount, mode).physicalInserted();
     }
@@ -76,7 +76,7 @@ public final class ParallelCpuWaitingIndex {
     public InsertResult insertIntoLanesAndGetResult(
             @Nullable AEKey what,
             long amount,
-            Actionable mode,
+            Actionable mode
     ) {
         if (what == null || amount <= 0L || mode == null) {
             return InsertResult.EMPTY;
@@ -94,7 +94,7 @@ public final class ParallelCpuWaitingIndex {
 
     private InsertResult insertIntoLanesModulating(
             AEKey what,
-            long amount,
+            long amount
     ) {
         long physicalInserted = 0L;
         long accounted = 0L;
@@ -118,9 +118,6 @@ public final class ParallelCpuWaitingIndex {
             if (acceptedAccounted > 0L) {
                 physicalInserted = saturatedAdd(physicalInserted, acceptedPhysical);
                 accounted = saturatedAdd(accounted, acceptedAccounted);
-                if (metrics != null) {
-                    metrics.recordIndexedInsert(acceptedAccounted);
-                }
                 if (lane instanceof ParallelCraftingLaneState laneState) {
                     laneState.cluster().wakeLane(laneState);
                 }
@@ -134,7 +131,7 @@ public final class ParallelCpuWaitingIndex {
     private InsertResult simulateInsertIntoLanes(
             AEKey what,
             long amount,
-            Set<ParallelCraftingLane> indexedLanes,
+            Set<ParallelCraftingLane> indexedLanes
     ) {
         long physicalInserted = 0L;
         long accounted = 0L;
@@ -149,9 +146,6 @@ public final class ParallelCpuWaitingIndex {
             if (accepted > 0L) {
                 physicalInserted = saturatedAdd(physicalInserted, accepted);
                 accounted = saturatedAdd(accounted, accepted);
-                if (metrics != null) {
-                    metrics.recordIndexedInsert(accepted);
-                }
             }
         }
         return new InsertResult(physicalInserted, accounted);
@@ -233,12 +227,6 @@ public final class ParallelCpuWaitingIndex {
 
     public int indexedLaneCount() {
         return waitingByLane.size();
-    }
-
-    public void copyMetricsTo(ParallelCpuMetrics metrics) {
-        if (metrics != null) {
-            metrics.setWaitingIndexGauges(indexedLaneCount(), indexedKeyCount());
-        }
     }
 
     private void replaceLaneSnapshot(ParallelCraftingLane lane, Map<AEKey, Long> nextSnapshot) {
