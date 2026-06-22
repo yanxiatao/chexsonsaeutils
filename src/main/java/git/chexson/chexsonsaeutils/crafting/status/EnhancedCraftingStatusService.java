@@ -1,12 +1,15 @@
 package git.chexson.chexsonsaeutils.crafting.status;
 
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
 import appeng.menu.me.crafting.CraftingPlanSummary;
 import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import appeng.menu.me.crafting.CraftingStatus;
 import appeng.menu.me.crafting.CraftingStatusEntry;
 import appeng.menu.me.common.IncrementalUpdateHelper;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -104,11 +107,22 @@ public final class EnhancedCraftingStatusService {
             if (times <= 0L) {
                 continue;
             }
-            for (var output : entry.getKey().getOutputs()) {
-                if (output.what() == null) {
-                    continue;
+            IPatternDetails pattern = entry.getKey();
+            if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+                for (var step : aggregatedPattern.steps()) {
+                    GenericStack stepOutput = step.stepPrimaryOutput();
+                    if (stepOutput != null && stepOutput.what() != null) {
+                        long stepTimes = step.executionCount() * times;
+                        timesByOutput.computeIfAbsent(stepOutput.what(), ignored -> new ArrayList<>()).add(stepTimes);
+                    }
                 }
-                timesByOutput.computeIfAbsent(output.what(), ignored -> new ArrayList<>()).add(times);
+            } else {
+                for (var output : pattern.getOutputs()) {
+                    if (output.what() == null) {
+                        continue;
+                    }
+                    timesByOutput.computeIfAbsent(output.what(), ignored -> new ArrayList<>()).add(times);
+                }
             }
         }
 
