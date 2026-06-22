@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.crafting.formalmachine;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 

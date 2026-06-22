@@ -2,6 +2,7 @@ package git.chexson.chexsonsaeutils.crafting.formalmachine;
 
 import appeng.api.stacks.GenericStack;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.crafting.planning.FormalMachineAggregationStep;
 import git.chexson.chexsonsaeutils.crafting.planning.FormalMachineHostLocator;
 

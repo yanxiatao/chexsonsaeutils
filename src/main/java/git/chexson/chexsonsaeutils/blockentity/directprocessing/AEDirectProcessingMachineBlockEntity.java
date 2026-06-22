@@ -24,7 +24,6 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.blockentity.crafting.DecodedPatternEntryCache;
 import git.chexson.chexsonsaeutils.blockentity.crafting.DirtySlotPatternRefreshScheduler;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingOutputSink;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternInventory;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackSupport;
@@ -48,6 +47,7 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecution
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionQueue;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingLatencyOrigin;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTaskCompletionHost;
+import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -109,7 +109,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private final DirectProcessingPatternProvider patternProvider = new DirectProcessingPatternProvider();
     private final PatternCompatibilityCache compatibilityCache = new PatternCompatibilityCache();
     private final ProcessingExecutionQueue executionQueue = new ProcessingExecutionQueue(MAX_QUEUE_TASKS);
-    private final DirectProcessingOutputSink outputSink = new DirectProcessingOutputSink();
     private final DirectProcessingItemHandler automationItemHandler = new DirectProcessingItemHandler(this);
     private final Map<Integer, IPatternDetails> supportedPatternsBySlot = new LinkedHashMap<>();
     private final Map<Integer, PatternCompatibility> patternCompatibilityBySlot = new LinkedHashMap<>();
@@ -906,12 +905,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 IStorageService storageService = getMainNode().getGrid() == null
                         ? null
                         : getMainNode().getGrid().getStorageService();
-                List<GenericStack> rejectedSlice = outputSink.tryReturnPayload(
-                        storageService,
-                        actionSource,
-                        batch.payload(),
-                        null
-                );
+                List<GenericStack> rejectedSlice = AeCpuIngressRouter.routePayload(storageService, actionSource, batch.payload(), null).remainingPayload();
                 List<GenericStack> remainingPayload = DirectProcessingStackSupport.normalizeStacks(rejectedSlice);
                 if (!remainingPayload.isEmpty()) {
                     pendingOutputBatches.removeFirst();
