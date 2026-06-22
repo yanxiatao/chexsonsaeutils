@@ -11,6 +11,7 @@ import appeng.menu.me.crafting.CraftingPlanSummary;
 import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import com.neuvillette.ae2ct.api.ICraftingPlanSummary;
 import com.neuvillette.ae2ct.api.RecipeHelper;
+import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.planning.AggregatedCraftingPlan;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusService;
@@ -55,7 +56,7 @@ public abstract class AE2CTRecipeHelperCompatMixin {
                             step.executionCount()
                     ));
                 }
-            } else {
+            } else if (!(pattern instanceof DyeablePatternRecursivePlan)) {
                 List<GenericStack> inputs = new ArrayList<>();
                 for (var input : pattern.getInputs()) {
                     var possibleInputs = input.getPossibleInputs();
