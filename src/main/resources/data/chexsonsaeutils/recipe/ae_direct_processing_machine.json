@@ -1,22 +1,22 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    "IPI",
-    "PMP",
-    "ISI"
+    "BCB",
+    "SIS",
+    "BCB"
   ],
   "key": {
-    "I": {
-      "item": "minecraft:copper_ingot"
+    "B": {
+      "item": "ae2:blank_pattern"
     },
-    "P": {
-      "item": "ae2:processing_pattern"
-    },
-    "M": {
-      "item": "ae2:interface"
+    "C": {
+      "item": "ae2:controller"
     },
     "S": {
-      "item": "ae2:speed_card"
+      "item": "ae2:64k_crafting_storage"
+    },
+    "I": {
+      "item": "ae2:interface"
     }
   },
   "result": {

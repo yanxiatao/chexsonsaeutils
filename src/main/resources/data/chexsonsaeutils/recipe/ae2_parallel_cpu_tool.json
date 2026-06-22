@@ -1,19 +1,22 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    "SCS",
-    "CPC",
-    "SCS"
+    "UCU",
+    "ASA",
+    "UCU"
   ],
   "key": {
-    "S": {
-      "item": "ae2:speed_card"
+    "U": {
+      "item": "ae2:crafting_unit"
     },
     "C": {
+      "item": "ae2:controller"
+    },
+    "A": {
       "item": "ae2:crafting_accelerator"
     },
-    "P": {
-      "item": "ae2:crafting_unit"
+    "S": {
+      "item": "ae2:64k_crafting_storage"
     }
   },
   "result": {
