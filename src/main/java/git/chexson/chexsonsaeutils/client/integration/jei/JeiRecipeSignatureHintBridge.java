@@ -177,6 +177,8 @@ public final class JeiRecipeSignatureHintBridge {
         }
 
         @Override
+        @Deprecated
+        @SuppressWarnings("removal")
         public IRecipeSlotBuilder addSlotToWidget(RecipeIngredientRole role, ISlottedWidgetFactory<?> widgetFactory) {
             return addSlot(role);
         }
@@ -370,6 +372,8 @@ public final class JeiRecipeSignatureHintBridge {
         }
 
         @Override
+        @Deprecated
+        @SuppressWarnings("removal")
         public IRecipeSlotBuilder addTooltipCallback(IRecipeSlotTooltipCallback tooltipCallback) {
             return this;
         }

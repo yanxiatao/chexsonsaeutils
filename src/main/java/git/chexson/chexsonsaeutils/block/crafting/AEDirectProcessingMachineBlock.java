@@ -50,5 +50,6 @@ public class AEDirectProcessingMachineBlock extends AEBaseEntityBlock<AEDirectPr
             }
         }
         super.onRemove(state, level, pos, newState, movedByPiston);
+        super.onRemove(state, level, pos, newState, movedByPiston);
     }
 }

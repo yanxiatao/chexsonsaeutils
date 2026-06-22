@@ -265,7 +265,7 @@ public final class PendingCompletionWork {
     }
 
     public static boolean supportsTemplateForPattern(IMolecularAssemblerSupportedPattern pattern) {
-        return FormalMachineCompletionTemplateHelper.supportsTemplateForPattern(pattern);
+        return AbstractHighCapacityCraftingHostBlockEntity.supportsCompletionTemplate(pattern);
     }
 
     private static CompoundTag writeStackMap(HolderLookup.Provider registries, Map<AEItemKey, Long> stacks) {

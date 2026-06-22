@@ -25,7 +25,6 @@ import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatureGate;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingContinuationSubmitter;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
@@ -491,13 +490,6 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
                 || !result.successful()) {
             return;
         }
-        FormalMachineCraftingDispatchService.onSubmitJobTail(
-                (CraftingService) (Object) this,
-                job,
-                requestingMachine,
-                target,
-                result
-        );
     }
 
     @Override
