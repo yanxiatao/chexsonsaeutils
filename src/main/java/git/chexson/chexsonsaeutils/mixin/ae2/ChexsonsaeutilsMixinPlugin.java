@@ -60,12 +60,6 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobAccessor",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobTaskProgressAccessor"
     );
-    private static final Set<String> FORMAL_MACHINE_ONLY_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceFormalMachineMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCPUClusterFormalMachineStatusMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingStatusFormalMachineMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuFormalMachineHeartbeatMixin"
-    );
     private static final Set<String> CRAFTING_CPU_PUSH_CONTEXT_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicFormalMachineSourceContextMixin"
     );
@@ -90,7 +84,6 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternAccessor",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicDyeablePatternMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.item.EncodedPatternItemDyeableClientMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.client.style.StyleManagerDyeablePatternMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsDyeablePatternMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessAccessor",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeDyeablePatternMixin"
@@ -137,9 +130,6 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
                     || DyeablePatternsFeatureGate.isEnabledAtStartup()
                     || FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
                     || EnhancedCraftingStatusFeatureGate.isEnabledAtStartup();
-        }
-        if (FORMAL_MACHINE_ONLY_MIXINS.contains(mixinClassName)) {
-            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();
         }
         if (CRAFTING_CPU_PUSH_CONTEXT_MIXINS.contains(mixinClassName)) {
             return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
