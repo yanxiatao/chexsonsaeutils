@@ -76,7 +76,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 )
                 .translation("configuration.chexsonsaeutils.dyeableRecursiveRetainedCatalystAmount")
                 .defineInRange("dyeableRecursiveRetainedCatalystAmount",
-                        DyeablePatternRecursiveConfig.DEFAULT_RETAINED_CATALYST_AMOUNT, 0, Integer.MAX_VALUE);
+                        1, 0, Integer.MAX_VALUE);
         ENHANCED_CRAFTING_STATUS_ENABLED = builder
                 .comment(
                         "Enable AEA enhanced crafting status migration.",

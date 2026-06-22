@@ -1,7 +1,8 @@
 package git.chexson.chexsonsaeutils.client.ae2;
 
 import appeng.core.definitions.AEItems;
-import git.chexson.chexsonsaeutils.config.DyeablePatternsFeatureGate;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.FeatureGates;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.util.FastColor;
 import net.minecraft.world.item.ItemStack;
@@ -18,7 +19,7 @@ public final class PatternItemColorRegistration {
     }
 
     public static boolean shouldRegister() {
-        return DyeablePatternsFeatureGate.isEnabledAtStartup();
+        return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled");
     }
 
     public static void register(RegisterColorHandlersEvent.Item event) {

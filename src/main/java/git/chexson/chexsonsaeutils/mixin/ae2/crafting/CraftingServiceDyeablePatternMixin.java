@@ -7,7 +7,8 @@ import appeng.api.stacks.GenericStack;
 import appeng.crafting.CraftingCalculation;
 import appeng.me.service.CraftingService;
 import appeng.me.service.helpers.NetworkCraftingProviders;
-import git.chexson.chexsonsaeutils.config.DyeablePatternsFeatureGate;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingCalculation;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingProviders;
 import net.minecraft.world.level.Level;
@@ -45,7 +46,7 @@ public abstract class CraftingServiceDyeablePatternMixin {
             GenericStack output,
             CalculationStrategy strategy
     ) {
-        if (DyeablePatternsFeatureGate.isEnabledAtStartup()) {
+        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled")) {
             return new DyeablePatternCraftingCalculation(level, grid, simRequester, output, strategy);
         }
         return new CraftingCalculation(level, grid, simRequester, output, strategy);

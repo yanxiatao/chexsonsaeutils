@@ -21,7 +21,7 @@ import appeng.hooks.ticking.TickHandler;
 import appeng.me.service.CraftingService;
 import com.google.common.base.Stopwatch;
 import com.mojang.logging.LogUtils;
-import git.chexson.chexsonsaeutils.config.DyeablePatternRecursiveConfig;
+import git.chexson.chexsonsaeutils.config.StartupConfigReader;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternAccessor;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -564,7 +564,7 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
     }
 
     long retainedCatalystAmount() {
-        return DyeablePatternRecursiveConfig.retainedCatalystAmount();
+        int raw = StartupConfigReader.readInt("dyeableRecursiveRetainedCatalystAmount", 1); return Math.max(0, Math.min(1_000_000, raw));
     }
 
     KeyCounter copyMissingItems() {

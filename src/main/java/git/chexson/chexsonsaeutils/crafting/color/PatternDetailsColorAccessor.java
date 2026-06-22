@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Nullable;
  *
  * 供染色样板相关代码读取编码样板的颜色元数据。
  */
-public interface IPatternDetailsColorAccessor {
+public interface PatternDetailsColorAccessor {
 
     /**
      * 读取样板颜色。

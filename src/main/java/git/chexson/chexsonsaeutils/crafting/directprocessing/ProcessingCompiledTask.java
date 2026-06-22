@@ -4,7 +4,7 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -91,7 +91,7 @@ public final class ProcessingCompiledTask {
 
     @Nullable
     public static ProcessingCompiledTask compileAggregated(
-            IFormalMachineAggregatedPattern aggregatedPattern,
+            FormalMachineAggregatedPattern aggregatedPattern,
             KeyCounter[] inputHolder,
             int totalTicks
     ) {

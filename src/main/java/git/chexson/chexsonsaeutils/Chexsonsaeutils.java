@@ -9,8 +9,7 @@ import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessi
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatureGate;
-import git.chexson.chexsonsaeutils.config.ProcessingPatternReplacementFeatureGate;
+import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingReloadListener;
@@ -100,10 +99,10 @@ public class Chexsonsaeutils {
     private void onCommonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(ChexsonsaeutilsContent::registerCommonContent);
         event.enqueueWork(Chexsonsaeutils::applyDirectProcessingMachineRecipeMappings);
-        if (ProcessingPatternReplacementFeatureGate.isEnabledAtStartup()) {
+        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
         }
-        if (FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()) {
+        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerFormalMachineAggregatedPatternDecoder);
         }
     }

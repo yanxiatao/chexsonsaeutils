@@ -14,12 +14,12 @@ public final class FormalMachineAggregatedPatternDecoder implements IPatternDeta
 
     @Override
     public boolean isEncodedPattern(ItemStack stack) {
-        return FormalMachineAggregatedPattern.isEncodedDefinition(stack);
+        return FormalMachineAggregatedPatternImpl.isEncodedDefinition(stack);
     }
 
     @Override
     public @Nullable IPatternDetails decodePattern(AEItemKey what, Level level) {
-        return FormalMachineAggregatedPattern.decode(what, level);
+        return FormalMachineAggregatedPatternImpl.decode(what, level);
     }
 
     @Override

@@ -5,7 +5,8 @@ import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.execution.CraftingCpuLogic;
-import git.chexson.chexsonsaeutils.config.EnhancedCraftingStatusFeatureGate;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingBlockedTracker;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -38,7 +39,7 @@ public abstract class CraftingCpuLogicFormalMachineSourceContextMixin implements
             net.minecraft.world.level.Level level,
             CallbackInfoReturnable<Integer> cir
     ) {
-        if (EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()) {
+        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled")) {
             chexsonsaeutils$blockedTasks.reset();
             chexsonsaeutils$currentPatternDetails = null;
             chexsonsaeutils$pushedCurrentPattern = false;
@@ -92,7 +93,7 @@ public abstract class CraftingCpuLogicFormalMachineSourceContextMixin implements
             KeyCounter[] inputHolder
     ) {
         boolean pushed = provider.pushPattern(patternDetails, inputHolder);
-        if (pushed && EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()) {
+        if (pushed && FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled")) {
             chexsonsaeutils$pushedCurrentPattern = true;
         }
         return pushed;
@@ -115,7 +116,7 @@ public abstract class CraftingCpuLogicFormalMachineSourceContextMixin implements
             net.minecraft.world.level.Level level,
             CallbackInfoReturnable<Integer> cir
     ) {
-        if (EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()
+        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled")
                 && !chexsonsaeutils$pushedCurrentPattern
                 && chexsonsaeutils$currentPatternDetails != null) {
             chexsonsaeutils$recordBlockedPattern(chexsonsaeutils$currentPatternDetails);

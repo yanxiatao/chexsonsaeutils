@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
+import appeng.api.stacks.AEFluidKey;
+import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -36,8 +38,6 @@ public final class GenericRecipeShapeReader {
 
     private static final int MAX_CANDIDATE_INPUTS_PER_RECIPE = 256;
 
-    private final ItemRecipeShapeReader itemShapeReader = new ItemRecipeShapeReader();
-    private final FluidRecipeShapeReader fluidShapeReader = new FluidRecipeShapeReader();
     private final DirectProcessingStackConverterRegistry stackConverters;
     private final DirectProcessingExternalRecipeShapeRegistry externalShapeRegistry;
 
@@ -140,7 +140,7 @@ public final class GenericRecipeShapeReader {
     private RecipeShape readPublicShape(Level level, Recipe<?> recipe) {
         try {
             List<List<RecipeSignatureInput>> inputs = readIngredientChoices(recipe.getIngredients());
-            GenericStack output = itemShapeReader.toGenericStack(recipe.getResultItem(level.registryAccess()).copy());
+            GenericStack output = itemToGenericStack(recipe.getResultItem(level.registryAccess()).copy());
             if (inputs.isEmpty() || output == null) {
                 return RecipeShape.unreadable();
             }
@@ -907,13 +907,13 @@ public final class GenericRecipeShapeReader {
 
     @Nullable
     private RecipeSignatureInput toSignatureInput(@Nullable ItemStack inputStack) {
-        GenericStack stack = itemShapeReader.toGenericStack(inputStack);
+        GenericStack stack = itemToGenericStack(inputStack);
         return stack == null ? null : new RecipeSignatureInput(stack.what(), stack.amount());
     }
 
     @Nullable
     private RecipeSignatureInput toSignatureInput(@Nullable FluidStack fluidStack) {
-        GenericStack stack = fluidShapeReader.toGenericStack(fluidStack);
+        GenericStack stack = fluidToGenericStack(fluidStack);
         return stack == null ? null : new RecipeSignatureInput(stack.what(), stack.amount());
     }
 
@@ -938,7 +938,7 @@ public final class GenericRecipeShapeReader {
             return toOutputStack(block.asItem());
         }
         if (value instanceof Item item) {
-            return item == Items.AIR ? null : itemShapeReader.toGenericStack(item.getDefaultInstance());
+            return item == Items.AIR ? null : itemToGenericStack(item.getDefaultInstance());
         }
         if (value instanceof ItemLike itemLike) {
             return toOutputStack(itemLike.asItem());
@@ -946,7 +946,7 @@ public final class GenericRecipeShapeReader {
         if (value instanceof ResourceLocation resourceLocation) {
             Item item = BuiltInRegistries.ITEM.get(resourceLocation);
             if (item != null && item != Items.AIR) {
-                return itemShapeReader.toGenericStack(item.getDefaultInstance());
+                return itemToGenericStack(item.getDefaultInstance());
             }
             Block block = BuiltInRegistries.BLOCK.get(resourceLocation);
             if (block != null) {
@@ -955,6 +955,30 @@ public final class GenericRecipeShapeReader {
             return null;
         }
         return null;
+    }
+
+    @Nullable
+    private static GenericStack itemToGenericStack(@Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        AEItemKey key = AEItemKey.of(stack);
+        if (key == null) {
+            return null;
+        }
+        return new GenericStack(key, Math.max(1, stack.getCount()));
+    }
+
+    @Nullable
+    private static GenericStack fluidToGenericStack(@Nullable FluidStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        AEFluidKey key = AEFluidKey.of(stack);
+        if (key == null) {
+            return null;
+        }
+        return new GenericStack(key, Math.max(1, stack.getAmount()));
     }
 
     private static boolean matchesAnyName(String normalizedName, String... acceptedNames) {
