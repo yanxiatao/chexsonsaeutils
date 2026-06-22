@@ -135,7 +135,7 @@ public final class LocalExecutionQueue {
         return running;
     }
 
-    public List<CompiledTask> getActiveTasksForTest() {
+    public List<CompiledTask> getActiveTasks() {
         List<CompiledTask> activeTasks = new ArrayList<>();
         for (BoundedExecutionLane lane : lanes) {
             if (!lane.isIdle() && lane.getActiveTask() != null) {
@@ -145,7 +145,7 @@ public final class LocalExecutionQueue {
         return List.copyOf(activeTasks);
     }
 
-    public List<CompiledTask> getAllTasksForTest() {
+    public List<CompiledTask> getAllTasks() {
         List<CompiledTask> allTasks = new ArrayList<>(pendingTasks);
         for (BoundedExecutionLane lane : lanes) {
             if (!lane.isIdle() && lane.getActiveTask() != null) {
@@ -313,7 +313,7 @@ public final class LocalExecutionQueue {
 
     public int countOutstandingLogicalExecutions() {
         int count = 0;
-        for (CompiledTask task : getAllTasksForTest()) {
+        for (CompiledTask task : getAllTasks()) {
             count = saturatedAdd(count, task.getExecutionCount());
         }
         return count;
@@ -322,7 +322,7 @@ public final class LocalExecutionQueue {
     public int countDistinctBatchKeys() {
         List<CompiledTask> representatives = new ArrayList<>();
         int count = 0;
-        for (CompiledTask task : getAllTasksForTest()) {
+        for (CompiledTask task : getAllTasks()) {
             boolean matched = false;
             for (CompiledTask representative : representatives) {
                 if (representative.hasSameBatchKey(task)) {
@@ -341,7 +341,7 @@ public final class LocalExecutionQueue {
     public int countDistinctActiveBatchKeys() {
         List<CompiledTask> representatives = new ArrayList<>();
         int count = 0;
-        for (CompiledTask task : getActiveTasksForTest()) {
+        for (CompiledTask task : getActiveTasks()) {
             boolean matched = false;
             for (CompiledTask representative : representatives) {
                 if (representative.hasSameBatchKey(task)) {
@@ -367,7 +367,7 @@ public final class LocalExecutionQueue {
 
     public int countRunningLogicalExecutions() {
         int count = 0;
-        for (CompiledTask task : getActiveTasksForTest()) {
+        for (CompiledTask task : getActiveTasks()) {
             count = saturatedAdd(count, task.getExecutionCount());
         }
         return count;

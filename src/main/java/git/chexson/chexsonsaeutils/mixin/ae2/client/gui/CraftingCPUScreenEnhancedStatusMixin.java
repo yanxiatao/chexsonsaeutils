@@ -3,7 +3,7 @@ package git.chexson.chexsonsaeutils.mixin.ae2.client.gui;
 import appeng.client.gui.me.crafting.CraftingCPUScreen;
 import appeng.menu.me.crafting.CraftingStatus;
 import git.chexson.chexsonsaeutils.config.EnhancedCraftingStatusFeatureGate;
-import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusService;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -24,6 +24,6 @@ public abstract class CraftingCPUScreenEnhancedStatusMixin {
         if (!EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()) {
             return;
         }
-        EnhancedCraftingStatusService.copyBlockedAmountsBySerial(this.status, update);
+        CraftingStatusEnhancer.copyBlockedAmountsBySerial(this.status, update);
     }
 }

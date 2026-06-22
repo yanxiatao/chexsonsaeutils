@@ -31,15 +31,15 @@ public class ProcessingPatternReplacementPersistence {
     public static final String SELECTED_TAGS_TAG = "selected_tags";
     public static final String EXPLICIT_CANDIDATES_TAG = "explicit_candidates";
 
-    private final ProcessingSlotTagService tagService;
+    private final ProcessingSlotTagExpander tagService;
     private final ProcessingSlotRuleValidation validation;
 
     public ProcessingPatternReplacementPersistence() {
-        this(new ProcessingSlotTagService(), new ProcessingSlotRuleValidation());
+        this(new ProcessingSlotTagExpander(), new ProcessingSlotRuleValidation());
     }
 
     public ProcessingPatternReplacementPersistence(
-            ProcessingSlotTagService tagService,
+            ProcessingSlotTagExpander tagService,
             ProcessingSlotRuleValidation validation
     ) {
         this.tagService = Objects.requireNonNull(tagService);

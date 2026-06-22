@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.crafting.directprocessing;
 import appeng.api.stacks.GenericStack;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 

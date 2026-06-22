@@ -11,7 +11,7 @@ import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotCandidateGr
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleDraft;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleHost;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRulePayload;
-import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotTagService;
+import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotTagExpander;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -74,7 +74,7 @@ public final class ProcessingPatternReplacementScreen<C extends PatternEncodingT
 
     private final int slotIndex;
     private final ProcessingSlotRuleHost processingSlotRuleHost;
-    private final ProcessingSlotTagService processingSlotTagService = new ProcessingSlotTagService();
+    private final ProcessingSlotTagExpander ProcessingSlotTagExpander = new ProcessingSlotTagExpander();
     private final Scrollbar groupedScrollbar = new Scrollbar(Scrollbar.SMALL);
     private final Set<ResourceLocation> selectedTagIds = new LinkedHashSet<>();
     private final Set<ResourceLocation> explicitCandidateIds = new LinkedHashSet<>();
@@ -242,7 +242,7 @@ public final class ProcessingPatternReplacementScreen<C extends PatternEncodingT
             selectedTagIds.addAll(draft.selectedTagIds());
             explicitCandidateIds.addAll(draft.explicitCandidateIds());
         }
-        candidateGroups = processingSlotTagService.buildCandidateGroups(getSourceStack());
+        candidateGroups = ProcessingSlotTagExpander.buildCandidateGroups(getSourceStack());
         tagSectionRows = buildTagSectionRows(candidateGroups);
         updateGroupedScrollbar();
     }

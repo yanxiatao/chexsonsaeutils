@@ -95,18 +95,10 @@ public final class DynamicExecutionBudgetModel {
         int distinctBatchKeys = host.getDistinctBatchKeyCount();
         boolean blocked = host.isWaitingAeReturn();
 
-        int insertPressure = Math.min(softCap(speedCards), (int) Math.max(
-                0L,
-                host.getAeStorageInsertAttemptDeltaForBudget() / INSERT_PRESSURE_DIVISOR
-        ));
-        int fallbackPressure = Math.min(softCap(speedCards), (int) Math.max(
-                0L,
-                host.getFastPathFallbackDeltaForBudget() * FALLBACK_PENALTY
-        ));
         int blockedPenalty = blocked ? BLOCKED_PENALTY + Math.min(16, host.getWaitingPenaltyForBudget()) : 0;
 
-        int softBudget = softCap(speedCards) - insertPressure - fallbackPressure - blockedPenalty;
-        int hardBudget = hardCap(speedCards) - Math.min(insertPressure + fallbackPressure + blockedPenalty, hardCap(speedCards) / 2);
+        int softBudget = softCap(speedCards) - blockedPenalty;
+        int hardBudget = hardCap(speedCards) - Math.min(blockedPenalty, hardCap(speedCards) / 2);
         int preferredLaneFloor = Math.max(1, host.getPreferredLaneFloor());
         int completionTarget = Math.max(
                 1,

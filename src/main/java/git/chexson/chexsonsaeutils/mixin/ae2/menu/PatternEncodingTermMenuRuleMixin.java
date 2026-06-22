@@ -18,7 +18,7 @@ import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRulePayload
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleStatus;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleValidation;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleVisualState;
-import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotTagService;
+import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotTagExpander;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -54,14 +54,14 @@ public abstract class PatternEncodingTermMenuRuleMixin extends MEStorageMenu imp
     @Unique
     private final Map<Integer, ProcessingSlotRuleDraft> chexsonsaeutils$processingSlotRuleDrafts = new HashMap<>();
     @Unique
-    private final ProcessingSlotTagService chexsonsaeutils$processingSlotTagService = new ProcessingSlotTagService();
+    private final ProcessingSlotTagExpander chexsonsaeutils$ProcessingSlotTagExpander = new ProcessingSlotTagExpander();
     @Unique
     private final ProcessingSlotRuleValidation chexsonsaeutils$processingSlotRuleValidation =
-            new ProcessingSlotRuleValidation(chexsonsaeutils$processingSlotTagService);
+            new ProcessingSlotRuleValidation(chexsonsaeutils$ProcessingSlotTagExpander);
     @Unique
     private final ProcessingPatternReplacementPersistence chexsonsaeutils$processingPatternReplacementPersistence =
             new ProcessingPatternReplacementPersistence(
-                    chexsonsaeutils$processingSlotTagService,
+                    chexsonsaeutils$ProcessingSlotTagExpander,
                     chexsonsaeutils$processingSlotRuleValidation
             );
 
@@ -192,7 +192,7 @@ public abstract class PatternEncodingTermMenuRuleMixin extends MEStorageMenu imp
             return null;
         }
 
-        List<ResourceLocation> sourceTagIds = chexsonsaeutils$processingSlotTagService.extractSourceTagIds(sourceStack);
+        List<ResourceLocation> sourceTagIds = chexsonsaeutils$ProcessingSlotTagExpander.extractSourceTagIds(sourceStack);
         return new ProcessingSlotRuleDraft(slotIndex, sourceTagIds, selectedTagIds, explicitCandidateIds);
     }
 

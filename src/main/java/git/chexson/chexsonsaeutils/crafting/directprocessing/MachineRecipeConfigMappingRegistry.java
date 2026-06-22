@@ -118,22 +118,6 @@ public final class MachineRecipeConfigMappingRegistry {
         MachineRecipeIndexCache.instance().clear();
     }
 
-    public synchronized void replaceAllMappingsForTest(List<ParsedConfigMapping> parsedMappings) {
-        userConfigMappingsByMachineId.clear();
-        legacyConfigMappingsByMachineId.clear();
-        datapackMappingsByMachineId.clear();
-        runtimeMappingsByMachineId.clear();
-        if (parsedMappings != null) {
-            for (ParsedConfigMapping parsedMapping : parsedMappings) {
-                if (parsedMapping != null) {
-                    putMapping(runtimeMappingsByMachineId, parsedMapping.machineId(), parsedMapping.recipeType(), parsedMapping.defaultTicks());
-                }
-            }
-        }
-        epoch++;
-        MachineRecipeIndexCache.instance().clear();
-    }
-
     private void putMapping(
             Map<ResourceLocation, List<RecipeTypeCandidate>> mappingsByMachineId,
             ResourceLocation machineId,

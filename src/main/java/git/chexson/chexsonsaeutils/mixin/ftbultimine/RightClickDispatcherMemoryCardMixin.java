@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.mixin.ftbultimine;
 import appeng.api.implementations.items.IMemoryCard;
 import dev.ftb.mods.ftbultimine.FTBUltiminePlayerData;
 import dev.ftb.mods.ftbultimine.api.shape.ShapeContext;
+import dev.ftb.mods.ftbultimine.rightclick.RightClickDispatcher;
 import git.chexson.chexsonsaeutils.config.FtbUltimineMemoryCardFeatureGate;
 import git.chexson.chexsonsaeutils.integration.ftbultimine.AEMemoryCardHandler;
 import net.minecraft.world.InteractionHand;
@@ -11,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(targets = "dev.ftb.mods.ftbultimine.rightclick.RightClickDispatcher", remap = false)
+@Mixin(value = RightClickDispatcher.class, remap = false)
 public abstract class RightClickDispatcherMemoryCardMixin {
 
     @Inject(method = "dispatchRightClick", at = @At("HEAD"), cancellable = true)

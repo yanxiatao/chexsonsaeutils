@@ -146,20 +146,6 @@ public final class JeiRecipeSignatureHintBridge {
         return builder.toSignatures(recipeTypeId);
     }
 
-    List<MachineRecipeImportedSignature> captureRecipeLayoutForTest(
-            ResourceLocation recipeTypeId,
-            Consumer<IRecipeLayoutBuilder> layoutPopulator
-    ) {
-        if (!DirectProcessingJeiImportRecipeTypeGuard.isSupportedRecipeType(recipeTypeId)) {
-            return List.of();
-        }
-        CapturingRecipeLayoutBuilder builder = new CapturingRecipeLayoutBuilder(stackConverters);
-        if (layoutPopulator != null) {
-            layoutPopulator.accept(builder);
-        }
-        return builder.toSignatures(recipeTypeId);
-    }
-
     private static final class CapturingRecipeLayoutBuilder implements IRecipeLayoutBuilder {
 
         private final DirectProcessingStackConverterRegistry stackConverters;
@@ -177,6 +163,8 @@ public final class JeiRecipeSignatureHintBridge {
         }
 
         @Override
+        @Deprecated
+        @SuppressWarnings("removal")
         public IRecipeSlotBuilder addSlotToWidget(RecipeIngredientRole role, ISlottedWidgetFactory<?> widgetFactory) {
             return addSlot(role);
         }
@@ -370,6 +358,8 @@ public final class JeiRecipeSignatureHintBridge {
         }
 
         @Override
+        @Deprecated
+        @SuppressWarnings("removal")
         public IRecipeSlotBuilder addTooltipCallback(IRecipeSlotTooltipCallback tooltipCallback) {
             return this;
         }

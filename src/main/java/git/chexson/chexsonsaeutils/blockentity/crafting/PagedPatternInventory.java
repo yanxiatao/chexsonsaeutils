@@ -117,7 +117,7 @@ public final class PagedPatternInventory {
         refreshScheduler.markRangeDirty(0, virtualSlots.size());
     }
 
-    public void clearWithoutDirtyMarksForTest() {
+    public void clearWithoutDirtyMarks() {
         for (int i = 0; i < virtualSlots.size(); i++) {
             virtualSlots.set(i, ItemStack.EMPTY);
         }
@@ -132,7 +132,7 @@ public final class PagedPatternInventory {
     }
 
     public void loadFromExternalSnapshot(Map<Integer, ItemStack> slotSnapshot) {
-        clearWithoutDirtyMarksForTest();
+        clearWithoutDirtyMarks();
         if (slotSnapshot == null || slotSnapshot.isEmpty()) {
             activePage = 0;
             loadActivePageContents();

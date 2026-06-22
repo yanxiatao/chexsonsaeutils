@@ -31,7 +31,7 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingSta
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeDiscoveryService;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeIndexBuilder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeIndex;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeIndexCache;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeReloadTracker;
@@ -40,15 +40,14 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReaso
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibility;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibilityCache;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMachineMetrics;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PendingOutputBatch;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingCompiledTask;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionBudgetController;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionBudget;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionQueue;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingLatencyOrigin;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTaskCompletionHost;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -75,7 +74,7 @@ import java.util.UUID;
 
 public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         implements ICraftingProvider, IUpgradeableObject, PatternContainer, InternalInventoryHost,
-        ProcessingTaskCompletionHost {
+        ProcessingTaskCompletionHost, IFormalMachinePlanningProvider {
 
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_MACHINE_BINDING = "machineBinding";
@@ -112,15 +111,14 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private final ProcessingExecutionQueue executionQueue = new ProcessingExecutionQueue(MAX_QUEUE_TASKS);
     private final DirectProcessingOutputSink outputSink = new DirectProcessingOutputSink();
     private final DirectProcessingItemHandler automationItemHandler = new DirectProcessingItemHandler(this);
-    private final DirectProcessingMachineMetrics metrics = new DirectProcessingMachineMetrics();
     private final Map<Integer, IPatternDetails> supportedPatternsBySlot = new LinkedHashMap<>();
     private final Map<Integer, PatternCompatibility> patternCompatibilityBySlot = new LinkedHashMap<>();
     private final Map<Integer, AEItemKey> patternDefinitionsBySlot = new LinkedHashMap<>();
     private final Map<AEItemKey, Set<Integer>> slotsByPatternDefinition = new LinkedHashMap<>();
 
-    private MachineRecipeDiscoveryService discoveryService = MachineRecipeDiscoveryService.fromConfig();
+    private MachineRecipeIndexBuilder discoveryService = MachineRecipeIndexBuilder.fromConfig();
     private MachineRecipeIndex recipeIndex = MachineRecipeIndex.empty();
-    private ProcessingExecutionBudgetController budgetController = createConfiguredBudgetController();
+    private ProcessingExecutionBudget budgetController = createConfiguredBudgetController();
     private long discoveryEpoch;
     private long recipeManagerEpoch;
     private long observedConfigMappingEpoch = Long.MIN_VALUE;
@@ -224,7 +222,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         observedRecipeReloadEpoch = MachineRecipeReloadTracker.recipeReloadEpoch();
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled();
-        discoveryService = MachineRecipeDiscoveryService.fromConfig();
+        discoveryService = MachineRecipeIndexBuilder.fromConfig();
         markMachineRecipeIndexDirty();
         markAllPatternsDirty();
     }
@@ -260,10 +258,15 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     public boolean pushPattern(IPatternDetails patternDetails, KeyCounter[] inputHolder) {
         long startedAtNanos = System.nanoTime();
         pushPatternCacheLookupCount++;
+
+        if (patternDetails instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+            recordPushPatternCacheLookupNanos(startedAtNanos);
+            return pushAggregatedPattern(aggregatedPattern, inputHolder);
+        }
+
         PatternCompatibility compatibility = patternDetails == null
                 ? null
                 : compatibilityCache.get(patternDetails.getDefinition(), recipeIndex.version());
-        metrics.recordPatternCompatibilityCacheLookup(compatibility != null);
         recordPushPatternCacheLookupNanos(startedAtNanos);
         if (compatibility == null || !compatibility.supported()) {
             pushPatternRejectedCount++;
@@ -282,10 +285,40 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 inputHolder,
                 getCurrentOperationTicks()
         );
-        UUID sourceCraftingId = FormalMachineSourceCpuContext.currentSourceCraftingId();
-        if (task != null) {
-            task.setSourceCraftingId(sourceCraftingId);
+        Level currentLevel = getLevel();
+        long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
+        if (task == null || !executionQueue.offer(task, budgetController, acceptedTick)) {
+            pushPatternRejectedCount++;
+            return false;
         }
+        pushPatternAcceptedCount++;
+        saveChanges();
+        return true;
+    }
+
+    private boolean pushAggregatedPattern(
+            IFormalMachineAggregatedPattern aggregatedPattern,
+            KeyCounter[] inputHolder
+    ) {
+        if (aggregatedPattern == null
+                || inputHolder == null
+                || !aggregatedPattern.hostLocator().matches(this)) {
+            pushPatternRejectedCount++;
+            return false;
+        }
+        if (!this.getMainNode().isActive()
+                || pendingOutputRetryDelayTicks > 0
+                || pendingOutputBatches.size() >= MAX_PENDING_OUTPUT_BATCHES
+                || executionQueue.totalTaskCount() >= MAX_QUEUE_TASKS) {
+            pushPatternRejectedCount++;
+            return false;
+        }
+
+        ProcessingCompiledTask task = ProcessingCompiledTask.compileAggregated(
+                aggregatedPattern,
+                inputHolder,
+                aggregatedPattern.totalTicks()
+        );
         Level currentLevel = getLevel();
         long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
         if (task == null || !executionQueue.offer(task, budgetController, acceptedTick)) {
@@ -437,74 +470,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return supportedPatternsBySlot.size();
     }
 
-    public long getRecipeDiscoveryCountForTest() {
-        return recipeDiscoveryCount;
-    }
-
-    public long getRecipeFullScanCountForTest() {
-        return recipeFullScanCount;
-    }
-
-    public long getDirtyRefreshScanCountForTest() {
-        return dirtyRefreshScanCount;
-    }
-
-    public long getPushPatternCacheLookupCountForTest() {
-        return pushPatternCacheLookupCount;
-    }
-
-    public long getPushPatternAcceptedCountForTest() {
-        return pushPatternAcceptedCount;
-    }
-
-    public long getCompletedTaskCountForTest() {
-        return completedTaskCount;
-    }
-
-    public long getCompletedLogicalExecutionCountForTest() {
-        return completedLogicalExecutionCount;
-    }
-
-    public long getDirtyRefreshWallNanosMaxForTest() {
-        return dirtyRefreshWallNanosMax;
-    }
-
-    public long getPushPatternCacheLookupNanosMaxForTest() {
-        return pushPatternCacheLookupNanosMax;
-    }
-
-    public DirectProcessingMachineMetrics.Snapshot getMetricsSnapshotForTest() {
-        return metrics.snapshot();
-    }
-
-    public long getDirtyRefreshNanosP95ForTest() {
-        return metrics.snapshot().dirtyRefreshNanosP95();
-    }
-
-    public long getPushPatternCacheLookupNanosP95ForTest() {
-        return metrics.snapshot().pushPatternCacheLookupNanosP95();
-    }
-
-    public long getOutputReturnNanosP95ForTest() {
-        return metrics.snapshot().outputReturnNanosP95();
-    }
-
-    public long getServerTickNanosP95ForTest() {
-        return metrics.snapshot().serverTickNanosP95();
-    }
-
-    public int getPendingDirtyPatternSlotCountForTest() {
-        return refreshScheduler.dirtyCount();
-    }
-
-    public long getMachineRecipeIndexVersionForTest() {
-        return recipeIndex.version();
-    }
-
-    public int getMachineRecipeSignatureCountForTest() {
-        return recipeIndex.recipeSignatureCount();
-    }
-
     public String getDetectedRecipeTypeSummaryForMenu() {
         List<ResourceLocation> recipeTypeIds = recipeIndex.recipeTypeIds();
         if (recipeTypeIds.isEmpty()) {
@@ -579,18 +544,9 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return true;
     }
 
-    public boolean isMachineRecipeIndexRefreshPendingForTest() {
-        return machineRecipeIndexRefreshPending;
-    }
-
-    public MachineSupportStatus getPatternStatusForTest(int slot) {
+    public MachineSupportStatus getPatternStatus(int slot) {
         PatternCompatibility compatibility = patternCompatibilityBySlot.get(slot);
         return compatibility == null ? MachineSupportStatus.UNSUPPORTED_UNREADABLE : compatibility.status();
-    }
-
-    public MachineSupportReasonCode getPatternReasonCodeForTest(int slot) {
-        PatternCompatibility compatibility = patternCompatibilityBySlot.get(slot);
-        return compatibility == null ? MachineSupportReasonCode.PATTERN_DECODE_FAILED : compatibility.reasonCode();
     }
 
     public int countVisiblePatternStatusForMenu(MachineSupportStatus status) {
@@ -601,23 +557,11 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         int firstSlot = patternInventory.getActivePage() * patternInventory.getPageSize();
         int endSlot = Math.min(patternInventory.getTotalSlots(), firstSlot + patternInventory.getPageSize());
         for (int slot = firstSlot; slot < endSlot; slot++) {
-            if (!patternInventory.getVirtualSlot(slot).isEmpty() && getPatternStatusForTest(slot) == status) {
+            if (!patternInventory.getVirtualSlot(slot).isEmpty() && getPatternStatus(slot) == status) {
                 count++;
             }
         }
         return count;
-    }
-
-    public int getPendingOutputRetryDelayTicksForTest() {
-        return pendingOutputRetryDelayTicks;
-    }
-
-    public int getPendingOutputRetryBackoffTicksForTest() {
-        return pendingOutputRetryBackoffTicks;
-    }
-
-    public int getExecutionQueueLaneCountForTest() {
-        return executionQueue.laneCountForTest();
     }
 
     public int getQueuedTaskCountForMenu() {
@@ -626,29 +570,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     public int getRunningTaskCountForMenu() {
         return executionQueue.runningTaskCount();
-    }
-
-    public ProcessingExecutionBudgetController.Snapshot getExecutionBudgetSnapshotForTest() {
-        return budgetController.snapshot();
-    }
-
-    public long getOutputReturnBudgetRejectedCountForTest() {
-        return outputReturnBudgetRejectedCount;
-    }
-
-    public long getPushToAeReturnLatencyTicksAverageForTest() {
-        if (pushToAeReturnLatencySampleCount <= 0L) {
-            return 0L;
-        }
-        return pushToAeReturnLatencyTicksTotal / pushToAeReturnLatencySampleCount;
-    }
-
-    public long getPushToAeReturnLatencyTicksMaxForTest() {
-        return pushToAeReturnLatencyTicksMax;
-    }
-
-    public long getPushToAeReturnLatencySampleCountForTest() {
-        return pushToAeReturnLatencySampleCount;
     }
 
     public void invalidateDiscoveryForRecipeReload() {
@@ -714,7 +635,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         recipeIndex = result.index();
         if (!result.cacheHit()) {
             recipeFullScanCount++;
-            metrics.recordMachineRecipeIndexRebuild();
         }
     }
 
@@ -744,7 +664,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         }
         long elapsedNanos = System.nanoTime() - startedAtNanos;
         dirtyRefreshWallNanosMax = Math.max(dirtyRefreshWallNanosMax, elapsedNanos);
-        metrics.recordDirtyRefreshNanos(elapsedNanos);
     }
 
     private boolean refreshSinglePatternSlot(Level currentLevel, int slot) {
@@ -800,7 +719,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             executionQueue.tick(this, getProcessingLaneCount(), budgetController);
             tryFlushPendingOutput();
         } finally {
-            metrics.recordServerTickNanos(System.nanoTime() - startedAtNanos);
         }
     }
 
@@ -833,8 +751,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         budgetController = createConfiguredBudgetController();
     }
 
-    private static ProcessingExecutionBudgetController createConfiguredBudgetController() {
-        return ProcessingExecutionBudgetController.forProfile(currentBudgetProfileName());
+    private static ProcessingExecutionBudget createConfiguredBudgetController() {
+        return ProcessingExecutionBudget.forProfile(currentBudgetProfileName());
     }
 
     private static String currentBudgetProfileName() {
@@ -847,7 +765,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             return;
         }
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled;
-        discoveryService = MachineRecipeDiscoveryService.fromConfig();
+        discoveryService = MachineRecipeIndexBuilder.fromConfig();
         discoveryEpoch++;
         invalidatePatternExposureForIndexChange();
         saveChanges();
@@ -959,7 +877,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return fallback;
     }
 
-    private int getCurrentOperationTicks() {
+    @Override
+    public int getCurrentOperationTicks() {
         int speedCards = getInstalledUpgrades(AEItems.SPEED_CARD);
         return Math.max(1, DEFAULT_OPERATION_TICKS >> Math.min(4, speedCards));
     }
@@ -987,15 +906,11 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 IStorageService storageService = getMainNode().getGrid() == null
                         ? null
                         : getMainNode().getGrid().getStorageService();
-                SourceCpuHandle sourceCpu = FormalMachineCraftingDispatchService.getSourceCpuHandle(
-                        craftingService,
-                        batch.sourceCraftingId()
-                );
                 List<GenericStack> rejectedSlice = outputSink.tryReturnPayload(
                         storageService,
                         actionSource,
                         batch.payload(),
-                        sourceCpu
+                        null
                 );
                 List<GenericStack> remainingPayload = DirectProcessingStackSupport.normalizeStacks(rejectedSlice);
                 if (!remainingPayload.isEmpty()) {
@@ -1010,7 +925,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             pendingOutputRetryDelayTicks = 0;
             pendingOutputRetryBackoffTicks = 0;
         } finally {
-            metrics.recordOutputReturnNanos(System.nanoTime() - startedAtNanos);
         }
     }
 
@@ -1091,7 +1005,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private void recordPushPatternCacheLookupNanos(long startedAtNanos) {
         long elapsedNanos = System.nanoTime() - startedAtNanos;
         pushPatternCacheLookupNanosMax = Math.max(pushPatternCacheLookupNanosMax, elapsedNanos);
-        metrics.recordPushPatternCacheLookupNanos(elapsedNanos);
     }
 
     private void recordPushToAeReturnLatency(@Nullable ProcessingLatencyOrigin latencyOrigin) {
@@ -1109,7 +1022,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 pushToAeReturnLatencySampleCount,
                 latencyOrigin.acceptedPushCount()
         );
-        metrics.recordOutputReturnLatencyTicks(latencyTicks);
     }
 
     private void requestCraftingProviderUpdate() {
