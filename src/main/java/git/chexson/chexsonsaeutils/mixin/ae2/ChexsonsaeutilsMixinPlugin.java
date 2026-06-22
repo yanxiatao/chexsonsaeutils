@@ -58,13 +58,9 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicFormalMachineSourceContextMixin"
     );
     private static final Set<String> FORMAL_MACHINE_PLANNING_ENTRY_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServicePlanningAggregationMixin"
-    );
-    private static final Set<String> FORMAL_MACHINE_PLANNING_SCALED_PATTERN_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicFormalMachineScaledPatternMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobFormalMachineScaledPatternMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceGetProvidersFormalScaledPatternMixin"
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceGetProvidersFormalScaledPatternMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServicePlanningAggregationMixin"
     );
     private static final Set<String> PARALLEL_CPU_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceParallelCpuMixin",
@@ -130,9 +126,6 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
                     || FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
         if (FORMAL_MACHINE_PLANNING_ENTRY_MIXINS.contains(mixinClassName)) {
-            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled");
-        }
-        if (FORMAL_MACHINE_PLANNING_SCALED_PATTERN_MIXINS.contains(mixinClassName)) {
             return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled");
         }
         if (PARALLEL_CPU_ONLY_MIXINS.contains(mixinClassName)) {

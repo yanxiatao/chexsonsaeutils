@@ -34,7 +34,6 @@ import git.chexson.chexsonsaeutils.crafting.ParallelActiveCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineDelegatingPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineScaledPattern;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
 import git.chexson.chexsonsaeutils.crafting.planning.FormalMachinePlanningProvider;
@@ -245,8 +244,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private int lastCompletionSliceBudget = 1;
     private int lastSoftBudget = 1;
     private int lastHardBudget = 1;
-    private int dynamicScaleUpCount;
-    private int dynamicScaleDownCount;
     private int lastObservedLargestBatch = 1;
     private boolean cpuWaitingReturnStoppedThisTick;
     private int unsavedQueueMutationCount;
@@ -469,74 +466,12 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             KeyCounter[] inputHolder,
             int executionCount
     ) {
-        if (supportedPattern instanceof FormalMachineScaledPattern scaledPattern) {
-            return compileScaledProviderTask(scaledPattern, inputHolder, executionCount);
-        }
         return CompiledTask.compile(
                 supportedPattern,
                 inputHolder,
                 getCurrentOperationTicksForExecution(),
                 executionCount
         );
-    }
-
-    @Nullable
-    private CompiledTask compileScaledProviderTask(
-            FormalMachineScaledPattern scaledPattern,
-            KeyCounter[] inputHolder,
-            int executionCount
-    ) {
-        int totalExecutions;
-        try {
-            totalExecutions = Math.multiplyExact(Math.max(1, executionCount), Math.max(1, scaledPattern.multiplier()));
-        } catch (ArithmeticException exception) {
-            return null;
-        }
-
-        KeyCounter[] baseInputHolder = downscaleScaledInputHolder(inputHolder, scaledPattern.multiplier());
-        if (baseInputHolder == null) {
-            return null;
-        }
-
-        IPatternDetails basePattern = scaledPattern.basePattern();
-        if (!(basePattern instanceof IMolecularAssemblerSupportedPattern craftingPattern)) {
-            return null;
-        }
-        return CompiledTask.compile(
-                craftingPattern,
-                baseInputHolder,
-                getCurrentOperationTicksForExecution(),
-                totalExecutions
-        );
-    }
-
-    @Nullable
-    private static KeyCounter[] downscaleScaledInputHolder(@Nullable KeyCounter[] inputHolder, int multiplier) {
-        if (inputHolder == null || multiplier <= 0) {
-            return null;
-        }
-
-        KeyCounter[] downscaled = new KeyCounter[inputHolder.length];
-        for (int index = 0; index < inputHolder.length; index++) {
-            KeyCounter source = inputHolder[index];
-            KeyCounter scaledDown = new KeyCounter();
-            if (source != null) {
-                for (var entry : source) {
-                    long scaledAmount = entry.getLongValue();
-                    if (scaledAmount <= 0L || scaledAmount % multiplier != 0L) {
-                        return null;
-                    }
-
-                    long baseAmount = scaledAmount / multiplier;
-                    if (baseAmount <= 0L) {
-                        return null;
-                    }
-                    scaledDown.add(entry.getKey(), baseAmount);
-                }
-            }
-            downscaled[index] = scaledDown;
-        }
-        return downscaled;
     }
 
     private boolean pushAggregatedPattern(
@@ -812,26 +747,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     public void recordDeterministicPlanningFallbackForTest() {
-    }
-
-    public void recordVirtualScaledPatternHitForTest(int multiplier, long logicalExecutionsSaved) {
-        if (multiplier <= 1) {
-            return;
-        }
-    }
-
-    public void recordVirtualScaledPatternFallbackForTest() {
-    }
-
-    public void recordVirtualScaledPatternStatsForTest(
-            long hitCount,
-            long fallbackCount,
-            int largestMultiplier,
-            long logicalExecutionsSaved
-    ) {
-    }
-
-    public void recordScaledPatternNbtRestoreForTest() {
     }
 
     public FormalMachineTickBudgetSnapshot getTickBudgetSnapshotForTest() {
