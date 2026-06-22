@@ -14,7 +14,6 @@ import java.util.Map;
 public final class ProcessingExecutionQueue {
 
     private static final String NBT_TASKS = "tasks";
-    private static final int COALESCE_SEARCH_WINDOW = 32;
 
     private final ArrayDeque<ProcessingCompiledTask> pendingTasks = new ArrayDeque<>();
     private final List<ProcessingExecutionLane> lanes = new ArrayList<>();
@@ -30,30 +29,23 @@ public final class ProcessingExecutionQueue {
         return offer(task, null);
     }
 
-    public boolean offer(ProcessingCompiledTask task, ProcessingExecutionBudgetController budgetController) {
+    public boolean offer(ProcessingCompiledTask task, ProcessingExecutionBudget budgetController) {
         return offer(task, budgetController, -1L);
     }
 
     public boolean offer(
             ProcessingCompiledTask task,
-            ProcessingExecutionBudgetController budgetController,
+            ProcessingExecutionBudget budgetController,
             long acceptedTick
     ) {
         if (task == null) {
             return false;
         }
-        int maxCoalescedExecutions = budgetController == null
-                ? ProcessingExecutionBudgetController.NORMAL_LIMITS.maxCoalescedExecutions()
-                : budgetController.maxCoalescedExecutions();
-        ProcessingLatencyOrigin latencyOrigin = acceptedTick >= 0L ? ProcessingLatencyOrigin.single(acceptedTick) : null;
-        if (tryCoalescePendingTask(task, maxCoalescedExecutions, latencyOrigin)) {
-            return true;
-        }
         if (totalTaskCount() >= maxTaskCount) {
             return false;
         }
-        if (latencyOrigin != null) {
-            latencyOrigins.put(task, latencyOrigin);
+        if (acceptedTick >= 0L) {
+            latencyOrigins.put(task, ProcessingLatencyOrigin.single(acceptedTick));
         }
         pendingTasks.offer(task);
         return true;
@@ -66,7 +58,7 @@ public final class ProcessingExecutionQueue {
     public boolean tick(
             ProcessingTaskCompletionHost host,
             int laneCount,
-            ProcessingExecutionBudgetController budgetController
+            ProcessingExecutionBudget budgetController
     ) {
         ensureLaneCapacity(Math.max(1, laneCount));
         assignIdleLanes(budgetController);
@@ -121,10 +113,6 @@ public final class ProcessingExecutionQueue {
         return queuedTaskCount() + runningTaskCount();
     }
 
-    public int laneCountForTest() {
-        return lanes.size();
-    }
-
     public void clear() {
         pendingTasks.clear();
         latencyOrigins.clear();
@@ -160,7 +148,7 @@ public final class ProcessingExecutionQueue {
         }
     }
 
-    private void assignIdleLanes(ProcessingExecutionBudgetController budgetController) {
+    private void assignIdleLanes(ProcessingExecutionBudget budgetController) {
         for (ProcessingExecutionLane lane : lanes) {
             if (lane.isIdle() && !pendingTasks.isEmpty()) {
                 if (budgetController != null && !budgetController.tryClaimAdmit()) {
@@ -169,27 +157,6 @@ public final class ProcessingExecutionQueue {
                 lane.assign(pendingTasks.removeFirst());
             }
         }
-    }
-
-    private boolean tryCoalescePendingTask(
-            ProcessingCompiledTask task,
-            int maxCoalescedExecutions,
-            ProcessingLatencyOrigin latencyOrigin
-    ) {
-        int searched = 0;
-        var descendingIterator = pendingTasks.descendingIterator();
-        while (descendingIterator.hasNext() && searched < COALESCE_SEARCH_WINDOW) {
-            ProcessingCompiledTask candidate = descendingIterator.next();
-            if (candidate.canCoalesceWith(task, maxCoalescedExecutions)
-                    && candidate.tryAppendExecutionCount(task.executionCount(), maxCoalescedExecutions)) {
-                if (latencyOrigin != null) {
-                    latencyOrigins.merge(candidate, latencyOrigin, ProcessingLatencyOrigin::merge);
-                }
-                return true;
-            }
-            searched++;
-        }
-        return false;
     }
 
     private void ensureLaneCapacity(int laneCount) {

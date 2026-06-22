@@ -54,7 +54,7 @@ public final class LocalPatternProviderFacade {
             return;
         }
         boolean changed = false;
-        boolean localOptimizationEnabled = host.isLocalOptimizationEnabledForTest();
+        boolean localOptimizationEnabled = host.isLocalOptimizationEnabled();
         List<Integer> dirtySlots = refreshScheduler.drainDirtySlots();
         List<Integer> slotsToRefresh = dirtySlots;
         if (!localOptimizationEnabled) {

@@ -15,15 +15,15 @@ import java.util.Objects;
 
 public class ProcessingPatternReplacementDecoder implements IPatternDetailsDecoder {
     private final ProcessingPatternReplacementPersistence persistence;
-    private final ProcessingSlotTagService tagService;
+    private final ProcessingSlotTagExpander tagService;
     private final ProcessingSlotRuleValidation validation;
 
     public ProcessingPatternReplacementDecoder() {
-        this(new ProcessingSlotTagService(), new ProcessingSlotRuleValidation());
+        this(new ProcessingSlotTagExpander(), new ProcessingSlotRuleValidation());
     }
 
     public ProcessingPatternReplacementDecoder(
-            ProcessingSlotTagService tagService,
+            ProcessingSlotTagExpander tagService,
             ProcessingSlotRuleValidation validation
     ) {
         this(new ProcessingPatternReplacementPersistence(tagService, validation), tagService, validation);
@@ -31,7 +31,7 @@ public class ProcessingPatternReplacementDecoder implements IPatternDetailsDecod
 
     public ProcessingPatternReplacementDecoder(
             ProcessingPatternReplacementPersistence persistence,
-            ProcessingSlotTagService tagService,
+            ProcessingSlotTagExpander tagService,
             ProcessingSlotRuleValidation validation
     ) {
         this.persistence = Objects.requireNonNull(persistence);

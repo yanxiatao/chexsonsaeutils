@@ -6,10 +6,7 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.execution.CraftingCpuLogic;
 import git.chexson.chexsonsaeutils.config.EnhancedCraftingStatusFeatureGate;
-import git.chexson.chexsonsaeutils.config.FormalMachineCraftingDispatchFeatureGate;
-import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatureGate;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingBlockedTracker;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -94,16 +91,7 @@ public abstract class CraftingCpuLogicFormalMachineSourceContextMixin implements
             IPatternDetails patternDetails,
             KeyCounter[] inputHolder
     ) {
-        boolean pushed;
-        if (FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()) {
-            pushed = FormalMachineSourceCpuContext.withSourceCraftingId(
-                    chexsonsaeutils$currentCraftingId(),
-                    () -> provider.pushPattern(patternDetails, inputHolder)
-            );
-        } else {
-            pushed = provider.pushPattern(patternDetails, inputHolder);
-        }
+        boolean pushed = provider.pushPattern(patternDetails, inputHolder);
         if (pushed && EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()) {
             chexsonsaeutils$pushedCurrentPattern = true;
         }

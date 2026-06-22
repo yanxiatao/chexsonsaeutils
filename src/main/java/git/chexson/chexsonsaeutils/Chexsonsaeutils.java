@@ -39,6 +39,8 @@ import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.gui.ConfigurationScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -134,7 +136,7 @@ public class Chexsonsaeutils {
         event.addListener(new MachineRecipeConfigMappingReloadListener());
     }
 
-    @EventBusSubscriber(modid = MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+    @EventBusSubscriber(modid = MODID, value = Dist.CLIENT)
     public static class ClientModEvents {
 
         @SubscribeEvent
@@ -150,6 +152,17 @@ public class Chexsonsaeutils {
         @SubscribeEvent
         public static void onAddPackFinders(net.neoforged.neoforge.event.AddPackFindersEvent event) {
             DyeablePatternPackRegistration.register(event);
+        }
+
+        @SubscribeEvent
+        public static void onRegisterExtensions(net.neoforged.fml.event.lifecycle.FMLConstructModEvent event) {
+            event.enqueueWork(() -> {
+                net.neoforged.fml.ModContainer container = net.neoforged.fml.ModList.get()
+                        .getModContainerById(MODID)
+                        .orElseThrow();
+                container.registerExtensionPoint(IConfigScreenFactory.class,
+                        (mc, parent) -> new ConfigurationScreen(container, parent));
+            });
         }
     }
 

@@ -5,7 +5,7 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import appeng.crafting.pattern.AECraftingPattern;
 import git.chexson.chexsonsaeutils.blockentity.crafting.CompiledTask;
-import git.chexson.chexsonsaeutils.blockentity.crafting.FormalMachineCompletionTemplateHelper;
+import git.chexson.chexsonsaeutils.blockentity.crafting.AbstractHighCapacityCraftingHostBlockEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -14,9 +14,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class ScaledCraftingPatternEligibilityService {
+public final class ScaledCraftingPatternAnalyzer {
 
-    private ScaledCraftingPatternEligibilityService() {
+    private ScaledCraftingPatternAnalyzer() {
     }
 
     public static @Nullable Eligibility analyze(@Nullable Level level, @Nullable IPatternDetails patternDetails) {
@@ -37,8 +37,8 @@ public final class ScaledCraftingPatternEligibilityService {
         if (probeTask == null) {
             return null;
         }
-        FormalMachineCompletionTemplateHelper.CompletionTemplate template =
-                FormalMachineCompletionTemplateHelper.probeStableTemplate(level, pattern, probeTask);
+        AbstractHighCapacityCraftingHostBlockEntity.CompletionTemplate template =
+                AbstractHighCapacityCraftingHostBlockEntity.probeStableCompletionTemplate(level, pattern, probeTask);
         if (template == null) {
             return null;
         }

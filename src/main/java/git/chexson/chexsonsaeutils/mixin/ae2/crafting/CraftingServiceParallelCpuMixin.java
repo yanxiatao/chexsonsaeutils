@@ -23,10 +23,8 @@ import com.google.common.collect.ImmutableSet;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
-import git.chexson.chexsonsaeutils.config.FormalMachineCraftingDispatchFeatureGate;
 import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatureGate;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingContinuationSubmitter;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
@@ -487,19 +485,11 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
             @Nullable ICraftingCPU target,
             @Nullable ICraftingSubmitResult result
     ) {
-        if (!(FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup())
+        if (!FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
                 || result == null
                 || !result.successful()) {
             return;
         }
-        FormalMachineCraftingDispatchService.onSubmitJobTail(
-                (CraftingService) (Object) this,
-                job,
-                requestingMachine,
-                target,
-                result
-        );
     }
 
     @Override

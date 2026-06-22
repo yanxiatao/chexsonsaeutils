@@ -23,8 +23,11 @@ public final class FormalMachineAggregationRemainderHelper {
             @Nullable Level level,
             @Nullable IPatternDetails patternDetails
     ) {
-        if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern supportedPattern) || level == null) {
+        if (level == null || patternDetails == null) {
             return null;
+        }
+        if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern supportedPattern)) {
+            return Map.of();
         }
 
         KeyCounter[] inputHolders = createSingleRunInputHolders(supportedPattern);

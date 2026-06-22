@@ -25,8 +25,6 @@ import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.crafting.inv.ListCraftingInventory;
 import appeng.hooks.ticking.TickHandler;
 import appeng.me.service.CraftingService;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
 import com.google.common.base.Preconditions;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursiveTaskOrdering;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
@@ -157,7 +155,6 @@ final class ParallelCraftingCpuLogic {
     boolean tickCraftingLogic(
             IEnergyService energyGrid,
             CraftingService craftingService,
-            ParallelCpuMetrics metrics,
             long currentTick,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
             @Nullable ParallelCpuProviderBackoff providerBackoff
@@ -199,7 +196,6 @@ final class ParallelCraftingCpuLogic {
                         remainingOperations,
                         craftingService,
                         energyGrid,
-                        metrics,
                         currentTick,
                         budgetLedger,
                         providerBackoff
@@ -223,14 +219,11 @@ final class ParallelCraftingCpuLogic {
             long maxPatterns,
             CraftingService craftingService,
             IEnergyService energyService,
-            ParallelCpuMetrics metrics,
             long currentTick,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
             @Nullable ParallelCpuProviderBackoff providerBackoff
     ) {
-        if (metrics != null) {
-            metrics.recordExecuteCraftingCall();
-        }
+
         if (job == null || job.tasks.isEmpty()) {
             return 0L;
         }
@@ -274,7 +267,6 @@ final class ParallelCraftingCpuLogic {
             var craftingContainer = extractPatternInputsWithinBudget(
                     details,
                     inventory,
-                    metrics,
                     budgetLedger,
                     lane.cluster().level(),
                     expectedOutputs,
@@ -299,9 +291,7 @@ final class ParallelCraftingCpuLogic {
                         provider,
                         currentTick,
                         budgetLedger,
-                        providerBackoff,
-                        metrics
-                );
+                        providerBackoff);
                 if (availability == ParallelCpuProviderBackoff.ProviderAvailability.BUDGET_EXHAUSTED) {
                     stopAfterCurrentTask = true;
                     break;
@@ -325,10 +315,7 @@ final class ParallelCraftingCpuLogic {
                     }
 
                     KeyCounter[] submittedCraftingContainer = craftingContainer;
-                    boolean acceptedPush = FormalMachineSourceCpuContext.withSourceCraftingId(
-                            currentSourceCraftingId(),
-                            () -> provider.pushPattern(details, submittedCraftingContainer)
-                    );
+                    boolean acceptedPush = provider.pushPattern(details, submittedCraftingContainer);
 
                     if (!acceptedPush) {
                         if (providerBackoff != null) {
@@ -348,9 +335,7 @@ final class ParallelCraftingCpuLogic {
                     );
                     pushedPatterns++;
                     reserveExpectedWaiting(expectedOutputs, expectedContainerItems);
-                    if (metrics != null) {
-                        metrics.recordPushedPattern(1L);
-                    }
+
                     for (var expectedContainerItem : expectedContainerItems) {
                         ParallelExecutingCraftingJob.addMaxItems(
                                 job.timeTracker,
@@ -373,7 +358,6 @@ final class ParallelCraftingCpuLogic {
                     craftingContainer = extractPatternInputsWithinBudget(
                             details,
                             inventory,
-                            metrics,
                             budgetLedger,
                             lane.cluster().level(),
                             expectedOutputs,
@@ -392,9 +376,7 @@ final class ParallelCraftingCpuLogic {
             if (craftingContainer != null) {
                 boolean reinjectBudgetClaimed = tryClaimReinjectPatternInputs(budgetLedger);
                 CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
-                if (metrics != null) {
-                    metrics.recordReinjectPatternInputs(1L);
-                }
+
                 if (!reinjectBudgetClaimed) {
                     break;
                 }
@@ -422,7 +404,6 @@ final class ParallelCraftingCpuLogic {
     private static @Nullable KeyCounter[] extractPatternInputsWithinBudget(
             IPatternDetails details,
             ListCraftingInventory inventory,
-            @Nullable ParallelCpuMetrics metrics,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
             net.minecraft.world.level.Level level,
             KeyCounter expectedOutputs,
@@ -440,9 +421,7 @@ final class ParallelCraftingCpuLogic {
                 expectedOutputs,
                 expectedContainerItems
         );
-        if (metrics != null) {
-            metrics.recordExtractPatternInputs(1L);
-        }
+
         return craftingContainer;
     }
 
@@ -450,11 +429,10 @@ final class ParallelCraftingCpuLogic {
             @Nullable ICraftingProvider provider,
             long currentTick,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
-            @Nullable ParallelCpuProviderBackoff providerBackoff,
-            @Nullable ParallelCpuMetrics metrics
+            @Nullable ParallelCpuProviderBackoff providerBackoff
     ) {
         if (providerBackoff != null) {
-            return providerBackoff.checkProvider(provider, currentTick, budgetLedger, metrics);
+            return providerBackoff.checkProvider(provider, currentTick, budgetLedger);
         }
         if (provider == null) {
             return ParallelCpuProviderBackoff.ProviderAvailability.BACKED_OFF;
@@ -462,13 +440,9 @@ final class ParallelCraftingCpuLogic {
         if (budgetLedger != null && !budgetLedger.tryClaimProviderCheck()) {
             return ParallelCpuProviderBackoff.ProviderAvailability.BUDGET_EXHAUSTED;
         }
-        if (metrics != null) {
-            metrics.recordProviderScan();
-        }
+
         if (provider.isBusy()) {
-            if (metrics != null) {
-                metrics.recordBusyProviderSkip();
-            }
+
             return ParallelCpuProviderBackoff.ProviderAvailability.BUSY;
         }
         return ParallelCpuProviderBackoff.ProviderAvailability.READY;
@@ -707,7 +681,6 @@ final class ParallelCraftingCpuLogic {
 
         this.job = null;
         this.requesterLink = null;
-        FormalMachineCraftingDispatchService.clearSourceCpu(finishedCraftingId);
         this.storeItems();
     }
 

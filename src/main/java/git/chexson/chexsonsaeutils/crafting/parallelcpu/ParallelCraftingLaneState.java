@@ -90,7 +90,6 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
     boolean tick(
             IEnergyService energyGrid,
             appeng.me.service.CraftingService craftingService,
-            ParallelCpuMetrics metrics,
             long currentTick,
             ParallelCpuGridBudgetLedger budgetLedger,
             ParallelCpuProviderBackoff providerBackoff
@@ -98,7 +97,6 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
         return logic.tickCraftingLogic(
                 energyGrid,
                 craftingService,
-                metrics,
                 currentTick,
                 budgetLedger,
                 providerBackoff
@@ -229,18 +227,6 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
 
     long getLastModifiedOnTick() {
         return logic.getLastModifiedOnTick();
-    }
-
-    long storedAmountForTest(@Nullable AEKey what) {
-        return logic.getStored(what);
-    }
-
-    long waitingAmountForTest(@Nullable AEKey what) {
-        return logic.getWaitingFor(what);
-    }
-
-    long pendingAmountForTest(@Nullable AEKey what) {
-        return logic.getPendingOutputs(what);
     }
 
 }

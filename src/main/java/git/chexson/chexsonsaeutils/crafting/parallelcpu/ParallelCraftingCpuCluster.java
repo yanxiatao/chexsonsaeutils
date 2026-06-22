@@ -97,8 +97,7 @@ public final class ParallelCraftingCpuCluster {
             ICraftingPlan plan,
             ICraftingRequester requester,
             IActionSource src,
-            long currentTick,
-            ParallelCpuMetrics metrics
+            long currentTick
     ) {
         if (!canProcessJobs()) {
             return CraftingSubmitResult.CPU_OFFLINE;
@@ -124,9 +123,6 @@ public final class ParallelCraftingCpuCluster {
         lanes.put(lane.laneId(), lane);
         lanesByPlan.put(plan, lane);
         lane.markRegistered();
-        if (metrics != null) {
-            metrics.recordSubmittedVirtualCpu();
-        }
         return submitResult;
     }
 
@@ -135,8 +131,7 @@ public final class ParallelCraftingCpuCluster {
             ICraftingPlan plan,
             ICraftingRequester requester,
             IActionSource src,
-            long currentTick,
-            ParallelCpuMetrics metrics
+            long currentTick
     ) {
         if (!canProcessJobs()) {
             return CraftingSubmitResult.CPU_OFFLINE;
@@ -162,16 +157,12 @@ public final class ParallelCraftingCpuCluster {
         lanes.put(lane.laneId(), lane);
         lanesByPlan.put(plan, lane);
         lane.markRegistered();
-        if (metrics != null) {
-            metrics.recordSubmittedVirtualCpu();
-        }
         return submitResult;
     }
 
     public TickResult tick(
             IEnergyService energyGrid,
             appeng.me.service.CraftingService craftingService,
-            ParallelCpuMetrics metrics,
             long currentTick,
             ParallelCpuGridBudgetLedger budgetLedger
     ) {
@@ -203,13 +194,9 @@ public final class ParallelCraftingCpuCluster {
                 continue;
             }
             hadActiveLane = true;
-            if (metrics != null) {
-                metrics.recordTickCraftingLogic();
-            }
             boolean zeroProgress = lane.tick(
                     energyGrid,
                     craftingService,
-                    metrics,
                     currentTick,
                     budgetLedger,
                     providerBackoff
@@ -521,10 +508,6 @@ public final class ParallelCraftingCpuCluster {
         return lane.laneId();
     }
 
-    public ParallelCpuMetrics.Snapshot metricsSnapshotForTest() {
-        return gridContext == null ? new ParallelCpuMetrics().snapshot() : gridContext.metricsSnapshot();
-    }
-
     public long storageBytes() {
         return ParallelCraftingCpuConfig.current().storageBytes();
     }
@@ -666,30 +649,6 @@ public final class ParallelCraftingCpuCluster {
             return null;
         }
         return lanes.get(craftingId);
-    }
-
-    public long storedAmountForTest(@Nullable AEKey what) {
-        long stored = 0L;
-        for (ParallelCraftingLaneState lane : lanes.values()) {
-            stored = saturatedAdd(stored, lane.storedAmountForTest(what));
-        }
-        return stored;
-    }
-
-    public long waitingAmountForTest(@Nullable AEKey what) {
-        long waiting = 0L;
-        for (ParallelCraftingLaneState lane : lanes.values()) {
-            waiting = saturatedAdd(waiting, lane.waitingAmountForTest(what));
-        }
-        return waiting;
-    }
-
-    public long pendingAmountForTest(@Nullable AEKey what) {
-        long pending = 0L;
-        for (ParallelCraftingLaneState lane : lanes.values()) {
-            pending = saturatedAdd(pending, lane.pendingAmountForTest(what));
-        }
-        return pending;
     }
 
     private static long saturatedAdd(long left, long right) {

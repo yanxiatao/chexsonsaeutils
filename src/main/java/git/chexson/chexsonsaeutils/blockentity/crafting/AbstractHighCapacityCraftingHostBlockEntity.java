@@ -5,6 +5,7 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.inventories.InternalInventory;
+import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.storage.IStorageService;
@@ -16,6 +17,8 @@ import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
+import appeng.crafting.execution.ExecutingCraftingJob;
+import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.core.definitions.AEItems;
@@ -26,18 +29,19 @@ import appeng.menu.AutoCraftingMenu;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
+import git.chexson.chexsonsaeutils.crafting.NativeSourceCpuHandle;
+import git.chexson.chexsonsaeutils.crafting.ParallelActiveCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchKey;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineBatchRequest;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingDispatchService;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineFastPathResult;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineSourceCpuContext;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineCraftingTimingService;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineCraftingProvider;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
+import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingLane;
 import git.chexson.chexsonsaeutils.crafting.persistence.HighCapacityPatternHostSavedData;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobAccessor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -71,7 +75,105 @@ import java.util.function.Supplier;
 
 public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetworkedBlockEntity
         implements PatternContainer, IUpgradeableObject, ICraftingProvider, InternalInventoryHost,
-        IFormalMachineCraftingProvider {
+        IFormalMachinePlanningProvider {
+
+    protected static boolean supportsCompletionTemplate(@Nullable IMolecularAssemblerSupportedPattern pattern) {
+        if (!(pattern instanceof AECraftingPattern aeCraftingPattern)) {
+            return false;
+        }
+        return !aeCraftingPattern.canSubstitute() && !aeCraftingPattern.canSubstituteFluids();
+    }
+
+    @Nullable
+    public static CompletionTemplate probeStableCompletionTemplate(
+            @Nullable Level level,
+            @Nullable IMolecularAssemblerSupportedPattern pattern,
+            @Nullable CompiledTask compiledTask
+    ) {
+        if (level == null || pattern == null || compiledTask == null || !supportsCompletionTemplate(pattern)) {
+            return null;
+        }
+        SingleExecutionResult first = executeSingleCompletion(level, pattern, compiledTask);
+        if (first == null) {
+            return null;
+        }
+        SingleExecutionResult second = executeSingleCompletion(level, pattern, compiledTask);
+        if (second == null || !first.matches(second)) {
+            return null;
+        }
+        return new CompletionTemplate(first.primary(), first.remainders());
+    }
+
+    @Nullable
+    private static SingleExecutionResult executeSingleCompletion(
+            Level level,
+            IMolecularAssemblerSupportedPattern pattern,
+            CompiledTask compiledTask
+    ) {
+        TransientCraftingContainer craftingContainer = new TransientCraftingContainer(new AutoCraftingMenu(), 3, 3);
+        ItemStack[] craftingGrid = compiledTask.getCraftingGridCopies();
+        for (int slot = 0; slot < craftingGrid.length; slot++) {
+            craftingContainer.setItem(slot, craftingGrid[slot]);
+        }
+        var positionedInput = craftingContainer.asPositionedCraftInput();
+        var craftingInput = positionedInput.input();
+        ItemStack output = pattern.assemble(craftingInput, level);
+        if (output.isEmpty()) {
+            return null;
+        }
+        GenericStack primary = normalizePrimaryOutput(pattern, output);
+        if (primary == null) {
+            return null;
+        }
+        Map<AEItemKey, Long> remainderTotals = new LinkedHashMap<>();
+        for (ItemStack remainder : pattern.getRemainingItems(craftingInput)) {
+            if (remainder.isEmpty()) {
+                continue;
+            }
+            GenericStack genericRemainder = GenericStack.fromItemStack(remainder.copy());
+            if (genericRemainder == null || !(genericRemainder.what() instanceof AEItemKey itemKey)) {
+                return null;
+            }
+            remainderTotals.merge(itemKey, genericRemainder.amount(), Long::sum);
+        }
+        return new SingleExecutionResult(primary, Map.copyOf(remainderTotals));
+    }
+
+    public record CompletionTemplate(GenericStack primary, Map<AEItemKey, Long> remainders) {
+    }
+
+    @Nullable
+    protected static GenericStack normalizePrimaryOutput(
+            @Nullable IMolecularAssemblerSupportedPattern pattern,
+            @Nullable ItemStack output
+    ) {
+        if (pattern == null || output == null || output.isEmpty()) {
+            return null;
+        }
+        GenericStack assembled = GenericStack.fromItemStack(output.copy());
+        if (assembled == null) {
+            return null;
+        }
+        GenericStack primaryOutput = pattern.getPrimaryOutput();
+        if (primaryOutput == null || primaryOutput.what() == null || assembled.what() == null) {
+            return assembled;
+        }
+        if (primaryOutput.what().getType() != assembled.what().getType()) {
+            return assembled;
+        }
+        return new GenericStack(primaryOutput.what(), assembled.amount());
+    }
+
+    private record SingleExecutionResult(GenericStack primary, Map<AEItemKey, Long> remainders) {
+        private boolean matches(SingleExecutionResult other) {
+            if (other == null || primary == null || other.primary == null) {
+                return false;
+            }
+            return primary.what().equals(other.primary.what())
+                    && primary.amount() == other.primary.amount()
+                    && remainders.equals(other.remainders);
+        }
+    }
 
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_EXECUTION_QUEUE = "executionQueue";
@@ -120,98 +222,8 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     private int baseOperationTicks = DEFAULT_BASE_TICKS;
     private boolean localOptimizationEnabled = true;
-    private long localOptimizationHitCount;
-    private long decodePatternCount;
-    private long decodeCacheHitCount;
-    private long dirtyRefreshScannedSlots;
-    private long providerUpdateCount;
-    private long searchScannedSlots;
-    private long searchDecodeCacheHitCount;
-    private long searchDecodePatternCount;
     private long jobsSubmitted;
     private long jobsCompleted;
-    private long outputBufferRetryCount;
-    private long outputBufferFlushCount;
-    private long networkPatternExposureCount;
-    private long aeCraftingLookupCount;
-    private long aeCraftingLookupHitCount;
-    private long aeCraftingPlanCount;
-    private long aeCraftingPlanSuccessCount;
-    private long planningRequestCount;
-    private long planningSuccessCount;
-    private long planningFailureCount;
-    private long planningChunkCount;
-    private long largestPlanningChunkSize;
-    private long planningAggregationHitCount;
-    private long planningAggregationFallbackCount;
-    private long planningReplacementPathHitCount;
-    private long planningWallClockNanosMax;
-    private long planningRequestedAmountMax;
-    private long planningEstimatedWorkMax;
-    private long planningWorkTriggeredCount;
-    private long planningHelperCallCount;
-    private long planningNullHelperResultCount;
-    private long planningLiveSnapshotRequestCount;
-    private long forcedProviderRefreshCount;
-    private long deterministicPlanningHitCount;
-    private long deterministicPlanningFallbackCount;
-    private long virtualScaledPatternHitCount;
-    private long virtualScaledPatternFallbackCount;
-    private int largestVirtualPatternMultiplier;
-    private long virtualScaledPatternLogicalExecutionsSaved;
-    private long scaledPatternNbtRestoreCount;
-    private long tickBudgetHardStopCount;
-    private long formalTimingCorrectionCount;
-    private long formalTimingProgressClampCount;
-    private long formalTimingEtaClampCount;
-    private long cpuWaitingReturnBudgetStopCount;
-    private long largestCpuWaitingReturnAmount;
-    private long cpuWaitingReturnOverBudgetCount;
-    private long cpuWaitingReturnAmount;
-    private long cpuWaitingAeFallbackPartialInsertCount;
-    private long cpuWaitingNoProgressRetries;
-    private long cpuWaitingRouteNanosMax;
-    private long formalStatusHeartbeatCount;
-    private long maxTickBudgetNanosObserved;
-    private long aeStorageInsertAttemptCount;
-    private long aeStorageInsertSuccessCount;
-    private long aeStorageInsertFallbackCount;
-    private long aeReturnBlockedTicks;
-    private long aeReturnRetryCount;
-    private long coalescedTaskCount;
-    private long coalescedJobsSaved;
-    private long batchedAeReturnCount;
-    private long fastPathAcceptedCount;
-    private long fastPathFallbackCount;
-    private long formalMachineOptimizationHitCount;
-    private long nonFormalProviderHitCount;
-    private long pendingCompletionTicks;
-    private long completionSlicesProcessed;
-    private long templatedCompletionHitCount;
-    private long templatedCompletionSavedExecutions;
-    private long maxExecutableRunsHitCount;
-    private long maxExecutableRunsFallbackCount;
-    private int bulkExtractionLogicalExecutionsMax;
-    private long templatedDispatchHitCount;
-    private long compileCacheHitCount;
-    private long providerOverpressureRejectCount;
-    private long providerInactiveRejectCount;
-    private long providerPatternMissingRejectCount;
-    private long batchKeyMismatchRejectCount;
-    private long queueRejectCount;
-    private long backpressureRejectCount;
-    private long compiledTaskResolveRejectCount;
-    private long completionQueuePeak;
-    private int completionBacklogExecutionsPeak;
-    private long submitBenchmarkCount;
-    private long submitBenchmarkSuccessCount;
-    private long submitBenchmarkWallClockNanosMax;
-    private int peakRunningTasks;
-    private int peakRunningUniquePatterns;
-    private int submittedUniquePatternCount;
-    private int maxExecutionCountPerTaskObserved;
-    private int largestCompletionSliceExecutionsObserved;
-    private final Map<AEItemKey, Integer> completedOutputsForTest = new LinkedHashMap<>();
     @Nullable
     private PendingAeReturn pendingAeReturn;
     private final ArrayDeque<PendingCompletionWork> pendingCompletionQueue = new ArrayDeque<>();
@@ -226,7 +238,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private int highlightedPageSlotMask;
     private boolean externalPatternsLoaded;
     private boolean providerRefreshAfterReadyPending;
-    private long lastAeStorageInsertAttemptCount;
     private long lastFastPathFallbackCount;
     private int lastEffectiveLaneCount = 1;
     private int lastCompletionBudget = 1;
@@ -487,9 +498,12 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return null;
         }
 
-        AECraftingPattern basePattern = scaledPattern.basePattern();
+        IPatternDetails basePattern = scaledPattern.basePattern();
+        if (!(basePattern instanceof IMolecularAssemblerSupportedPattern craftingPattern)) {
+            return null;
+        }
         return CompiledTask.compile(
-                basePattern,
+                craftingPattern,
                 baseInputHolder,
                 getCurrentOperationTicksForExecution(),
                 totalExecutions
@@ -541,8 +555,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 1
         );
         if (compiledTask == null) {
-            debugFormalIngress("aggregated pattern compile rejected rawInputHolder=" + describeInputHolder(inputHolder)
-                    + " patternInputs=" + aggregatedPattern.aggregatedInputs());
             return false;
         }
         attachAggregatedCompletionTemplate(aggregatedPattern, compiledTask);
@@ -553,71 +565,17 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (compiledTask == null) {
             return false;
         }
-        FormalMachineSourceCpuContext.applyToCompiledTask(compiledTask);
         IMolecularAssemblerSupportedPattern pattern = compiledTask.resolvePattern(getLevel());
         if (pattern != null) {
             maybeAttachCompletionTemplate(pattern, compiledTask);
         }
-        LocalExecutionQueue.CoalesceOfferResult offerResult = localExecutionQueue.offerOrCoalesce(
-                compiledTask,
-                new QueueBudgetContext(batchExecutionMode, currentBudgetModel, getPreferredLaneFloor())
-        );
-        if (offerResult == LocalExecutionQueue.CoalesceOfferResult.REJECTED) {
+        if (!localExecutionQueue.offer(compiledTask)) {
             return false;
         }
         localExecutionQueue.reconfigureActiveLanes(currentBudgetModel);
         jobsSubmitted += compiledTask.getExecutionCount();
-        if (offerResult == LocalExecutionQueue.CoalesceOfferResult.COALESCED) {
-            coalescedTaskCount++;
-            coalescedJobsSaved += compiledTask.getExecutionCount();
-        }
-        maxExecutionCountPerTaskObserved = Math.max(
-                maxExecutionCountPerTaskObserved,
-                findMaxExecutionCountAcrossQueue()
-        );
         markQueueMutationForSave(localExecutionQueue.totalTaskCount() <= 1);
         return true;
-    }
-
-    @Override
-    public boolean supportsFastBatch(IPatternDetails patternDetails) {
-        return false;
-    }
-
-    @Override
-    public boolean canAcceptBatchKey(FormalMachineBatchKey batchKey) {
-        if (!formalMachineDispatchHost || batchKey == null) {
-            return false;
-        }
-        boolean accepted = this.getMainNode().isActive()
-                && pendingAeReturn == null
-                && !isCompletionBacklogHardPressured()
-                && localExecutionQueue.totalTaskCount() < FAST_BATCH_BACKPRESSURE_TASK_LIMIT;
-        if (!accepted) {
-            providerOverpressureRejectCount++;
-        }
-        return accepted;
-    }
-
-    @Override
-    public int getDispatchBackpressure() {
-        return localExecutionQueue.totalTaskCount() + getPendingCompletionTaskCountInternal();
-    }
-
-    @Override
-    public int getDispatchOperationTicks() {
-        return getCurrentOperationTicksForExecution();
-    }
-
-    @Override
-    public String getMachineIdentity() {
-        return worldPosition.toShortString();
-    }
-
-    @Override
-    public FormalMachineFastPathResult offerFastBatch(FormalMachineBatchRequest request) {
-        fastPathFallbackCount++;
-        return FormalMachineFastPathResult.fallback();
     }
 
     @Override
@@ -701,7 +659,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         refreshScheduler.clear();
         decodedPatternEntryCache.clear();
         localPatternProviderFacade.clear();
-        completedOutputsForTest.clear();
         pendingCompletionQueue.clear();
         pendingAeReturn = null;
         lastSearchQuery = "";
@@ -757,138 +714,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         return localPatternProviderFacade.activePatternCount();
     }
 
-    public PatternBenchmarkSnapshot snapshotBenchmark() {
-        int activePageStartSlot = pagedPatternInventory.getActivePage() * pagedPatternInventory.getPageSize();
-        int activePageEndSlot = Math.min(
-                pagedPatternInventory.getTotalSlots(),
-                activePageStartSlot + pagedPatternInventory.getPageSize()
-        );
-        return new PatternBenchmarkSnapshot(
-                localOptimizationHitCount,
-                decodePatternCount,
-                decodeCacheHitCount,
-                dirtyRefreshScannedSlots,
-                providerUpdateCount,
-                searchScannedSlots,
-                searchDecodeCacheHitCount,
-                searchDecodePatternCount,
-                jobsSubmitted,
-                jobsCompleted,
-                outputBufferRetryCount,
-                outputBufferFlushCount,
-                networkPatternExposureCount,
-                aeCraftingLookupCount,
-                aeCraftingLookupHitCount,
-                aeCraftingPlanCount,
-                aeCraftingPlanSuccessCount,
-                planningRequestCount,
-                planningSuccessCount,
-                planningFailureCount,
-                planningChunkCount,
-                largestPlanningChunkSize,
-                planningAggregationHitCount,
-                planningAggregationFallbackCount,
-                planningReplacementPathHitCount,
-                planningWallClockNanosMax,
-                planningRequestedAmountMax,
-                planningEstimatedWorkMax,
-                planningWorkTriggeredCount,
-                planningHelperCallCount,
-                planningNullHelperResultCount,
-                planningLiveSnapshotRequestCount,
-                hasInWorldNodeHostCapabilityForTest() ? 1 : 0,
-                forcedProviderRefreshCount,
-                deterministicPlanningHitCount,
-                deterministicPlanningFallbackCount,
-                virtualScaledPatternHitCount,
-                virtualScaledPatternFallbackCount,
-                largestVirtualPatternMultiplier,
-                virtualScaledPatternLogicalExecutionsSaved,
-                scaledPatternNbtRestoreCount,
-                tickBudgetHardStopCount,
-                formalTimingCorrectionCount,
-                formalTimingProgressClampCount,
-                formalTimingEtaClampCount,
-                formalStatusHeartbeatCount,
-                cpuWaitingReturnBudgetStopCount,
-                largestCpuWaitingReturnAmount,
-                cpuWaitingReturnOverBudgetCount,
-                cpuWaitingReturnAmount,
-                cpuWaitingAeFallbackPartialInsertCount,
-                cpuWaitingNoProgressRetries,
-                cpuWaitingRouteNanosMax,
-                maxTickBudgetNanosObserved,
-                aeStorageInsertAttemptCount,
-                aeStorageInsertSuccessCount,
-                aeStorageInsertFallbackCount,
-                nonFormalProviderHitCount,
-                formalMachineOptimizationHitCount,
-                pagedPatternInventory.getTotalSlots(),
-                pagedPatternInventory.countActivePageNonEmptySlots(),
-                localPatternProviderFacade.activePatternCount(),
-                pagedPatternInventory.getActivePage(),
-                pagedPatternInventory.getPageCount(),
-                localExecutionQueue.queuedTaskCount(),
-                localExecutionQueue.runningTaskCount(),
-                getLaneCount(),
-                getCurrentOperationTicks(),
-                baseOperationTicks,
-                getPerTickWorkUnits(),
-                getVisibleOutputBufferSlotsUsedForSnapshot(),
-                pagedPatternInventory.countAllNonEmptySlots(),
-                activePageStartSlot,
-                activePageEndSlot,
-                peakRunningTasks,
-                peakRunningUniquePatterns,
-                submittedUniquePatternCount,
-                coalescedTaskCount,
-                coalescedJobsSaved,
-                maxExecutionCountPerTaskObserved,
-                batchedAeReturnCount,
-                pendingAeReturn == null ? 0 : 1,
-                aeReturnBlockedTicks,
-                aeReturnRetryCount,
-                fastPathAcceptedCount,
-                fastPathFallbackCount,
-                getOutstandingLogicalExecutionsForSnapshot(),
-                localExecutionQueue.countDistinctBatchKeys(),
-                localExecutionQueue.activeLaneCapacity(),
-                lastEffectiveLaneCount,
-                lastCompletionBudget,
-                lastDispatchBudget,
-                lastCompletionSliceBudget,
-                currentBudgetModel.fastPathExtractionBudget(),
-                lastSoftBudget,
-                lastHardBudget,
-                dynamicScaleUpCount,
-                dynamicScaleDownCount,
-                lastObservedLargestBatch,
-                largestCompletionSliceExecutionsObserved,
-                pendingCompletionTicks,
-                completionSlicesProcessed,
-                templatedCompletionHitCount,
-                templatedCompletionSavedExecutions,
-                getPendingCompletionTaskCountInternal(),
-                completionQueuePeak,
-                completionBacklogExecutionsPeak,
-                submitBenchmarkCount,
-                submitBenchmarkSuccessCount,
-                submitBenchmarkWallClockNanosMax,
-                maxExecutableRunsHitCount,
-                maxExecutableRunsFallbackCount,
-                bulkExtractionLogicalExecutionsMax,
-                templatedDispatchHitCount,
-                compileCacheHitCount,
-                providerOverpressureRejectCount,
-                providerInactiveRejectCount,
-                providerPatternMissingRejectCount,
-                batchKeyMismatchRejectCount,
-                queueRejectCount,
-                backpressureRejectCount,
-                compiledTaskResolveRejectCount
-        );
-    }
-
     protected int getVisibleOutputBufferSlotsUsedForSnapshot() {
         return 0;
     }
@@ -929,7 +754,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         saveChanges();
     }
 
-    boolean isLocalOptimizationEnabledForTest() {
+    boolean isLocalOptimizationEnabled() {
         return localOptimizationEnabled;
     }
 
@@ -954,228 +779,24 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     void recordLocalOptimizationHit() {
-        localOptimizationHitCount++;
     }
 
     void recordDecodeCall() {
-        decodePatternCount++;
     }
 
     void recordDecodeCacheHit() {
-        decodeCacheHitCount++;
     }
 
     void recordDirtyRefreshScan(int slotCount) {
-        dirtyRefreshScannedSlots += Math.max(0, slotCount);
     }
 
     void recordProviderUpdate() {
-        providerUpdateCount++;
     }
 
     void recordSearchMetrics(PatternSearchIndex.MatchResult matchResult) {
         if (matchResult == null) {
             return;
         }
-        searchScannedSlots += Math.max(0, matchResult.scannedSlots());
-        searchDecodeCacheHitCount += Math.max(0, matchResult.decodeCacheHits());
-        searchDecodePatternCount += Math.max(0, matchResult.decodeCalls());
-    }
-
-    public void recordNetworkPatternExposureForTest() {
-        networkPatternExposureCount++;
-    }
-
-    public void recordAeCraftingLookupForTest(boolean hit) {
-        aeCraftingLookupCount++;
-        if (hit) {
-            aeCraftingLookupHitCount++;
-        }
-    }
-
-    public void recordAeCraftingPlanForTest(boolean success) {
-        aeCraftingPlanCount++;
-        if (success) {
-            aeCraftingPlanSuccessCount++;
-        }
-    }
-
-    public void recordPlanningAggregationRequestForTest(long requestedAmount) {
-        planningRequestCount++;
-        planningRequestedAmountMax = Math.max(planningRequestedAmountMax, Math.max(0L, requestedAmount));
-    }
-
-    public void recordPlanningWorkEstimateForTest(long estimatedWork, boolean workTriggered) {
-        planningEstimatedWorkMax = Math.max(planningEstimatedWorkMax, Math.max(0L, estimatedWork));
-        if (workTriggered) {
-            planningWorkTriggeredCount++;
-        }
-    }
-
-    public void recordPlanningHelperUsageForTest(boolean nullResult) {
-        planningHelperCallCount++;
-        if (nullResult) {
-            planningNullHelperResultCount++;
-        }
-    }
-
-    public void recordPlanningLiveSnapshotRequestForTest() {
-        planningLiveSnapshotRequestCount++;
-    }
-
-    public void recordPlanningAggregationSuccessForTest(long wallClockNanos, int chunkCount, long largestChunkSize) {
-        planningSuccessCount++;
-        planningChunkCount += Math.max(0, chunkCount);
-        this.largestPlanningChunkSize = Math.max(this.largestPlanningChunkSize, Math.max(0L, largestChunkSize));
-        planningAggregationHitCount++;
-        planningWallClockNanosMax = Math.max(planningWallClockNanosMax, Math.max(0L, wallClockNanos));
-    }
-
-    public void recordPlanningAggregationFailureForTest(long wallClockNanos, int chunkCount, long largestChunkSize) {
-        planningFailureCount++;
-        planningChunkCount += Math.max(0, chunkCount);
-        this.largestPlanningChunkSize = Math.max(this.largestPlanningChunkSize, Math.max(0L, largestChunkSize));
-        planningWallClockNanosMax = Math.max(planningWallClockNanosMax, Math.max(0L, wallClockNanos));
-    }
-
-    public void recordPlanningAggregationFallbackForTest(boolean replacementPath) {
-        planningAggregationFallbackCount++;
-        if (replacementPath) {
-            planningReplacementPathHitCount++;
-        }
-    }
-
-    public void recordNonFormalProviderPassThroughForTest() {
-        nonFormalProviderHitCount++;
-    }
-
-    public void recordFastPathFallbackForTest() {
-        fastPathFallbackCount++;
-    }
-
-    public void recordFormalTimingCorrectionForTest(boolean correction, boolean progressClamp, boolean etaClamp) {
-        if (correction) {
-            formalTimingCorrectionCount++;
-        }
-        if (progressClamp) {
-            formalTimingProgressClampCount++;
-        }
-        if (etaClamp) {
-            formalTimingEtaClampCount++;
-        }
-    }
-
-    public void recordFormalStatusHeartbeatForTest() {
-        formalStatusHeartbeatCount++;
-    }
-
-    public void resetBenchmarkCountersForTest() {
-        localOptimizationHitCount = 0L;
-        decodePatternCount = 0L;
-        decodeCacheHitCount = 0L;
-        dirtyRefreshScannedSlots = 0L;
-        providerUpdateCount = 0L;
-        searchScannedSlots = 0L;
-        searchDecodeCacheHitCount = 0L;
-        searchDecodePatternCount = 0L;
-        jobsSubmitted = 0L;
-        jobsCompleted = 0L;
-        outputBufferRetryCount = 0L;
-        outputBufferFlushCount = 0L;
-        networkPatternExposureCount = 0L;
-        aeCraftingLookupCount = 0L;
-        aeCraftingLookupHitCount = 0L;
-        aeCraftingPlanCount = 0L;
-        aeCraftingPlanSuccessCount = 0L;
-        planningRequestCount = 0L;
-        planningSuccessCount = 0L;
-        planningFailureCount = 0L;
-        planningChunkCount = 0L;
-        largestPlanningChunkSize = 0L;
-        planningAggregationHitCount = 0L;
-        planningAggregationFallbackCount = 0L;
-        planningReplacementPathHitCount = 0L;
-        planningWallClockNanosMax = 0L;
-        planningRequestedAmountMax = 0L;
-        planningEstimatedWorkMax = 0L;
-        planningWorkTriggeredCount = 0L;
-        planningHelperCallCount = 0L;
-        planningNullHelperResultCount = 0L;
-        planningLiveSnapshotRequestCount = 0L;
-        forcedProviderRefreshCount = 0L;
-        deterministicPlanningHitCount = 0L;
-        deterministicPlanningFallbackCount = 0L;
-        virtualScaledPatternHitCount = 0L;
-        virtualScaledPatternFallbackCount = 0L;
-        largestVirtualPatternMultiplier = 0;
-        virtualScaledPatternLogicalExecutionsSaved = 0L;
-        scaledPatternNbtRestoreCount = 0L;
-        tickBudgetHardStopCount = 0L;
-        formalTimingCorrectionCount = 0L;
-        formalTimingProgressClampCount = 0L;
-        formalTimingEtaClampCount = 0L;
-        formalStatusHeartbeatCount = 0L;
-        cpuWaitingReturnBudgetStopCount = 0L;
-        largestCpuWaitingReturnAmount = 0L;
-        cpuWaitingReturnOverBudgetCount = 0L;
-        cpuWaitingReturnAmount = 0L;
-        cpuWaitingAeFallbackPartialInsertCount = 0L;
-        cpuWaitingNoProgressRetries = 0L;
-        cpuWaitingRouteNanosMax = 0L;
-        maxTickBudgetNanosObserved = 0L;
-        aeStorageInsertAttemptCount = 0L;
-        aeStorageInsertSuccessCount = 0L;
-        aeStorageInsertFallbackCount = 0L;
-        aeReturnBlockedTicks = 0L;
-        aeReturnRetryCount = 0L;
-        coalescedTaskCount = 0L;
-        coalescedJobsSaved = 0L;
-        batchedAeReturnCount = 0L;
-        fastPathAcceptedCount = 0L;
-        fastPathFallbackCount = 0L;
-        formalMachineOptimizationHitCount = 0L;
-        nonFormalProviderHitCount = 0L;
-        pendingCompletionTicks = 0L;
-        completionSlicesProcessed = 0L;
-        templatedCompletionHitCount = 0L;
-        templatedCompletionSavedExecutions = 0L;
-        maxExecutableRunsHitCount = 0L;
-        maxExecutableRunsFallbackCount = 0L;
-        bulkExtractionLogicalExecutionsMax = 0;
-        templatedDispatchHitCount = 0L;
-        compileCacheHitCount = 0L;
-        providerOverpressureRejectCount = 0L;
-        providerInactiveRejectCount = 0L;
-        providerPatternMissingRejectCount = 0L;
-        batchKeyMismatchRejectCount = 0L;
-        queueRejectCount = 0L;
-        backpressureRejectCount = 0L;
-        compiledTaskResolveRejectCount = 0L;
-        completionQueuePeak = 0L;
-        completionBacklogExecutionsPeak = 0;
-        submitBenchmarkCount = 0L;
-        submitBenchmarkSuccessCount = 0L;
-        submitBenchmarkWallClockNanosMax = 0L;
-        peakRunningTasks = 0;
-        peakRunningUniquePatterns = 0;
-        submittedUniquePatternCount = 0;
-        maxExecutionCountPerTaskObserved = 0;
-        largestCompletionSliceExecutionsObserved = 0;
-        dynamicScaleUpCount = 0;
-        dynamicScaleDownCount = 0;
-        lastObservedLargestBatch = 1;
-        lastAeStorageInsertAttemptCount = aeStorageInsertAttemptCount;
-        lastFastPathFallbackCount = fastPathFallbackCount;
-        completedOutputsForTest.clear();
-        saveChanges();
-    }
-
-    public void recordSubmitBenchmarkForTest(long elapsedNanos, boolean success) {
-        submitBenchmarkCount++;
-        if (success) {
-            submitBenchmarkSuccessCount++;
-        }
-        submitBenchmarkWallClockNanosMax = Math.max(submitBenchmarkWallClockNanosMax, Math.max(0L, elapsedNanos));
     }
 
     public boolean hasInWorldNodeHostCapabilityForTest() {
@@ -1188,33 +809,18 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     public void recordDeterministicPlanningHitForTest(long wallClockNanos) {
-        planningSuccessCount++;
-        planningAggregationHitCount++;
-        deterministicPlanningHitCount++;
-        planningWallClockNanosMax = Math.max(planningWallClockNanosMax, Math.max(0L, wallClockNanos));
     }
 
     public void recordDeterministicPlanningFallbackForTest() {
-        deterministicPlanningFallbackCount++;
     }
 
     public void recordVirtualScaledPatternHitForTest(int multiplier, long logicalExecutionsSaved) {
         if (multiplier <= 1) {
             return;
         }
-        virtualScaledPatternHitCount++;
-        largestVirtualPatternMultiplier = Math.max(largestVirtualPatternMultiplier, multiplier);
-        if (logicalExecutionsSaved > 0L) {
-            if (virtualScaledPatternLogicalExecutionsSaved > Long.MAX_VALUE - logicalExecutionsSaved) {
-                virtualScaledPatternLogicalExecutionsSaved = Long.MAX_VALUE;
-            } else {
-                virtualScaledPatternLogicalExecutionsSaved += logicalExecutionsSaved;
-            }
-        }
     }
 
     public void recordVirtualScaledPatternFallbackForTest() {
-        virtualScaledPatternFallbackCount++;
     }
 
     public void recordVirtualScaledPatternStatsForTest(
@@ -1223,32 +829,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             int largestMultiplier,
             long logicalExecutionsSaved
     ) {
-        if (hitCount > 0L) {
-            if (virtualScaledPatternHitCount > Long.MAX_VALUE - hitCount) {
-                virtualScaledPatternHitCount = Long.MAX_VALUE;
-            } else {
-                virtualScaledPatternHitCount += hitCount;
-            }
-        }
-        if (fallbackCount > 0L) {
-            if (virtualScaledPatternFallbackCount > Long.MAX_VALUE - fallbackCount) {
-                virtualScaledPatternFallbackCount = Long.MAX_VALUE;
-            } else {
-                virtualScaledPatternFallbackCount += fallbackCount;
-            }
-        }
-        largestVirtualPatternMultiplier = Math.max(largestVirtualPatternMultiplier, Math.max(0, largestMultiplier));
-        if (logicalExecutionsSaved > 0L) {
-            if (virtualScaledPatternLogicalExecutionsSaved > Long.MAX_VALUE - logicalExecutionsSaved) {
-                virtualScaledPatternLogicalExecutionsSaved = Long.MAX_VALUE;
-            } else {
-                virtualScaledPatternLogicalExecutionsSaved += logicalExecutionsSaved;
-            }
-        }
     }
 
     public void recordScaledPatternNbtRestoreForTest() {
-        scaledPatternNbtRestoreCount++;
     }
 
     public FormalMachineTickBudgetSnapshot getTickBudgetSnapshotForTest() {
@@ -1259,19 +842,12 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (actualAdditionalExecutions <= 0) {
             return;
         }
-        maxExecutableRunsHitCount++;
-        bulkExtractionLogicalExecutionsMax = Math.max(
-                bulkExtractionLogicalExecutionsMax,
-                actualAdditionalExecutions + 1
-        );
     }
 
     public void recordBulkExtractionFallback() {
-        maxExecutableRunsFallbackCount++;
     }
 
     public void recordTemplatedDispatchHitForTest() {
-        templatedDispatchHitCount++;
     }
 
     public void clearPatternsForTest() {
@@ -1286,7 +862,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     public void clearPatternsDeferredRefreshForTest() {
         refreshScheduler.clear();
-        pagedPatternInventory.clearWithoutDirtyMarksForTest();
+        pagedPatternInventory.clearWithoutDirtyMarks();
         persistAllPatterns();
         decodedPatternEntryCache.clear();
         localPatternProviderFacade.clear();
@@ -1435,7 +1011,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 break;
             }
         }
-        submittedUniquePatternCount = Math.max(submittedUniquePatternCount, submittedDefinitions.size());
         updateExecutionPeaks();
         if (submitted > 0) {
             flushQueuedMutationsToDisk();
@@ -1469,7 +1044,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             submitted++;
             submittedDefinitions.add(supportedPattern.getDefinition());
         }
-        submittedUniquePatternCount = Math.max(submittedUniquePatternCount, submittedDefinitions.size());
         updateExecutionPeaks();
         if (submitted > 0) {
             saveChanges();
@@ -1529,7 +1103,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             submitted++;
             submittedDefinitions.add(supportedPattern.getDefinition());
         }
-        submittedUniquePatternCount = Math.max(submittedUniquePatternCount, submittedDefinitions.size());
         updateExecutionPeaks();
         if (submitted > 0) {
             flushQueuedMutationsToDisk();
@@ -1588,10 +1161,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         return count;
     }
 
-    public int countCompletedOutputForTest(AEItemKey output) {
-        return completedOutputsForTest.getOrDefault(output, 0);
-    }
-
     public void setSpeedCardsForTest(int count) {
         int desired = Math.max(0, Math.min(count, upgrades.size()));
         for (int slot = 0; slot < upgrades.size(); slot++) {
@@ -1646,8 +1215,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             saveChanges();
             return true;
         }
-
-        pendingCompletionTicks++;
         int requestedExecutions = pendingCompletionWork.hasTemplate()
                 ? pendingCompletionWork.remainingExecutions()
                 : Math.max(1, pendingCompletionWork.remainingExecutions());
@@ -1678,14 +1245,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return false;
         }
         if (preAttachedTemplate && pendingCompletionWork.hasTemplate()) {
-            templatedCompletionHitCount++;
         }
-
-        FormalMachineCraftingTimingService.recordLocalCompletion(
-                pendingCompletionWork.compiledTask().getSourceCraftingId(),
-                sliceResult.primary(),
-                sliceResult.remainders()
-        );
 
         if (pendingCompletionWork.completionRoute() == TaskCompletionRoute.CPU_WAITING) {
             PendingAeReturn slicePendingReturn = createSlicePendingReturn(pendingCompletionWork, sliceResult);
@@ -1695,7 +1255,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                     pendingAeReturn = remainingPending;
                     waitingAeRetryDelayTicks = 1;
                     waitingAeRetryTickCountdown = 1;
-                    aeStorageInsertFallbackCount++;
                 } else {
                     finishCompletedReturn(slicePendingReturn);
                 }
@@ -1707,9 +1266,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
         pendingCompletionWork.advanceExecutions(processedExecutions);
         pendingCompletionWork.markSliceProcessed(processedExecutions);
-        completionSlicesProcessed++;
-        largestCompletionSliceExecutionsObserved =
-                Math.max(largestCompletionSliceExecutionsObserved, processedExecutions);
 
         if (pendingAeReturn != null) {
             saveChanges();
@@ -1738,7 +1294,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 pendingAeReturn = nextPending;
                 waitingAeRetryDelayTicks = 1;
                 waitingAeRetryTickCountdown = 0;
-                aeStorageInsertFallbackCount++;
                 saveChanges();
                 return true;
             }
@@ -1747,7 +1302,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 pendingAeReturn = remainingPending;
                 waitingAeRetryDelayTicks = 1;
                 waitingAeRetryTickCountdown = 1;
-                aeStorageInsertFallbackCount++;
                 saveChanges();
                 return true;
             }
@@ -1814,7 +1368,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                     pendingCompletion.compiledTask().getCompletionTemplatePrimary(),
                     pendingCompletion.compiledTask().getCompletionTemplateRemainders()
             );
-            templatedCompletionHitCount++;
             return true;
         }
         SingleExecutionResult first = executeSingleCompletion(pattern, pendingCompletion.compiledTask());
@@ -1827,7 +1380,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         }
         pendingCompletion.setTemplate(first.primary(), first.remainders());
         pendingCompletion.compiledTask().setCompletionTemplate(first.primary(), first.remainders());
-        templatedCompletionHitCount++;
         return true;
     }
 
@@ -1851,7 +1403,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             }
         }
         if (sliceExecutions > 1) {
-            templatedCompletionSavedExecutions += sliceExecutions - 1L;
         }
         return new CompletionSliceResult(sliceExecutions, scaledPrimary, Map.copyOf(scaledRemainders));
     }
@@ -1914,10 +1465,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 pendingCompletionWork.completionRoute(),
                 pendingCompletionWork.compiledTask().getSourceCraftingId()
         );
-        debugFormalIngress("createSlicePendingReturn route=" + pendingCompletionWork.completionRoute()
-                + " sourceCraftingId=" + pendingCompletionWork.compiledTask().getSourceCraftingId()
-                + " primary=" + sliceResult.primary()
-                + " payload=" + pendingReturn.pendingPayload());
         return pendingReturn;
     }
 
@@ -1936,7 +1483,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (output.isEmpty()) {
             return null;
         }
-        GenericStack primary = FormalMachineCompletionTemplateHelper.normalizePrimaryOutput(pattern, output);
+        GenericStack primary = normalizePrimaryOutput(pattern, output);
         if (primary == null) {
             return null;
         }
@@ -1955,23 +1502,8 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private void finishCompletedReturn(PendingAeReturn completedReturn) {
-        recordCompletedOutput(completedReturn.primaryResult());
         jobsCompleted += completedReturn.logicalExecutionCount();
         if (completedReturn.logicalExecutionCount() > 1) {
-            batchedAeReturnCount++;
-        }
-    }
-
-    private void recordCompletedOutput(GenericStack primaryResult) {
-        if (primaryResult.what() instanceof AEItemKey itemKey) {
-            completedOutputsForTest.merge(
-                    itemKey,
-                    saturatedLongToInt(primaryResult.amount()),
-                    (current, added) -> {
-                        long total = (long) current + added;
-                        return total > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) total;
-                    }
-            );
         }
     }
 
@@ -1986,14 +1518,8 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             waitingAeRetryTickCountdown--;
             return;
         }
-        aeReturnRetryCount++;
         long payloadBefore = countPayloadAmount(pendingAeReturn.pendingPayload());
-        long routeStartedAt = System.nanoTime();
         PendingAeReturn remainingPending = tryDeliverPendingReturn(pendingAeReturn, hardDeadlineNanos);
-        cpuWaitingRouteNanosMax = Math.max(
-                cpuWaitingRouteNanosMax,
-                Math.max(0L, System.nanoTime() - routeStartedAt)
-        );
         if (remainingPending == null) {
             finishCompletedReturn(pendingAeReturn);
             pendingAeReturn = null;
@@ -2004,9 +1530,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         }
         pendingAeReturn = remainingPending;
         long payloadAfter = countPayloadAmount(remainingPending.pendingPayload());
-        if (payloadAfter >= payloadBefore) {
-            cpuWaitingNoProgressRetries++;
-        }
         waitingAeRetryDelayTicks = payloadAfter < payloadBefore ? 1 : Math.min(20, waitingAeRetryDelayTicks * 2);
         waitingAeRetryTickCountdown = waitingAeRetryDelayTicks;
         saveChanges();
@@ -2017,9 +1540,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         List<GenericStack> payload = pending.completionRoute() == TaskCompletionRoute.CPU_WAITING
                 ? orderCpuWaitingPayload(pending)
                 : List.copyOf(pending.pendingPayload());
-        debugFormalIngress("tryDeliverPendingReturn route=" + pending.completionRoute()
-                + " sourceCraftingId=" + pending.sourceCraftingId()
-                + " payload=" + payload);
         if (payload.isEmpty()) {
             return null;
         }
@@ -2040,7 +1560,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         List<GenericStack> remainingSlicePayload = routePayloadIntoAeNetwork(
                 slicePayload,
                 null,
-                false,
                 pending.sourceCraftingId()
         );
         if (remainingSlicePayload.isEmpty()) {
@@ -2085,15 +1604,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         merged.addAll(first);
         merged.addAll(second);
         return List.copyOf(merged);
-    }
-
-    private static void debugFormalIngress(String message) {
-        if (!Boolean.getBoolean("chexsonsaeutils.debugFormalIngress")) {
-            return;
-        }
-        String line = "[CHEXSONSAEUTILS][FORMAL_INGRESS] " + message;
-        System.out.println(line);
-        System.err.println(line);
     }
 
     private static String describeInputHolder(@Nullable KeyCounter[] inputHolder) {
@@ -2171,10 +1681,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (payload.isEmpty()) {
             return List.of();
         }
-        SourceCpuHandle sourceCpu = FormalMachineCraftingDispatchService.getSourceCpuHandle(
-                getGridCraftingService(),
-                pending.sourceCraftingId()
-        );
+        SourceCpuHandle sourceCpu = findSourceCpuHandle(pending.sourceCraftingId());
         if (sourceCpu == null || !sourceCpu.isActive()) {
             return payload;
         }
@@ -2184,7 +1691,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 continue;
             }
             if (isDeadlineReached(hardDeadlineNanos)) {
-                cpuWaitingReturnBudgetStopCount++;
                 cpuWaitingReturnStoppedThisTick = true;
                 appendRemainingCpuWaitingPayload(payload, genericStack, remainingPayload, true);
                 break;
@@ -2194,27 +1700,50 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                     genericStack,
                     sourceCpu
             );
-            debugFormalIngress("routePayloadThroughCpu stack=" + genericStack
-                    + " sourceCraftingId=" + pending.sourceCraftingId()
-                    + " acceptedBySourceCpu=" + routingResult.acceptedBySourceCpu()
-                    + " acceptedByAnyCpu=" + routingResult.acceptedByAnyCpu()
-                    + " insertedIntoAe=" + routingResult.insertedIntoAe()
-                    + " remaining=" + routingResult.remainingAmount());
-            recordIngressRoutingResult(routingResult, true, pending.sourceCraftingId());
             if (routingResult.remainingAmount() > 0L && routingResult.key() != null) {
                 remainingPayload.add(new GenericStack(routingResult.key(), routingResult.remainingAmount()));
             }
             if (isDeadlineReached(hardDeadlineNanos)) {
-                cpuWaitingReturnBudgetStopCount++;
                 cpuWaitingReturnStoppedThisTick = true;
-                if (isDeadlinePastAbsoluteBudget(hardDeadlineNanos)) {
-                    cpuWaitingReturnOverBudgetCount++;
-                }
                 appendRemainingCpuWaitingPayload(payload, genericStack, remainingPayload, false);
                 break;
             }
         }
         return List.copyOf(remainingPayload);
+    }
+
+    private @Nullable SourceCpuHandle findSourceCpuHandle(UUID craftingId) {
+        ICraftingService craftingService = getMainNode().getGrid().getCraftingService();
+        if (!(craftingService instanceof CraftingService service)) {
+            return null;
+        }
+        for (var candidate : service.getCpus()) {
+            if (candidate instanceof CraftingCPUCluster cluster) {
+                if (isMatchingNativeCpu(cluster, craftingId)) {
+                    return new NativeSourceCpuHandle(cluster, craftingId);
+                }
+            }
+            if (candidate instanceof ParallelCraftingCPU parallelCpu) {
+                if (!parallelCpu.isActiveVirtualCpu()) {
+                    continue;
+                }
+                ParallelCraftingCpuCluster cluster = parallelCpu.cluster();
+                ParallelCraftingLane lane = cluster.findLaneByCraftingId(craftingId);
+                if (lane != null && parallelCpu == cluster.findActiveCpuByCraftingId(craftingId)) {
+                    return new ParallelActiveCpuHandle(cluster, craftingId);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isMatchingNativeCpu(CraftingCPUCluster cpu, UUID craftingId) {
+        ExecutingCraftingJob job = ((CraftingCpuLogicAccessor) cpu.craftingLogic).getJob();
+        if (job == null) {
+            return false;
+        }
+        ExecutingCraftingJobAccessor accessor = (ExecutingCraftingJobAccessor) job;
+        return accessor.getLink() != null && craftingId.equals(accessor.getLink().getCraftingID());
     }
 
     private void appendRemainingCpuWaitingPayload(
@@ -2240,7 +1769,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private List<GenericStack> routePayloadIntoAeNetwork(
             List<GenericStack> payload,
             @Nullable SourceCpuHandle sourceCpu,
-            boolean cpuWaitingMetrics,
             @Nullable UUID sourceCraftingId
     ) {
         if (payload.isEmpty()) {
@@ -2257,56 +1785,16 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 payload,
                 sourceCpu
         );
-        recordIngressRoutingResult(routingResult, cpuWaitingMetrics, sourceCraftingId);
+        recordIngressRoutingResult(routingResult, sourceCraftingId);
         return routingResult.remainingPayload();
     }
 
     private void recordIngressRoutingResult(
             AeCpuIngressRouter.RoutingResult routingResult,
-            boolean cpuWaitingMetrics,
             @Nullable UUID sourceCraftingId
     ) {
         if (routingResult == null) {
             return;
-        }
-        for (AeCpuIngressRouter.StackRoutingResult stackResult : routingResult.stackResults()) {
-            recordIngressRoutingResult(stackResult, cpuWaitingMetrics, sourceCraftingId);
-        }
-    }
-
-    private void recordIngressRoutingResult(
-            AeCpuIngressRouter.StackRoutingResult routingResult,
-            boolean cpuWaitingMetrics,
-            @Nullable UUID sourceCraftingId
-    ) {
-        if (routingResult == null || routingResult.originalAmount() <= 0L) {
-            return;
-        }
-        if (cpuWaitingMetrics) {
-            largestCpuWaitingReturnAmount = Math.max(
-                    largestCpuWaitingReturnAmount,
-                    routingResult.originalAmount()
-            );
-        }
-        if (routingResult.attemptedAeFallback()) {
-            aeStorageInsertAttemptCount++;
-            if (routingResult.insertedIntoAe() > 0L) {
-                aeStorageInsertSuccessCount++;
-                if (routingResult.remainingAmount() > 0L) {
-                    aeStorageInsertFallbackCount++;
-                    if (cpuWaitingMetrics) {
-                        cpuWaitingAeFallbackPartialInsertCount++;
-                    }
-                }
-            }
-        }
-        if (cpuWaitingMetrics && routingResult.acceptedByAnyCpu() > 0L && routingResult.key() != null) {
-            cpuWaitingReturnAmount = safeAdd(cpuWaitingReturnAmount, routingResult.acceptedByAnyCpu());
-            FormalMachineCraftingTimingService.recordCpuWaitingReturn(
-                    sourceCraftingId,
-                    routingResult.key(),
-                    routingResult.acceptedByAnyCpu()
-            );
         }
     }
 
@@ -2373,25 +1861,17 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     void updateExecutionPeaks() {
-        peakRunningTasks = Math.max(peakRunningTasks, localExecutionQueue.runningTaskCount());
         LinkedHashSet<AEItemKey> uniqueDefinitions = new LinkedHashSet<>();
-        for (CompiledTask task : localExecutionQueue.getActiveTasksForTest()) {
+        for (CompiledTask task : localExecutionQueue.getActiveTasks()) {
             if (!task.getPatternDefinition().isEmpty()) {
                 uniqueDefinitions.add(AEItemKey.of(task.getPatternDefinition()));
             }
-            maxExecutionCountPerTaskObserved = Math.max(maxExecutionCountPerTaskObserved, task.getExecutionCount());
         }
         for (PendingCompletionWork pendingCompletionWork : pendingCompletionQueue) {
             if (!pendingCompletionWork.compiledTask().getPatternDefinition().isEmpty()) {
                 uniqueDefinitions.add(AEItemKey.of(pendingCompletionWork.compiledTask().getPatternDefinition()));
-                maxExecutionCountPerTaskObserved = Math.max(
-                        maxExecutionCountPerTaskObserved,
-                        pendingCompletionWork.compiledTask().getExecutionCount()
-                );
             }
         }
-        peakRunningUniquePatterns = Math.max(peakRunningUniquePatterns, uniqueDefinitions.size());
-        maxExecutionCountPerTaskObserved = Math.max(maxExecutionCountPerTaskObserved, findMaxExecutionCountAcrossQueue());
         updateCompletionBacklogPeaks();
     }
 
@@ -2580,7 +2060,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         recalculateBudgetModel();
         localExecutionQueue.reconfigureActiveLanes(currentBudgetModel);
         if (pendingAeReturn != null) {
-            aeReturnBlockedTicks++;
             tryFlushPendingAeReturn(hardDeadlineNanos);
             updateExecutionPeaks();
             updateBudgetDeltas();
@@ -2608,16 +2087,12 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 elapsed,
                 true
         );
-        maxTickBudgetNanosObserved = Math.max(maxTickBudgetNanosObserved, elapsed);
         return true;
     }
 
     private void finishTickBudget(long tickStartedAt) {
         long elapsed = Math.max(0L, System.nanoTime() - tickStartedAt);
         boolean hardStop = elapsed >= TICK_HARD_BUDGET_NANOS;
-        if (hardStop) {
-            tickBudgetHardStopCount++;
-        }
         lastTickBudgetSnapshot = new FormalMachineTickBudgetSnapshot(
                 TICK_SOFT_BUDGET_NANOS,
                 TICK_HARD_BUDGET_NANOS,
@@ -2625,7 +2100,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
                 elapsed,
                 hardStop
         );
-        maxTickBudgetNanosObserved = Math.max(maxTickBudgetNanosObserved, elapsed);
     }
 
     private static long safeAdd(long left, long right) {
@@ -2666,7 +2140,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         localPatternProviderFacade.consumeProviderVisibleSetUpdatePending();
         ICraftingProvider.requestUpdate(getMainNode());
         providerRefreshAfterReadyPending = false;
-        forcedProviderRefreshCount++;
     }
 
     private void requestProviderUpdateIfLocalPatternsChanged() {
@@ -2681,7 +2154,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return;
         }
         ICraftingProvider.requestUpdate(getMainNode());
-        forcedProviderRefreshCount++;
     }
 
     public void onBlockRemovedFromWorld() {
@@ -2744,7 +2216,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             flushQueuedMutationsToDisk();
             return;
         }
-        unsavedQueueMutationCount++;
         if (unsavedQueueMutationCount >= QUEUE_PROGRESS_SAVE_INTERVAL) {
             flushQueuedMutationsToDisk();
         }
@@ -2757,7 +2228,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     private int findMaxExecutionCountAcrossQueue() {
         int max = 0;
-        for (CompiledTask task : localExecutionQueue.getAllTasksForTest()) {
+        for (CompiledTask task : localExecutionQueue.getAllTasks()) {
             max = Math.max(max, task.getExecutionCount());
         }
         for (PendingCompletionWork pendingCompletionWork : pendingCompletionQueue) {
@@ -2799,11 +2270,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private void updateCompletionBacklogPeaks() {
-        completionQueuePeak = Math.max(completionQueuePeak, pendingCompletionQueue.size());
-        completionBacklogExecutionsPeak = Math.max(
-                completionBacklogExecutionsPeak,
-                getPendingCompletionLogicalExecutionCountInternal()
-        );
     }
 
     private double getCompletionBacklogPressureRatio() {
@@ -2818,16 +2284,8 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         return getCompletionBacklogPressureRatio() >= Math.max(8.0D, getPreferredLaneFloor() * 4.0D);
     }
 
-    public long getAeStorageInsertAttemptDeltaForBudget() {
-        return Math.max(0L, aeStorageInsertAttemptCount - lastAeStorageInsertAttemptCount);
-    }
-
-    public long getFastPathFallbackDeltaForBudget() {
-        return Math.max(0L, fastPathFallbackCount - lastFastPathFallbackCount);
-    }
-
     public int getWaitingPenaltyForBudget() {
-        return (int) Math.min(16L, aeReturnBlockedTicks);
+        return 0;
     }
 
     public int getPreferredLaneFloor() {
@@ -2844,15 +2302,11 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         lastHardBudget = currentBudgetModel.hardBudget();
         lastEffectiveLaneCount = currentBudgetModel.laneActivationTarget();
         if (lastEffectiveLaneCount > previousLaneCount) {
-            dynamicScaleUpCount++;
         } else if (lastEffectiveLaneCount < previousLaneCount) {
-            dynamicScaleDownCount++;
         }
     }
 
     private void updateBudgetDeltas() {
-        lastAeStorageInsertAttemptCount = aeStorageInsertAttemptCount;
-        lastFastPathFallbackCount = fastPathFallbackCount;
         lastObservedLargestBatch = Math.max(lastObservedLargestBatch, findMaxExecutionCountAcrossQueue());
     }
 
@@ -2871,16 +2325,14 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             compiledTask.setSupportsTemplatedCompletion(true);
             return;
         }
-        if (!FormalMachineCompletionTemplateHelper.supportsTemplateForPattern(pattern)) {
+        if (!supportsCompletionTemplate(pattern)) {
             compiledTask.setSupportsTemplatedCompletion(false);
             return;
         }
         compiledTask.setSupportsTemplatedCompletion(true);
-        FormalMachineCompletionTemplateHelper.CompletionTemplate template =
-                FormalMachineCompletionTemplateHelper.probeStableTemplate(getLevel(), pattern, compiledTask);
+        CompletionTemplate template = probeStableCompletionTemplate(getLevel(), pattern, compiledTask);
         if (template != null) {
             compiledTask.setCompletionTemplate(template.primary(), template.remainders());
-            templatedDispatchHitCount++;
         }
     }
 
@@ -2904,17 +2356,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         }
         compiledTask.setCompletionTemplate(primaryOutput, remainderTotals);
         compiledTask.setSupportsTemplatedCompletion(true);
-    }
-
-    private record SingleExecutionResult(GenericStack primary, Map<AEItemKey, Long> remainders) {
-        private boolean matches(SingleExecutionResult other) {
-            if (other == null || primary == null || other.primary == null) {
-                return false;
-            }
-            return primary.what().equals(other.primary.what())
-                    && primary.amount() == other.primary.amount()
-                    && remainders.equals(other.remainders);
-        }
     }
 
     private record CompletionSliceResult(

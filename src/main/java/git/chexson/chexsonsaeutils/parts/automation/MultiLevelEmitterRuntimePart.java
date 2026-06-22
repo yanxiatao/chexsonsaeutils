@@ -601,10 +601,10 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         data.putInt(NBT_CONFIGURED_ITEM_COUNT, configuredItemCount);
         ensureConfigInventory().writeToChildTag(data, NBT_CONFIG, effectiveProvider);
         MultiLevelEmitterPart.writeThresholdsToNbt(thresholds, data, NBT_REPORTING_VALUES);
-        MultiLevelEmitterUtils.writeComparisonModesToNBT(comparisonModes, data, NBT_COMPARISON_MODES);
-        MultiLevelEmitterUtils.writeLogicRelationsToNBT(relations, data, NBT_LOGIC_RELATIONS);
-        MultiLevelEmitterUtils.writeMatchingModesToNBT(requestedMatchingModes, data, NBT_MATCHING_MODES);
-        MultiLevelEmitterUtils.writeCraftingModesToNBT(requestedCraftingModes, data, NBT_CRAFTING_MODES);
+        MultiLevelEmitterUtils.writeEnumListToNBT(comparisonModes, data, NBT_COMPARISON_MODES, MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL);
+        MultiLevelEmitterUtils.writeEnumListToNBT(relations, data, NBT_LOGIC_RELATIONS, MultiLevelEmitterPart.LogicRelation.OR);
+        MultiLevelEmitterUtils.writeEnumListToNBT(requestedMatchingModes, data, NBT_MATCHING_MODES, MultiLevelEmitterPart.MatchingMode.STRICT);
+        MultiLevelEmitterUtils.writeEnumListToNBT(requestedCraftingModes, data, NBT_CRAFTING_MODES, MultiLevelEmitterPart.CraftingMode.NONE);
         data.putString(NBT_EXPRESSION_TEXT, appliedExpressionText);
         data.putString(NBT_EXPRESSION_OWNERSHIP, expressionOwnership.name());
     }
@@ -644,10 +644,10 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         applyConfigurationState(
                 Math.max(DEFAULT_VISIBLE_SLOT_COUNT, data.getInt(NBT_CONFIGURED_ITEM_COUNT)),
                 MultiLevelEmitterPart.readThresholdsFromNbt(data, NBT_REPORTING_VALUES),
-                MultiLevelEmitterUtils.readComparisonModesFromNBT(data, NBT_COMPARISON_MODES),
-                MultiLevelEmitterUtils.readLogicRelationsFromNBT(data, NBT_LOGIC_RELATIONS),
-                MultiLevelEmitterUtils.readMatchingModesFromNBT(data, NBT_MATCHING_MODES),
-                MultiLevelEmitterUtils.readCraftingModesFromNBT(data, NBT_CRAFTING_MODES),
+                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_COMPARISON_MODES, MultiLevelEmitterPart.ComparisonMode::fromPersisted),
+                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_LOGIC_RELATIONS, MultiLevelEmitterPart.LogicRelation::fromPersisted),
+                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_MATCHING_MODES, MultiLevelEmitterPart.MatchingMode::fromPersisted),
+                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_CRAFTING_MODES, MultiLevelEmitterPart.CraftingMode::fromPersisted),
                 readPersistedExpressionText(data),
                 readPersistedExpressionOwnership(data),
                 refreshRuntimeState

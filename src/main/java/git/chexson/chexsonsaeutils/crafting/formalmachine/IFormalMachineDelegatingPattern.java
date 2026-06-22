@@ -1,14 +1,8 @@
 package git.chexson.chexsonsaeutils.crafting.formalmachine;
 
-import appeng.crafting.pattern.AECraftingPattern;
+import appeng.api.crafting.IPatternDetails;
 
-/**
- * Marks virtual formal-machine patterns that must resolve provider ownership through an existing crafting pattern.
- */
 public interface IFormalMachineDelegatingPattern {
 
-    /**
-     * Returns the stable AE2 crafting pattern that owns provider lookup for this virtual pattern.
-     */
-    AECraftingPattern basePattern();
+    IPatternDetails basePattern();
 }

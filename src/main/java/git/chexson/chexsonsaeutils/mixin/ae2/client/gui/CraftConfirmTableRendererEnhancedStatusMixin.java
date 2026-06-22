@@ -6,7 +6,7 @@ import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import git.chexson.chexsonsaeutils.config.EnhancedCraftingStatusFeatureGate;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingPlanSummaryEntry;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusFormatting;
-import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusService;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import org.spongepowered.asm.mixin.Mixin;
@@ -52,7 +52,7 @@ public abstract class CraftConfirmTableRendererEnhancedStatusMixin {
         }
 
         MutableComponent text = Component.empty();
-        List<Long> displayedTimes = EnhancedCraftingStatusService.sortedPatternTimes(patternTimes, maxEntries);
+        List<Long> displayedTimes = CraftingStatusEnhancer.sortedPatternTimes(patternTimes, maxEntries);
         for (int index = 0; index < displayedTimes.size(); index++) {
             if (index > 0) {
                 text.append(", ");

@@ -4,6 +4,7 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -25,9 +26,6 @@ public final class ProcessingCompiledTask {
     private static final String NBT_REMAINING_TICKS = "remainingTicks";
     private static final String NBT_EXECUTION_COUNT = "executionCount";
     private static final String NBT_SOURCE_CRAFTING_ID = "sourceCraftingId";
-    private static final int MAX_EXECUTION_COUNT = ProcessingExecutionBudgetController
-            .BENCHMARK_LIMITS
-            .maxCoalescedExecutions();
 
     private final ItemStack patternDefinition;
     private final List<GenericStack> selectedInputs;
@@ -91,6 +89,51 @@ public final class ProcessingCompiledTask {
         );
     }
 
+    @Nullable
+    public static ProcessingCompiledTask compileAggregated(
+            IFormalMachineAggregatedPattern aggregatedPattern,
+            KeyCounter[] inputHolder,
+            int totalTicks
+    ) {
+        if (aggregatedPattern == null || inputHolder == null) {
+            return null;
+        }
+        List<GenericStack> selectedInputs = new ArrayList<>();
+        for (GenericStack input : aggregatedPattern.aggregatedInputs()) {
+            if (input == null || input.what() == null || input.amount() <= 0) {
+                return null;
+            }
+            long extracted = 0;
+            for (KeyCounter holder : inputHolder) {
+                long available = holder.get(input.what());
+                if (available > 0) {
+                    long toExtract = Math.min(available, input.amount() - extracted);
+                    holder.remove(input.what(), toExtract);
+                    extracted += toExtract;
+                    if (extracted >= input.amount()) {
+                        break;
+                    }
+                }
+            }
+            if (extracted != input.amount()) {
+                return null;
+            }
+            selectedInputs.add(input);
+        }
+        List<GenericStack> outputs = aggregatedPattern.aggregatedOutputs();
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        return new ProcessingCompiledTask(
+                aggregatedPattern.getDefinition().toStack(),
+                selectedInputs,
+                outputs,
+                totalTicks,
+                totalTicks,
+                1
+        );
+    }
+
     private static List<GenericStack> collectSelectedInputs(IPatternDetails pattern, KeyCounter[] inputHolder) {
         List<GenericStack> inputs = new ArrayList<>();
         pattern.pushInputsToExternalInventory(inputHolder, (AEKey key, long amount) -> {
@@ -134,31 +177,6 @@ public final class ProcessingCompiledTask {
 
     public void setSourceCraftingId(@Nullable UUID sourceCraftingId) {
         this.sourceCraftingId = sourceCraftingId;
-    }
-
-    public boolean canCoalesceWith(ProcessingCompiledTask other, int maxExecutionCount) {
-        if (other == null || executionCount >= normalizeMaxExecutionCount(maxExecutionCount)) {
-            return false;
-        }
-        return ItemStack.isSameItemSameComponents(patternDefinition, other.patternDefinition)
-                && selectedInputs.equals(other.selectedInputs)
-                && outputsPerExecution.equals(other.outputsPerExecution)
-                && Objects.equals(sourceCraftingId, other.sourceCraftingId)
-                && canBuildOutputPayloadFor(executionCount + other.executionCount);
-    }
-
-    public boolean tryAppendExecutionCount(int additionalExecutions, int maxExecutionCount) {
-        int normalizedMaxExecutionCount = normalizeMaxExecutionCount(maxExecutionCount);
-        if (additionalExecutions <= 0 || executionCount >= normalizedMaxExecutionCount) {
-            return false;
-        }
-        int acceptedExecutions = Math.min(additionalExecutions, normalizedMaxExecutionCount - executionCount);
-        int nextExecutionCount = executionCount + acceptedExecutions;
-        if (!canBuildOutputPayloadFor(nextExecutionCount)) {
-            return false;
-        }
-        executionCount = nextExecutionCount;
-        return true;
     }
 
     public CompoundTag writeToTag(HolderLookup.Provider registries) {
@@ -218,11 +236,7 @@ public final class ProcessingCompiledTask {
     }
 
     private static int normalizeExecutionCount(int executionCount) {
-        return Math.max(1, Math.min(MAX_EXECUTION_COUNT, executionCount));
-    }
-
-    private static int normalizeMaxExecutionCount(int maxExecutionCount) {
-        return Math.max(1, Math.min(MAX_EXECUTION_COUNT, maxExecutionCount));
+        return Math.max(1, executionCount);
     }
 
     private static long multiplyOrZero(long amount, int count) {

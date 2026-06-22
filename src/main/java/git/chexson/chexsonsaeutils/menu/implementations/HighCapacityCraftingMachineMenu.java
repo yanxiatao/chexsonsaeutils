@@ -112,11 +112,6 @@ public class HighCapacityCraftingMachineMenu extends UpgradeableMenu<HighCapacit
             waitingAeReturn = getHost().isWaitingAeReturn();
             lastSearchQuery = getHost().getLastSearchQuery();
             highlightedPageSlotMask = getHost().getHighlightedPageSlotMask();
-            var snapshot = getHost().snapshotBenchmark();
-            formalStatusHeartbeatCount = snapshot.formalStatusHeartbeatCount();
-            cpuWaitingAeFallbackPartialInsertCount = snapshot.cpuWaitingAeFallbackPartialInsertCount();
-            cpuWaitingNoProgressRetries = snapshot.cpuWaitingNoProgressRetries();
-            cpuWaitingRouteNanosMax = snapshot.cpuWaitingRouteNanosMax();
         }
         standardDetectAndSendChanges();
     }

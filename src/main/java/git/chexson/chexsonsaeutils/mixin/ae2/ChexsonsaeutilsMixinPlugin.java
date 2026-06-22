@@ -5,7 +5,6 @@ import git.chexson.chexsonsaeutils.config.BuildingGadgets2IntegrationFeatureGate
 import git.chexson.chexsonsaeutils.config.ContinuationFeatureGate;
 import git.chexson.chexsonsaeutils.config.DyeablePatternsFeatureGate;
 import git.chexson.chexsonsaeutils.config.EnhancedCraftingStatusFeatureGate;
-import git.chexson.chexsonsaeutils.config.FormalMachineCraftingDispatchFeatureGate;
 import git.chexson.chexsonsaeutils.config.FormalMachinePlanningAggregationFeatureGate;
 import git.chexson.chexsonsaeutils.config.FtbUltimineMemoryCardFeatureGate;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuFeatureGate;
@@ -25,6 +24,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String BUILDING_GADGETS2_MOD_ID = "buildinggadgets2";
     private static final String FTB_ULTIMINE_MOD_ID = "ftbultimine";
+    private static final String AE2CT_MOD_ID = "ae2ct";
 
     private static final Set<String> REPLACEMENT_TERMINAL_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.PatternEncodingTermMenuRuleMixin",
@@ -111,6 +111,9 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> AEA_FTB_ULTIMINE_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ftbultimine.RightClickDispatcherMemoryCardMixin"
     );
+    private static final Set<String> AE2CT_COMPAT_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CraftingPlanSummaryCompatMixin"
+    );
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -133,24 +136,20 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             return ContinuationFeatureGate.isEnabledAtStartup()
                     || DyeablePatternsFeatureGate.isEnabledAtStartup()
                     || FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                    || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()
                     || EnhancedCraftingStatusFeatureGate.isEnabledAtStartup();
         }
         if (FORMAL_MACHINE_ONLY_MIXINS.contains(mixinClassName)) {
-            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                    || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup();
+            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();
         }
         if (CRAFTING_CPU_PUSH_CONTEXT_MIXINS.contains(mixinClassName)) {
             return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                    || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup()
                     || EnhancedCraftingStatusFeatureGate.isEnabledAtStartup();
         }
         if (FORMAL_MACHINE_PLANNING_ENTRY_MIXINS.contains(mixinClassName)) {
             return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();
         }
         if (FORMAL_MACHINE_PLANNING_SCALED_PATTERN_MIXINS.contains(mixinClassName)) {
-            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup()
-                    || FormalMachineCraftingDispatchFeatureGate.isEnabledAtStartup();
+            return FormalMachinePlanningAggregationFeatureGate.isEnabledAtStartup();
         }
         if (PARALLEL_CPU_ONLY_MIXINS.contains(mixinClassName)) {
             return ParallelCraftingCpuFeatureGate.isEnabledAtStartup();
@@ -168,6 +167,9 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         if (AEA_FTB_ULTIMINE_MIXINS.contains(mixinClassName)) {
             return FtbUltimineMemoryCardFeatureGate.isEnabledAtStartup()
                     && isLoadedDuringMixinScan(FTB_ULTIMINE_MOD_ID, mixinClassName);
+        }
+        if (AE2CT_COMPAT_MIXINS.contains(mixinClassName)) {
+            return isLoadedDuringMixinScan(AE2CT_MOD_ID, mixinClassName);
         }
         return true;
     }

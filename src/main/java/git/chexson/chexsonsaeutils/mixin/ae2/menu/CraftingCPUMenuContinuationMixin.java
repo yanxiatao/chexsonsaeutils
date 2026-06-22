@@ -3,7 +3,7 @@ package git.chexson.chexsonsaeutils.mixin.ae2.menu;
 import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.me.crafting.CraftingCPUMenu;
-import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusSnapshot;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingBranch;
 import org.jetbrains.annotations.Nullable;
@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 
 @Mixin(value = CraftingCPUMenu.class, remap = false)
 public abstract class CraftingCPUMenuContinuationMixin
-        implements CraftingContinuationStatusService.SelectedCpuDetailHost {
+        implements CraftingContinuationTracker.SelectedCpuDetailHost {
     @Unique
     @GuiSync(10)
     public boolean partialWaiting;
@@ -42,12 +42,12 @@ public abstract class CraftingCPUMenuContinuationMixin
 
     @Inject(method = "broadcastChanges", at = @At("HEAD"), remap = false)
     private void chexsonsaeutils$syncSelectedCpuDetail(CallbackInfo ci) {
-        CraftingContinuationStatusService.syncSelectedCpuDetailForMenu((CraftingCPUMenu) (Object) this);
+        CraftingContinuationTracker.syncSelectedCpuDetailForMenu((CraftingCPUMenu) (Object) this);
     }
 
     @Inject(method = "setCPU", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$syncSelectedCpuDetailOnCpuChange(ICraftingCPU cpu, CallbackInfo ci) {
-        CraftingContinuationStatusService.syncSelectedCpuDetailForMenu((CraftingCPUMenu) (Object) this);
+        CraftingContinuationTracker.syncSelectedCpuDetailForMenu((CraftingCPUMenu) (Object) this);
     }
 
     @Override
