@@ -4,7 +4,8 @@ import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.security.IActionSource;
 import appeng.menu.me.crafting.CraftingPlanSummary;
-import git.chexson.chexsonsaeutils.config.EnhancedCraftingStatusFeatureGate;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -36,7 +37,7 @@ public abstract class CraftingPlanSummaryEnhancedStatusMixin {
             ICraftingPlan job,
             CallbackInfoReturnable<CraftingPlanSummary> cir
     ) {
-        if (!EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()) {
+        if (!FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled")) {
             return;
         }
         CraftingStatusEnhancer.attachPatternTimes(cir.getReturnValue(), job);

@@ -5,7 +5,8 @@ import appeng.api.util.AEColor;
 import appeng.client.gui.me.crafting.CraftingStatusTableRenderer;
 import appeng.core.AEConfig;
 import appeng.menu.me.crafting.CraftingStatusEntry;
-import git.chexson.chexsonsaeutils.config.EnhancedCraftingStatusFeatureGate;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusEntry;
 import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
@@ -41,7 +42,7 @@ public abstract class CraftingStatusTableRendererEnhancedStatusMixin {
             CraftingStatusEntry entry,
             CallbackInfoReturnable<Integer> cir
     ) {
-        if (!EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()
+        if (!FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled")
                 || !AEConfig.instance().isUseColoredCraftingStatus()
                 || blockedAmount(entry) <= 0L
                 || cir.getReturnValue() != 0) {
@@ -52,7 +53,7 @@ public abstract class CraftingStatusTableRendererEnhancedStatusMixin {
 
     private static void appendBlocked(CraftingStatusEntry entry, List<Component> lines, AmountFormat format) {
         long blockedAmount = blockedAmount(entry);
-        if (!EnhancedCraftingStatusFeatureGate.isEnabledAtStartup()
+        if (!FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled")
                 || blockedAmount <= 0L
                 || entry.getWhat() == null) {
             return;

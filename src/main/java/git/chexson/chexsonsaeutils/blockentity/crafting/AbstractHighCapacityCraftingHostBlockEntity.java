@@ -32,12 +32,11 @@ import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
 import git.chexson.chexsonsaeutils.crafting.NativeSourceCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.ParallelActiveCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineScaledPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineDelegatingPattern;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
-import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
+import git.chexson.chexsonsaeutils.crafting.planning.FormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingLane;
 import git.chexson.chexsonsaeutils.crafting.persistence.HighCapacityPatternHostSavedData;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
@@ -75,7 +74,7 @@ import java.util.function.Supplier;
 
 public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetworkedBlockEntity
         implements PatternContainer, IUpgradeableObject, ICraftingProvider, InternalInventoryHost,
-        IFormalMachinePlanningProvider {
+        FormalMachinePlanningProvider {
 
     protected static boolean supportsCompletionTemplate(@Nullable IMolecularAssemblerSupportedPattern pattern) {
         if (!(pattern instanceof AECraftingPattern aeCraftingPattern)) {
@@ -245,8 +244,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private int lastCompletionSliceBudget = 1;
     private int lastSoftBudget = 1;
     private int lastHardBudget = 1;
-    private int dynamicScaleUpCount;
-    private int dynamicScaleDownCount;
     private int lastObservedLargestBatch = 1;
     private boolean cpuWaitingReturnStoppedThisTick;
     private int unsavedQueueMutationCount;
@@ -441,7 +438,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern supportedPattern)) {
             return false;
         }
-        if (supportedPattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+        if (supportedPattern instanceof FormalMachineAggregatedPattern aggregatedPattern) {
             return pushAggregatedPattern(aggregatedPattern, inputHolder);
         }
         if (!localPatternProviderFacade.contains(unwrapFormalDelegatingPattern(patternDetails))) {
@@ -469,9 +466,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             KeyCounter[] inputHolder,
             int executionCount
     ) {
-        if (supportedPattern instanceof IFormalMachineScaledPattern scaledPattern) {
-            return compileScaledProviderTask(scaledPattern, inputHolder, executionCount);
-        }
         return CompiledTask.compile(
                 supportedPattern,
                 inputHolder,
@@ -480,67 +474,8 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         );
     }
 
-    @Nullable
-    private CompiledTask compileScaledProviderTask(
-            IFormalMachineScaledPattern scaledPattern,
-            KeyCounter[] inputHolder,
-            int executionCount
-    ) {
-        int totalExecutions;
-        try {
-            totalExecutions = Math.multiplyExact(Math.max(1, executionCount), Math.max(1, scaledPattern.multiplier()));
-        } catch (ArithmeticException exception) {
-            return null;
-        }
-
-        KeyCounter[] baseInputHolder = downscaleScaledInputHolder(inputHolder, scaledPattern.multiplier());
-        if (baseInputHolder == null) {
-            return null;
-        }
-
-        IPatternDetails basePattern = scaledPattern.basePattern();
-        if (!(basePattern instanceof IMolecularAssemblerSupportedPattern craftingPattern)) {
-            return null;
-        }
-        return CompiledTask.compile(
-                craftingPattern,
-                baseInputHolder,
-                getCurrentOperationTicksForExecution(),
-                totalExecutions
-        );
-    }
-
-    @Nullable
-    private static KeyCounter[] downscaleScaledInputHolder(@Nullable KeyCounter[] inputHolder, int multiplier) {
-        if (inputHolder == null || multiplier <= 0) {
-            return null;
-        }
-
-        KeyCounter[] downscaled = new KeyCounter[inputHolder.length];
-        for (int index = 0; index < inputHolder.length; index++) {
-            KeyCounter source = inputHolder[index];
-            KeyCounter scaledDown = new KeyCounter();
-            if (source != null) {
-                for (var entry : source) {
-                    long scaledAmount = entry.getLongValue();
-                    if (scaledAmount <= 0L || scaledAmount % multiplier != 0L) {
-                        return null;
-                    }
-
-                    long baseAmount = scaledAmount / multiplier;
-                    if (baseAmount <= 0L) {
-                        return null;
-                    }
-                    scaledDown.add(entry.getKey(), baseAmount);
-                }
-            }
-            downscaled[index] = scaledDown;
-        }
-        return downscaled;
-    }
-
     private boolean pushAggregatedPattern(
-            IFormalMachineAggregatedPattern aggregatedPattern,
+            FormalMachineAggregatedPattern aggregatedPattern,
             KeyCounter[] inputHolder
     ) {
         if (aggregatedPattern == null
@@ -812,26 +747,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     public void recordDeterministicPlanningFallbackForTest() {
-    }
-
-    public void recordVirtualScaledPatternHitForTest(int multiplier, long logicalExecutionsSaved) {
-        if (multiplier <= 1) {
-            return;
-        }
-    }
-
-    public void recordVirtualScaledPatternFallbackForTest() {
-    }
-
-    public void recordVirtualScaledPatternStatsForTest(
-            long hitCount,
-            long fallbackCount,
-            int largestMultiplier,
-            long logicalExecutionsSaved
-    ) {
-    }
-
-    public void recordScaledPatternNbtRestoreForTest() {
     }
 
     public FormalMachineTickBudgetSnapshot getTickBudgetSnapshotForTest() {
@@ -1621,7 +1536,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private static IPatternDetails unwrapFormalDelegatingPattern(IPatternDetails patternDetails) {
-        if (patternDetails instanceof IFormalMachineDelegatingPattern delegatingPattern) {
+        if (patternDetails instanceof FormalMachineDelegatingPattern delegatingPattern) {
             return delegatingPattern.basePattern();
         }
         return patternDetails;
@@ -2317,7 +2232,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         if (compiledTask == null) {
             return;
         }
-        if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+        if (pattern instanceof FormalMachineAggregatedPattern aggregatedPattern) {
             attachAggregatedCompletionTemplate(aggregatedPattern, compiledTask);
             return;
         }
@@ -2337,7 +2252,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     private void attachAggregatedCompletionTemplate(
-            IFormalMachineAggregatedPattern aggregatedPattern,
+            FormalMachineAggregatedPattern aggregatedPattern,
             CompiledTask compiledTask
     ) {
         if (aggregatedPattern == null || compiledTask == null || aggregatedPattern.aggregatedOutputs().isEmpty()) {

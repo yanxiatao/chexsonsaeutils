@@ -24,7 +24,6 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.blockentity.crafting.DecodedPatternEntryCache;
 import git.chexson.chexsonsaeutils.blockentity.crafting.DirtySlotPatternRefreshScheduler;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingOutputSink;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternInventory;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackSupport;
@@ -40,14 +39,15 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReaso
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibility;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibilityCache;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.planning.FormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PendingOutputBatch;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingCompiledTask;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionBudget;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionQueue;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingLatencyOrigin;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTaskCompletionHost;
+import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -74,7 +74,7 @@ import java.util.UUID;
 
 public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         implements ICraftingProvider, IUpgradeableObject, PatternContainer, InternalInventoryHost,
-        ProcessingTaskCompletionHost, IFormalMachinePlanningProvider {
+        ProcessingTaskCompletionHost, FormalMachinePlanningProvider {
 
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_MACHINE_BINDING = "machineBinding";
@@ -109,7 +109,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private final DirectProcessingPatternProvider patternProvider = new DirectProcessingPatternProvider();
     private final PatternCompatibilityCache compatibilityCache = new PatternCompatibilityCache();
     private final ProcessingExecutionQueue executionQueue = new ProcessingExecutionQueue(MAX_QUEUE_TASKS);
-    private final DirectProcessingOutputSink outputSink = new DirectProcessingOutputSink();
     private final DirectProcessingItemHandler automationItemHandler = new DirectProcessingItemHandler(this);
     private final Map<Integer, IPatternDetails> supportedPatternsBySlot = new LinkedHashMap<>();
     private final Map<Integer, PatternCompatibility> patternCompatibilityBySlot = new LinkedHashMap<>();
@@ -259,7 +258,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         long startedAtNanos = System.nanoTime();
         pushPatternCacheLookupCount++;
 
-        if (patternDetails instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+        if (patternDetails instanceof FormalMachineAggregatedPattern aggregatedPattern) {
             recordPushPatternCacheLookupNanos(startedAtNanos);
             return pushAggregatedPattern(aggregatedPattern, inputHolder);
         }
@@ -297,7 +296,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     private boolean pushAggregatedPattern(
-            IFormalMachineAggregatedPattern aggregatedPattern,
+            FormalMachineAggregatedPattern aggregatedPattern,
             KeyCounter[] inputHolder
     ) {
         if (aggregatedPattern == null
@@ -906,12 +905,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 IStorageService storageService = getMainNode().getGrid() == null
                         ? null
                         : getMainNode().getGrid().getStorageService();
-                List<GenericStack> rejectedSlice = outputSink.tryReturnPayload(
-                        storageService,
-                        actionSource,
-                        batch.payload(),
-                        null
-                );
+                List<GenericStack> rejectedSlice = AeCpuIngressRouter.routePayload(storageService, actionSource, batch.payload(), null).remainingPayload();
                 List<GenericStack> remainingPayload = DirectProcessingStackSupport.normalizeStacks(rejectedSlice);
                 if (!remainingPayload.isEmpty()) {
                     pendingOutputBatches.removeFirst();

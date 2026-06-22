@@ -12,7 +12,7 @@ import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import com.neuvillette.ae2ct.api.ICraftingPlanSummary;
 import com.neuvillette.ae2ct.api.RecipeHelper;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.planning.AggregatedCraftingPlan;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer;
 import git.chexson.chexsonsaeutils.crafting.planning.FormalMachineAggregationStep;
@@ -48,7 +48,7 @@ public abstract class AE2CTRecipeHelperCompatMixin {
             IPatternDetails pattern = entry.getKey();
             Long times = entry.getValue();
 
-            if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
+            if (pattern instanceof FormalMachineAggregatedPattern aggregatedPattern) {
                 recipes.add(new RecipeHelper.Recipe(
                         aggregatedPattern.aggregatedInputs(),
                         aggregatedPattern.aggregatedOutputs(),

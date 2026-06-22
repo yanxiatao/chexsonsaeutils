@@ -2,7 +2,7 @@ package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.me.service.CraftingService;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineDelegatingPattern;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineDelegatingPattern;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
@@ -20,7 +20,7 @@ public abstract class CraftingServiceGetProvidersFormalScaledPatternMixin {
             remap = false
     )
     private IPatternDetails chexsonsaeutils$unwrapFormalScaledPattern(IPatternDetails original) {
-        if (original instanceof IFormalMachineDelegatingPattern delegatingPattern) {
+        if (original instanceof FormalMachineDelegatingPattern delegatingPattern) {
             return delegatingPattern.basePattern();
         }
         return original;
