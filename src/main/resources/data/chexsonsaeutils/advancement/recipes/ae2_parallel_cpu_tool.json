@@ -1,12 +1,12 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
-    "has_crafting_accelerator": {
+    "has_controller": {
       "trigger": "minecraft:inventory_changed",
       "conditions": {
         "items": [
           {
-            "items": "ae2:crafting_accelerator"
+            "items": "ae2:controller"
           }
         ]
       }
@@ -17,10 +17,10 @@
         "recipe": "chexsonsaeutils:ae2_parallel_cpu_tool"
       }
     }
-  },
+  ],
   "requirements": [
     [
-      "has_crafting_accelerator",
+      "has_controller",
       "has_the_recipe"
     ]
   ],

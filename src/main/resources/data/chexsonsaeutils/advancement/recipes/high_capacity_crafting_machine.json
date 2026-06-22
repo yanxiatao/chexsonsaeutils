@@ -1,12 +1,12 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
-    "has_molecular_assembler": {
+    "has_controller": {
       "trigger": "minecraft:inventory_changed",
       "conditions": {
         "items": [
           {
-            "items": "ae2:molecular_assembler"
+            "items": "ae2:controller"
           }
         ]
       }
@@ -17,10 +17,10 @@
         "recipe": "chexsonsaeutils:high_capacity_crafting_machine"
       }
     }
-  },
+  ],
   "requirements": [
     [
-      "has_molecular_assembler",
+      "has_controller",
       "has_the_recipe"
     ]
   ],

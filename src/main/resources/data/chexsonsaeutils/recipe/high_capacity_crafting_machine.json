@@ -1,22 +1,22 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    "IPI",
-    "PMP",
-    "ISI"
+    "MCM",
+    "ASA",
+    "MCM"
   ],
   "key": {
-    "I": {
-      "item": "minecraft:copper_ingot"
-    },
-    "P": {
-      "item": "ae2:blank_pattern"
-    },
     "M": {
       "item": "ae2:molecular_assembler"
     },
-    "S": {
+    "C": {
+      "item": "ae2:controller"
+    },
+    "A": {
       "item": "ae2:speed_card"
+    },
+    "S": {
+      "item": "ae2:64k_crafting_storage"
     }
   },
   "result": {
