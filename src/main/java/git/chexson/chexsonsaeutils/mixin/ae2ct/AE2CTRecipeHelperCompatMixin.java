@@ -13,6 +13,7 @@ import com.neuvillette.ae2ct.api.ICraftingPlanSummary;
 import com.neuvillette.ae2ct.api.RecipeHelper;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregatedPattern;
 import git.chexson.chexsonsaeutils.crafting.planning.AggregatedCraftingPlan;
+import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusService;
 import git.chexson.chexsonsaeutils.crafting.planning.FormalMachineAggregationStep;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -48,11 +49,10 @@ public abstract class AE2CTRecipeHelperCompatMixin {
 
             if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
                 for (FormalMachineAggregationStep step : aggregatedPattern.steps()) {
-                    long scaledExecutionCount = step.executionCount() * (times == null ? 1L : times);
                     recipes.add(new RecipeHelper.Recipe(
                             step.stepInputs(),
                             List.of(step.stepPrimaryOutput()),
-                            scaledExecutionCount
+                            step.executionCount()
                     ));
                 }
             } else {
@@ -120,6 +120,8 @@ public abstract class AE2CTRecipeHelperCompatMixin {
 
         CraftingPlanSummary summary = new CraftingPlanSummary(job.bytes(), job.simulation(), List.copyOf(entries));
         ((ICraftingPlanSummary) summary).setJob(helper);
+
+        EnhancedCraftingStatusService.attachPatternTimes(summary, job);
 
         cir.setReturnValue(summary);
     }
