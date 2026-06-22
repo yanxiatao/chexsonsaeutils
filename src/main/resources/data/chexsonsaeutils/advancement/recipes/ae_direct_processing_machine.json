@@ -1,11 +1,11 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
-    "has_processing_pattern": {
+    "has_controller": {
       "conditions": {
         "items": [
           {
-            "items": "ae2:processing_pattern"
+            "items": "ae2:controller"
           }
         ]
       },
@@ -14,7 +14,7 @@
   },
   "requirements": [
     [
-      "has_processing_pattern"
+      "has_controller"
     ]
   ],
   "rewards": {
