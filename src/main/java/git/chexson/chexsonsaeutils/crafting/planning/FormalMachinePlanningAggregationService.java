@@ -105,17 +105,14 @@ public final class FormalMachinePlanningAggregationService {
                 nativePlan.patternTimes()
         );
         if (selectedGraph == null || selectedGraph.nodes().isEmpty()) {
-            LOGGER.info("rewriteNativePlan: selectedGraph is empty");
             return nativePlan;
         }
-        LOGGER.info("rewriteNativePlan: selectedGraph has {} nodes", selectedGraph.nodes().size());
 
         List<HostAggregationCandidate> candidates = buildHostAggregationCandidates(
                 level,
                 rewriteContext,
                 selectedGraph
         );
-        LOGGER.info("rewriteNativePlan: generated {} candidates", candidates.size());
         if (candidates.isEmpty()) {
             return nativePlan;
         }
@@ -341,20 +338,14 @@ public final class FormalMachinePlanningAggregationService {
             grouped.computeIfAbsent(node.host(), ignored -> new LinkedHashMap<>()).put(entry.getKey(), node);
         }
 
-        LOGGER.info("buildHostAggregationCandidates: total nodes={}, grouped hosts={}",
-                selectedGraph.nodes().size(), grouped.size());
-
         List<HostAggregationCandidate> candidates = new ArrayList<>();
         for (Map.Entry<IFormalMachinePlanningProvider, Map<AEKey, SelectedGraphNode>> entry : grouped.entrySet()) {
             Map<AEKey, SelectedGraphNode> hostNodes = entry.getValue();
-            LOGGER.info("Processing host at {}: {} nodes", entry.getKey().getBlockPos(), hostNodes.size());
 
             List<Set<AEKey>> segments = splitPerPatternFormalAggregationSegments(formalInputsByOutput(hostNodes));
-            LOGGER.info("Generated {} segments for host", segments.size());
 
             for (Set<AEKey> segment : segments) {
                 Map<AEKey, SelectedGraphNode> segmentNodes = selectSegmentNodes(hostNodes, segment);
-                LOGGER.info("Segment with {} keys yielded {} nodes", segment.size(), segmentNodes.size());
 
                 HostAggregationCandidate candidate = buildHostAggregationCandidate(
                         level,
@@ -364,20 +355,17 @@ public final class FormalMachinePlanningAggregationService {
                 );
                 if (candidate != null) {
                     candidates.add(candidate);
-                    LOGGER.info("Created candidate with {} steps", candidate.steps().size());
                 } else {
                     LOGGER.warn("Failed to create candidate for segment");
                 }
             }
         }
-        LOGGER.info("Total candidates created: {}", candidates.size());
         return List.copyOf(candidates);
     }
 
     static List<Set<AEKey>> splitPerPatternFormalAggregationSegments(
             Map<AEKey, ? extends Collection<AEKey>> formalInputsByOutput
     ) {
-        // Each pattern should be its own segment - no aggregation across patterns
         if (formalInputsByOutput == null || formalInputsByOutput.isEmpty()) {
             return List.of();
         }
@@ -387,8 +375,6 @@ public final class FormalMachinePlanningAggregationService {
                 segments.add(Set.of(output));
             }
         }
-        LOGGER.info("splitPerPatternFormalAggregationSegments: inputs={}, segments={}",
-                formalInputsByOutput.size(), segments.size());
         return List.copyOf(segments);
     }
 
