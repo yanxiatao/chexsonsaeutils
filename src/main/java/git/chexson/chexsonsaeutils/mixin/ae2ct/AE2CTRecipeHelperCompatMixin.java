@@ -49,13 +49,11 @@ public abstract class AE2CTRecipeHelperCompatMixin {
             Long times = entry.getValue();
 
             if (pattern instanceof IFormalMachineAggregatedPattern aggregatedPattern) {
-                for (FormalMachineAggregationStep step : aggregatedPattern.steps()) {
-                    recipes.add(new RecipeHelper.Recipe(
-                            step.stepInputs(),
-                            List.of(step.stepPrimaryOutput()),
-                            step.executionCount()
-                    ));
-                }
+                recipes.add(new RecipeHelper.Recipe(
+                        aggregatedPattern.aggregatedInputs(),
+                        aggregatedPattern.aggregatedOutputs(),
+                        times
+                ));
             } else if (!(pattern instanceof DyeablePatternRecursivePlan)) {
                 List<GenericStack> inputs = new ArrayList<>();
                 for (var input : pattern.getInputs()) {
