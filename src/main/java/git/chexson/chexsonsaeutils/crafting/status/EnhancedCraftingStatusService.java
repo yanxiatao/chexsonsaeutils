@@ -112,8 +112,7 @@ public final class EnhancedCraftingStatusService {
                 for (var step : aggregatedPattern.steps()) {
                     GenericStack stepOutput = step.stepPrimaryOutput();
                     if (stepOutput != null && stepOutput.what() != null) {
-                        long stepTimes = step.executionCount() * times;
-                        timesByOutput.computeIfAbsent(stepOutput.what(), ignored -> new ArrayList<>()).add(stepTimes);
+                        timesByOutput.computeIfAbsent(stepOutput.what(), ignored -> new ArrayList<>()).add(times);
                     }
                 }
             } else {
