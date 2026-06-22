@@ -394,11 +394,40 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     @Override
+    public void addAdditionalDrops(Level level, BlockPos pos, List<ItemStack> drops) {
+        super.addAdditionalDrops(level, pos, drops);
+        ItemStack bindingStack = machineBindingInventory.getStackInSlot(0);
+        if (!bindingStack.isEmpty()) {
+            drops.add(bindingStack.copy());
+        }
+        for (int slot = 0; slot < patternInventory.getTotalSlots(); slot++) {
+            ItemStack stack = patternInventory.getVirtualSlot(slot);
+            if (!stack.isEmpty()) {
+                drops.add(stack.copy());
+            }
+        }
+        for (ItemStack upgrade : upgrades) {
+            if (!upgrade.isEmpty()) {
+                drops.add(upgrade.copy());
+            }
+        }
+        for (PendingOutputBatch batch : pendingOutputBatches) {
+            if (batch == null || batch.isEmpty()) continue;
+            for (GenericStack stack : batch.payload()) {
+                if (stack != null && stack.what() != null) {
+                    stack.what().addDrops(stack.amount(), drops, level, pos);
+                }
+            }
+        }
+    }
+
+    @Override
     public void clearContent() {
         machineBindingInventory.setItemDirect(0, ItemStack.EMPTY);
         for (int slot = 0; slot < patternInventory.getTotalSlots(); slot++) {
             patternInventory.setVirtualSlot(slot, ItemStack.EMPTY);
         }
+        upgrades.clear();
         executionQueue.clear();
         pendingOutputBatches.clear();
         clearPatternExposureCaches();

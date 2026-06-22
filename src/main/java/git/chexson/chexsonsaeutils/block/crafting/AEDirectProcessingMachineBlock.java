@@ -9,7 +9,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 
@@ -39,17 +38,5 @@ public class AEDirectProcessingMachineBlock extends AEBaseEntityBlock<AEDirectPr
             );
         }
         return InteractionResult.sidedSuccess(level.isClientSide());
-    }
-
-    @Override
-    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
-        if (!state.is(newState.getBlock())) {
-            BlockEntity blockEntity = level.getBlockEntity(pos);
-            if (blockEntity instanceof AEDirectProcessingMachineBlockEntity machine) {
-                machine.clearContent();
-            }
-        }
-        super.onRemove(state, level, pos, newState, movedByPiston);
-super.onRemove(state, level, pos, newState, movedByPiston);
     }
 }
