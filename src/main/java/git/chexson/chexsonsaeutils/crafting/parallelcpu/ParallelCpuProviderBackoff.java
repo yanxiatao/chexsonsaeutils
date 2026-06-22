@@ -27,7 +27,6 @@ public final class ParallelCpuProviderBackoff {
             ICraftingProvider provider,
             long currentTick,
             ParallelCpuGridBudgetLedger budgetLedger,
-            ParallelCpuMetrics metrics
     ) {
         if (provider == null) {
             return ProviderAvailability.BACKED_OFF;

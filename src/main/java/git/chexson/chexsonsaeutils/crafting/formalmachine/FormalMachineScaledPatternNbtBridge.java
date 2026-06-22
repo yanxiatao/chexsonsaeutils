@@ -113,14 +113,6 @@ public final class FormalMachineScaledPatternNbtBridge {
             }
             accessor.getTasks().put(decoded, taskProgress);
         }
-        if (restoredScaledPatterns > 0) {
-            AbstractHighCapacityCraftingHostBlockEntity host = resolveFormalMachineHost(cpuCluster, accessor.getTasks());
-            if (host != null) {
-                for (int index = 0; index < restoredScaledPatterns; index++) {
-                    host.recordScaledPatternNbtRestoreForTest();
-                }
-            }
-        }
     }
 
     private static @Nullable CraftingCPUCluster resolveCpuCluster(ExecutingCraftingJob job) {

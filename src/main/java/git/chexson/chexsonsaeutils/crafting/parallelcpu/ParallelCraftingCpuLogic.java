@@ -155,7 +155,6 @@ final class ParallelCraftingCpuLogic {
     boolean tickCraftingLogic(
             IEnergyService energyGrid,
             CraftingService craftingService,
-            ParallelCpuMetrics metrics,
             long currentTick,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
             @Nullable ParallelCpuProviderBackoff providerBackoff
@@ -197,7 +196,6 @@ final class ParallelCraftingCpuLogic {
                         remainingOperations,
                         craftingService,
                         energyGrid,
-                        metrics,
                         currentTick,
                         budgetLedger,
                         providerBackoff
@@ -221,7 +219,6 @@ final class ParallelCraftingCpuLogic {
             long maxPatterns,
             CraftingService craftingService,
             IEnergyService energyService,
-            ParallelCpuMetrics metrics,
             long currentTick,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
             @Nullable ParallelCpuProviderBackoff providerBackoff
@@ -272,7 +269,6 @@ final class ParallelCraftingCpuLogic {
             var craftingContainer = extractPatternInputsWithinBudget(
                     details,
                     inventory,
-                    metrics,
                     budgetLedger,
                     lane.cluster().level(),
                     expectedOutputs,
@@ -297,9 +293,7 @@ final class ParallelCraftingCpuLogic {
                         provider,
                         currentTick,
                         budgetLedger,
-                        providerBackoff,
-                        metrics
-                );
+                        providerBackoff);
                 if (availability == ParallelCpuProviderBackoff.ProviderAvailability.BUDGET_EXHAUSTED) {
                     stopAfterCurrentTask = true;
                     break;
@@ -368,7 +362,6 @@ final class ParallelCraftingCpuLogic {
                     craftingContainer = extractPatternInputsWithinBudget(
                             details,
                             inventory,
-                            metrics,
                             budgetLedger,
                             lane.cluster().level(),
                             expectedOutputs,
@@ -417,7 +410,6 @@ final class ParallelCraftingCpuLogic {
     private static @Nullable KeyCounter[] extractPatternInputsWithinBudget(
             IPatternDetails details,
             ListCraftingInventory inventory,
-            @Nullable ParallelCpuMetrics metrics,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
             net.minecraft.world.level.Level level,
             KeyCounter expectedOutputs,
@@ -446,10 +438,9 @@ final class ParallelCraftingCpuLogic {
             long currentTick,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
             @Nullable ParallelCpuProviderBackoff providerBackoff,
-            @Nullable ParallelCpuMetrics metrics
     ) {
         if (providerBackoff != null) {
-            return providerBackoff.checkProvider(provider, currentTick, budgetLedger, metrics);
+            return providerBackoff.checkProvider(provider, currentTick, budgetLedger);
         }
         if (provider == null) {
             return ParallelCpuProviderBackoff.ProviderAvailability.BACKED_OFF;

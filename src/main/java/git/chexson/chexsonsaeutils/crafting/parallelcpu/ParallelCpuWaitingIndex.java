@@ -69,16 +69,14 @@ public final class ParallelCpuWaitingIndex {
             @Nullable AEKey what,
             long amount,
             Actionable mode,
-            @Nullable ParallelCpuMetrics metrics
     ) {
-        return insertIntoLanesAndGetResult(what, amount, mode, metrics).physicalInserted();
+        return insertIntoLanesAndGetResult(what, amount, mode).physicalInserted();
     }
 
     public InsertResult insertIntoLanesAndGetResult(
             @Nullable AEKey what,
             long amount,
             Actionable mode,
-            @Nullable ParallelCpuMetrics metrics
     ) {
         if (what == null || amount <= 0L || mode == null) {
             return InsertResult.EMPTY;
@@ -90,14 +88,13 @@ public final class ParallelCpuWaitingIndex {
         }
 
         return mode == Actionable.MODULATE
-                ? insertIntoLanesModulating(what, amount, metrics)
-                : simulateInsertIntoLanes(what, amount, indexedLanes, metrics);
+                ? insertIntoLanesModulating(what, amount)
+                : simulateInsertIntoLanes(what, amount, indexedLanes);
     }
 
     private InsertResult insertIntoLanesModulating(
             AEKey what,
             long amount,
-            @Nullable ParallelCpuMetrics metrics
     ) {
         long physicalInserted = 0L;
         long accounted = 0L;
@@ -138,7 +135,6 @@ public final class ParallelCpuWaitingIndex {
             AEKey what,
             long amount,
             Set<ParallelCraftingLane> indexedLanes,
-            @Nullable ParallelCpuMetrics metrics
     ) {
         long physicalInserted = 0L;
         long accounted = 0L;

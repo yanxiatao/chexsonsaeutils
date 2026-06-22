@@ -162,7 +162,6 @@ public final class ParallelCraftingCpuGrid {
             ParallelCraftingCpuCluster.TickResult tickResult = cluster.tick(
                     energyGrid,
                     craftingService,
-                    metrics,
                     currentTick,
                     budgetLedger
             );
@@ -196,7 +195,7 @@ public final class ParallelCraftingCpuGrid {
             return 0L;
         }
 
-        long inserted = waitingIndex.insertIntoLanesAndGetResult(what, remaining, type, metrics).physicalInserted();
+        long inserted = waitingIndex.insertIntoLanesAndGetResult(what, remaining, type).physicalInserted();
         if (type == Actionable.MODULATE) {
             removeInactiveLanes();
         }
@@ -272,7 +271,7 @@ public final class ParallelCraftingCpuGrid {
             return CraftingSubmitResult.CPU_BUSY;
         }
         submissionsThisTick++;
-        return cluster.submitJob(grid, job, requestingMachine, src, currentTick, metrics);
+        return cluster.submitJob(grid, job, requestingMachine, src, currentTick);
     }
 
     private ICraftingSubmitResult submitPartialToCluster(
@@ -289,7 +288,7 @@ public final class ParallelCraftingCpuGrid {
             return CraftingSubmitResult.CPU_BUSY;
         }
         submissionsThisTick++;
-        return cluster.submitPartialJob(grid, job, requestingMachine, src, currentTick, metrics);
+        return cluster.submitPartialJob(grid, job, requestingMachine, src, currentTick);
     }
 
     private ICraftingSubmitResult submitToAutoSelectedCluster(

@@ -473,74 +473,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return supportedPatternsBySlot.size();
     }
 
-    public long getRecipeDiscoveryCountForTest() {
-        return recipeDiscoveryCount;
-    }
-
-    public long getRecipeFullScanCountForTest() {
-        return recipeFullScanCount;
-    }
-
-    public long getDirtyRefreshScanCountForTest() {
-        return dirtyRefreshScanCount;
-    }
-
-    public long getPushPatternCacheLookupCountForTest() {
-        return pushPatternCacheLookupCount;
-    }
-
-    public long getPushPatternAcceptedCountForTest() {
-        return pushPatternAcceptedCount;
-    }
-
-    public long getCompletedTaskCountForTest() {
-        return completedTaskCount;
-    }
-
-    public long getCompletedLogicalExecutionCountForTest() {
-        return completedLogicalExecutionCount;
-    }
-
-    public long getDirtyRefreshWallNanosMaxForTest() {
-        return dirtyRefreshWallNanosMax;
-    }
-
-    public long getPushPatternCacheLookupNanosMaxForTest() {
-        return pushPatternCacheLookupNanosMax;
-    }
-
-    public DirectProcessingMachineMetrics.Snapshot getMetricsSnapshotForTest() {
-        return metrics.snapshot();
-    }
-
-    public long getDirtyRefreshNanosP95ForTest() {
-        return metrics.snapshot().dirtyRefreshNanosP95();
-    }
-
-    public long getPushPatternCacheLookupNanosP95ForTest() {
-        return metrics.snapshot().pushPatternCacheLookupNanosP95();
-    }
-
-    public long getOutputReturnNanosP95ForTest() {
-        return metrics.snapshot().outputReturnNanosP95();
-    }
-
-    public long getServerTickNanosP95ForTest() {
-        return metrics.snapshot().serverTickNanosP95();
-    }
-
-    public int getPendingDirtyPatternSlotCountForTest() {
-        return refreshScheduler.dirtyCount();
-    }
-
-    public long getMachineRecipeIndexVersionForTest() {
-        return recipeIndex.version();
-    }
-
-    public int getMachineRecipeSignatureCountForTest() {
-        return recipeIndex.recipeSignatureCount();
-    }
-
     public String getDetectedRecipeTypeSummaryForMenu() {
         List<ResourceLocation> recipeTypeIds = recipeIndex.recipeTypeIds();
         if (recipeTypeIds.isEmpty()) {
@@ -615,18 +547,9 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return true;
     }
 
-    public boolean isMachineRecipeIndexRefreshPendingForTest() {
-        return machineRecipeIndexRefreshPending;
-    }
-
-    public MachineSupportStatus getPatternStatusForTest(int slot) {
+    public MachineSupportStatus getPatternStatus(int slot) {
         PatternCompatibility compatibility = patternCompatibilityBySlot.get(slot);
         return compatibility == null ? MachineSupportStatus.UNSUPPORTED_UNREADABLE : compatibility.status();
-    }
-
-    public MachineSupportReasonCode getPatternReasonCodeForTest(int slot) {
-        PatternCompatibility compatibility = patternCompatibilityBySlot.get(slot);
-        return compatibility == null ? MachineSupportReasonCode.PATTERN_DECODE_FAILED : compatibility.reasonCode();
     }
 
     public int countVisiblePatternStatusForMenu(MachineSupportStatus status) {
@@ -637,23 +560,11 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         int firstSlot = patternInventory.getActivePage() * patternInventory.getPageSize();
         int endSlot = Math.min(patternInventory.getTotalSlots(), firstSlot + patternInventory.getPageSize());
         for (int slot = firstSlot; slot < endSlot; slot++) {
-            if (!patternInventory.getVirtualSlot(slot).isEmpty() && getPatternStatusForTest(slot) == status) {
+            if (!patternInventory.getVirtualSlot(slot).isEmpty() && getPatternStatus(slot) == status) {
                 count++;
             }
         }
         return count;
-    }
-
-    public int getPendingOutputRetryDelayTicksForTest() {
-        return pendingOutputRetryDelayTicks;
-    }
-
-    public int getPendingOutputRetryBackoffTicksForTest() {
-        return pendingOutputRetryBackoffTicks;
-    }
-
-    public int getExecutionQueueLaneCountForTest() {
-        return executionQueue.laneCountForTest();
     }
 
     public int getQueuedTaskCountForMenu() {
@@ -662,29 +573,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     public int getRunningTaskCountForMenu() {
         return executionQueue.runningTaskCount();
-    }
-
-    public ProcessingExecutionBudget.Snapshot getExecutionBudgetSnapshotForTest() {
-        return budgetController.snapshot();
-    }
-
-    public long getOutputReturnBudgetRejectedCountForTest() {
-        return outputReturnBudgetRejectedCount;
-    }
-
-    public long getPushToAeReturnLatencyTicksAverageForTest() {
-        if (pushToAeReturnLatencySampleCount <= 0L) {
-            return 0L;
-        }
-        return pushToAeReturnLatencyTicksTotal / pushToAeReturnLatencySampleCount;
-    }
-
-    public long getPushToAeReturnLatencyTicksMaxForTest() {
-        return pushToAeReturnLatencyTicksMax;
-    }
-
-    public long getPushToAeReturnLatencySampleCountForTest() {
-        return pushToAeReturnLatencySampleCount;
     }
 
     public void invalidateDiscoveryForRecipeReload() {

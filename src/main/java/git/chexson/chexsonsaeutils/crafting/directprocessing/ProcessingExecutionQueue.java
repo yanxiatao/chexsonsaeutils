@@ -113,10 +113,6 @@ public final class ProcessingExecutionQueue {
         return queuedTaskCount() + runningTaskCount();
     }
 
-    public int laneCountForTest() {
-        return lanes.size();
-    }
-
     public void clear() {
         pendingTasks.clear();
         latencyOrigins.clear();
