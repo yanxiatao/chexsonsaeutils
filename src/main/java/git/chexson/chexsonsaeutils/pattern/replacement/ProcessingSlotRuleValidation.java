@@ -12,13 +12,13 @@ import java.util.Objects;
 import java.util.Set;
 
 public class ProcessingSlotRuleValidation {
-    private final ProcessingSlotTagService tagService;
+    private final ProcessingSlotTagExpander tagService;
 
     public ProcessingSlotRuleValidation() {
-        this(new ProcessingSlotTagService());
+        this(new ProcessingSlotTagExpander());
     }
 
-    public ProcessingSlotRuleValidation(ProcessingSlotTagService tagService) {
+    public ProcessingSlotRuleValidation(ProcessingSlotTagExpander tagService) {
         this.tagService = Objects.requireNonNull(tagService);
     }
 

@@ -30,20 +30,20 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.function.ToLongFunction;
 
-public final class CraftingContinuationStatusService {
-    private static final Map<ServerLevel, CraftingContinuationStatusService> INSTANCES = new WeakHashMap<>();
+public final class CraftingContinuationTracker {
+    private static final Map<ServerLevel, CraftingContinuationTracker> INSTANCES = new WeakHashMap<>();
 
     private final ServerLevel level;
     private final Map<UUID, CraftingContinuationWaitingDetail> trackedJobs = new LinkedHashMap<>();
     private final Map<UUID, Map<AEKey, Long>> observedAvailableWaitingStacks = new HashMap<>();
 
-    private CraftingContinuationStatusService(ServerLevel level) {
+    private CraftingContinuationTracker(ServerLevel level) {
         this.level = level;
         rebuildAfterLoad(level);
     }
 
-    public static CraftingContinuationStatusService get(ServerLevel level) {
-        return INSTANCES.computeIfAbsent(level, CraftingContinuationStatusService::new);
+    public static CraftingContinuationTracker get(ServerLevel level) {
+        return INSTANCES.computeIfAbsent(level, CraftingContinuationTracker::new);
     }
 
     public static void syncSelectedCpuDetailForMenu(CraftingCPUMenu menu) {
@@ -102,7 +102,7 @@ public final class CraftingContinuationStatusService {
             }
 
             liveCraftIdsByLevel.computeIfAbsent(serverLevel, ignored -> new HashSet<>());
-            CraftingContinuationStatusService service = get(serverLevel);
+            CraftingContinuationTracker service = get(serverLevel);
             UUID craftId = service.reconcileWaitingInputs(grid, cpu, changedStack);
             if (craftId != null) {
                 liveCraftIdsByLevel.get(serverLevel).add(craftId);
@@ -136,7 +136,7 @@ public final class CraftingContinuationStatusService {
             }
 
             liveCraftIdsByLevel.computeIfAbsent(serverLevel, ignored -> new HashSet<>());
-            CraftingContinuationStatusService service = get(serverLevel);
+            CraftingContinuationTracker service = get(serverLevel);
             if (service.recordWaitingAvailability(cpu, cachedInventory, liveCraftIdsByLevel.get(serverLevel))) {
                 availabilityIncreased = true;
             }

@@ -5,7 +5,7 @@ import appeng.api.util.AEColor;
 import appeng.client.gui.me.crafting.CraftingStatusTableRenderer;
 import appeng.core.localization.GuiText;
 import appeng.menu.me.crafting.CraftingStatusEntry;
-import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker;
 import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -74,13 +74,13 @@ public abstract class CraftingStatusTableRendererContinuationMixin {
     private long getWaitingAmount(CraftingStatusEntry entry) {
         var screen = ((AbstractTableRendererAccessor) this).chexsonsaeutils$getScreen();
         if (entry.getWhat() == null
-                || !(screen instanceof CraftingContinuationStatusService.WaitingStackProjectionHost host)
+                || !(screen instanceof CraftingContinuationTracker.WaitingStackProjectionHost host)
                 || !host.chexsonsaeutils$partialWaiting()) {
             return 0L;
         }
 
         return host.chexsonsaeutils$waitingStackAmounts().getOrDefault(
-                CraftingContinuationStatusService.encodeKeyForSync(entry.getWhat()),
+                CraftingContinuationTracker.encodeKeyForSync(entry.getWhat()),
                 0L
         );
     }

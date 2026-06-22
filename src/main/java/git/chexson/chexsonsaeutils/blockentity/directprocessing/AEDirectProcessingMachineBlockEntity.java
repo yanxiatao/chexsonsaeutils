@@ -32,7 +32,7 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMac
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeDiscoveryService;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeIndexBuilder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeIndex;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeIndexCache;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeReloadTracker;
@@ -45,7 +45,7 @@ import git.chexson.chexsonsaeutils.crafting.formalmachine.IFormalMachineAggregat
 import git.chexson.chexsonsaeutils.crafting.planning.IFormalMachinePlanningProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PendingOutputBatch;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingCompiledTask;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionBudgetController;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionBudget;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionQueue;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingLatencyOrigin;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTaskCompletionHost;
@@ -118,9 +118,9 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private final Map<Integer, AEItemKey> patternDefinitionsBySlot = new LinkedHashMap<>();
     private final Map<AEItemKey, Set<Integer>> slotsByPatternDefinition = new LinkedHashMap<>();
 
-    private MachineRecipeDiscoveryService discoveryService = MachineRecipeDiscoveryService.fromConfig();
+    private MachineRecipeIndexBuilder discoveryService = MachineRecipeIndexBuilder.fromConfig();
     private MachineRecipeIndex recipeIndex = MachineRecipeIndex.empty();
-    private ProcessingExecutionBudgetController budgetController = createConfiguredBudgetController();
+    private ProcessingExecutionBudget budgetController = createConfiguredBudgetController();
     private long discoveryEpoch;
     private long recipeManagerEpoch;
     private long observedConfigMappingEpoch = Long.MIN_VALUE;
@@ -224,7 +224,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         observedRecipeReloadEpoch = MachineRecipeReloadTracker.recipeReloadEpoch();
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled();
-        discoveryService = MachineRecipeDiscoveryService.fromConfig();
+        discoveryService = MachineRecipeIndexBuilder.fromConfig();
         markMachineRecipeIndexDirty();
         markAllPatternsDirty();
     }
@@ -664,7 +664,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return executionQueue.runningTaskCount();
     }
 
-    public ProcessingExecutionBudgetController.Snapshot getExecutionBudgetSnapshotForTest() {
+    public ProcessingExecutionBudget.Snapshot getExecutionBudgetSnapshotForTest() {
         return budgetController.snapshot();
     }
 
@@ -869,8 +869,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         budgetController = createConfiguredBudgetController();
     }
 
-    private static ProcessingExecutionBudgetController createConfiguredBudgetController() {
-        return ProcessingExecutionBudgetController.forProfile(currentBudgetProfileName());
+    private static ProcessingExecutionBudget createConfiguredBudgetController() {
+        return ProcessingExecutionBudget.forProfile(currentBudgetProfileName());
     }
 
     private static String currentBudgetProfileName() {
@@ -883,7 +883,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             return;
         }
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled;
-        discoveryService = MachineRecipeDiscoveryService.fromConfig();
+        discoveryService = MachineRecipeIndexBuilder.fromConfig();
         discoveryEpoch++;
         invalidatePatternExposureForIndexChange();
         saveChanges();

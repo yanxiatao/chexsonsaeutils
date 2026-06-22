@@ -17,9 +17,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class EnhancedCraftingStatusService {
+public final class CraftingStatusEnhancer {
 
-    private EnhancedCraftingStatusService() {
+    private CraftingStatusEnhancer() {
     }
 
     public static CraftingStatus attachBlockedAmounts(CraftingStatus status, EnhancedCraftingBlockedTracker tracker) {

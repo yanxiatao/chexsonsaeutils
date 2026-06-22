@@ -25,7 +25,7 @@ import java.util.function.Function;
 
 public class ReplacementAwareProcessingPattern extends AEProcessingPattern {
     private final Map<Integer, ProcessingPatternSlotReplacementRule> replacementRules;
-    private final ProcessingSlotTagService tagService;
+    private final ProcessingSlotTagExpander tagService;
     private final ProcessingSlotRuleValidation validation;
     private final Function<ResourceLocation, AEItemKey> itemKeyResolver;
     private final int[] nonEmptySparseSlots;
@@ -34,7 +34,7 @@ public class ReplacementAwareProcessingPattern extends AEProcessingPattern {
     public ReplacementAwareProcessingPattern(
             AEItemKey definition,
             Collection<ProcessingPatternSlotReplacementRule> replacementRules,
-            ProcessingSlotTagService tagService,
+            ProcessingSlotTagExpander tagService,
             ProcessingSlotRuleValidation validation
     ) {
         this(
@@ -49,7 +49,7 @@ public class ReplacementAwareProcessingPattern extends AEProcessingPattern {
     ReplacementAwareProcessingPattern(
             AEItemKey definition,
             Collection<ProcessingPatternSlotReplacementRule> replacementRules,
-            ProcessingSlotTagService tagService,
+            ProcessingSlotTagExpander tagService,
             ProcessingSlotRuleValidation validation,
             Function<ResourceLocation, AEItemKey> itemKeyResolver
     ) {
@@ -198,7 +198,7 @@ public class ReplacementAwareProcessingPattern extends AEProcessingPattern {
             ResourceLocation originalItemId,
             Collection<ResourceLocation> sourceTagIds,
             @Nullable ProcessingPatternSlotReplacementRule rule,
-            ProcessingSlotTagService tagService,
+            ProcessingSlotTagExpander tagService,
             ProcessingSlotRuleValidation validation
     ) {
         LinkedHashMap<ResourceLocation, ResourceLocation> possibleItems = new LinkedHashMap<>();

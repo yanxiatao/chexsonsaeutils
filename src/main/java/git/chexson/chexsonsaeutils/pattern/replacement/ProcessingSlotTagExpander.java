@@ -15,7 +15,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-public class ProcessingSlotTagService {
+public class ProcessingSlotTagExpander {
 
     public List<ResourceLocation> extractSourceTagIds(ItemStack sourceStack) {
         if (sourceStack == null || sourceStack.isEmpty()) {

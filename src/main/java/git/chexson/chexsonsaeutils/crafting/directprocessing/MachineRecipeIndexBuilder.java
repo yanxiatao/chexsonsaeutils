@@ -19,32 +19,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public final class MachineRecipeDiscoveryService {
+public final class MachineRecipeIndexBuilder {
 
     private final MachineAdapterRegistry adapterRegistry;
     private final RecipeTypeCandidateResolver candidateResolver;
     private final GenericRecipeShapeReader shapeReader;
 
-    public MachineRecipeDiscoveryService() {
+    public MachineRecipeIndexBuilder() {
         this(MachineAdapterRegistry.directProcessingDefaults(), new GenericRecipeShapeReader(), true);
     }
 
-    public static MachineRecipeDiscoveryService fromConfig() {
-        return new MachineRecipeDiscoveryService(
+    public static MachineRecipeIndexBuilder fromConfig() {
+        return new MachineRecipeIndexBuilder(
                 MachineAdapterRegistry.directProcessingDefaults(),
                 new GenericRecipeShapeReader(),
                 genericDiscoveryEnabled()
         );
     }
 
-    public MachineRecipeDiscoveryService(
+    public MachineRecipeIndexBuilder(
             MachineAdapterRegistry adapterRegistry,
             GenericRecipeShapeReader shapeReader
     ) {
         this(adapterRegistry, shapeReader, true);
     }
 
-    public MachineRecipeDiscoveryService(
+    public MachineRecipeIndexBuilder(
             MachineAdapterRegistry adapterRegistry,
             GenericRecipeShapeReader shapeReader,
             boolean genericDiscoveryEnabled

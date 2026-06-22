@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
-public final class ProcessingExecutionBudgetController {
+public final class ProcessingExecutionBudget {
 
     public static final Limits NORMAL_LIMITS = new Limits(
             64,
@@ -35,24 +35,24 @@ public final class ProcessingExecutionBudgetController {
     private long deadlineNanos;
     private long tickStartedAtNanos;
 
-    public ProcessingExecutionBudgetController(Limits limits) {
+    public ProcessingExecutionBudget(Limits limits) {
         this.limits = limits == null ? NORMAL_LIMITS : limits;
         resetForTick(System.nanoTime());
     }
 
-    public static ProcessingExecutionBudgetController normal() {
-        return new ProcessingExecutionBudgetController(NORMAL_LIMITS);
+    public static ProcessingExecutionBudget normal() {
+        return new ProcessingExecutionBudget(NORMAL_LIMITS);
     }
 
-    public static ProcessingExecutionBudgetController high() {
-        return new ProcessingExecutionBudgetController(HIGH_LIMITS);
+    public static ProcessingExecutionBudget high() {
+        return new ProcessingExecutionBudget(HIGH_LIMITS);
     }
 
-    public static ProcessingExecutionBudgetController benchmark() {
-        return new ProcessingExecutionBudgetController(BENCHMARK_LIMITS);
+    public static ProcessingExecutionBudget benchmark() {
+        return new ProcessingExecutionBudget(BENCHMARK_LIMITS);
     }
 
-    public static ProcessingExecutionBudgetController forProfile(String profileName) {
+    public static ProcessingExecutionBudget forProfile(String profileName) {
         if ("benchmark".equalsIgnoreCase(profileName)) {
             return benchmark();
         }

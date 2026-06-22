@@ -97,10 +97,10 @@ public final class FormalMachineScaledPatternNbtBridge {
             }
             int multiplier = Math.max(1, item.getInt(FORMAL_MULTIPLIER_TAG));
             if (multiplier > 1) {
-                ScaledCraftingPatternEligibilityService.Eligibility eligibility =
-                        ScaledCraftingPatternEligibilityService.analyze(level, decoded);
+                ScaledCraftingPatternAnalyzer.Eligibility eligibility =
+                        ScaledCraftingPatternAnalyzer.analyze(level, decoded);
                 if (eligibility != null) {
-                    decoded = ScaledCraftingPatternEligibilityService.createScaledPattern(eligibility, multiplier);
+                    decoded = ScaledCraftingPatternAnalyzer.createScaledPattern(eligibility, multiplier);
                     restoredScaledPatterns++;
                 }
             }

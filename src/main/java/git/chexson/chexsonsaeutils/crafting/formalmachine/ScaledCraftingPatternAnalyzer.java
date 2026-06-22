@@ -14,9 +14,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class ScaledCraftingPatternEligibilityService {
+public final class ScaledCraftingPatternAnalyzer {
 
-    private ScaledCraftingPatternEligibilityService() {
+    private ScaledCraftingPatternAnalyzer() {
     }
 
     public static @Nullable Eligibility analyze(@Nullable Level level, @Nullable IPatternDetails patternDetails) {

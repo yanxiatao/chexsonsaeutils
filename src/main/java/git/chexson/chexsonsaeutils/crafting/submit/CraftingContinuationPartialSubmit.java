@@ -17,7 +17,7 @@ import appeng.me.cluster.implementations.CraftingCPUCluster;
 import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
-import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingBranch;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingDetail;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
@@ -152,7 +152,7 @@ public final class CraftingContinuationPartialSubmit {
 
         UUID craftId = ((ExecutingCraftingJobAccessor) job).getLink().getCraftingID();
         if (missingInitialItems == null || missingInitialItems.isEmpty()) {
-            CraftingContinuationStatusService.get(serverLevel).clearCompletedJob(craftId);
+            CraftingContinuationTracker.get(serverLevel).clearCompletedJob(craftId);
             return;
         }
 
@@ -162,7 +162,7 @@ public final class CraftingContinuationPartialSubmit {
             waitingBranches.add(new CraftingContinuationWaitingBranch(
                     entry.getKey().getDisplayName().getString(),
                     order++,
-                    Map.of(CraftingContinuationStatusService.encodeKeyForSync(entry.getKey()), entry.getLongValue())
+                    Map.of(CraftingContinuationTracker.encodeKeyForSync(entry.getKey()), entry.getLongValue())
             ));
         }
 
@@ -174,9 +174,9 @@ public final class CraftingContinuationPartialSubmit {
             }
         }
 
-        CraftingContinuationStatusService.get(serverLevel).trackJob(new CraftingContinuationWaitingDetail(
+        CraftingContinuationTracker.get(serverLevel).trackJob(new CraftingContinuationWaitingDetail(
                 craftId,
-                CraftingContinuationStatusService.encodeKeyForSync(plan.finalOutput().what()),
+                CraftingContinuationTracker.encodeKeyForSync(plan.finalOutput().what()),
                 plan.finalOutput().amount(),
                 waitingBranches,
                 runningBranchLabels

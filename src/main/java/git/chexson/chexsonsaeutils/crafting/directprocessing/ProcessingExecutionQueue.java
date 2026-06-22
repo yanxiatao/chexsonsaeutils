@@ -29,13 +29,13 @@ public final class ProcessingExecutionQueue {
         return offer(task, null);
     }
 
-    public boolean offer(ProcessingCompiledTask task, ProcessingExecutionBudgetController budgetController) {
+    public boolean offer(ProcessingCompiledTask task, ProcessingExecutionBudget budgetController) {
         return offer(task, budgetController, -1L);
     }
 
     public boolean offer(
             ProcessingCompiledTask task,
-            ProcessingExecutionBudgetController budgetController,
+            ProcessingExecutionBudget budgetController,
             long acceptedTick
     ) {
         if (task == null) {
@@ -58,7 +58,7 @@ public final class ProcessingExecutionQueue {
     public boolean tick(
             ProcessingTaskCompletionHost host,
             int laneCount,
-            ProcessingExecutionBudgetController budgetController
+            ProcessingExecutionBudget budgetController
     ) {
         ensureLaneCapacity(Math.max(1, laneCount));
         assignIdleLanes(budgetController);
@@ -152,7 +152,7 @@ public final class ProcessingExecutionQueue {
         }
     }
 
-    private void assignIdleLanes(ProcessingExecutionBudgetController budgetController) {
+    private void assignIdleLanes(ProcessingExecutionBudget budgetController) {
         for (ProcessingExecutionLane lane : lanes) {
             if (lane.isIdle() && !pendingTasks.isEmpty()) {
                 if (budgetController != null && !budgetController.tryClaimAdmit()) {
