@@ -87,9 +87,9 @@ public abstract class AE2CTRecipeHelperCompatMixin {
             entry[0] += emitted.getLongValue();
             entry[1] += emitted.getLongValue();
         }
-        for (var entry : job.patternTimes().entrySet()) {
-            for (var out : entry.getKey().getOutputs()) {
-                plan.computeIfAbsent(out.what(), k -> new long[2])[1] += out.amount() * entry.getValue();
+        for (var recipe : recipes) {
+            for (var out : recipe.outputs()) {
+                plan.computeIfAbsent(out.what(), k -> new long[2])[1] += out.amount() * recipe.times();
             }
         }
 
