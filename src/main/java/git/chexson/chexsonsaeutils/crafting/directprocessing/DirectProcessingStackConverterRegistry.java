@@ -4,10 +4,8 @@ import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.appmek.AppliedMekanisticsChemicalKeyBridge;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ItemLike;
-import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fluids.FluidStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -81,31 +79,11 @@ public final class DirectProcessingStackConverterRegistry {
 
     private static DirectProcessingStackConverterRegistry createDefaultRegistry() {
         List<StackConverter> converters = new ArrayList<>();
-        ModList modList = ModList.get();
-        if (modList != null
-                && modList.isLoaded(MEKANISM_MOD_ID)
-                && modList.isLoaded(APPLIED_MEKANISTICS_MOD_ID)) {
-            converters.add(new AppliedMekanisticsChemicalStackConverter());
-        }
         return new DirectProcessingStackConverterRegistry(converters);
     }
 
     public interface StackConverter {
         @Nullable
         GenericStack toGenericStack(Object value);
-    }
-
-    private static final class AppliedMekanisticsChemicalStackConverter implements StackConverter {
-
-        private final AppliedMekanisticsChemicalKeyBridge bridge = AppliedMekanisticsChemicalKeyBridge.instance();
-
-        @Override
-        public @Nullable GenericStack toGenericStack(Object value) {
-            if (!(value instanceof ChemicalStack chemicalStack) || chemicalStack.isEmpty() || !bridge.isAvailable()) {
-                return null;
-            }
-            AEKey key = bridge.createKey(chemicalStack);
-            return key == null ? null : new GenericStack(key, Math.max(1L, chemicalStack.getAmount()));
-        }
     }
 }

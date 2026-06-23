@@ -154,7 +154,7 @@ public final class ProcessingExecutionQueue {
                 if (budgetController != null && !budgetController.tryClaimAdmit()) {
                     return;
                 }
-                lane.assign(pendingTasks.remove(0));
+                lane.assign(pendingTasks.pollFirst());
             }
         }
     }

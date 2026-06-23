@@ -7,6 +7,8 @@ import appeng.api.stacks.GenericStack;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.JsonOps;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 
@@ -86,12 +88,7 @@ public record MachineRecipeImportedStack(
 
     @Nullable
     private static JsonElement encodeKey(HolderLookup.Provider registries, @Nullable AEKey key) {
-        if (registries == null || key == null) {
-            return null;
-        }
-        return AEKey.CODEC.encodeStart(registries.createSerializationContext(JsonOps.INSTANCE), key)
-                .result()
-                .orElse(null);
+        if (registries == null || key == null) { return null; } return NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, key.toTagGeneric());
     }
 
     @Nullable
@@ -103,9 +100,7 @@ public record MachineRecipeImportedStack(
             return null;
         }
         JsonElement keyElement = object.get(KEY_MEMBER_NAME);
-        AEKey decodedKey = AEKey.CODEC.parse(registries.createSerializationContext(JsonOps.INSTANCE), keyElement)
-                .result()
-                .orElse(null);
+        CompoundTag keyTag = (CompoundTag) JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, keyElement).getValue(); AEKey decodedKey = keyTag != null && !keyTag.isEmpty() ? AEKey.fromTagGeneric(keyTag) : null;
         long decodedAmount = object.has("amount") ? object.get("amount").getAsLong() : 0L;
         MachineRecipeImportedStack stack = new MachineRecipeImportedStack(decodedKey, decodedAmount);
         return stack.isStructurallyValid() ? stack : null;

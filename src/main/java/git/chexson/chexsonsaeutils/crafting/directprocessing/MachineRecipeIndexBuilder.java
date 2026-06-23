@@ -481,7 +481,7 @@ public final class MachineRecipeIndexBuilder {
         RecipeType recipeType = candidate.recipeType();
         List recipes = level.getRecipeManager().getAllRecipesFor(recipeType);
         for (var holder : recipes) {
-            if (!(holder.value() instanceof Recipe recipe)) {
+            if (!(holder instanceof Recipe recipe)) {
                 continue;
             }
             try {

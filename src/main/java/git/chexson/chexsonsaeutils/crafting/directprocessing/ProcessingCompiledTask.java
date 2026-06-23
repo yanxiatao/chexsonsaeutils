@@ -181,7 +181,7 @@ public final class ProcessingCompiledTask {
 
     public CompoundTag writeToTag(HolderLookup.Provider registries) {
         CompoundTag tag = new CompoundTag();
-        tag.put(NBT_PATTERN, patternDefinition.saveOptional(registries));
+        tag.put(NBT_PATTERN, patternDefinition.save(new CompoundTag()));
         tag.put(NBT_INPUTS, writeStacks(registries, selectedInputs));
         tag.put(NBT_OUTPUTS, writeStacks(registries, outputsPerExecution));
         tag.putInt(NBT_TOTAL_TICKS, totalTicks);
@@ -198,7 +198,7 @@ public final class ProcessingCompiledTask {
         if (tag == null || tag.isEmpty()) {
             return null;
         }
-        ItemStack patternDefinition = ItemStack.parseOptional(registries, tag.getCompound(NBT_PATTERN));
+        ItemStack patternDefinition = ItemStack.of(tag.getCompound(NBT_PATTERN));
         List<GenericStack> inputs = readStacks(registries, tag.getList(NBT_INPUTS, Tag.TAG_COMPOUND));
         List<GenericStack> outputs = readStacks(registries, tag.getList(NBT_OUTPUTS, Tag.TAG_COMPOUND));
         if (patternDefinition.isEmpty() || inputs.isEmpty() || outputs.isEmpty()) {
@@ -253,7 +253,7 @@ public final class ProcessingCompiledTask {
         ListTag tag = new ListTag();
         for (GenericStack stack : stacks) {
             if (stack != null) {
-                tag.add(GenericStack.writeTag(registries, stack));
+                tag.add(GenericStack.writeTag(stack));
             }
         }
         return tag;
@@ -263,7 +263,7 @@ public final class ProcessingCompiledTask {
         List<GenericStack> stacks = new ArrayList<>();
         for (Tag entry : tag) {
             if (entry instanceof CompoundTag stackTag) {
-                GenericStack stack = GenericStack.readTag(registries, stackTag);
+                GenericStack stack = GenericStack.readTag(stackTag);
                 if (stack != null) {
                     stacks.add(stack);
                 }

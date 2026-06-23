@@ -465,7 +465,7 @@ public final class GenericRecipeShapeReader {
         if (fluidStack != null) {
             return toInputChoice(fluidStack);
         }
-        Block block = parseWithCodec(Block.CODEC.codec(), ops, element);
+        Block block = parseWithCodec(Block.CODEC, ops, element);
         if (block != null) {
             return toInputChoice(block);
         }
@@ -489,7 +489,7 @@ public final class GenericRecipeShapeReader {
         if (fluidStack != null) {
             return toOutputStack(fluidStack);
         }
-        Block block = parseWithCodec(Block.CODEC.codec(), ops, element);
+        Block block = parseWithCodec(Block.CODEC, ops, element);
         if (block != null) {
             return toOutputStack(block);
         }
@@ -505,7 +505,7 @@ public final class GenericRecipeShapeReader {
             DynamicOps<JsonElement> ops,
             JsonElement element
     ) {
-        Block block = parseWithCodec(Block.CODEC.codec(), ops, element);
+        Block block = parseWithCodec(Block.CODEC, ops, element);
         if (block != null) {
             return block;
         }

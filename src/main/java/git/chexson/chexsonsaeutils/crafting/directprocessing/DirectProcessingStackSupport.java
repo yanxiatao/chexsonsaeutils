@@ -23,6 +23,13 @@ public final class DirectProcessingStackSupport {
     private DirectProcessingStackSupport() {
     }
 
+    public static List<GenericStack> normalizeStacks(GenericStack[] rawStacks) {
+        if (rawStacks == null) {
+            return List.of();
+        }
+        return normalizeStacks(List.of(rawStacks));
+    }
+
     public static List<GenericStack> normalizeStacks(List<GenericStack> rawStacks) {
         if (rawStacks == null || rawStacks.isEmpty()) {
             return List.of();
