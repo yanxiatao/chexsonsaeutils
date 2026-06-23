@@ -1,6 +1,7 @@
 package git.chexson.chexsonsaeutils.crafting.submit;
 
 import appeng.api.config.Actionable;
+import appeng.api.features.IPlayerRegistry;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.api.networking.crafting.ICraftingPlan;
@@ -18,19 +19,19 @@ import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
-import appeng.api.features.IPlayerRegistry;
-import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
+import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingBranch;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingDetail;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ElapsedTimeTrackerAccessor;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobAccessor;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,24 @@ import java.util.UUID;
 
 public final class CraftingContinuationPartialSubmit {
     private CraftingContinuationPartialSubmit() {
+    }
+
+    public static boolean shouldInterceptPartialSubmit(
+            ICraftingPlan plan,
+            @Nullable ICraftingCPU target,
+            CraftingContinuationMode mode
+    ) {
+        return isPartialSubmitRequest(plan, mode) && supportsPartialSubmitTarget(target);
+    }
+
+    public static boolean isPartialSubmitRequest(ICraftingPlan plan, CraftingContinuationMode mode) {
+        return plan != null
+                && plan.simulation()
+                && mode == CraftingContinuationMode.IGNORE_MISSING;
+    }
+
+    public static boolean supportsPartialSubmitTarget(@Nullable ICraftingCPU target) {
+        return !(target instanceof ParallelCraftingCPU);
     }
 
     public static ICraftingSubmitResult submitPartialJob(
@@ -131,7 +150,7 @@ public final class CraftingContinuationPartialSubmit {
 
         UUID craftId = ((ExecutingCraftingJobAccessor) job).getLink().getCraftingID();
         if (missingInitialItems == null || missingInitialItems.isEmpty()) {
-            CraftingContinuationStatusService.get(serverLevel).clearCompletedJob(craftId);
+            CraftingContinuationTracker.get(serverLevel).clearCompletedJob(craftId);
             return;
         }
 
@@ -141,7 +160,7 @@ public final class CraftingContinuationPartialSubmit {
             waitingBranches.add(new CraftingContinuationWaitingBranch(
                     entry.getKey().getDisplayName().getString(),
                     order++,
-                    Map.of(CraftingContinuationStatusService.encodeKeyForSync(entry.getKey()), entry.getLongValue())
+                    Map.of(CraftingContinuationTracker.encodeKeyForSync(entry.getKey()), entry.getLongValue())
             ));
         }
 
@@ -153,9 +172,9 @@ public final class CraftingContinuationPartialSubmit {
             }
         }
 
-        CraftingContinuationStatusService.get(serverLevel).trackJob(new CraftingContinuationWaitingDetail(
+        CraftingContinuationTracker.get(serverLevel).trackJob(new CraftingContinuationWaitingDetail(
                 craftId,
-                CraftingContinuationStatusService.encodeKeyForSync(plan.finalOutput().what()),
+                CraftingContinuationTracker.encodeKeyForSync(plan.finalOutput().what()),
                 plan.finalOutput().amount(),
                 waitingBranches,
                 runningBranchLabels
@@ -171,7 +190,7 @@ public final class CraftingContinuationPartialSubmit {
         try {
             Class<?> listenerType = Class.forName(
                     "appeng.crafting.execution.ExecutingCraftingJob$CraftingDifferenceListener");
-            Object listener = Proxy.newProxyInstance(
+            Object listener = java.lang.reflect.Proxy.newProxyInstance(
                     listenerType.getClassLoader(),
                     new Class<?>[]{listenerType},
                     (proxy, method, args) -> {
@@ -203,14 +222,6 @@ public final class CraftingContinuationPartialSubmit {
     }
 
     private static void addTrackedWaitingTime(ExecutingCraftingJobAccessor accessor, long amount, AEKey key) {
-        try {
-            var timeTracker = accessor.getTimeTracker();
-            Method addMaxItems = timeTracker.getClass()
-                    .getDeclaredMethod("addMaxItems", long.class, AEKeyType.class);
-            addMaxItems.setAccessible(true);
-            addMaxItems.invoke(timeTracker, amount, key.getType());
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Failed to extend AE2 time tracker for continuation waiting", exception);
-        }
+        ((ElapsedTimeTrackerAccessor) accessor.getTimeTracker()).invokeAddMaxItems(amount, key.getType());
     }
 }
