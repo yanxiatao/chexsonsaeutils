@@ -5,13 +5,13 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(value = Slot.class, remap = false)
+@Mixin(Slot.class)
 public interface SlotAccessor {
     @Mutable
-    @Accessor(value = "x", remap = false)
+    @Accessor("x")
     void chexsonsaeutils$setX(int x);
 
     @Mutable
-    @Accessor(value = "y", remap = false)
+    @Accessor("y")
     void chexsonsaeutils$setY(int y);
 }
