@@ -159,6 +159,7 @@ public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAP
     public static void registerCommonContent() {
         registerHighCapacityCraftingMachineBootstrap();
         registerAE2ParallelCpuToolBootstrap();
+        registerDirectProcessingMachineBootstrap();
         registerMultiLevelEmitterBootstrap();
     }
 
@@ -273,6 +274,21 @@ public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAP
                 AE2_PARALLEL_CPU_TOOL_BLOCK_ENTITY.get(),
                 AE2_PARALLEL_CPU_TOOL_ITEM.get()
         );
+    }
+
+    private static void registerDirectProcessingMachineBootstrap() {
+        AEDirectProcessingMachineBlock block = AE_DIRECT_PROCESSING_MACHINE_BLOCK.get();
+        block.setBlockEntity(
+                AEDirectProcessingMachineBlockEntity.class,
+                AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY.get(),
+                null,
+                AEDirectProcessingMachineBlockEntity::serverTick
+        );
+        AEBaseBlockEntity.registerBlockEntityItem(
+                AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY.get(),
+                AE_DIRECT_PROCESSING_MACHINE_ITEM.get()
+        );
+        Upgrades.add(AEItems.SPEED_CARD, AE_DIRECT_PROCESSING_MACHINE_ITEM.get(), 5);
     }
 
     private static void registerMultiLevelEmitterBootstrap() {
