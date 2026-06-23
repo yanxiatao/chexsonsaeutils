@@ -34,6 +34,7 @@ import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.common.MinecraftForge;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -83,6 +84,7 @@ public class Chexsonsaeutils {
         ChexsonsaeutilsContent.register(modEventBus);
 
         modEventBus.addListener(this::onCommonSetup);
+        MinecraftForge.EVENT_BUS.addListener(ChexsonsaeutilsContent::onAttachCapabilities);
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
