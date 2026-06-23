@@ -25,7 +25,7 @@ public class AEDirectProcessingMachineMenu extends UpgradeableMenu<AEDirectProce
 
     public static final MenuType<AEDirectProcessingMachineMenu> TYPE = MenuTypeBuilder
             .create(AEDirectProcessingMachineMenu::new, AEDirectProcessingMachineBlockEntity.class)
-            .build(Chexsonsaeutils.MODID);
+            .build(Chexsonsaeutils.MODID + "_direct_processing");
 
     private static final String ACTION_NEXT_PAGE = "nextPage";
     private static final String ACTION_PREVIOUS_PAGE = "previousPage";

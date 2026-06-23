@@ -36,7 +36,7 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
     public static final MenuType<ParallelCraftingCPUMenu> TYPE = MenuTypeBuilder
             .create(ParallelCraftingCPUMenu::new, AE2ParallelCpuToolBlockEntity.class)
             .withMenuTitle(ignored -> Component.translatable("block.chexsonsaeutils.ae2_parallel_cpu_tool"))
-            .build(Chexsonsaeutils.MODID);
+            .build(Chexsonsaeutils.MODID + "_parallel_cpu");
 
     private final WeakHashMap<ICraftingCPU, Integer> cpuSerialMap = new WeakHashMap<>();
     private int nextCpuSerial = 1;

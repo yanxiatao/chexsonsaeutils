@@ -22,7 +22,7 @@ public class HighCapacityCraftingMachineMenu extends AEBaseMenu {
 
     public static final MenuType<HighCapacityCraftingMachineMenu> TYPE = MenuTypeBuilder
             .create(HighCapacityCraftingMachineMenu::new, HighCapacityCraftingMachineBlockEntity.class)
-            .build(Chexsonsaeutils.MODID);
+            .build(Chexsonsaeutils.MODID + "_high_capacity");
 
     private static final String ACTION_NEXT_PAGE = "nextPage";
     private static final String ACTION_PREVIOUS_PAGE = "previousPage";
