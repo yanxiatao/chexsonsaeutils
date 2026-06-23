@@ -151,6 +151,15 @@ repositories {
     // ForgeGradle automatically adds the Forge maven and Maven Central for you
 
     maven {
+        name "Sponge"
+        url "https://repo.spongepowered.org/repository/maven-public/"
+        content {
+            includeGroup 'org.spongepowered'
+            includeGroup 'io.github.llamalad7'
+        }
+    }
+
+    maven {
         name "Modmaven"
         url "https://modmaven.dev/"
         // For Gradle 5.1 and above, limit it to just AE2
@@ -160,11 +169,18 @@ repositories {
         }
     }
 
-    // If you have mod jar dependencies in ./libs, you can declare them as a repository like so.
-    // See https://docs.gradle.org/current/userguide/declaring_repositories.html#sub:flat_dir_resolver
-    // flatDir {
-    //     dir 'libs'
-    // }
+    maven {
+        name "IThundxr Mirror"
+        url "https://maven.ithundxr.dev/mirror"
+        content {
+            includeGroup 'com.tterrag.registrate'
+        }
+    }
+
+    // Local mod jars that should be remapped into the Forge userdev environment.
+    flatDir {
+        dir 'libs'
+    }
 }
 
 dependencies {
@@ -194,11 +210,16 @@ dependencies {
     
     // Mixin dependencies for compatibility with AE2
     implementation 'org.spongepowered:mixin:0.8.5'
+    implementation 'io.github.llamalad7:mixinextras-forge:0.4.1'
+    // MixinExtras-forge embeds the actual library via jar-in-jar, expose for compile-time
+    compileOnly files('libs/MixinExtras-0.4.1.jar')
 
     // Applied Energistics 2 dependency
     // Note: fg.deobf() is required to deobfuscate AE2 for development
     implementation fg.deobf("appeng:appliedenergistics2-forge:${ae2_version}")
     implementation fg.deobf("org.appliedenergistics:guideme:${guideme_version}")
+    runtimeOnly fg.deobf("blank:neoecoae:1.3.5")
+    runtimeOnly fg.deobf("com.tterrag.registrate:Registrate:${registrate_version}")
     runtimeOnly fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'

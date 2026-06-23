@@ -1,0 +1,133 @@
+package git.chexson.chexsonsaeutils.crafting.parallelcpu;
+
+import appeng.api.stacks.AEKeyType;
+import appeng.api.stacks.AEKeyTypes;
+import it.unimi.dsi.fastutil.objects.Reference2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongOpenHashMap;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.util.Mth;
+
+final class ParallelElapsedTimeTracker {
+
+    private static final String NBT_ELAPSED_TIME = "elapsedTime";
+    private static final String NBT_STARTED_WORK = "startedWork";
+    private static final String NBT_COMPLETED_WORK = "completedWork";
+
+    private long lastTime = System.nanoTime();
+    private long elapsedTime;
+    private static int countAeKeyTypes() {
+        int count = 0;
+        for (var t : AEKeyTypes.getAll()) { count++; }
+        return count;
+    }
+
+    private final Reference2LongMap<AEKeyType> startedWorkByType = new Reference2LongOpenHashMap<>(
+            countAeKeyTypes());
+    private final Reference2LongMap<AEKeyType> completedWorkByType = new Reference2LongOpenHashMap<>(
+            countAeKeyTypes());
+
+    ParallelElapsedTimeTracker() {
+    }
+
+    ParallelElapsedTimeTracker(CompoundTag data) {
+        this.elapsedTime = data.getLong(NBT_ELAPSED_TIME);
+        readLongByTypeMap(data.getCompound(NBT_STARTED_WORK), startedWorkByType);
+        readLongByTypeMap(data.getCompound(NBT_COMPLETED_WORK), completedWorkByType);
+    }
+
+    CompoundTag writeToNBT() {
+        CompoundTag data = new CompoundTag();
+        data.putLong(NBT_ELAPSED_TIME, elapsedTime);
+        data.put(NBT_STARTED_WORK, writeLongByTypeMap(startedWorkByType));
+        data.put(NBT_COMPLETED_WORK, writeLongByTypeMap(completedWorkByType));
+        return data;
+    }
+
+    void addMaxItems(long itemDiff, AEKeyType keyType) {
+        if (itemDiff <= 0L || keyType == null) {
+            return;
+        }
+        updateTime();
+        startedWorkByType.put(keyType, saturatedSum(startedWorkByType.getLong(keyType), itemDiff));
+    }
+
+    void decrementItems(long itemDiff, AEKeyType keyType) {
+        if (itemDiff <= 0L || keyType == null) {
+            return;
+        }
+        updateTime();
+        completedWorkByType.put(keyType, saturatedSum(completedWorkByType.getLong(keyType), itemDiff));
+    }
+
+    long getElapsedTime() {
+        return isAllDone() ? elapsedTime : elapsedTime + (System.nanoTime() - lastTime);
+    }
+
+    float getProgress() {
+        double startedUnits = getStartedUnits();
+        if (startedUnits <= 0.0d) {
+            return 0.0f;
+        }
+        return Mth.clamp((float) (getCompletedUnits() / startedUnits), 0.0f, 1.0f);
+    }
+
+    long getRemainingItemCount() {
+        return getStartItemCount() <= 0L
+                ? 0L
+                : Math.max(0L, (long) (Integer.MAX_VALUE - (double) getProgress() * Integer.MAX_VALUE));
+    }
+
+    long getStartItemCount() {
+        return getStartedUnits() > 0.0d ? Integer.MAX_VALUE : 0L;
+    }
+
+    double getStartedUnits() {
+        return getUnits(startedWorkByType);
+    }
+
+    double getCompletedUnits() {
+        return getUnits(completedWorkByType);
+    }
+
+    private boolean isAllDone() {
+        for (var keyType : AEKeyTypes.getAll()) {
+            if (completedWorkByType.getLong(keyType) < startedWorkByType.getLong(keyType)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void updateTime() {
+        long currentTime = System.nanoTime();
+        elapsedTime += currentTime - lastTime;
+        lastTime = currentTime;
+    }
+
+    private double getUnits(Reference2LongMap<AEKeyType> byType) {
+        double units = 0.0d;
+        for (var keyType : AEKeyTypes.getAll()) {
+            units += byType.getLong(keyType) / (double) keyType.getAmountPerUnit();
+        }
+        return units;
+    }
+
+    private long saturatedSum(long left, long right) {
+        long result = left + right;
+        return result < 0L ? Long.MAX_VALUE : result;
+    }
+
+    private static void readLongByTypeMap(CompoundTag tag, Reference2LongMap<AEKeyType> output) {
+        for (var keyType : AEKeyTypes.getAll()) {
+            output.put(keyType, tag.getLong(keyType.getId().toString()));
+        }
+    }
+
+    private static CompoundTag writeLongByTypeMap(Reference2LongMap<AEKeyType> input) {
+        CompoundTag result = new CompoundTag();
+        for (var entry : input.reference2LongEntrySet()) {
+            result.putLong(entry.getKey().getId().toString(), entry.getLongValue());
+        }
+        return result;
+    }
+}

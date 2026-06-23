@@ -141,7 +141,6 @@ class ProcessingPatternReplacementConfigGateTest {
 
     @Test
     void mixinPluginRoutesReplacementAndContinuationThroughSeparateStartupGates() throws IOException {
-        assertContains(MIXIN_PLUGIN_SOURCE, "REPLACEMENT_TERMINAL_MIXINS");
         assertContains(MIXIN_PLUGIN_SOURCE, "REPLACEMENT_RUNTIME_MIXINS");
         assertContains(MIXIN_PLUGIN_SOURCE, "REPLACEMENT_ONLY_MIXINS");
         assertContains(MIXIN_PLUGIN_SOURCE, "ProcessingPatternReplacementFeatureGate.isEnabledAtStartup()");

@@ -14,14 +14,22 @@
     "ae2.crafting.CraftingCpuLogicAccessor",
     "ae2.crafting.ExecutingCraftingJobAccessor",
     "ae2.menu.CraftingCPUMenuAccessor",
-    "ae2.menu.CraftingCPUMenuContinuationMixin"
+    "ae2.menu.CraftingCPUMenuContinuationMixin",
+    "ae2.crafting.CraftingServiceParallelCpuMixin",
+    "ae2.menu.CraftingCPUMenuParallelCpuMixin",
+    "ae2.menu.CraftingStatusMenuParallelCpuMixin",
+    "ae2.crafting.ElapsedTimeTrackerAccessor",
+    "ae2.crafting.ExecutingCraftingJobTaskProgressAccessor"
   ],
   "client": [
     "ae2.client.gui.AbstractTableRendererAccessor",
     "ae2.client.gui.CraftConfirmScreenContinuationMixin",
     "ae2.client.gui.PatternEncodingTermScreenRuleMixin",
     "ae2.client.gui.CraftingCPUScreenContinuationMixin",
-    "ae2.client.gui.CraftingStatusTableRendererContinuationMixin"
+    "ae2.client.gui.CraftingStatusTableRendererContinuationMixin",
+    "ae2.client.gui.CPUSelectionListParallelCpuMixin",
+    "ae2.client.gui.CraftConfirmScreenParallelCpuMixin",
+    "ae2.client.gui.EditBoxAccessor"
   ],
   "minVersion": "0.8",
   "refmap": "chexsonsaeutils.refmap.json"
