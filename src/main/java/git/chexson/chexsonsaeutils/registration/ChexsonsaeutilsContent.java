@@ -119,20 +119,17 @@ public final class ChexsonsaeutilsContent {
                     ).build(null)
             );
 
-    public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAPACITY_CRAFTING_MACHINE_MENU =
-            MENU_TYPES.register("high_capacity_crafting_machine", () -> HighCapacityCraftingMachineMenu.TYPE);
+public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAPACITY_CRAFTING_MACHINE_MENU =
+            () -> HighCapacityCraftingMachineMenu.TYPE; // ponytail: MenuTypeBuilder.build() 已自动注册, 不重复注册
     public static final Supplier<MenuType<ParallelCraftingCPUMenu>> AE2_PARALLEL_CPU_TOOL_CPU_MENU =
-            MENU_TYPES.register("ae2_parallel_cpu_tool_cpu", () -> ParallelCraftingCPUMenu.TYPE);
+            () -> ParallelCraftingCPUMenu.TYPE; // ponytail: MenuTypeBuilder.build() 已自动注册, 不重复注册
     public static final Supplier<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> MULTI_LEVEL_EMITTER_MENU =
             MENU_TYPES.register(
                     MultiLevelEmitterMenu.registrationKey(),
                     () -> IForgeMenuType.create(MultiLevelEmitterMenu.RuntimeMenu::fromNetwork)
             );
     public static final Supplier<MenuType<AEDirectProcessingMachineMenu>> AE_DIRECT_PROCESSING_MACHINE_MENU =
-            MENU_TYPES.register(
-                    "ae_direct_processing_machine",
-                    () -> AEDirectProcessingMachineMenu.TYPE
-            );
+            () -> AEDirectProcessingMachineMenu.TYPE; // ponytail: MenuTypeBuilder.build() 已自动注册, 不重复注册
 
     public static final Supplier<CreativeModeTab> CHEXSONSAEUTILS_TAB =
             CREATIVE_MODE_TABS.register("chexsonsaeutils", () -> CreativeModeTab.builder()
