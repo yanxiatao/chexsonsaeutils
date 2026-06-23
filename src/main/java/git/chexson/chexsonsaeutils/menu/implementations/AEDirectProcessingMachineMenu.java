@@ -11,7 +11,6 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfig
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReasonCode;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
