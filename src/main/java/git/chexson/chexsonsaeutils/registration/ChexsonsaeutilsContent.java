@@ -6,14 +6,18 @@ import appeng.blockentity.AEBaseBlockEntity;
 import appeng.core.definitions.AEItems;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.block.crafting.AEDirectProcessingMachineBlock;
 import git.chexson.chexsonsaeutils.block.crafting.AE2ParallelCpuToolBlock;
 import git.chexson.chexsonsaeutils.block.crafting.HighCapacityCraftingMachineBlock;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
+import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
+import git.chexson.chexsonsaeutils.client.gui.implementations.AEDirectProcessingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.HighCapacityCraftingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.ParallelCraftingCPUScreen;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
+import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
@@ -73,6 +77,8 @@ public final class ChexsonsaeutilsContent {
             registerBlockWithItem("high_capacity_crafting_machine", HighCapacityCraftingMachineBlock::new);
     public static final RegisteredBlock<AE2ParallelCpuToolBlock> AE2_PARALLEL_CPU_TOOL =
             registerBlockWithItem("ae2_parallel_cpu_tool", AE2ParallelCpuToolBlock::new);
+    public static final RegisteredBlock<AEDirectProcessingMachineBlock> AE_DIRECT_PROCESSING_MACHINE =
+            registerBlockWithItem("ae_direct_processing_machine", AEDirectProcessingMachineBlock::new);
     public static final Supplier<HighCapacityCraftingMachineBlock> HIGH_CAPACITY_CRAFTING_MACHINE_BLOCK =
             HIGH_CAPACITY_CRAFTING_MACHINE.block();
     public static final Supplier<Item> HIGH_CAPACITY_CRAFTING_MACHINE_ITEM =
@@ -81,6 +87,10 @@ public final class ChexsonsaeutilsContent {
             AE2_PARALLEL_CPU_TOOL.block();
     public static final Supplier<Item> AE2_PARALLEL_CPU_TOOL_ITEM =
             AE2_PARALLEL_CPU_TOOL.item();
+    public static final Supplier<AEDirectProcessingMachineBlock> AE_DIRECT_PROCESSING_MACHINE_BLOCK =
+            AE_DIRECT_PROCESSING_MACHINE.block();
+    public static final Supplier<Item> AE_DIRECT_PROCESSING_MACHINE_ITEM =
+            AE_DIRECT_PROCESSING_MACHINE.item();
     public static final Supplier<Item> MULTI_LEVEL_EMITTER_ITEM =
             ITEMS.register(MultiLevelEmitterItem.id(), MultiLevelEmitterItem::createItem);
 
@@ -100,6 +110,14 @@ public final class ChexsonsaeutilsContent {
                             AE2_PARALLEL_CPU_TOOL_BLOCK.get()
                     ).build(null)
             );
+    public static final Supplier<BlockEntityType<AEDirectProcessingMachineBlockEntity>>
+            AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
+                    "ae_direct_processing_machine",
+                    () -> BlockEntityType.Builder.of(
+                            AEDirectProcessingMachineBlockEntity::new,
+                            AE_DIRECT_PROCESSING_MACHINE_BLOCK.get()
+                    ).build(null)
+            );
 
     public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAPACITY_CRAFTING_MACHINE_MENU =
             MENU_TYPES.register("high_capacity_crafting_machine", () -> HighCapacityCraftingMachineMenu.TYPE);
@@ -110,6 +128,11 @@ public final class ChexsonsaeutilsContent {
                     MultiLevelEmitterMenu.registrationKey(),
                     () -> IForgeMenuType.create(MultiLevelEmitterMenu.RuntimeMenu::fromNetwork)
             );
+    public static final Supplier<MenuType<AEDirectProcessingMachineMenu>> AE_DIRECT_PROCESSING_MACHINE_MENU =
+            MENU_TYPES.register(
+                    "ae_direct_processing_machine",
+                    () -> AEDirectProcessingMachineMenu.TYPE
+            );
 
     public static final Supplier<CreativeModeTab> CHEXSONSAEUTILS_TAB =
             CREATIVE_MODE_TABS.register("chexsonsaeutils", () -> CreativeModeTab.builder()
@@ -119,6 +142,7 @@ public final class ChexsonsaeutilsContent {
                         output.accept(MULTI_LEVEL_EMITTER_ITEM.get());
                         output.accept(HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get());
                         output.accept(AE2_PARALLEL_CPU_TOOL_ITEM.get());
+                        output.accept(AE_DIRECT_PROCESSING_MACHINE_ITEM.get());
                     })
                     .build());
 
@@ -148,6 +172,8 @@ public final class ChexsonsaeutilsContent {
             attachItemHandler(event, hccm.getAutomationItemHandler());
         } else if (be instanceof AE2ParallelCpuToolBlockEntity pct) {
             attachGridNodeHost(event, pct);
+        } else if (be instanceof AEDirectProcessingMachineBlockEntity dp) {
+            attachGridNodeHost(event, dp);
         }
     }
 
@@ -197,6 +223,7 @@ public final class ChexsonsaeutilsContent {
                 )
         );
         MenuScreens.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new);
+        MenuScreens.register(AE_DIRECT_PROCESSING_MACHINE_MENU.get(), AEDirectProcessingMachineScreen::new);
     }
 
     public static String emitterRegistryPath() {

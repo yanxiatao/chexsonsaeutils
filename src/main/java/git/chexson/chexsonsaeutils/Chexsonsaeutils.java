@@ -2,14 +2,17 @@ package git.chexson.chexsonsaeutils;
 
 import appeng.api.crafting.IPatternDetailsDecoder;
 import appeng.api.crafting.PatternDetailsHelper;
+import git.chexson.chexsonsaeutils.block.crafting.AEDirectProcessingMachineBlock;
 import git.chexson.chexsonsaeutils.block.crafting.AE2ParallelCpuToolBlock;
 import git.chexson.chexsonsaeutils.block.crafting.HighCapacityCraftingMachineBlock;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
+import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.client.ae2.DyeablePatternPackRegistration;
 import git.chexson.chexsonsaeutils.client.ae2.PatternItemColorRegistration;
+import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
@@ -62,6 +65,15 @@ public class Chexsonsaeutils {
                     ChexsonsaeutilsContent.AE2_PARALLEL_CPU_TOOL_BLOCK_ENTITY;
     public static final Supplier<MenuType<ParallelCraftingCPUMenu>> AE2_PARALLEL_CPU_TOOL_CPU_MENU =
             ChexsonsaeutilsContent.AE2_PARALLEL_CPU_TOOL_CPU_MENU;
+    public static final Supplier<AEDirectProcessingMachineBlock> AE_DIRECT_PROCESSING_MACHINE_BLOCK =
+            ChexsonsaeutilsContent.AE_DIRECT_PROCESSING_MACHINE_BLOCK;
+    public static final Supplier<Item> AE_DIRECT_PROCESSING_MACHINE_ITEM =
+            ChexsonsaeutilsContent.AE_DIRECT_PROCESSING_MACHINE_ITEM;
+    public static final Supplier<BlockEntityType<AEDirectProcessingMachineBlockEntity>>
+            AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY =
+                    ChexsonsaeutilsContent.AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY;
+    public static final Supplier<MenuType<AEDirectProcessingMachineMenu>> AE_DIRECT_PROCESSING_MACHINE_MENU =
+            ChexsonsaeutilsContent.AE_DIRECT_PROCESSING_MACHINE_MENU;
 
     @SuppressWarnings("removal")
     public Chexsonsaeutils() {

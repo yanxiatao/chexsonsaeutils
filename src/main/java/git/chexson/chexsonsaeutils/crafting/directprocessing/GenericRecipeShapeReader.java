@@ -7,19 +7,22 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
-import com.mojang.serialization.MapCodec;
+import com.mojang.datafixers.util.Pair;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.block.Block;
@@ -37,6 +40,23 @@ import java.util.Set;
 public final class GenericRecipeShapeReader {
 
     private static final int MAX_CANDIDATE_INPUTS_PER_RECIPE = 256;
+
+    private static final Codec<FluidStack> FLUID_STACK_CODEC = new Codec<>() {
+        @Override
+        public <T> DataResult<Pair<FluidStack, T>> decode(DynamicOps<T> ops, T input) {
+            Tag nbtTag = ops.convertTo(NbtOps.INSTANCE, input);
+            if (nbtTag instanceof CompoundTag ct) {
+                return DataResult.success(Pair.of(FluidStack.loadFluidStackFromNBT(ct), input));
+            }
+            return DataResult.error(() -> "Expected CompoundTag for FluidStack");
+        }
+
+        @Override
+        public <T> DataResult<T> encode(FluidStack input, DynamicOps<T> ops, T prefix) {
+            CompoundTag tag = input.writeToNBT(new CompoundTag());
+            return DataResult.success(NbtOps.INSTANCE.convertTo(ops, tag));
+        }
+    };
 
     private final DirectProcessingStackConverterRegistry stackConverters;
     private final DirectProcessingExternalRecipeShapeRegistry externalShapeRegistry;
@@ -163,7 +183,7 @@ public final class GenericRecipeShapeReader {
             if (codec == null) {
                 return RecipeShape.unreadable();
             }
-            DynamicOps<JsonElement> ops = registries.createSerializationContext(JsonOps.INSTANCE);
+            DynamicOps<JsonElement> ops = JsonOps.INSTANCE;
             JsonElement encoded = codec.encodeStart(ops, recipe).result().orElse(null);
             if (!(encoded instanceof JsonObject jsonObject)) {
                 return RecipeShape.unreadable();
@@ -177,22 +197,7 @@ public final class GenericRecipeShapeReader {
     @SuppressWarnings({"rawtypes", "unchecked"})
     @Nullable
     private Codec<Object> resolveRecipeCodec(Recipe<?> recipe) {
-        RecipeSerializer<?> serializer;
-        try {
-            serializer = recipe.getSerializer();
-        } catch (RuntimeException ignored) {
-            serializer = null;
-        }
-        if (serializer != null) {
-            try {
-                MapCodec<?> serializerCodec = serializer.codec();
-                if (serializerCodec != null) {
-                    return (Codec<Object>) serializerCodec.codec();
-                }
-            } catch (RuntimeException ignored) {
-            }
-        }
-        return null;
+        return null; // ponytail: RecipeSerializer.codec() unavailable in 1.20.1
     }
 
     private RecipeShape readJsonShape(
@@ -261,7 +266,7 @@ public final class GenericRecipeShapeReader {
         if (value.isJsonArray() && isPluralJsonField(fieldName)) {
             return readJsonArrayInputChoices(ops, value.getAsJsonArray());
         }
-        Ingredient ingredient = parseWithCodec(Ingredient.CODEC, ops, value);
+        Ingredient ingredient = parseIngredient(value);
         if (ingredient != null) {
             return wrapIngredientChoice(ingredient);
         }
@@ -465,7 +470,7 @@ public final class GenericRecipeShapeReader {
         if (fluidStack != null) {
             return toInputChoice(fluidStack);
         }
-        Block block = parseWithCodec(Block.CODEC, ops, element);
+        Block block = parseWithCodec(BuiltInRegistries.BLOCK.byNameCodec(), ops, element);
         if (block != null) {
             return toInputChoice(block);
         }
@@ -485,11 +490,11 @@ public final class GenericRecipeShapeReader {
         if (itemStack != null) {
             return toOutputStack(itemStack);
         }
-        FluidStack fluidStack = parseWithCodec(FluidStack.CODEC, ops, element);
+        FluidStack fluidStack = parseWithCodec(FLUID_STACK_CODEC, ops, element);
         if (fluidStack != null) {
             return toOutputStack(fluidStack);
         }
-        Block block = parseWithCodec(Block.CODEC, ops, element);
+        Block block = parseWithCodec(BuiltInRegistries.BLOCK.byNameCodec(), ops, element);
         if (block != null) {
             return toOutputStack(block);
         }
@@ -505,7 +510,7 @@ public final class GenericRecipeShapeReader {
             DynamicOps<JsonElement> ops,
             JsonElement element
     ) {
-        Block block = parseWithCodec(Block.CODEC, ops, element);
+        Block block = parseWithCodec(BuiltInRegistries.BLOCK.byNameCodec(), ops, element);
         if (block != null) {
             return block;
         }
@@ -621,7 +626,7 @@ public final class GenericRecipeShapeReader {
             JsonElement element
     ) {
         return parseWithCodec(ItemStack.CODEC, ops, element) != null
-                || parseWithCodec(FluidStack.CODEC, ops, element) != null;
+                || parseWithCodec(FLUID_STACK_CODEC, ops, element) != null;
     }
 
     private List<List<RecipeSignatureInput>> scaleInputChoices(
@@ -767,6 +772,19 @@ public final class GenericRecipeShapeReader {
             return null;
         }
         return codec.parse(ops, element).result().orElse(null);
+    }
+
+    @Nullable
+    private static Ingredient parseIngredient(JsonElement element) {
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        try {
+            Ingredient ingredient = Ingredient.fromJson(element);
+            return ingredient.isEmpty() ? null : ingredient;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private static RecipeShape mergeRecipeShapes(RecipeShape primary, RecipeShape secondary) {

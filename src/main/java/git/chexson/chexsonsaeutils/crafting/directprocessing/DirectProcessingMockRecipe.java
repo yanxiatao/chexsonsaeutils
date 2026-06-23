@@ -1,13 +1,16 @@
 package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
+import com.google.gson.JsonObject;
 import net.minecraft.core.NonNullList;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.Container;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SingleItemRecipe;
+import net.minecraft.world.item.crafting.ShapedRecipe;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 
@@ -19,16 +22,26 @@ public final class DirectProcessingMockRecipe extends SingleItemRecipe {
     private final InputBundle inputs;
     private final OutputBundle resultStack;
 
-    public DirectProcessingMockRecipe(String group, Ingredient ingredient, ItemStack result) {
+    public DirectProcessingMockRecipe(ResourceLocation id, String group, Ingredient ingredient, ItemStack result) {
         super(
                 MOCK_TYPE,
                 MOCK_SERIALIZER,
+                id,
                 group,
                 ingredient,
                 result
         );
         this.inputs = new InputBundle(new IngredientBundle(ingredient));
         this.resultStack = new OutputBundle(result.copy());
+    }
+
+    public DirectProcessingMockRecipe(String group, Ingredient ingredient, ItemStack result) {
+        this(
+                ResourceLocation.tryParse("chexsonsaeutils:direct_processing_mock"),
+                group,
+                ingredient,
+                result
+        );
     }
 
     @Override
@@ -46,8 +59,11 @@ public final class DirectProcessingMockRecipe extends SingleItemRecipe {
         return NonNullList.create();
     }
 
-    @Override
     public ItemStack getResultItem() {
+        return ItemStack.EMPTY;
+    }
+
+    public ItemStack assemble(Container container) {
         return ItemStack.EMPTY;
     }
 
@@ -63,18 +79,49 @@ public final class DirectProcessingMockRecipe extends SingleItemRecipe {
         return new RecipeType<>() {
             @Override
             public String toString() {
-                return Chexsonsaeutils.MODID + ":direct_processing_mock";
+                return "chexsonsaeutils:direct_processing_mock";
             }
         };
     }
 
     public static RecipeSerializer<DirectProcessingMockRecipe> createSerializer() {
-        return new Serializer();
+        return MOCK_SERIALIZER;
     }
 
-    public static final class Serializer extends SingleItemRecipe.Serializer<DirectProcessingMockRecipe> {
-        public Serializer() {
-            super(DirectProcessingMockRecipe::new);
+    public static final class Serializer implements RecipeSerializer<DirectProcessingMockRecipe> {
+        @Override
+        public DirectProcessingMockRecipe fromJson(ResourceLocation id, JsonObject json) {
+            String group = "";
+            Ingredient ingredient = Ingredient.EMPTY;
+            ItemStack result = ItemStack.EMPTY;
+            try {
+                if (json.has("group")) {
+                    group = json.get("group").getAsString();
+                }
+                if (json.has("ingredient")) {
+                    ingredient = Ingredient.fromJson(json.get("ingredient"));
+                }
+                if (json.has("result")) {
+                    result = ShapedRecipe.itemStackFromJson(json.get("result").getAsJsonObject());
+                }
+            } catch (Exception ignored) {
+            }
+            return new DirectProcessingMockRecipe(id, group, ingredient, result);
+        }
+
+        @Override
+        public DirectProcessingMockRecipe fromNetwork(ResourceLocation id, FriendlyByteBuf buf) {
+            String group = buf.readUtf();
+            Ingredient ingredient = Ingredient.fromNetwork(buf);
+            ItemStack result = buf.readItem();
+            return new DirectProcessingMockRecipe(id, group, ingredient, result);
+        }
+
+        @Override
+        public void toNetwork(FriendlyByteBuf buf, DirectProcessingMockRecipe recipe) {
+            buf.writeUtf(recipe.group);
+            recipe.ingredient.toNetwork(buf);
+            buf.writeItem(recipe.result);
         }
     }
 

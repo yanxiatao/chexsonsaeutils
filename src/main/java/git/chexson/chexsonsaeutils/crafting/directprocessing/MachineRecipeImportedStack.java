@@ -9,6 +9,7 @@ import com.google.gson.JsonObject;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 
@@ -100,7 +101,8 @@ public record MachineRecipeImportedStack(
             return null;
         }
         JsonElement keyElement = object.get(KEY_MEMBER_NAME);
-        CompoundTag keyTag = (CompoundTag) JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, keyElement).getValue(); AEKey decodedKey = keyTag != null && !keyTag.isEmpty() ? AEKey.fromTagGeneric(keyTag) : null;
+        Tag keyTag = JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, keyElement);
+        AEKey decodedKey = keyTag instanceof CompoundTag ct && !ct.isEmpty() ? AEKey.fromTagGeneric(ct) : null;
         long decodedAmount = object.has("amount") ? object.get("amount").getAsLong() : 0L;
         MachineRecipeImportedStack stack = new MachineRecipeImportedStack(decodedKey, decodedAmount);
         return stack.isStructurallyValid() ? stack : null;

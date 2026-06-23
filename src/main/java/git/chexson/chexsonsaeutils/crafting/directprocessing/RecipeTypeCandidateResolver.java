@@ -91,6 +91,7 @@ public final class RecipeTypeCandidateResolver {
         return List.copyOf(candidates);
     }
 
+    @SuppressWarnings("removal")
     private List<ResourceLocation> resolveNamingConventionHints(MachineIdentity identity) {
         ResourceLocation machineId = identity.machineItemId();
         if (machineId == null) {
