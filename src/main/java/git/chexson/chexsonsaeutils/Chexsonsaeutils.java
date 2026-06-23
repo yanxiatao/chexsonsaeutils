@@ -8,6 +8,8 @@ import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockE
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.FeatureGates;
+import git.chexson.chexsonsaeutils.client.ae2.DyeablePatternPackRegistration;
+import git.chexson.chexsonsaeutils.client.ae2.PatternItemColorRegistration;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
@@ -18,6 +20,8 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.client.gui.screens.MenuScreens;
+import net.minecraftforge.client.event.RegisterColorHandlersEvent;
+import net.minecraftforge.event.AddPackFindersEvent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -82,6 +86,20 @@ public class Chexsonsaeutils {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
             event.enqueueWork(() -> ChexsonsaeutilsContent.registerClientScreens());
+        }
+
+        @SubscribeEvent
+        public static void onRegisterItemColors(RegisterColorHandlersEvent.Item event) {
+            if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled")) {
+                PatternItemColorRegistration.register(event);
+            }
+        }
+
+        @SubscribeEvent
+        public static void onAddPackFinders(AddPackFindersEvent event) {
+            if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled")) {
+                DyeablePatternPackRegistration.register(event);
+            }
         }
     }
 

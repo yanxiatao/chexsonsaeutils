@@ -5,6 +5,7 @@ import appeng.core.sync.packets.CraftingJobStatusPacket;
 import appeng.crafting.execution.CraftingCpuLogic;
 import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;
+import appeng.me.cluster.implementations.CraftingCPUCluster;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
@@ -20,9 +21,15 @@ public interface CraftingCpuLogicAccessor {
     @Accessor(value = "job", remap = false)
     void setJob(ExecutingCraftingJob job);
 
+    @Accessor(value = "cluster", remap = false)
+    CraftingCPUCluster getCluster();
+
     @Invoker(value = "postChange", remap = false)
     void invokePostChange(AEKey what);
 
     @Invoker(value = "notifyJobOwner", remap = false)
     void invokeNotifyJobOwner(ExecutingCraftingJob job, CraftingJobStatusPacket.Status status);
+
+    @Invoker(value = "finishJob", remap = false)
+    void invokeFinishJob(boolean success);
 }

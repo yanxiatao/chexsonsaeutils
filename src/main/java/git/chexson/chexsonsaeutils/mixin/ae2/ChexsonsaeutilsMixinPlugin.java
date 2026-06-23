@@ -60,6 +60,14 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CPUSelectionListParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftConfirmScreenParallelCpuMixin"
     );
+    private static final Set<String> AEA_DYEABLE_PATTERN_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceDyeablePatternAccessor",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicDyeablePatternMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.item.EncodedPatternItemDyeableClientMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsDyeablePatternMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeDyeablePatternMixin"
+    );
     private static final Set<String> AEA_ENHANCED_CRAFTING_STATUS_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingStatusEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingStatusEntryEnhancedStatusMixin",
@@ -104,6 +112,9 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         }
         if (PARALLEL_CPU_ONLY_MIXINS.contains(mixinClassName)) {
             return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_ENABLED, "parallelCraftingCpuEnabled");
+        }
+        if (AEA_DYEABLE_PATTERN_MIXINS.contains(mixinClassName)) {
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled");
         }
         if (AEA_ENHANCED_CRAFTING_STATUS_MIXINS.contains(mixinClassName)) {
             return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");

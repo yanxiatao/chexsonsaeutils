@@ -30,7 +30,12 @@
     "ae2.crafting.ExecutingCraftingJobAccessor",
     "ae2.crafting.ExecutingCraftingJobTaskProgressAccessor",
     "ae2.menu.CraftingCPUMenuAccessor",
-    "ae2.menu.CraftingCPUMenuContinuationMixin"
+    "ae2.menu.CraftingCPUMenuContinuationMixin",
+    "ae2.crafting.CraftingServiceDyeablePatternMixin",
+    "ae2.crafting.CraftingServiceDyeablePatternAccessor",
+    "ae2.crafting.CraftingCpuLogicDyeablePatternMixin",
+    "ae2.crafting.CraftingTreeNodeDyeablePatternMixin",
+    "ae2.crafting.PatternDetailsDyeablePatternMixin"
   ],
   "client": [
     "ae2.client.gui.AbstractTableRendererAccessor",
@@ -44,7 +49,8 @@
     "ae2.client.gui.CraftingStatusTableRendererContinuationMixin",
     "ae2.client.gui.CraftingStatusTableRendererEnhancedStatusMixin",
     "ae2.client.gui.CraftConfirmTableRendererEnhancedStatusMixin",
-    "minecraft.world.inventory.SlotAccessor"
+    "minecraft.world.inventory.SlotAccessor",
+    "ae2.item.EncodedPatternItemDyeableClientMixin"
   ],
   "minVersion": "0.8",
   "refmap": "chexsonsaeutils.refmap.json"

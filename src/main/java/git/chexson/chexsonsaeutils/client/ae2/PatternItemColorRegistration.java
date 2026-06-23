@@ -1,0 +1,41 @@
+package git.chexson.chexsonsaeutils.client.ae2;
+
+import appeng.core.definitions.AEItems;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.config.FeatureGates;
+import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.client.event.RegisterColorHandlersEvent;
+
+/**
+ * 编码样板颜色注册。
+ *
+ * 只负责把染色 component 映射到 item tint。
+ */
+public final class PatternItemColorRegistration {
+
+    private PatternItemColorRegistration() {
+    }
+
+    public static boolean shouldRegister() {
+        return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled");
+    }
+
+    public static void register(RegisterColorHandlersEvent.Item event) {
+        if (!shouldRegister()) {
+            return;
+        }
+        event.register(PatternItemColorRegistration::getColor, AEItems.CRAFTING_PATTERN, AEItems.PROCESSING_PATTERN,
+                AEItems.STONECUTTING_PATTERN, AEItems.SMITHING_TABLE_PATTERN);
+    }
+
+    private static int getColor(ItemStack stack, int tintIndex) {
+        if (tintIndex != 1) {
+            return -1;
+        }
+        var colorTag = stack.getTagElement("display");
+        if (colorTag == null || !colorTag.contains("color", 3)) {
+            return -1;
+        }
+        return 0xFF000000 | colorTag.getInt("color");
+    }
+}
