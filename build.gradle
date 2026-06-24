@@ -19,6 +19,10 @@ java {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+tasks.withType(ProcessResources).configureEach {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 repositories {
     mavenCentral()
     maven {

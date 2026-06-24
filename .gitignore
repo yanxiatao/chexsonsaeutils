@@ -135,6 +135,19 @@ CLAUDE.md
 docs/
 
 reference-sources/
+appeng/
 
 # Local config backups
 config/*.bak
+
+# codemap auto-generated state and docs
+.slim/
+**/codemap.md
+
+# Eclipse IDE
+.classpath
+.eclipse/
+.factorypath
+.project
+.settings/
+bin/
