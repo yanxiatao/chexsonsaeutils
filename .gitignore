@@ -1,5 +1,10 @@
 # User-specific stuff
 .idea/
+.classpath
+.factorypath
+.project
+.settings/
+bin/
 
 *.iml
 *.ipr
@@ -121,4 +126,9 @@ runs/
 !gradle-wrapper.jar
 
 
+.slim/
+
 TODO.md
+
+# Deepwork progress files
+.slim/deepwork/

@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "BCB",
+    "SIS",
+    "BCB"
+  ],
+  "key": {
+    "B": {
+      "item": "ae2:blank_pattern"
+    },
+    "C": {
+      "item": "ae2:controller"
+    },
+    "S": {
+      "item": "ae2:64k_crafting_storage"
+    },
+    "I": {
+      "item": "ae2:interface"
+    }
+  },
+  "result": {
+    "item": "chexsonsaeutils:ae_direct_processing_machine"
+  }
+}

@@ -6,6 +6,7 @@ import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.slot.AppEngSlot;
 import appeng.menu.slot.RestrictedInputSlot;
+import appeng.api.upgrades.IUpgradeableObject;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineStatus;
@@ -71,6 +72,7 @@ public class HighCapacityCraftingMachineMenu extends AEBaseMenu {
         super(TYPE, id, playerInventory, host);
         this.createPlayerInventorySlots(playerInventory);
         setupInventorySlots();
+        setupUpgradeSlots();
         this.registerClientAction(ACTION_NEXT_PAGE, this::nextPageOnServer);
         registerClientAction(ACTION_PREVIOUS_PAGE, this::previousPageOnServer);
         registerClientAction(ACTION_GOTO_PAGE, Integer.class, this::gotoPageOnServer);
@@ -89,6 +91,20 @@ public class HighCapacityCraftingMachineMenu extends AEBaseMenu {
                             slot
                     ).setStackLimit(1),
                     SlotSemantics.ENCODED_PATTERN
+            );
+        }
+    }
+
+    protected void setupUpgradeSlots() {
+        var upgrades = ((IUpgradeableObject) getHost()).getUpgrades();
+        for (int i = 0; i < upgrades.size(); i++) {
+            addSlot(
+                    new RestrictedInputSlot(
+                            RestrictedInputSlot.PlacableItemType.UPGRADES,
+                            upgrades,
+                            i
+                    ),
+                    SlotSemantics.UPGRADE
             );
         }
     }

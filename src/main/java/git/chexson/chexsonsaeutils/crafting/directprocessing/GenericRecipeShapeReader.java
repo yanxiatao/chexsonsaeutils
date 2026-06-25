@@ -466,7 +466,7 @@ public final class GenericRecipeShapeReader {
         if (itemStack != null) {
             return toInputChoice(itemStack);
         }
-        FluidStack fluidStack = parseWithCodec(FluidStack.CODEC, ops, element);
+        FluidStack fluidStack = parseWithCodec(FLUID_STACK_CODEC, ops, element);
         if (fluidStack != null) {
             return toInputChoice(fluidStack);
         }

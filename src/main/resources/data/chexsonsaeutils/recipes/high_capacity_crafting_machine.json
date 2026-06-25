@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "MCM",
+    "ASA",
+    "MCM"
+  ],
+  "key": {
+    "M": {
+      "item": "ae2:molecular_assembler"
+    },
+    "C": {
+      "item": "ae2:controller"
+    },
+    "A": {
+      "item": "ae2:speed_card"
+    },
+    "S": {
+      "item": "ae2:64k_crafting_storage"
+    }
+  },
+  "result": {
+    "item": "chexsonsaeutils:high_capacity_crafting_machine"
+  }
+}

@@ -1,5 +1,14 @@
 package git.chexson.chexsonsaeutils.client.gui.widgets;
 
+import org.jetbrains.annotations.Nullable;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.Rect2i;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
+
 import appeng.api.stacks.AmountFormat;
 import appeng.client.Point;
 import appeng.client.gui.ICompositeWidget;
@@ -10,19 +19,13 @@ import appeng.client.gui.style.Color;
 import appeng.client.gui.style.PaletteColor;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.Scrollbar;
+import appeng.core.definitions.AEParts;
 import appeng.core.localization.ButtonToolTips;
 import appeng.core.localization.GuiText;
 import appeng.core.localization.Tooltips;
 import git.chexson.chexsonsaeutils.client.gui.Ae2ByteDisplayFormatter;
 import git.chexson.chexsonsaeutils.client.gui.Ae2CompactNumberFormatter;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
-import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.Rect2i;
-import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
@@ -72,6 +75,12 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
         return true;
     }
 
+    @Override
+    public void updateBeforeRender() {
+        int hiddenRows = Math.max(0, menu.cpuList.cpus().size() - ROWS);
+        scrollbar.setRange(0, hiddenRows, ROWS / 3);
+    }
+
     @Nullable
     @Override
     public Tooltip getTooltip(int mouseX, int mouseY) {
@@ -83,6 +92,9 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
         var tooltipLines = new ArrayList<Component>();
         tooltipLines.add(getCpuName(cpu));
 
+        tooltipLines.add(ButtonToolTips.CpuStatusStorage.text(Ae2ByteDisplayFormatter.component(cpu.storage()))
+                .withStyle(ChatFormatting.GRAY));
+
         int coProcessors = cpu.coProcessors();
         if (coProcessors == 1) {
             tooltipLines.add(ButtonToolTips.CpuStatusCoProcessor.text(Tooltips.ofNumber(coProcessors))
@@ -91,9 +103,6 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
             tooltipLines.add(ButtonToolTips.CpuStatusCoProcessors.text(Tooltips.ofNumber(coProcessors))
                     .withStyle(ChatFormatting.GRAY));
         }
-
-        tooltipLines.add(ButtonToolTips.CpuStatusStorage.text(Ae2ByteDisplayFormatter.component(cpu.storage()))
-                .withStyle(ChatFormatting.GRAY));
 
         Component modeText = switch (cpu.mode()) {
             case PLAYER_ONLY -> ButtonToolTips.CpuSelectionModePlayersOnly.text();
@@ -106,9 +115,8 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
 
         var currentJob = cpu.currentJob();
         if (currentJob != null) {
-            tooltipLines.add(ButtonToolTips.CpuStatusCrafting.text(Tooltips.ofAmount(currentJob))
-                    .append(" ")
-                    .append(currentJob.what().getDisplayName()));
+            tooltipLines.add(ButtonToolTips.CpuStatusCrafting.text(
+                            Tooltips.ofAmount(currentJob)).append(" ").append(currentJob.what().getDisplayName()));
             tooltipLines.add(ButtonToolTips.CpuStatusCraftedIn.text(
                     Tooltips.ofPercent(cpu.progress()),
                     Tooltips.ofDuration(cpu.elapsedTimeNanos(), TimeUnit.NANOSECONDS)));
@@ -129,7 +137,7 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
 
     @Nullable
     private ParallelCraftingCPUMenu.CraftingCpuListEntry hitTestCpu(Point mousePos) {
-        int relX = mousePos.getX() - bounds.getX() - 8;
+        int relX = mousePos.getX() - bounds.getX() - 9;
         if (relX < 0 || relX >= buttonBg.getSrcWidth()) {
             return null;
         }
@@ -148,18 +156,12 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
     }
 
     @Override
-    public void updateBeforeRender() {
-        int hiddenRows = Math.max(0, menu.cpuList.cpus().size() - ROWS);
-        scrollbar.setRange(0, hiddenRows, ROWS / 3);
-    }
-
-    @Override
     public void drawBackgroundLayer(GuiGraphics guiGraphics, Rect2i bounds, Point mouse) {
         int x = bounds.getX() + this.bounds.getX();
         int y = bounds.getY() + this.bounds.getY();
         background.dest(x, y, this.bounds.getWidth(), this.bounds.getHeight()).blit(guiGraphics);
 
-        x += 8;
+        x += 9;
         y += 19;
 
         var pose = guiGraphics.pose();
@@ -176,45 +178,45 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
 
             var name = getCpuName(cpu);
             pose.pushPose();
-            pose.translate(x + 3, y + 2, 0);
-            pose.scale(0.666f, 0.666f, 1);
+            pose.translate(x + 3, y + 3, 0);
+            pose.scale(0.8f, 0.8f, 1);
             guiGraphics.drawString(font, name, 0, 0, textColor.toARGB(), false);
             pose.popPose();
 
             var infoBar = new InfoBar();
+
             var currentJob = cpu.currentJob();
             if (currentJob != null) {
-                // TODO: replace with proper icon when migrating visuals
-                infoBar.add(Icon.CRAFT_HAMMER, 1f, x + 2, y + 9);
+                infoBar.add(Icon.CRAFT_HAMMER, 0.6f);
+                infoBar.addSpace(2);
                 var craftAmt = currentJob.what().formatAmount(currentJob.amount(), AmountFormat.SLOT);
-                infoBar.add(craftAmt, textColor.toARGB(), 0.666f, x + 14, y + 13);
-                infoBar.add(currentJob.what(), 0.666f, x + 55, y + 9);
+                infoBar.add(craftAmt, textColor.toARGB(), 0.6f);
+                infoBar.addSpace(1);
+                infoBar.add(currentJob.what(), 0.6f);
 
                 int progress = (int) (cpu.progress() * (buttonBg.getSrcWidth() - 1));
-                guiGraphics.pose().pushPose();
-                guiGraphics.pose().translate(1, -1, 0);
                 guiGraphics.fill(
-                        x,
+                        x + 1,
                         y + buttonBg.getSrcHeight() - 2,
                         x + progress,
                         y + buttonBg.getSrcHeight() - 1,
-                        menu.getSelectedCpuSerial() == cpu.serial() ? 0xFF7da9d2 : selectedColor);
-                guiGraphics.pose().popPose();
+                        menu.getSelectedCpuSerial() == cpu.serial() ? 0xFFFFFFFF : (0xFF000000 + selectedColor));
             } else {
-                // TODO: replace with proper icon when migrating visuals
-                infoBar.add(Icon.VIEW_MODE_STORED, 1f, x + 32, y + 9);
-                infoBar.add(Ae2ByteDisplayFormatter.format(cpu.storage()), textColor.toARGB(), 0.666f, x + 44, y + 13);
+                infoBar.add(Icon.LEVEL_ITEM, 0.6f);
+                infoBar.addSpace(1);
+
+                infoBar.add(Ae2ByteDisplayFormatter.format(cpu.storage()), textColor.toARGB(), 0.6f);
+                infoBar.addSpace(1);
+
                 if (cpu.coProcessors() > 0) {
-                    // TODO: replace with proper icon when migrating visuals
-                    infoBar.add(Icon.BACKGROUND_PLATE, 1f, x + 2, y + 9);
-                    infoBar.add(Ae2CompactNumberFormatter.format(cpu.coProcessors()),
-                            textColor.toARGB(), 0.666f, x + 14, y + 13);
+                    infoBar.add(Icon.BLOCKING_MODE_NO, 0.6f);
+                    infoBar.add(Ae2CompactNumberFormatter.format(cpu.coProcessors()), textColor.toARGB(), 0.6f);
+                    infoBar.addSpace(1);
                 }
+
                 switch (cpu.mode()) {
-                    // TODO: replace with proper icon when migrating visuals
-                    case PLAYER_ONLY -> infoBar.add(Icon.PATTERN_TERMINAL_VISIBLE, 1f, x + 55, y + 9);
-                    // TODO: replace with proper icon when migrating visuals
-                    case MACHINE_ONLY -> infoBar.add(Icon.BACKGROUND_ORE, 1f, x + 55, y + 9);
+                    case PLAYER_ONLY -> infoBar.add(AEParts.TERMINAL, 0.6f);
+                    case MACHINE_ONLY -> infoBar.add(AEParts.EXPORT_BUS, 0.6f);
                 }
             }
 

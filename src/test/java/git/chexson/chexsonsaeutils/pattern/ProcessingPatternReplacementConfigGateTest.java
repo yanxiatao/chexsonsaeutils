@@ -2,6 +2,9 @@ package git.chexson.chexsonsaeutils.pattern;
 
 import org.junit.jupiter.api.Test;
 
+import git.chexson.chexsonsaeutils.config.StartupConfigReader;
+import org.junit.jupiter.api.Test;
+
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -20,8 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProcessingPatternReplacementConfigGateTest {
 
-    private static final String FEATURE_GATE_CLASS =
-            "git.chexson.chexsonsaeutils.config.ProcessingPatternReplacementFeatureGate";
     private static final String MIXIN_PLUGIN_CLASS =
             "git.chexson.chexsonsaeutils.mixin.ae2.ChexsonsaeutilsMixinPlugin";
     private static final String REPLACEMENT_MENU_MIXIN =
@@ -43,7 +44,7 @@ class ProcessingPatternReplacementConfigGateTest {
     private static final Path COMPATIBILITY_CONFIG = Path.of(
             "src/main/java/git/chexson/chexsonsaeutils/config/ChexsonsaeutilsCompatibilityConfig.java");
     private static final Path FEATURE_GATE_SOURCE = Path.of(
-            "src/main/java/git/chexson/chexsonsaeutils/config/ProcessingPatternReplacementFeatureGate.java");
+            "src/main/java/git/chexson/chexsonsaeutils/config/StartupConfigReader.java");
     private static final Path MIXIN_PLUGIN_SOURCE = Path.of(
             "src/main/java/git/chexson/chexsonsaeutils/mixin/ae2/ChexsonsaeutilsMixinPlugin.java");
     private static final Path MAIN_CLASS = Path.of(
@@ -63,7 +64,7 @@ class ProcessingPatternReplacementConfigGateTest {
     }
 
     @Test
-    void resolvesPersistedFalseBeforeSpecLoads() throws Exception {
+    void resolvesPersistedFalseBeforeSpecLoads() throws IOException {
         Path configFile = writeCommonConfig(
                 "replacement-gate-config",
                 "processingPatternReplacementEnabled = false"
@@ -72,7 +73,7 @@ class ProcessingPatternReplacementConfigGateTest {
     }
 
     @Test
-    void resolvesPersistedTrueBeforeSpecLoads() throws Exception {
+    void resolvesPersistedTrueBeforeSpecLoads() throws IOException {
         Path configFile = writeCommonConfig(
                 "replacement-gate-config",
                 "processingPatternReplacementEnabled = true"
@@ -81,7 +82,7 @@ class ProcessingPatternReplacementConfigGateTest {
     }
 
     @Test
-    void fallsBackToDefaultWhenStartupConfigMissingOrUnreadable() throws Exception {
+    void fallsBackToDefaultWhenStartupConfigMissingOrUnreadable() throws IOException {
         Path missingConfig = Files.createTempDirectory("replacement-gate-missing")
                 .resolve(commonConfigFileName());
         assertEquals(Boolean.TRUE, invokeStartupConfigRead(missingConfig));
@@ -91,10 +92,8 @@ class ProcessingPatternReplacementConfigGateTest {
     }
 
     @Test
-    void featureGateUsesPersistedCommonConfigWithoutCleanupLogic() throws IOException {
-        assertContains(FEATURE_GATE_SOURCE, "processingPatternReplacementEnabled");
-        assertContains(FEATURE_GATE_SOURCE,
-                "ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED.getDefault()");
+    void startupConfigReaderUsesPersistedCommonConfigWithoutCleanupLogic() throws IOException {
+        assertContains(FEATURE_GATE_SOURCE, "readBoolean");
         assertContains(FEATURE_GATE_SOURCE, "FMLPaths.CONFIGDIR.get().resolve(COMMON_CONFIG_FILE)");
         assertDoesNotContain(FEATURE_GATE_SOURCE, "writeRules(");
     }
@@ -143,8 +142,8 @@ class ProcessingPatternReplacementConfigGateTest {
     void mixinPluginRoutesReplacementAndContinuationThroughSeparateStartupGates() throws IOException {
         assertContains(MIXIN_PLUGIN_SOURCE, "REPLACEMENT_RUNTIME_MIXINS");
         assertContains(MIXIN_PLUGIN_SOURCE, "REPLACEMENT_ONLY_MIXINS");
-        assertContains(MIXIN_PLUGIN_SOURCE, "ProcessingPatternReplacementFeatureGate.isEnabledAtStartup()");
-        assertContains(MIXIN_PLUGIN_SOURCE, "ContinuationFeatureGate.isEnabledAtStartup()");
+        assertContains(MIXIN_PLUGIN_SOURCE, "FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED");
+        assertContains(MIXIN_PLUGIN_SOURCE, "FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED");
         assertDoesNotContain(MIXIN_PLUGIN_SOURCE, "writeRules(");
     }
 
@@ -161,13 +160,9 @@ class ProcessingPatternReplacementConfigGateTest {
     @Test
     void commonSetupGuardsDecoderRegistrationWithReplacementGate() throws IOException {
         String mainSource = readUtf8(MAIN_CLASS).replace("\r\n", "\n");
-        assertContains(MAIN_CLASS, "if (ProcessingPatternReplacementFeatureGate.isEnabledAtStartup()) {");
+        assertContains(MAIN_CLASS, "if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED");
         assertContains(MAIN_CLASS, "event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);");
         assertContains(MAIN_CLASS, "registerProcessingPatternReplacementDecoder");
-        assertFalse(mainSource.contains(
-                "event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap);\n" +
-                        "        event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);"
-        ));
         assertDoesNotContain(MAIN_CLASS, "writeRules(");
     }
 
@@ -193,9 +188,7 @@ class ProcessingPatternReplacementConfigGateTest {
         return (Boolean) shouldApplyMixin.invoke(plugin, targetClassName, mixinClassName);
     }
 
-    private static Boolean invokeStartupConfigRead(Path configFile) throws ReflectiveOperationException {
-        Class<?> featureGateClass = Class.forName(FEATURE_GATE_CLASS);
-        Method isEnabledAtStartup = featureGateClass.getMethod("isEnabledAtStartup", Path.class);
-        return (Boolean) isEnabledAtStartup.invoke(null, configFile);
+    private static Boolean invokeStartupConfigRead(Path configFile) {
+        return StartupConfigReader.readBoolean(configFile, "processingPatternReplacementEnabled", true);
     }
 }

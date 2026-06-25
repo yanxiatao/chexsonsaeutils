@@ -5,11 +5,11 @@ import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.GridFlags;
+import appeng.api.networking.GridHelper;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
-import appeng.api.networking.IGridNodeListener;
+import appeng.api.networking.IManagedGridNode;
 import appeng.api.networking.crafting.ICraftingProvider;
-import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.storage.IStorageService;
 import appeng.api.orientation.BlockOrientation;
 import appeng.api.stacks.AEItemKey;
@@ -18,11 +18,10 @@ import appeng.api.stacks.KeyCounter;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
-import appeng.blockentity.AEBaseBlockEntity;
+import appeng.blockentity.grid.AENetworkBlockEntity;
 import appeng.core.definitions.AEItems;
 import appeng.helpers.patternprovider.PatternContainer;
-import appeng.me.ManagedGridNode;
-import appeng.me.helpers.IGridConnectedBlockEntity;
+import appeng.me.helpers.BlockEntityNodeListener;
 import appeng.me.helpers.MachineSource;
 import appeng.me.service.CraftingService;
 import appeng.util.inv.AppEngInternalInventory;
@@ -62,7 +61,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -81,10 +79,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-public class AEDirectProcessingMachineBlockEntity extends AEBaseBlockEntity
+public class AEDirectProcessingMachineBlockEntity extends AENetworkBlockEntity
         implements ICraftingProvider, IUpgradeableObject, PatternContainer, InternalInventoryHost,
-        ProcessingTaskCompletionHost, FormalMachinePlanningProvider,
-        IGridConnectedBlockEntity, IActionHost {
+        ProcessingTaskCompletionHost, FormalMachinePlanningProvider {
 
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_MACHINE_BINDING = "machineBinding";
@@ -107,7 +104,6 @@ public class AEDirectProcessingMachineBlockEntity extends AEBaseBlockEntity
     private static final int MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS = 20;
     private static final int DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK = 64;
 
-    private final ManagedGridNode mainNode;
     private final MachineSource actionSource = new MachineSource(this);
     private final IUpgradeInventory upgrades;
     private final AppEngInternalInventory machineBindingInventory = new AppEngInternalInventory(this, 1, 1);
@@ -157,16 +153,19 @@ public class AEDirectProcessingMachineBlockEntity extends AEBaseBlockEntity
 
     public AEDirectProcessingMachineBlockEntity(BlockPos pos, BlockState blockState) {
         super(Chexsonsaeutils.AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY.get(), pos, blockState);
-        this.mainNode = new ManagedGridNode(this, new Listener())
-                .setIdlePowerUsage(0.0)
-                .setFlags(GridFlags.REQUIRE_CHANNEL);
+        this.getMainNode().addService(ICraftingProvider.class, this);
         this.upgrades = UpgradeInventories.forMachine(
                 () -> Chexsonsaeutils.AE_DIRECT_PROCESSING_MACHINE_ITEM.get(),
                 UPGRADE_SLOTS,
                 this::saveChanges
         );
-        this.getMainNode()
-                .addService(ICraftingProvider.class, this);
+    }
+
+    @Override
+    protected IManagedGridNode createMainNode() {
+        return GridHelper.createManagedNode(this, BlockEntityNodeListener.INSTANCE)
+                .setFlags(GridFlags.REQUIRE_CHANNEL)
+                .setIdlePowerUsage(0.0);
     }
 
     public static void serverTick(
@@ -183,7 +182,6 @@ public class AEDirectProcessingMachineBlockEntity extends AEBaseBlockEntity
     @Override
     public void onReady() {
         super.onReady();
-        this.mainNode.create(getLevel(), getBlockPos());
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         observedRecipeReloadEpoch = MachineRecipeReloadTracker.recipeReloadEpoch();
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled();
@@ -193,16 +191,11 @@ public class AEDirectProcessingMachineBlockEntity extends AEBaseBlockEntity
         refreshDirtyPatterns();
     }
 
-    @Override
-    public void setRemoved() {
-        this.mainNode.destroy();
-        super.setRemoved();
-    }
+    // clearRemoved is handled by AENetworkBlockEntity which already calls scheduleInit()
 
     @Override
     public void saveAdditional(CompoundTag data) {
         super.saveAdditional(data);
-        this.mainNode.saveToNBT(data);
         upgrades.writeToNBT(data, NBT_UPGRADES);
         data.put(NBT_MACHINE_BINDING, getMachineBindingStack().save(new CompoundTag()));
         data.putLong(NBT_DISCOVERY_EPOCH, discoveryEpoch);
@@ -218,7 +211,6 @@ public class AEDirectProcessingMachineBlockEntity extends AEBaseBlockEntity
     @Override
     public void loadTag(CompoundTag data) {
         super.loadTag(data);
-        this.mainNode.loadFromNBT(data);
         upgrades.readFromNBT(data, NBT_UPGRADES);
         machineBindingInventory.setItemDirect(
                 0,
@@ -625,23 +617,8 @@ public class AEDirectProcessingMachineBlockEntity extends AEBaseBlockEntity
     }
 
     @Override
-    public ManagedGridNode getMainNode() {
-        return mainNode;
-    }
-
-    @Override
-    public void setOwner(Player player) {
-        mainNode.setOwningPlayer(player);
-    }
-
-    @Override
     public Set<Direction> getGridConnectableSides(BlockOrientation orientation) {
         return EnumSet.allOf(Direction.class);
-    }
-
-    @Override
-    public IGridNode getActionableNode() {
-        return mainNode.getNode();
     }
 
     private void onMachineBindingChanged() {
@@ -679,6 +656,7 @@ public class AEDirectProcessingMachineBlockEntity extends AEBaseBlockEntity
         }
         rebuildMachineRecipeIndex();
         machineRecipeIndexRefreshPending = false;
+        markAllPatternsDirty();
     }
 
     private void rebuildMachineRecipeIndex() {
@@ -1180,10 +1158,4 @@ public class AEDirectProcessingMachineBlockEntity extends AEBaseBlockEntity
         }
     }
 
-    private static class Listener implements IGridNodeListener<AEDirectProcessingMachineBlockEntity> {
-        @Override
-        public void onSaveChanges(AEDirectProcessingMachineBlockEntity node, IGridNode gridNode) {
-            node.saveChanges();
-        }
-    }
 }

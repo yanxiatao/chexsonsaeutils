@@ -1,0 +1,25 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_controller": {
+      "conditions": {
+        "items": [
+          {
+            "items": ["ae2:controller"]
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "requirements": [
+    [
+      "has_controller"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "chexsonsaeutils:ae_direct_processing_machine"
+    ]
+  }
+}

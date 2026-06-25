@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "UCU",
+    "ASA",
+    "UCU"
+  ],
+  "key": {
+    "U": {
+      "item": "ae2:crafting_unit"
+    },
+    "C": {
+      "item": "ae2:controller"
+    },
+    "A": {
+      "item": "ae2:crafting_accelerator"
+    },
+    "S": {
+      "item": "ae2:64k_crafting_storage"
+    }
+  },
+  "result": {
+    "item": "chexsonsaeutils:ae2_parallel_cpu_tool"
+  }
+}

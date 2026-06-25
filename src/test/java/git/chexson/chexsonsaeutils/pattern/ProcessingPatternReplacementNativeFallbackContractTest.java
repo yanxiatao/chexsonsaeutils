@@ -38,7 +38,7 @@ class ProcessingPatternReplacementNativeFallbackContractTest {
     private static final Path MAIN_CLASS = javaSource(
             "git/chexson/chexsonsaeutils/Chexsonsaeutils.java");
     private static final Path FEATURE_GATE_SOURCE = javaSource(
-            "git/chexson/chexsonsaeutils/config/ProcessingPatternReplacementFeatureGate.java");
+            "git/chexson/chexsonsaeutils/config/StartupConfigReader.java");
     private static final Path MIXIN_PLUGIN_SOURCE = javaSource(
             "git/chexson/chexsonsaeutils/mixin/ae2/ChexsonsaeutilsMixinPlugin.java");
 
@@ -88,7 +88,7 @@ class ProcessingPatternReplacementNativeFallbackContractTest {
 
     @Test
     void disabledModeKeepsDecoderAndMetadataWritebackOutOfNativePath() throws IOException {
-        assertContains(MAIN_CLASS, "if (ProcessingPatternReplacementFeatureGate.isEnabledAtStartup()) {");
+        assertContains(MAIN_CLASS, "if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED");
         assertContains(MAIN_CLASS, "event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);");
         assertDoesNotContain(MAIN_CLASS, "writeRules(");
         assertDoesNotContain(FEATURE_GATE_SOURCE, "writeRules(");

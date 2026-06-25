@@ -37,8 +37,7 @@ public class HighCapacityCraftingMachineScreen extends AEBaseScreen<HighCapacity
             Component title
     ) {
         super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/high_capacity_crafting_machine.json"));
-        // TODO: re-add upgrades panel when IUpgradeableObject is implemented
-        // this.widgets.add("upgrades", new UpgradesPanel(menu.getSlots(SlotSemantics.UPGRADE), menu.getHost()));
+        this.widgets.add("upgrades", new UpgradesPanel(menu.getSlots(SlotSemantics.UPGRADE), menu.getHost()));
     }
 
     @Override

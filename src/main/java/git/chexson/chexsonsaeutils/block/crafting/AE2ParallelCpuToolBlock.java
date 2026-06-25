@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.block.crafting;
 import appeng.block.AEBaseEntityBlock;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
+import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import net.minecraft.core.BlockPos;
@@ -37,8 +38,8 @@ public class AE2ParallelCpuToolBlock extends AEBaseEntityBlock<AE2ParallelCpuToo
             return InteractionResult.PASS;
         }
         if (!level.isClientSide()) {
-            if (blockEntity.getMainNode().getNode() == null || blockEntity.getMainNode().getGrid() == null) {
-                return InteractionResult.PASS;
+            if (!blockEntity.isParallelCpuProviderActive()) {
+                return InteractionResult.FAIL;
             }
             blockEntity.refreshParallelCpuProvider();
             boolean opened = MenuOpener.open(
@@ -62,7 +63,7 @@ public class AE2ParallelCpuToolBlock extends AEBaseEntityBlock<AE2ParallelCpuToo
     public static MenuType<ParallelCraftingCPUMenu> craftingCpuMenuTypeForServerPath(
             AE2ParallelCpuToolBlockEntity blockEntity
     ) {
-        return ParallelCraftingCPUMenu.TYPE;
+        return Chexsonsaeutils.AE2_PARALLEL_CPU_TOOL_CPU_MENU.get();
     }
 
     @Override

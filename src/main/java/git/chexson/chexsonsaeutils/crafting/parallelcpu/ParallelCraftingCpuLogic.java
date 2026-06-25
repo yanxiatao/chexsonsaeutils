@@ -32,6 +32,8 @@ import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -207,8 +209,10 @@ final class ParallelCraftingCpuLogic {
         }
 
         long pushedPatterns = 0L;
+        var tasksIter = job.tasks.entrySet().iterator();
         taskLoop:
-        for (var task : job.tasks.entrySet()) {
+        while (tasksIter.hasNext()) {
+            Map.Entry<IPatternDetails, ParallelExecutingCraftingJob.TaskProgress> task = tasksIter.next();
             if (!hasTickBudget(budgetLedger)) {
                 break;
             }
@@ -216,7 +220,7 @@ final class ParallelCraftingCpuLogic {
                 break;
             }
             if (task.getValue().value <= 0L) {
-                job.tasks.remove(task.getKey());
+                tasksIter.remove();
                 continue;
             }
 
@@ -307,7 +311,7 @@ final class ParallelCraftingCpuLogic {
 
                     task.getValue().value--;
                     if (task.getValue().value <= 0L) {
-                        job.tasks.remove(task.getKey());
+                        tasksIter.remove();
                         continue taskLoop;
                     }
                     if (pushedPatterns >= maxPatterns) {
@@ -847,8 +851,9 @@ final class ParallelCraftingCpuLogic {
                     job.remainingAmount,
                     status
             );
-            // TODO: AE2 15.x packet system - need to use BasePacket.sendToPlayer or equivalent
-            // connectedPlayer.connection.send(packet);
+            // ponytail: sendTo via NetworkHandler (AE2 15.x Forge pattern), not connection.send()
+            appeng.core.sync.network.NetworkHandler.instance()
+                    .sendTo(packet, connectedPlayer);
         }
     }
 

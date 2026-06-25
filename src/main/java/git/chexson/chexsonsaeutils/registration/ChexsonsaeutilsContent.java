@@ -1,6 +1,5 @@
 package git.chexson.chexsonsaeutils.registration;
 
-import appeng.capabilities.Capabilities;
 import appeng.api.upgrades.Upgrades;
 import appeng.blockentity.AEBaseBlockEntity;
 import appeng.core.definitions.AEItems;
@@ -166,28 +165,10 @@ public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAP
     public static void onAttachCapabilities(AttachCapabilitiesEvent<BlockEntity> event) {
         BlockEntity be = event.getObject();
         if (be instanceof HighCapacityCraftingMachineBlockEntity hccm) {
-            attachGridNodeHost(event, hccm);
             attachItemHandler(event, hccm.getAutomationItemHandler());
-        } else if (be instanceof AE2ParallelCpuToolBlockEntity pct) {
-            attachGridNodeHost(event, pct);
         } else if (be instanceof AEDirectProcessingMachineBlockEntity dp) {
-            attachGridNodeHost(event, dp);
+            attachItemHandler(event, dp.getAutomationItemHandler());
         }
-    }
-
-    private static void attachGridNodeHost(AttachCapabilitiesEvent<BlockEntity> event, Object host) {
-        event.addCapability(
-                modLoc("grid_node_host"),
-                new ICapabilityProvider() {
-                    @Override
-                    public <T> LazyOptional<T> getCapability(Capability<T> cap, Direction side) {
-                        if (cap == Capabilities.IN_WORLD_GRID_NODE_HOST) {
-                            return LazyOptional.of(() -> (T) host);
-                        }
-                        return LazyOptional.empty();
-                    }
-                }
-        );
     }
 
     @SuppressWarnings("removal")

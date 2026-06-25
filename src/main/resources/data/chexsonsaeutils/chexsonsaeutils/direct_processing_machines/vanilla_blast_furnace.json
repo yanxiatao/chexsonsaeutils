@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "machine_item": "minecraft:blast_furnace",
+  "machine_block": "minecraft:blast_furnace",
+  "recipe_types": [
+    "minecraft:blasting"
+  ],
+  "default_ticks": 100
+}

@@ -4,7 +4,7 @@ import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.me.crafting.CraftingCPUScreen;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.menu.me.crafting.CraftingCPUMenu;
-import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,7 +18,7 @@ import java.util.Map;
 
 @Mixin(value = CraftingCPUScreen.class, remap = false)
 public abstract class CraftingCPUScreenContinuationMixin extends AEBaseScreen<CraftingCPUMenu>
-        implements CraftingContinuationStatusService.WaitingStackProjectionHost {
+        implements CraftingContinuationTracker.WaitingStackProjectionHost {
     @Unique
     private boolean partialWaiting;
 
@@ -32,7 +32,7 @@ public abstract class CraftingCPUScreenContinuationMixin extends AEBaseScreen<Cr
 
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$updateContinuationDetail(CallbackInfo ci) {
-        if (menu instanceof CraftingContinuationStatusService.SelectedCpuDetailHost host) {
+        if (menu instanceof CraftingContinuationTracker.SelectedCpuDetailHost host) {
             partialWaiting = host.chexsonsaeutils$partialWaiting();
             waitingStackAmounts = parseWaitingStackLines(host.chexsonsaeutils$waitingStackLines());
         } else {

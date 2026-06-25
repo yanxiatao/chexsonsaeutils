@@ -1,6 +1,5 @@
 package git.chexson.chexsonsaeutils.blockentity.crafting;
 
-import appeng.api.inventories.InternalInventory;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
@@ -24,9 +23,4 @@ public class HighCapacityCraftingMachineBlockEntity extends AbstractHighCapacity
         return Math.max(1, 1 << Math.max(0, speedCards));
     }
 
-    @Override
-    public void onChangeInventory(InternalInventory inv, int slot) {
-        // Empty implementation for now - HighCapacityCraftingHost handles
-        // slot changes via its own override
-    }
 }

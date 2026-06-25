@@ -1,47 +1,32 @@
 package git.chexson.chexsonsaeutils.client.gui.widgets;
 
-import appeng.api.client.AEKeyRendering;
-import appeng.api.stacks.AEItemKey;
-import appeng.api.stacks.AEKey;
-import appeng.client.gui.Icon;
+import java.util.ArrayList;
+import java.util.List;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ItemLike;
 
-import java.util.ArrayList;
-import java.util.List;
+import appeng.api.client.AEKeyRendering;
+import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.AEKey;
+import appeng.client.gui.Icon;
 
 public class InfoBar {
-
     private final List<Widget> widgets = new ArrayList<>();
 
     public void render(GuiGraphics guiGraphics, int x, int y) {
-        int maxHeight = widgets.stream().mapToInt(Widget::getHeight).max().orElse(0);
-        for (Widget widget : widgets) {
-            widget.render(guiGraphics, x, Math.round(y + maxHeight / 2.0F - widget.getHeight() / 2.0F));
+        var maxHeight = widgets.stream().mapToInt(Widget::getHeight).max().orElse(0);
+
+        for (var widget : widgets) {
+            widget.render(
+                    guiGraphics,
+                    x,
+                    Math.round(y + maxHeight / 2.f - widget.getHeight() / 2.f));
             x += widget.getWidth();
         }
-    }
 
-    public void add(Icon icon, float scale, int xPos, int yPos) {
-        widgets.add(new IconWidget(icon, scale, xPos, yPos));
-    }
-
-    public void add(String text, int color, float scale, int xPos, int yPos) {
-        widgets.add(new TextWidget(Component.literal(text), color, scale, xPos, yPos));
-    }
-
-    public void add(Component text, int color, float scale, int xPos, int yPos) {
-        widgets.add(new TextWidget(text, color, scale, xPos, yPos));
-    }
-
-    public void add(AEKey what, float scale, int xPos, int yPos) {
-        widgets.add(new StackWidget(what, scale, xPos, yPos));
-    }
-
-    public void add(ItemLike what, float scale, int xPos, int yPos) {
-        widgets.add(new StackWidget(AEItemKey.of(what), scale, xPos, yPos));
     }
 
     interface Widget {
@@ -52,7 +37,31 @@ public class InfoBar {
         void render(GuiGraphics guiGraphics, int x, int y);
     }
 
-    private record StackWidget(AEKey what, float scale, int xPos, int yPos) implements Widget {
+    public void add(Icon icon, float scale) {
+        widgets.add(new IconWidget(icon, scale));
+    }
+
+    public void add(String text, int color, float scale) {
+        widgets.add(new TextWidget(Component.literal(text), color, scale));
+    }
+
+    public void add(Component text, int color, float scale) {
+        widgets.add(new TextWidget(text, color, scale));
+    }
+
+    public void add(AEKey what, float scale) {
+        widgets.add(new StackWidget(what, scale));
+    }
+
+    public void add(ItemLike what, float scale) {
+        widgets.add(new StackWidget(AEItemKey.of(what), scale));
+    }
+
+    public void addSpace(int width) {
+        widgets.add(new SpaceWidget(width));
+    }
+
+    private record StackWidget(AEKey what, float scale) implements Widget {
         @Override
         public int getWidth() {
             return Math.round(16 * scale);
@@ -67,14 +76,14 @@ public class InfoBar {
         public void render(GuiGraphics guiGraphics, int x, int y) {
             var poseStack = guiGraphics.pose();
             poseStack.pushPose();
-            poseStack.translate(xPos, yPos, 0);
+            poseStack.translate(x, y, 0);
             poseStack.scale(scale, scale, 1);
             AEKeyRendering.drawInGui(Minecraft.getInstance(), guiGraphics, 0, 0, what);
             poseStack.popPose();
         }
     }
 
-    private record IconWidget(Icon icon, float scale, int xPos, int yPos) implements Widget {
+    private record IconWidget(Icon icon, float scale) implements Widget {
         @Override
         public int getWidth() {
             return Math.round(16 * scale);
@@ -89,9 +98,11 @@ public class InfoBar {
         public void render(GuiGraphics guiGraphics, int x, int y) {
             var poseStack = guiGraphics.pose();
             poseStack.pushPose();
-            poseStack.translate(xPos, yPos, 0);
+            poseStack.translate(x, y, 0);
             poseStack.scale(scale, scale, 1);
-            icon.getBlitter().dest(0, 0).blit(guiGraphics);
+            icon.getBlitter()
+                    .dest(0, 0)
+                    .blit(guiGraphics);
             poseStack.popPose();
         }
     }
@@ -100,17 +111,13 @@ public class InfoBar {
         private final Component text;
         private final int color;
         private final float scale;
-        private final int xPos;
-        private final int yPos;
         private final int width;
         private final int height;
 
-        private TextWidget(Component text, int color, float scale, int xPos, int yPos) {
+        public TextWidget(Component text, int color, float scale) {
             this.text = text;
             this.color = color;
             this.scale = scale;
-            this.xPos = xPos;
-            this.yPos = yPos;
             var font = Minecraft.getInstance().font;
             this.width = Math.round(font.width(text) * scale);
             this.height = Math.round(font.lineHeight * scale);
@@ -131,10 +138,32 @@ public class InfoBar {
             var poseStack = guiGraphics.pose();
             var font = Minecraft.getInstance().font;
             poseStack.pushPose();
-            poseStack.translate(xPos, yPos, 0);
+            poseStack.translate(x, y, 0);
             poseStack.scale(scale, scale, 1);
             guiGraphics.drawString(font, text, 0, 0, color, false);
             poseStack.popPose();
+        }
+    }
+
+    private static final class SpaceWidget implements Widget {
+        private final int width;
+
+        public SpaceWidget(int width) {
+            this.width = width;
+        }
+
+        @Override
+        public int getWidth() {
+            return width;
+        }
+
+        @Override
+        public int getHeight() {
+            return 0;
+        }
+
+        @Override
+        public void render(GuiGraphics guiGraphics, int x, int y) {
         }
     }
 }

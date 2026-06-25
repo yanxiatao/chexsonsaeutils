@@ -5,10 +5,19 @@ import appeng.client.gui.style.StyleManager;
 import appeng.client.gui.widgets.UpgradesPanel;
 import appeng.menu.SlotSemantic;
 import appeng.menu.SlotSemantics;
+import git.chexson.chexsonsaeutils.client.integration.jei.JeiRuntimeHolder;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedSignature;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
+import git.chexson.chexsonsaeutils.network.ChexsonsaeutilsNetwork;
+import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -28,6 +37,7 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
 
     private Button previousPageButton;
     private Button nextPageButton;
+    private Button jeiImportButton;
 
     public AEDirectProcessingMachineScreen(
             AEDirectProcessingMachineMenu menu,
@@ -47,6 +57,43 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
         nextPageButton = addRenderableWidget(Button.builder(Component.literal(">"), button -> menu.nextPage())
                 .bounds(leftPos + 182, topPos + 62, 14, 16)
                 .build());
+        jeiImportButton = addRenderableWidget(Button.builder(
+                Component.literal("JEI"),
+                btn -> importSignaturesFromJei()
+        ).bounds(leftPos + 157, topPos + 6, 24, 14).build());
+    }
+
+    private void importSignaturesFromJei() {
+        MachineIdentity identity = menu.getHost().getMachineIdentityForMenu();
+        if (identity == null) {
+            return;
+        }
+        ResourceLocation machineItemId = identity.machineItemId();
+        if (machineItemId == null) {
+            return;
+        }
+        ResourceLocation machineBlockId = identity.blockId();
+        if (!JeiRuntimeHolder.hasRuntime()) {
+            return;
+        }
+        List<MachineRecipeImportedSignature> signatures =
+                JeiRuntimeHolder.collectSignatureHintsForMachine(machineItemId, machineBlockId);
+        if (signatures.isEmpty()) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) {
+            return;
+        }
+        HolderLookup.Provider registries = mc.level.registryAccess();
+        String signatureHintsJson = MachineRecipeImportedSignature.toJson(registries, signatures);
+        List<ResourceLocation> recipeTypeIds = MachineRecipeImportedSignature.collectRecipeTypeIds(signatures);
+        MachineRecipeConfigImportRequest request = new MachineRecipeConfigImportRequest(
+                machineItemId, machineBlockId, recipeTypeIds, 20, "generic", "any", true, signatureHintsJson
+        );
+        DirectProcessingJeiImportPayload payload =
+                new DirectProcessingJeiImportPayload(menu.getContainerIdForPayload(), request);
+        ChexsonsaeutilsNetwork.channel().sendToServer(payload);
     }
 
     @Override

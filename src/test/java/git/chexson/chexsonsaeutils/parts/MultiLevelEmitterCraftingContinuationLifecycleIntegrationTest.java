@@ -76,7 +76,7 @@ class MultiLevelEmitterCraftingContinuationLifecycleIntegrationTest {
         assertContains(PARTIAL_SUBMIT, "plan.missingItems()");
         assertContains(PARTIAL_SUBMIT, "seedInitialWaitingFor(");
         assertContains(PARTIAL_SUBMIT, "recordWaitingDetail(");
-        assertContains(PARTIAL_SUBMIT, "timeTracker");
+        assertContains(PARTIAL_SUBMIT, "getTimeTracker(");
         assertContains(CPU_LOGIC_ACCESSOR, "getInventory");
         assertContains(EXECUTING_JOB_ACCESSOR, "getWaitingFor");
     }
@@ -159,7 +159,7 @@ class MultiLevelEmitterCraftingContinuationLifecycleIntegrationTest {
         });
 
         assertContains(MIXINS, MIXIN_PLUGIN_CLASS);
-        assertContains(MIXIN_PLUGIN, "ContinuationFeatureGate.isEnabledAtStartup()");
+        assertContains(MIXIN_PLUGIN, "FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED");
     }
 
     @Test

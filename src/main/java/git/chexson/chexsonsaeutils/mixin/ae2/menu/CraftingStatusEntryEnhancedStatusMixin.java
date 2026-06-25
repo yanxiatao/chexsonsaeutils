@@ -27,15 +27,11 @@ public abstract class CraftingStatusEntryEnhancedStatusMixin implements Enhanced
     }
 
     @Inject(method = "write", at = @At("TAIL"), remap = false)
-    private static void chexsonsaeutils$writeBlockedAmount(
+    private void chexsonsaeutils$writeBlockedAmount(
             FriendlyByteBuf buffer,
-            CraftingStatusEntry entry,
             CallbackInfo ci
     ) {
-        long blockedAmount = entry instanceof EnhancedCraftingStatusEntry enhancedEntry
-                ? enhancedEntry.chexsonsaeutils$blockedAmount()
-                : 0L;
-        buffer.writeVarLong(blockedAmount);
+        buffer.writeVarLong(this.chexsonsaeutils$blockedAmount());
     }
 
     @Inject(method = "read", at = @At("RETURN"), remap = false)

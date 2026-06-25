@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.menu.implementations;
 import appeng.api.config.CpuSelectionMode;
 import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.api.stacks.GenericStack;
+import appeng.core.sync.packets.CraftingStatusPacket;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.guisync.PacketWritable;
 import appeng.menu.implementations.MenuTypeBuilder;
@@ -76,9 +77,17 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
 
     @Override
     protected void setCPU(ICraftingCPU c) {
-        super.setCPU(c);
-        this.selectedCpu = c;
-        this.selectedCpuSerial = getOrAssignCpuSerial(c);
+        if (c instanceof ParallelCraftingCPU parallelCpu) {
+            this.selectedCpu = parallelCpu;
+            this.selectedCpuSerial = getOrAssignCpuSerial(parallelCpu);
+            if (isServerSide()) {
+                sendPacketToClient(new CraftingStatusPacket(containerId, parallelCpu.createMenuStatus()));
+            }
+        } else {
+            super.setCPU(c);
+            this.selectedCpu = c;
+            this.selectedCpuSerial = getOrAssignCpuSerial(c);
+        }
     }
 
     @Override
@@ -88,6 +97,9 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
             clearSelectionIfMissing();
             selectDefaultCpuIfNeeded();
             selectionMode = host.getParallelCpuCluster().getSelectionMode();
+            if (selectedCpu instanceof ParallelCraftingCPU parallelCpu) {
+                sendPacketToClient(new CraftingStatusPacket(containerId, parallelCpu.createMenuStatus()));
+            }
         }
         super.broadcastChanges();
     }

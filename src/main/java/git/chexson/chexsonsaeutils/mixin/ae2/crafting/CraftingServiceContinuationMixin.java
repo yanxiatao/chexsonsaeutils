@@ -13,7 +13,7 @@ import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
 import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
-import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusService;
+import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationSubmitBridge;
 import org.apache.commons.lang3.mutable.MutableObject;
@@ -94,7 +94,7 @@ public abstract class CraftingServiceContinuationMixin {
             return;
         }
 
-        CraftingContinuationStatusService.reconcileWaitingInputs(
+        CraftingContinuationTracker.reconcileWaitingInputs(
                 this.grid,
                 this.craftingCPUClusters,
                 what,
@@ -104,7 +104,7 @@ public abstract class CraftingServiceContinuationMixin {
 
     @Inject(method = "updateCPUClusters", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$reconcileWaitingInputsAfterCpuRebuild(CallbackInfo ci) {
-        CraftingContinuationStatusService.reconcileWaitingInputs(
+        CraftingContinuationTracker.reconcileWaitingInputs(
                 this.grid,
                 this.craftingCPUClusters,
                 null,
@@ -114,7 +114,7 @@ public abstract class CraftingServiceContinuationMixin {
 
     @Inject(method = "onServerEndTick", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$reconcileWaitingInputsOnServerEndTick(CallbackInfo ci) {
-        CraftingContinuationStatusService.reconcileWaitingInputsOnServerEndTick(
+        CraftingContinuationTracker.reconcileWaitingInputsOnServerEndTick(
                 this.grid,
                 this.craftingCPUClusters
         );

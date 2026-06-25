@@ -30,6 +30,7 @@ class MultiLevelEmitterRegistrationTest {
     @Test
     void modBootstrapContainsRegistrationAnchors() throws IOException {
         String modSource = readUtf8(javaSource("git/chexson/chexsonsaeutils/Chexsonsaeutils.java"));
+        String contentSource = readUtf8(javaSource("git/chexson/chexsonsaeutils/registration/ChexsonsaeutilsContent.java"));
         String screenSource = readUtf8(javaSource(
                 "git/chexson/chexsonsaeutils/client/gui/implementations/MultiLevelEmitterRuntimeScreen.java"
         ));
@@ -42,16 +43,16 @@ class MultiLevelEmitterRegistrationTest {
         JsonObject zhCn = readLang(resourcePath("assets/chexsonsaeutils/lang/zh_cn.json"));
         String gradleProperties = readUtf8(Path.of("gradle.properties"));
         assertTrue(modSource.contains("MULTI_LEVEL_EMITTER_ITEM"), "missing emitter RegistryObject");
-        assertTrue(modSource.contains("ITEMS.register(MultiLevelEmitterItem.id()"), "missing item registration call");
-        assertTrue(modSource.contains("event.enqueueWork(Chexsonsaeutils::registerMultiLevelEmitterBootstrap)"),
+        assertTrue(contentSource.contains("ITEMS.register(MultiLevelEmitterItem.id()"), "missing item registration call");
+        assertTrue(contentSource.contains("registerMultiLevelEmitterBootstrap()"),
                 "missing common setup bootstrap enqueue");
-        assertTrue(modSource.contains("Upgrades.add(AEItems.FUZZY_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
+        assertTrue(contentSource.contains("Upgrades.add(AEItems.FUZZY_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
                 "missing AE2 fuzzy card registration for the multi-level emitter");
-        assertTrue(modSource.contains("Upgrades.add(AEItems.CRAFTING_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
+        assertTrue(contentSource.contains("Upgrades.add(AEItems.CRAFTING_CARD, MULTI_LEVEL_EMITTER_ITEM.get(), 1)"),
                 "missing AE2 crafting card registration for the multi-level emitter");
-        assertTrue(modSource.contains("Chexsonsaeutils.registerMultiLevelEmitterClientBindings()"),
+        assertTrue(modSource.contains("ChexsonsaeutilsContent.registerClientScreens()"),
                 "missing client setup binding call");
-        assertTrue(modSource.contains("MenuScreens.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new)"),
+        assertTrue(contentSource.contains("MenuScreens.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new)"),
                 "missing client screen registration for the custom MultiLevelEmitter menu");
         assertFalse(modSource.contains("modEventBus.addListener(ClientModEvents::onClientSetup)"),
                 "client setup must not be registered twice");

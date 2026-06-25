@@ -2,6 +2,9 @@ package git.chexson.chexsonsaeutils.parts;
 
 import org.junit.jupiter.api.Test;
 
+import git.chexson.chexsonsaeutils.config.StartupConfigReader;
+import org.junit.jupiter.api.Test;
+
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -21,8 +24,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MultiLevelEmitterCraftingContinuationConfigGateTest {
 
-    private static final String FEATURE_GATE_CLASS =
-            "git.chexson.chexsonsaeutils.config.ContinuationFeatureGate";
     private static final String MIXIN_PLUGIN_CLASS =
             "git.chexson.chexsonsaeutils.mixin.ae2.ChexsonsaeutilsMixinPlugin";
     private static final String CONTINUATION_MENU_MIXIN =
@@ -37,19 +38,19 @@ class MultiLevelEmitterCraftingContinuationConfigGateTest {
             "src/main/java/git/chexson/chexsonsaeutils/Chexsonsaeutils.java");
 
     @Test
-    void resolvesPersistedFalseBeforeSpecLoads() throws Exception {
+    void resolvesPersistedFalseBeforeSpecLoads() throws IOException {
         Path configFile = writeCommonConfig("continuation-gate-config", "craftingContinuationEnabled = false");
         assertEquals(Boolean.FALSE, invokeStartupConfigRead(configFile));
     }
 
     @Test
-    void resolvesPersistedTrueBeforeSpecLoads() throws Exception {
+    void resolvesPersistedTrueBeforeSpecLoads() throws IOException {
         Path configFile = writeCommonConfig("continuation-gate-config", "craftingContinuationEnabled = true");
         assertEquals(Boolean.TRUE, invokeStartupConfigRead(configFile));
     }
 
     @Test
-    void fallsBackToDefaultWhenStartupConfigMissingOrUnreadable() throws Exception {
+    void fallsBackToDefaultWhenStartupConfigMissingOrUnreadable() throws IOException {
         Path missingConfig = Files.createTempDirectory("continuation-gate-missing")
                 .resolve(commonConfigFileName());
         assertEquals(Boolean.TRUE, invokeStartupConfigRead(missingConfig));
@@ -108,7 +109,7 @@ class MultiLevelEmitterCraftingContinuationConfigGateTest {
                 "git/chexson/chexsonsaeutils/mixin/ae2/ChexsonsaeutilsMixinPlugin.java"
         );
         assertContains(mixinPlugin, "IMixinConfigPlugin");
-        assertContains(mixinPlugin, "ContinuationFeatureGate.isEnabledAtStartup()");
+        assertContains(mixinPlugin, "FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED");
     }
 
     @Test
@@ -135,10 +136,8 @@ class MultiLevelEmitterCraftingContinuationConfigGateTest {
         return (Boolean) shouldApplyMixin.invoke(plugin, targetClassName, mixinClassName);
     }
 
-    private static Boolean invokeStartupConfigRead(Path configFile) throws ReflectiveOperationException {
-        Class<?> featureGateClass = Class.forName(FEATURE_GATE_CLASS);
-        Method isEnabledAtStartup = featureGateClass.getMethod("isEnabledAtStartup", Path.class);
-        return (Boolean) isEnabledAtStartup.invoke(null, configFile);
+    private static Boolean invokeStartupConfigRead(Path configFile) {
+        return StartupConfigReader.readBoolean(configFile, "craftingContinuationEnabled", true);
     }
 
 }

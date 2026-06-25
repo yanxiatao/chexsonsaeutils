@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.crafting.formalmachine;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.stacks.AEItemKey;
+import appeng.crafting.pattern.EncodedPatternItem;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
@@ -130,10 +131,11 @@ public final class FormalMachineAggregatedPatternImpl implements FormalMachineAg
         );
     }
 
+    // ponytail: direct instanceof check avoids recursion through PatternDetailsHelper decoder loop
     public static boolean isEncodedDefinition(@Nullable ItemStack stack) {
         return stack != null
                 && !stack.isEmpty()
-                && PatternDetailsHelper.isEncodedPattern(stack)
+                && stack.getItem() instanceof EncodedPatternItem
                 && getMetadataTag(stack) != null;
     }
 

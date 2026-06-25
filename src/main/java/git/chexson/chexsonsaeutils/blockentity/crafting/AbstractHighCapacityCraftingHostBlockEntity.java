@@ -5,15 +5,12 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.inventories.InternalInventory;
-import appeng.api.networking.GridFlags;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
-import appeng.api.networking.IGridNodeListener;
 import appeng.api.networking.crafting.ICraftingCPU;
-import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.crafting.ICraftingProvider;
+import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.storage.IStorageService;
-import appeng.api.orientation.BlockOrientation;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
@@ -21,17 +18,15 @@ import appeng.api.stacks.KeyCounter;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
-import appeng.blockentity.AEBaseBlockEntity;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
-import appeng.crafting.execution.ExecutingCraftingJob;
-import appeng.me.cluster.implementations.CraftingCPUCluster;
-import appeng.me.service.CraftingService;
+import appeng.blockentity.grid.AENetworkBlockEntity;
 import appeng.core.definitions.AEItems;
+import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.pattern.AECraftingPattern;
 import appeng.helpers.patternprovider.PatternContainer;
-import appeng.me.ManagedGridNode;
-import appeng.me.helpers.IGridConnectedBlockEntity;
+import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.helpers.MachineSource;
+import appeng.me.service.CraftingService;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
@@ -48,7 +43,6 @@ import git.chexson.chexsonsaeutils.crafting.persistence.HighCapacityPatternHostS
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobAccessor;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.NonNullList;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -70,7 +64,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -79,8 +72,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
-public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBaseBlockEntity
-        implements IGridConnectedBlockEntity, PatternContainer, IUpgradeableObject, ICraftingProvider, InternalInventoryHost,
+public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetworkBlockEntity
+        implements PatternContainer, IUpgradeableObject, ICraftingProvider, InternalInventoryHost,
         FormalMachinePlanningProvider {
 
     protected static boolean supportsCompletionTemplate(@Nullable IMolecularAssemblerSupportedPattern pattern) {
@@ -214,7 +207,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
     private static final long TICK_HARD_BUDGET_NANOS = 5_000_000L;
     private static final long TICK_ABSOLUTE_BUDGET_NANOS = 6_000_000L;
 
-    private final ManagedGridNode mainNode;
     protected final MachineSource actionSource = new MachineSource(this);
     protected final DirtySlotPatternRefreshScheduler refreshScheduler =
             new DirtySlotPatternRefreshScheduler(TOTAL_PATTERN_SLOTS);
@@ -227,7 +219,16 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
     protected final LocalExecutionQueue localExecutionQueue = new LocalExecutionQueue(LOCAL_EXECUTION_QUEUE_CAPACITY);
     private final Supplier<ItemStack> representativeItemSupplier;
     private final IUpgradeInventory upgrades;
-    private final TransientCraftingContainer craftingContainer;
+    private final TransientCraftingContainer craftingContainer = new TransientCraftingContainer(new AbstractContainerMenu(null, -1) {
+        @Override
+        public ItemStack quickMoveStack(Player player, int index) {
+            return ItemStack.EMPTY;
+        }
+        @Override
+        public boolean stillValid(Player player) {
+            return true;
+        }
+    }, 3, 3);
     private final PatternSearchIndex patternSearchIndex = new PatternSearchIndex();
     private final VirtualPatternInventoryContainer automationContainer = new VirtualPatternInventoryContainer(this);
     private final VirtualPatternItemHandler automationItemHandler = new VirtualPatternItemHandler(automationContainer);
@@ -282,20 +283,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
             boolean formalMachineDispatchHost
     ) {
         super(blockEntityType, pos, blockState);
-        this.mainNode = new ManagedGridNode(this, new Listener())
-                .setIdlePowerUsage(0.0)
-                .setInWorldNode(true)
-                .setFlags(GridFlags.REQUIRE_CHANNEL);
-        this.craftingContainer = new TransientCraftingContainer(new AbstractContainerMenu(null, -1) {
-            @Override
-            public ItemStack quickMoveStack(Player player, int index) {
-                return ItemStack.EMPTY;
-            }
-            @Override
-            public boolean stillValid(Player player) {
-                return true;
-            }
-        }, 3, 3);
         this.representativeItemSupplier = representativeItemSupplier;
         this.pageStatusTranslationKey = pageStatusTranslationKey;
         this.initialBatchExecutionMode = initialBatchExecutionMode == null
@@ -308,17 +295,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
                 UPGRADE_SLOTS,
                 this::saveChanges
         );
-        this.mainNode.addService(ICraftingProvider.class, this);
-    }
-
-    @Override
-    public ManagedGridNode getMainNode() {
-        return mainNode;
-    }
-
-    @Override
-    public Set<Direction> getGridConnectableSides(BlockOrientation orientation) {
-        return EnumSet.allOf(Direction.class);
+        this.getMainNode()
+                .setIdlePowerUsage(0.0)
+                .addService(ICraftingProvider.class, this);
     }
 
     public static void serverTick(
@@ -335,7 +314,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
     @Override
     public void onReady() {
         super.onReady();
-        this.mainNode.create(getLevel(), getBlockPos());
         loadExternalPatternsIfNeeded();
         localPatternProviderFacade.markAllDirty();
         recalculateBudgetModel();
@@ -347,14 +325,12 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
 
     @Override
     public void setRemoved() {
-        this.mainNode.destroy();
         super.setRemoved();
     }
 
     @Override
     public void saveAdditional(CompoundTag data) {
         super.saveAdditional(data);
-        this.mainNode.saveToNBT(data);
         upgrades.writeToNBT(data, NBT_UPGRADES);
         localExecutionQueue.writeToTag(data, NBT_EXECUTION_QUEUE);
         data.putInt(NBT_BASE_TICKS, baseOperationTicks);
@@ -387,7 +363,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
     @Override
     public void loadTag(CompoundTag data) {
         super.loadTag(data);
-        this.mainNode.loadFromNBT(data);
         upgrades.readFromNBT(data, NBT_UPGRADES);
         localExecutionQueue.readFromTag(data, NBT_EXECUTION_QUEUE);
         baseOperationTicks = data.contains(NBT_BASE_TICKS) ? Math.max(1, data.getInt(NBT_BASE_TICKS)) : DEFAULT_BASE_TICKS;
@@ -2105,7 +2080,10 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
         localPatternProviderFacade.markAllDirty();
         localPatternProviderFacade.refreshDirtyPatterns();
         localPatternProviderFacade.consumeProviderVisibleSetUpdatePending();
-        ICraftingProvider.requestUpdate(getMainNode());
+        IGridNode gridNode = getMainNode().getNode();
+        if (gridNode != null) {
+            gridNode.getGrid().getCraftingService().refreshNodeCraftingProvider(gridNode);
+        }
         providerRefreshAfterReadyPending = false;
     }
 
@@ -2120,7 +2098,10 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
             providerRefreshAfterReadyPending = true;
             return;
         }
-        ICraftingProvider.requestUpdate(getMainNode());
+        IGridNode gridNode = getMainNode().getNode();
+        if (gridNode != null) {
+            gridNode.getGrid().getCraftingService().refreshNodeCraftingProvider(gridNode);
+        }
     }
 
     public void onBlockRemovedFromWorld() {
@@ -2330,13 +2311,6 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AEBase
             @Nullable GenericStack primary,
             Map<AEItemKey, Long> remainders
     ) {
-    }
-
-    private static class Listener implements IGridNodeListener<AbstractHighCapacityCraftingHostBlockEntity> {
-        @Override
-        public void onSaveChanges(AbstractHighCapacityCraftingHostBlockEntity node, IGridNode gridNode) {
-            node.saveChanges();
-        }
     }
 
 }

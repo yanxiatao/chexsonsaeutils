@@ -10,6 +10,10 @@ import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMach
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.FeatureGates;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingReloadListener;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeUserConfigStore;
+import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
 import git.chexson.chexsonsaeutils.client.ae2.DyeablePatternPackRegistration;
 import git.chexson.chexsonsaeutils.client.ae2.PatternItemColorRegistration;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
@@ -17,6 +21,7 @@ import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMach
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
+import git.chexson.chexsonsaeutils.network.ChexsonsaeutilsNetwork;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacementDecoder;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.world.inventory.MenuType;
@@ -25,12 +30,14 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraftforge.client.event.RegisterColorHandlersEvent;
 import net.minecraftforge.event.AddPackFindersEvent;
+import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
+import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
@@ -85,14 +92,38 @@ public class Chexsonsaeutils {
         ChexsonsaeutilsContent.register(modEventBus);
 
         modEventBus.addListener(this::onCommonSetup);
+        modEventBus.addListener(this::onConfigLoad);
+        modEventBus.addListener(this::onConfigReload);
         MinecraftForge.EVENT_BUS.addGenericListener(BlockEntity.class, ChexsonsaeutilsContent::onAttachCapabilities);
+        MinecraftForge.EVENT_BUS.addListener(this::onAddReloadListeners);
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(ChexsonsaeutilsContent::registerCommonContent);
+        event.enqueueWork(ChexsonsaeutilsNetwork::register);
+        event.enqueueWork(Chexsonsaeutils::applyDirectProcessingMachineRecipeMappings);
         if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
         }
+        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")) {
+            event.enqueueWork(Chexsonsaeutils::registerFormalMachineAggregatedPatternDecoder);
+        }
+    }
+
+    private void onConfigLoad(ModConfigEvent.Loading event) {
+        if (event.getConfig().getSpec() == ChexsonsaeutilsCompatibilityConfig.SPEC) {
+            applyDirectProcessingMachineRecipeMappings();
+        }
+    }
+
+    private void onConfigReload(ModConfigEvent.Reloading event) {
+        if (event.getConfig().getSpec() == ChexsonsaeutilsCompatibilityConfig.SPEC) {
+            applyDirectProcessingMachineRecipeMappings();
+        }
+    }
+
+    private void onAddReloadListeners(AddReloadListenerEvent event) {
+        event.addListener(new MachineRecipeConfigMappingReloadListener());
     }
 
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
@@ -123,6 +154,22 @@ public class Chexsonsaeutils {
         List<IPatternDetailsDecoder> decoders = PatternDetailsHelperAccessor.chexsonsaeutils$getDecoders();
         decoders.removeIf(existingDecoder -> existingDecoder.getClass() == decoder.getClass());
         decoders.add(0, decoder);
+    }
+
+    private static void registerFormalMachineAggregatedPatternDecoder() {
+        IPatternDetailsDecoder decoder = new FormalMachineAggregatedPatternDecoder();
+        List<IPatternDetailsDecoder> decoders = PatternDetailsHelperAccessor.chexsonsaeutils$getDecoders();
+        decoders.removeIf(existingDecoder -> existingDecoder.getClass() == decoder.getClass());
+        decoders.add(0, decoder);
+    }
+
+    private static void applyDirectProcessingMachineRecipeMappings() {
+        MachineRecipeConfigMappingRegistry.instance().replaceUserConfigMappings(
+                MachineRecipeUserConfigStore.instance().loadMappings()
+        );
+        MachineRecipeConfigMappingRegistry.instance().replaceMappings(
+                List.copyOf(ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_RECIPE_MAPPINGS.get())
+        );
     }
 
     // Backward-compatible delegates for legacy callers

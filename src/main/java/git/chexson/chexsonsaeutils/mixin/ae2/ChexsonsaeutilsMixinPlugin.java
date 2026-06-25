@@ -3,6 +3,8 @@ package git.chexson.chexsonsaeutils.mixin.ae2;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.FeatureGates;
+import net.minecraftforge.fml.loading.FMLLoader;
+import net.minecraftforge.fml.loading.LoadingModList;
 import org.objectweb.asm.tree.ClassNode;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
@@ -14,6 +16,10 @@ import java.util.Set;
 public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
 
     private static final Logger LOGGER = LogUtils.getLogger();
+
+    private static final String BUILDING_GADGETS2_MOD_ID = "buildinggadgets2";
+    private static final String FTB_ULTIMINE_MOD_ID = "ftbultimine";
+    private static final String AE2CT_MOD_ID = "ae2ct";
 
     private static final Set<String> REPLACEMENT_RUNTIME_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor",
@@ -77,6 +83,18 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingPlanSummaryEntryEnhancedStatusMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftConfirmTableRendererEnhancedStatusMixin"
     );
+    private static final Set<String> AEA_BUILDING_GADGETS2_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.TemplateManagerHandlerMixin",
+            "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.PacketUpdateTemplateManagerMixin",
+            "git.chexson.chexsonsaeutils.mixin.buildinggadgets2.PacketUpdateTemplateManagerAccessor"
+    );
+    private static final Set<String> AEA_FTB_ULTIMINE_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.ftbultimine.RightClickDispatcherMemoryCardMixin"
+    );
+    private static final Set<String> AE2CT_COMPAT_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CraftingPlanSummaryCompatMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CTRecipeHelperCompatMixin"
+    );
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -119,7 +137,37 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         if (AEA_ENHANCED_CRAFTING_STATUS_MIXINS.contains(mixinClassName)) {
             return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
+        if (AEA_BUILDING_GADGETS2_MIXINS.contains(mixinClassName)) {
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.BUILDING_GADGETS2_INTEGRATION_ENABLED, "buildingGadgets2IntegrationEnabled")
+                    && isLoadedDuringMixinScan(BUILDING_GADGETS2_MOD_ID, mixinClassName);
+        }
+        if (AEA_FTB_ULTIMINE_MIXINS.contains(mixinClassName)) {
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FTB_ULTIMINE_MEMORY_CARD_ENABLED, "ftbUltimineMemoryCardEnabled")
+                    && isLoadedDuringMixinScan(FTB_ULTIMINE_MOD_ID, mixinClassName);
+        }
+        if (AE2CT_COMPAT_MIXINS.contains(mixinClassName)) {
+            return isLoadedDuringMixinScan(AE2CT_MOD_ID, mixinClassName);
+        }
         return true;
+    }
+
+    private static boolean isLoadedDuringMixinScan(String modId, String mixinClassName) {
+        try {
+            LoadingModList loadingModList = FMLLoader.getLoadingModList();
+            if (loadingModList == null) {
+                LOGGER.warn("Skipping mixin {} because loading mod list is unavailable for {}", mixinClassName, modId);
+                return false;
+            }
+            boolean loaded = loadingModList.getModFileById(modId) != null;
+            if (!loaded) {
+                LOGGER.info("Skipping mixin {} because optional mod {} is not loaded", mixinClassName, modId);
+            }
+            return loaded;
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Skipping mixin {} because optional mod {} could not be checked", mixinClassName, modId,
+                    exception);
+            return false;
+        }
     }
 
     @Override

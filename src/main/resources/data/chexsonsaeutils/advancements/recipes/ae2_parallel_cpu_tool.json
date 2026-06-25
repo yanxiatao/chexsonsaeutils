@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_controller": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": ["ae2:controller"]
+          }
+        ]
+      }
+    },
+    "has_the_recipe": {
+      "trigger": "minecraft:recipe_unlocked",
+      "conditions": {
+        "recipe": "chexsonsaeutils:ae2_parallel_cpu_tool"
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_controller",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "chexsonsaeutils:ae2_parallel_cpu_tool"
+    ]
+  }
+}

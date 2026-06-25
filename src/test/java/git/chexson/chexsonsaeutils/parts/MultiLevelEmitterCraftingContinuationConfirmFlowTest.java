@@ -94,7 +94,7 @@ class MultiLevelEmitterCraftingContinuationConfirmFlowTest {
         });
 
         assertContains(MIXINS, MIXIN_PLUGIN_CLASS);
-        assertContains(MIXIN_PLUGIN, "ContinuationFeatureGate.isEnabledAtStartup()");
+        assertContains(MIXIN_PLUGIN, "FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED");
     }
 
     @Test

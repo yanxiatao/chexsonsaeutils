@@ -20,8 +20,7 @@ import appeng.me.helpers.InterestManager;
 import appeng.me.helpers.StackWatcher;
 import appeng.me.service.CraftingService;
 import com.google.common.collect.ImmutableSet;
-import com.llamalad7.mixinextras.sugar.Local;
-import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
+
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.FeatureGates;
@@ -115,7 +114,8 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
             ),
             remap = false
     )
-    private void chexsonsaeutils$tickParallelCpuLanes(CallbackInfo ci, @Local(name = "latestChange") long latestChange) {
+    private void chexsonsaeutils$tickParallelCpuLanes(CallbackInfo ci) {
+        long latestChange = this.lastProcessedCraftingLogicChangeTick;
         long latestParallelChange = chexsonsaeutils$getSyncedParallelCpuGrid()
                 .tick(this.energyGrid, (CraftingService) (Object) this);
         if (latestParallelChange > latestChange) {
@@ -180,7 +180,18 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
             cir.setReturnValue(result);
             return;
         }
-        // TODO: Sprint 3 - CraftingContinuationPartialSubmit integration
+        if (CraftingContinuationPartialSubmit.isPartialSubmitRequest(
+                job,
+                CraftingContinuationSubmitBridge.currentMode())) {
+            ICraftingSubmitResult result = chexsonsaeutils$getSyncedParallelCpuGrid()
+                    .submitPartialJob(job, requestingMachine, target, prioritizePower, src);
+            if (result != null) {
+                chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
+                cir.setReturnValue(result);
+            }
+            return;
+        }
+
         if (!(target instanceof ParallelCraftingCPU)) {
             return;
         }
@@ -262,17 +273,17 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
 
     @Inject(
             method = "insertIntoCpus",
-            at = @At(value = "RETURN", shift = At.Shift.BY, by = -1),
+            at = @At("RETURN"),
+            cancellable = true,
             remap = false
     )
     private void chexsonsaeutils$insertIntoParallelCpus(
             AEKey what,
             long amount,
             Actionable type,
-            CallbackInfoReturnable<Long> cir,
-            @Local(ordinal = 1) LocalLongRef inserted
+            CallbackInfoReturnable<Long> cir
     ) {
-        long original = Math.max(0L, inserted.get());
+        long original = Math.max(0L, cir.getReturnValue());
         long parallelInserted = chexsonsaeutils$getSyncedParallelCpuGrid().insertIntoCpus(
                 what,
                 amount,
@@ -280,7 +291,7 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
                 original
         );
         if (parallelInserted > 0L) {
-            inserted.set(saturatedAdd(original, parallelInserted));
+            cir.setReturnValue(saturatedAdd(original, parallelInserted));
         }
     }
 
