@@ -89,7 +89,7 @@ public final class ParallelCraftingCpuCluster {
     }
 
     public boolean canAdvertiseRemainingCapacityCpu() {
-        return hasSubmissionCapacity() && storageBytes() > 0L;
+        return hasSubmissionCapacity();
     }
 
     public ICraftingSubmitResult submitJob(
@@ -104,9 +104,6 @@ public final class ParallelCraftingCpuCluster {
         }
         if (!hasSubmissionCapacity()) {
             return CraftingSubmitResult.CPU_BUSY;
-        }
-        if (storageBytes() < plan.bytes()) {
-            return CraftingSubmitResult.CPU_TOO_SMALL;
         }
 
         ParallelCraftingLaneState lane = new ParallelCraftingLaneState(this, UUID.randomUUID(), currentTick);
@@ -138,9 +135,6 @@ public final class ParallelCraftingCpuCluster {
         }
         if (!hasSubmissionCapacity()) {
             return CraftingSubmitResult.CPU_BUSY;
-        }
-        if (storageBytes() < plan.bytes()) {
-            return CraftingSubmitResult.CPU_TOO_SMALL;
         }
 
         ParallelCraftingLaneState lane = new ParallelCraftingLaneState(this, UUID.randomUUID(), currentTick);
@@ -509,11 +503,11 @@ public final class ParallelCraftingCpuCluster {
     }
 
     public long storageBytes() {
-        return ParallelCraftingCpuConfig.current().storageBytes();
+        return Long.MAX_VALUE;
     }
 
     int advertisedCoProcessors() {
-        return ParallelCraftingCpuConfig.current().coProcessorsPerVirtualCpu();
+        return Integer.MAX_VALUE;
     }
 
     public ParallelCraftingCPU remainingCapacityCpu() {

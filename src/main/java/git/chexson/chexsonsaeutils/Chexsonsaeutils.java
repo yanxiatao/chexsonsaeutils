@@ -8,8 +8,11 @@ import git.chexson.chexsonsaeutils.block.crafting.HighCapacityCraftingMachineBlo
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
+import git.chexson.chexsonsaeutils.cell.InfinityCellStore;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.FeatureGates;
+import git.chexson.chexsonsaeutils.cell.CellCommand;
+import git.chexson.chexsonsaeutils.cell.CellRegistration;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingReloadListener;
@@ -26,7 +29,9 @@ import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacem
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -42,6 +47,9 @@ import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
 import java.util.List;
@@ -94,6 +102,11 @@ public class Chexsonsaeutils {
         modEventBus.addListener(this::onRegisterCapabilities);
         modEventBus.addListener(this::onRegisterPayloadHandlers);
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListeners);
+        NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
+        NeoForge.EVENT_BUS.addListener(this::onLevelLoad);
+        NeoForge.EVENT_BUS.addListener(this::onLevelSave);
+        NeoForge.EVENT_BUS.addListener(this::onLevelUnload);
+        NeoForge.EVENT_BUS.addListener(this::onServerStopping);
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
@@ -131,8 +144,46 @@ public class Chexsonsaeutils {
         );
     }
 
+    private void onRegisterCommands(RegisterCommandsEvent event) {
+        CellCommand.register(event.getDispatcher());
+    }
+
     private void onAddReloadListeners(AddReloadListenerEvent event) {
         event.addListener(new MachineRecipeConfigMappingReloadListener());
+    }
+
+    private void onLevelLoad(LevelEvent.Load event) {
+        if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level
+                && level.dimension() == Level.OVERWORLD) {
+            var server = level.getServer();
+            InfinityCellStore.global().loadOnce(server.getWorldPath(LevelResource.ROOT), server.registryAccess());
+        }
+    }
+
+    private void onLevelSave(LevelEvent.Save event) {
+        if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level
+                && level.dimension() == Level.OVERWORLD) {
+            saveInfinityCellStore(level);
+        }
+    }
+
+    private void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level
+                && level.dimension() == Level.OVERWORLD) {
+            saveInfinityCellStore(level);
+        }
+    }
+
+    private void onServerStopping(ServerStoppingEvent event) {
+        InfinityCellStore.global().save(
+                event.getServer().getWorldPath(LevelResource.ROOT),
+                event.getServer().registryAccess()
+        );
+    }
+
+    private static void saveInfinityCellStore(net.minecraft.server.level.ServerLevel level) {
+        var server = level.getServer();
+        InfinityCellStore.global().save(server.getWorldPath(LevelResource.ROOT), server.registryAccess());
     }
 
     @EventBusSubscriber(modid = MODID, value = Dist.CLIENT)

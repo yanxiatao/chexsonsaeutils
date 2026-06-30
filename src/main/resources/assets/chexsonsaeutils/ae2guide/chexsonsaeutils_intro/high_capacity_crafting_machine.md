@@ -1,7 +1,7 @@
 ---
 navigation:
   parent: chexsonsaeutils_intro/index.md
-  title: High-Capacity Crafting Machine
+  title: Abyssal Convergence
   position: 20
   icon: chexsonsaeutils:high_capacity_crafting_machine
 categories:
@@ -10,7 +10,7 @@ item_ids:
   - chexsonsaeutils:high_capacity_crafting_machine
 ---
 
-# 高槽位合成机
+# 归墟
 
 <BlockImage id="chexsonsaeutils:high_capacity_crafting_machine" scale="4" />
 

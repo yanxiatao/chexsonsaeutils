@@ -18,6 +18,9 @@ public final class Ae2CompactNumberFormatter {
     }
 
     public static String format(long value) {
+        if (value == Integer.MAX_VALUE || value == Long.MAX_VALUE) {
+            return "∞";
+        }
         long absolute = value == Long.MIN_VALUE ? Long.MAX_VALUE : Math.abs(value);
         if (absolute < 1000L) {
             return Long.toString(value);

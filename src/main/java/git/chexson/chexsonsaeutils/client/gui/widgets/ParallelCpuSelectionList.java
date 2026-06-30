@@ -85,7 +85,10 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
         tooltipLines.add(getCpuName(cpu));
 
         int coProcessors = cpu.coProcessors();
-        if (coProcessors == 1) {
+        if (coProcessors == Integer.MAX_VALUE) {
+            tooltipLines.add(ButtonToolTips.CpuStatusCoProcessors.text(Component.literal("∞"))
+                    .withStyle(ChatFormatting.GRAY));
+        } else if (coProcessors == 1) {
             tooltipLines.add(ButtonToolTips.CpuStatusCoProcessor.text(Tooltips.ofNumber(coProcessors))
                     .withStyle(ChatFormatting.GRAY));
         } else if (coProcessors > 1) {
