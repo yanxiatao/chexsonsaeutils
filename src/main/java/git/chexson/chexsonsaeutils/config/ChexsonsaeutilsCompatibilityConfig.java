@@ -16,14 +16,12 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue BUILDING_GADGETS2_INTEGRATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FTB_ULTIMINE_MEMORY_CARD_ENABLED;
     public static final ModConfigSpec.BooleanValue PARALLEL_CRAFTING_CPU_ENABLED;
-    public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_CO_PROCESSORS_PER_VIRTUAL_CPU;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_SUBMISSIONS_PER_TICK_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_PATTERN_PUSHES_PER_TICK_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_PROVIDER_CHECKS_PER_TICK_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_TICK_BUDGET_NANOS_PER_GRID;
-    public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_STORAGE_BYTES;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_LANE_SHARD_COUNT;
     public static final ModConfigSpec.ConfigValue<List<? extends String>>
             AE_DIRECT_PROCESSING_MACHINE_RECIPE_MAPPINGS;
@@ -114,12 +112,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuEnabled")
                 .define("parallelCraftingCpuEnabled", true);
-        PARALLEL_CRAFTING_CPU_CO_PROCESSORS_PER_VIRTUAL_CPU = builder
-                .comment("Advertised co-processors per virtual CPU.",
-                        "Clamped below Integer.MAX_VALUE to avoid overflow.")
-                .translation("configuration.chexsonsaeutils.parallelCraftingCpuCoProcessorsPerVirtualCpu")
-                .defineInRange("parallelCraftingCpuCoProcessorsPerVirtualCpu",
-                        2_147_483_646, 0, Integer.MAX_VALUE - 1);
         PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK = builder
                 .comment("Maximum internal crafting lanes per tool block.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxInternalLanesPerBlock")
@@ -151,11 +143,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuTickBudgetNanosPerGrid")
                 .defineInRange("parallelCraftingCpuTickBudgetNanosPerGrid",
                         20_000_000L, 1L, 45_000_000L);
-        PARALLEL_CRAFTING_CPU_STORAGE_BYTES = builder
-                .comment("Advertised crafting storage bytes for the tool.")
-                .translation("configuration.chexsonsaeutils.parallelCraftingCpuStorageBytes")
-                .defineInRange("parallelCraftingCpuStorageBytes",
-                        Long.MAX_VALUE / 4L, 1_024L, Long.MAX_VALUE / 4L);
         PARALLEL_CRAFTING_CPU_LANE_SHARD_COUNT = builder
                 .comment("Shard count used by the extreme-lane scheduler.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuLaneShardCount")
