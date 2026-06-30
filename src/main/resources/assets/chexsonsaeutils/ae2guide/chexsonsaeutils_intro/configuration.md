@@ -20,10 +20,10 @@ categories:
 
 这些布尔值都是启动期功能总开关。
 
-## 并行 CPU 配置节
+## 无阂枢配置节
 
-`[parallelCraftingCpuTool]` 用来控制工具是否启用，
-以及并行 lane、宣告存储、调度预算等参数。
+`[parallelCraftingCpuTool]` 用来控制无阂枢是否启用，
+以及无阂 lane、宣告存储、调度预算等参数。
 
 ## 径行配置节
 
