@@ -57,10 +57,10 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
     protected void init() {
         super.init();
         previousPageButton = addRenderableWidget(Button.builder(Component.literal("<"), button -> menu.previousPage())
-                .bounds(leftPos + 164, topPos + 62, 14, 16)
+                .bounds(leftPos + 154, topPos + 52, 14, 16)
                 .build());
         nextPageButton = addRenderableWidget(Button.builder(Component.literal(">"), button -> menu.nextPage())
-                .bounds(leftPos + 182, topPos + 62, 14, 16)
+                .bounds(leftPos + 172, topPos + 52, 14, 16)
                 .build());
         importJeiButton = addRenderableWidget(Button.builder(Component.literal("JEI"), button -> importCurrentJeiHints())
                 .bounds(leftPos + 150, topPos + 16, 42, 16)
@@ -90,8 +90,8 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
     public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY, float partialTicks) {
         super.drawBG(guiGraphics, offsetX, offsetY, mouseX, mouseY, partialTicks);
         drawPanel(guiGraphics, offsetX + 4, offsetY + 4, 192, 68);
-        drawPanel(guiGraphics, offsetX + 4, offsetY + 82, 166, 64);
-        drawPanel(guiGraphics, offsetX + 173, offsetY + 84, 25, 94);
+        // drawPanel(guiGraphics, offsetX + 4, offsetY + 82, 166, 64);
+        // drawPanel(guiGraphics, offsetX + 173, offsetY + 84, 25, 94);
         drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.MACHINE_INPUT);
         drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.ENCODED_PATTERN);
         drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.PLAYER_INVENTORY);
