@@ -6,9 +6,13 @@ import appeng.blockentity.AEBaseBlockEntity;
 import appeng.core.definitions.AEItems;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.cell.CellRegistration;
+import git.chexson.chexsonsaeutils.cell.InfinityCellItem;
 import git.chexson.chexsonsaeutils.block.crafting.AEDirectProcessingMachineBlock;
 import git.chexson.chexsonsaeutils.block.crafting.AE2ParallelCpuToolBlock;
 import git.chexson.chexsonsaeutils.block.crafting.HighCapacityCraftingMachineBlock;
+import git.chexson.chexsonsaeutils.block.debug.AutoItemGenBlock;
+import git.chexson.chexsonsaeutils.blockentity.debug.AutoItemGenBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
@@ -38,6 +42,7 @@ import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
@@ -84,6 +89,18 @@ public final class ChexsonsaeutilsContent {
             AE2_PARALLEL_CPU_TOOL.item();
     public static final Supplier<Item> MULTI_LEVEL_EMITTER_ITEM =
             ITEMS.register(MultiLevelEmitterItem.id(), MultiLevelEmitterItem::createItem);
+    public static final Supplier<InfinityCellItem> INFINITY_CELL_ITEM =
+            ITEMS.register(CellRegistration.CELL_ITEM_ID, InfinityCellItem::new);
+    public static final RegisteredBlock<AutoItemGenBlock> AUTO_ITEM_GEN =
+            registerBlockWithItem("auto_item_gen", AutoItemGenBlock::new);
+    public static final Supplier<AutoItemGenBlock> AUTO_ITEM_GEN_BLOCK = AUTO_ITEM_GEN.block();
+    public static final Supplier<Item> AUTO_ITEM_GEN_ITEM = AUTO_ITEM_GEN.item();
+    public static final Supplier<BlockEntityType<AutoItemGenBlockEntity>> AUTO_ITEM_GEN_BLOCK_ENTITY =
+            BLOCK_ENTITY_TYPES.register("auto_item_gen",
+                    () -> {
+                        var block = AUTO_ITEM_GEN_BLOCK.get();
+                        return BlockEntityType.Builder.of(AutoItemGenBlockEntity::new, block).build(null);
+                    });
     public static final Supplier<RecipeType<DirectProcessingMockRecipe>> DIRECT_PROCESSING_MOCK_RECIPE_TYPE =
             RECIPE_TYPES.register("direct_processing_mock", DirectProcessingMockRecipe::createType);
     public static final Supplier<RecipeSerializer<DirectProcessingMockRecipe>>
@@ -138,6 +155,10 @@ public final class ChexsonsaeutilsContent {
                         output.accept(HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get());
                         output.accept(AE_DIRECT_PROCESSING_MACHINE_ITEM.get());
                         output.accept(AE2_PARALLEL_CPU_TOOL_ITEM.get());
+                        output.accept(INFINITY_CELL_ITEM.get());
+                        if (!FMLLoader.isProduction()) {
+                            output.accept(AUTO_ITEM_GEN_ITEM.get());
+                        }
                     })
                     .build());
 
@@ -158,7 +179,9 @@ public final class ChexsonsaeutilsContent {
         registerHighCapacityCraftingMachineBootstrap();
         registerAEDirectProcessingMachineBootstrap();
         registerAE2ParallelCpuToolBootstrap();
+        registerAutoItemGenBootstrap();
         registerMultiLevelEmitterBootstrap();
+        CellRegistration.bootstrap(INFINITY_CELL_ITEM);
     }
 
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
@@ -270,6 +293,20 @@ public final class ChexsonsaeutilsContent {
         AEBaseBlockEntity.registerBlockEntityItem(
                 AE2_PARALLEL_CPU_TOOL_BLOCK_ENTITY.get(),
                 AE2_PARALLEL_CPU_TOOL_ITEM.get()
+        );
+    }
+
+    private static void registerAutoItemGenBootstrap() {
+        AutoItemGenBlock block = AUTO_ITEM_GEN_BLOCK.get();
+        block.setBlockEntity(
+                AutoItemGenBlockEntity.class,
+                AUTO_ITEM_GEN_BLOCK_ENTITY.get(),
+                null,
+                AutoItemGenBlockEntity::serverTick
+        );
+        AEBaseBlockEntity.registerBlockEntityItem(
+                AUTO_ITEM_GEN_BLOCK_ENTITY.get(),
+                AUTO_ITEM_GEN_ITEM.get()
         );
     }
 

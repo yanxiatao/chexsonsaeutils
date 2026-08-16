@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "ECE",
+    "FIF",
+    "ECE"
+  ],
+  "key": {
+    "C": {
+      "item": "ae2:cell_component_256k"
+    },
+    "E": {
+      "item": "ae2:energy_cell"
+    },
+    "F": {
+      "item": "ae2:fluix_block"
+    },
+    "I": {
+      "item": "ae2:singularity"
+    }
+  },
+  "result": {
+    "id": "chexsonsaeutils:infinity_cell"
+  }
+}

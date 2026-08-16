@@ -44,16 +44,16 @@ public class HighCapacityCraftingMachineScreen extends AEBaseScreen<HighCapacity
     protected void init() {
         super.init();
         previousPageButton = addRenderableWidget(Button.builder(Component.literal("<"), button -> menu.previousPage())
-                .bounds(leftPos + 166, topPos + 34, 14, 16)
+                .bounds(leftPos + 148, topPos + 52, 14, 16)
                 .build());
         nextPageButton = addRenderableWidget(Button.builder(Component.literal(">"), button -> menu.nextPage())
-                .bounds(leftPos + 184, topPos + 34, 14, 16)
+                .bounds(leftPos + 166, topPos + 52, 14, 16)
                 .build());
         clearSearchButton = addRenderableWidget(Button.builder(Component.literal("x"), button -> {
             searchBox.setValue("");
             menu.clearSearch();
-        }).bounds(leftPos + 148, topPos + 35, 14, 14).build());
-        searchBox = addRenderableWidget(new EditBox(font, leftPos + 8, topPos + 34, 136, 16, Component.literal("search")));
+        }).bounds(leftPos + 148, topPos + 37, 14, 14).build());
+        searchBox = addRenderableWidget(new EditBox(font, leftPos + 8, topPos + 38, 136, 16, Component.literal("search")));
         searchBox.setMaxLength(64);
         searchBox.setHint(Component.translatable("gui.chexsonsaeutils.high_capacity_crafting_machine.search_hint"));
     }
@@ -137,11 +137,11 @@ public class HighCapacityCraftingMachineScreen extends AEBaseScreen<HighCapacity
     @Override
     public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY, float partialTicks) {
         super.drawBG(guiGraphics, offsetX, offsetY, mouseX, mouseY, partialTicks);
-        drawPanel(guiGraphics, offsetX + 4, offsetY + 4, 192, 64);
-        drawPanel(guiGraphics, offsetX + 4, offsetY + 78, 166, 64);
-        drawPanel(guiGraphics, offsetX + 173, offsetY + 80, 25, 94);
-        drawPanel(guiGraphics, offsetX + 4, offsetY + 160, 166, 60);
-        drawPanel(guiGraphics, offsetX + 4, offsetY + 228, 166, 24);
+        drawPanel(guiGraphics, offsetX + 4, offsetY + 4, 192, 66);
+        // drawPanel(guiGraphics, offsetX + 4, offsetY + 78, 166, 64);
+        // drawPanel(guiGraphics, offsetX + 173, offsetY + 80, 25, 94);
+        // drawPanel(guiGraphics, offsetX + 4, offsetY + 160, 166, 60);
+        // drawPanel(guiGraphics, offsetX + 4, offsetY + 228, 166, 24);
         drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.ENCODED_PATTERN);
         drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.PLAYER_INVENTORY);
         drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.PLAYER_HOTBAR);

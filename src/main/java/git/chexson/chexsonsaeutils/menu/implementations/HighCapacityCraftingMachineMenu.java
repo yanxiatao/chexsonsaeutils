@@ -227,6 +227,20 @@ public class HighCapacityCraftingMachineMenu extends UpgradeableMenu<HighCapacit
         }
 
         @Override
+        public ItemStack getDisplayStack() {
+            if (isRemote()) {
+                final ItemStack is = super.getDisplayStack();
+                if (!is.isEmpty() && is.getItem() instanceof appeng.crafting.pattern.EncodedPatternItem iep) {
+                    final ItemStack out = iep.getOutput(is);
+                    if (!out.isEmpty()) {
+                        return out;
+                    }
+                }
+            }
+            return super.getDisplayStack();
+        }
+
+        @Override
         public List<Component> getCustomTooltip(ItemStack carried) {
             ItemStack stack = getHost().getTerminalPatternInventory().getStackInSlot(pageSlotIndex);
             if (!stack.isEmpty()) {

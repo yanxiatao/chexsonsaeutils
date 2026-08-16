@@ -95,7 +95,8 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ftbultimine.RightClickDispatcherMemoryCardMixin"
     );
     private static final Set<String> AE2CT_COMPAT_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CraftingPlanSummaryCompatMixin"
+            "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CraftingPlanSummaryCompatMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CTRecipeHelperCompatMixin"
     );
 
     @Override

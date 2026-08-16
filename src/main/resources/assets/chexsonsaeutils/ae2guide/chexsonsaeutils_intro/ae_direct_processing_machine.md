@@ -1,7 +1,7 @@
 ---
 navigation:
   parent: chexsonsaeutils_intro/index.md
-  title: AE Direct Processing Machine
+  title: Straightaway
   position: 30
   icon: chexsonsaeutils:ae_direct_processing_machine
 categories:
@@ -10,7 +10,7 @@ item_ids:
   - chexsonsaeutils:ae_direct_processing_machine
 ---
 
-# AE 直连处理机
+# 径行
 
 <BlockImage id="chexsonsaeutils:ae_direct_processing_machine" scale="4" />
 
