@@ -64,6 +64,8 @@
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_on_hint": "Only allow outputs of configured patterns back into the network",
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off": "Filtered Import: Off",
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off_hint": "Return inventory injects into the network unfiltered (original behavior)",
+  "key.chexsonsaeutils.category": "Chexson Utilities",
+  "key.chexsonsaeutils.show_slot_numbers": "Show Slot Numbers (Alt+I)",
   "gui.chexsonsaeutils.frame_pattern_config": "Frame Pattern Config",
   "gui.chexsonsaeutils.frame_pattern_config.input_slot": "Input Pattern",
   "gui.chexsonsaeutils.frame_pattern_config.output_slot": "Output Frame Pattern",

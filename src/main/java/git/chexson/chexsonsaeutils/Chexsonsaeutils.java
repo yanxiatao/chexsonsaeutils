@@ -30,6 +30,7 @@ import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
+import git.chexson.chexsonsaeutils.client.SlotNumberOverlay;
 import git.chexson.chexsonsaeutils.integration.appflux.AppFluxCompat;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
@@ -113,8 +114,10 @@ public class Chexsonsaeutils {
         modEventBus.addListener(this::onConfigReload);
         modEventBus.addListener(this::onRegisterCapabilities);
         modEventBus.addListener(this::onRegisterPayloadHandlers);
+        modEventBus.addListener(SlotNumberOverlay::registerKeyMapping);
         modEventBus.addListener(FrameTicketController.instance()::register);
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListeners);
+        NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenRender);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(this::onLevelLoad);
         NeoForge.EVENT_BUS.addListener(this::onLevelSave);

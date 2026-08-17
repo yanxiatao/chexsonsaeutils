@@ -64,6 +64,8 @@
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_on_hint": "返回库存注入网络时只放行已配置样板的输出物品",
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off": "输入过滤：关",
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off_hint": "返回库存注入网络时不加过滤（原行为）",
+  "key.chexsonsaeutils.category": "Chexson 实用工具",
+  "key.chexsonsaeutils.show_slot_numbers": "显示槽位编号（Alt+I）",
   "gui.chexsonsaeutils.frame_pattern_config": "框架样板配置",
   "gui.chexsonsaeutils.frame_pattern_config.input_slot": "输入样板",
   "gui.chexsonsaeutils.frame_pattern_config.output_slot": "输出框架样板",

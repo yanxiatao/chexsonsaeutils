@@ -46,10 +46,10 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 @Mixin(targets = "appeng.blockentity.misc.CondenserBlockEntity$CondenseItemHandler", remap = false)
 public abstract class CondenserBlockEntityCondenseItemHandlerMixin {
 
-    /** 内部类持有的外部实例引用（javac 生成字段 this$0）。 */
+    /** 内部类持有的外部实例引用（javac 生成字段 this$0，package-private）。 */
     @Shadow
     @Final
-    private CondenserBlockEntity this$0;
+    CondenserBlockEntity this$0;
 
     @Inject(method = "insertItem", at = @At("HEAD"), cancellable = true)
     private void chexsonsaeutils$tryExpandInsert(
