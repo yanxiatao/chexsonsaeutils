@@ -80,6 +80,8 @@ import appeng.api.stacks.KeyCounter;
 import appeng.api.util.IConfigManager;
 import appeng.core.AELog;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FrameProcessingPattern;
+import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
+import git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl;
 import appeng.core.definitions.AEItems;
 import appeng.core.localization.PlayerMessages;
 import appeng.core.settings.TickRates;
@@ -139,6 +141,12 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     // Stack returning logic
     private final PatternProviderReturnInventory returnInv;
     /**
+     * 需求 7：appflux 感应卡灌电注入器（接口隔离——appflux 引用集中在实现类）。
+     * appflux 未加载时为 null，Ticker 跳过灌电。
+     */
+    @Nullable
+    private final FrameEnergyInjector energyInjector;
+    /**
      * 需求 6a：输入过滤开关（NBT 持久化，Menu @GuiSync 同步）。
      * 过滤开启时 returnInv 注入网络只放行已配置样板的输出物品（outputCache）。
      */
@@ -190,6 +198,8 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
                         || FramePatternProviderLogic.this.outputCache.contains(what));
             }
         };
+        // 需求 7：appflux 感应卡灌电注入器（未装 appflux 时为 null）
+        this.energyInjector = AppFluxEnergyInjectorImpl.create(host, mainNode, actionSource);
     }
 
     public int getPriority() {
@@ -975,6 +985,12 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLastCall) {
             if (!mainNode.isActive()) {
                 return TickRateModulation.SLEEP;
+            }
+            // 需求 7：appflux 感应卡灌电——每 tick 检测感应卡并灌电（上限由 AFConfig 控制）。
+            // "不对其它面供电"已天然满足：capability 透传让外部访问任何面都等于访问私有
+            // 维度机器，灌电直接走网格 → 机器，不经过供应器自身能量存储。
+            if (energyInjector != null && energyInjector.isInstalled()) {
+                energyInjector.injectEnergy(Integer.MAX_VALUE);
             }
             boolean couldDoWork = doWork();
             return hasWorkToDo() ? couldDoWork ? TickRateModulation.URGENT : TickRateModulation.SLOWER
