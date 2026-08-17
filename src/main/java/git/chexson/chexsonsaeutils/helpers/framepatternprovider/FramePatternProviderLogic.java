@@ -51,6 +51,7 @@ import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.items.IItemHandler;
+import net.neoforged.neoforge.items.IItemHandlerModifiable;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 
 import appeng.api.config.Actionable;
@@ -78,6 +79,7 @@ import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.util.IConfigManager;
 import appeng.core.AELog;
+import git.chexson.chexsonsaeutils.crafting.framepattern.FrameProcessingPattern;
 import appeng.core.definitions.AEItems;
 import appeng.core.localization.PlayerMessages;
 import appeng.core.settings.TickRates;
@@ -349,6 +351,11 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
             return false;
         }
 
+        // 需求 4a：框架样板走强制槽位写入路径（不经过 target 的普通插入模拟）
+        if (patternDetails instanceof FrameProcessingPattern framePattern) {
+            return pushFramePattern(framePattern, inputHolder);
+        }
+
         // 需求 8 改造：推送目标固定为私有维度机器（无 side 语义，机器本体单库存），
         // 不向周围方块发/收（原版此处遍历 getActiveSides 的相邻机器与适配器）。
         var target = getMachineTarget();
@@ -379,6 +386,101 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         }
 
         return false;
+    }
+
+    /**
+     * 需求 4a：框架样板的强制槽位推送。
+     * <p>
+     * 与普通路径（adapterAcceptsAll + pushInputsToExternalInventory）不同：
+     * 每个稀疏输入按 slotMapping 强制写入机器指定槽位（setStackInSlot 合并，
+     * 突破堆叠上限），未指定槽位（-1 或越界）走 insertItemStacked 普通插入。
+     * 预检失败（输入不足量、指定槽位被异物占用）时整体拒绝，不产生部分写入。
+     * blocking 模式语义与普通路径一致：机器内已有样板输入时拒绝。
+     *
+     * @return true 表示推送成功
+     */
+    private boolean pushFramePattern(FrameProcessingPattern pattern, KeyCounter[] inputHolder) {
+        IItemHandler handler = host.getMachineItemHandler();
+        boolean modifiable = handler instanceof IItemHandlerModifiable;
+        if (!modifiable) {
+            // S3 修复：非 modifiable 机器无法强制写入，指定槽位静默降级为普通插入——输出日志
+            LOG.warn(
+                    "Machine handler {} is not IItemHandlerModifiable; frame pattern slot mapping degrades to regular insertion",
+                    handler.getClass().getName());
+        }
+        var sparseInputs = pattern.getSparseInputs();
+        var slotMapping = pattern.getSlotMapping();
+
+        // blocking 模式：机器内已有样板输入时拒绝（与普通路径 containsPatternInput 等价）
+        if (this.isBlocking()) {
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                ItemStack stack = handler.getStackInSlot(slot);
+                if (!stack.isEmpty()) {
+                    AEItemKey key = AEItemKey.of(stack);
+                    if (key != null && this.patternInputs.contains(key.dropSecondary())) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        var allInputs = new KeyCounter();
+        for (var counter : inputHolder) {
+            allInputs.addAll(counter);
+        }
+
+        // 预检：输入足量 + 指定槽位未被异物占用（合并不覆盖）
+        for (int i = 0; i < sparseInputs.size(); i++) {
+            var sparseInput = sparseInputs.get(i);
+            if (sparseInput == null) {
+                continue;
+            }
+            if (!(sparseInput.what() instanceof AEItemKey itemKey)) {
+                return false; // 强制槽位写入仅支持物品输入（与普通路径对非物品返回 0 一致）
+            }
+            if (allInputs.get(itemKey) < sparseInput.amount()) {
+                return false;
+            }
+            int slot = i < slotMapping.length ? slotMapping[i] : -1;
+            if (modifiable && slot >= 0 && slot < handler.getSlots()) {
+                var existing = handler.getStackInSlot(slot);
+                if (!existing.isEmpty() && !itemKey.matches(existing)) {
+                    return false;
+                }
+                // S2 修复：合并后总量用 long 计算，超 int 上限时拒绝（grow 参数溢出会静默截断）
+                if ((long) existing.getCount() + sparseInput.amount() > Integer.MAX_VALUE) {
+                    return false;
+                }
+            }
+        }
+
+        // 写入：指定槽位 setStackInSlot 合并（仅 modifiable handler），未指定槽位普通插入
+        for (int i = 0; i < sparseInputs.size(); i++) {
+            var sparseInput = sparseInputs.get(i);
+            if (sparseInput == null) {
+                continue;
+            }
+            var itemKey = (AEItemKey) sparseInput.what();
+            long amount = sparseInput.amount();
+            int slot = i < slotMapping.length ? slotMapping[i] : -1;
+            if (modifiable && slot >= 0 && slot < handler.getSlots()) {
+                var existing = handler.getStackInSlot(slot);
+                var merged = existing.copy();
+                merged.grow((int) amount); // 预检已保证合并后不超 int 上限
+                ((IItemHandlerModifiable) handler).setStackInSlot(slot, merged);
+            } else {
+                var remaining = ItemHandlerHelper.insertItemStacked(handler,
+                        itemKey.toStack((int) Math.min(amount, Integer.MAX_VALUE)), false);
+                if (!remaining.isEmpty()) {
+                    this.addToSendList(itemKey, remaining.getCount());
+                }
+            }
+            allInputs.remove(itemKey, amount);
+        }
+
+        onPushPatternSuccess(pattern);
+        this.sendStacksOut();
+        return true;
     }
 
     public void resetCraftingLock() {
@@ -567,8 +669,9 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
      * <p>
      * 只抽取 processing 样板的输出（I2 修复）：熔炉等机器的输入/燃料槽与样板输出不匹配，
      * 不会被抽走，避免机器断粮。crafting 样板（supportsPushInputsToExternalInventory 为 false）
-     * 无法推送到本机器，跳过其输出。逐槽 simulate 匹配（isSameAs）→ 转 AEItemKey 插入 returnInv
-     * → 按实际插入量 MODULATE 抽取（抽取量 = min(机器槽存量, returnInv 可容纳量)）。
+     * 无法推送到本机器，跳过其输出。I2 修复：先实际抽取再按返回量插入 returnInv
+     * （插入量 = min(机器实际抽取量, returnInv 可容纳量)），插入不足时剩余回滚到机器槽位，
+     * 避免自定义 handler 实际抽取量 < 模拟量导致物品复制。
      * 抽取成功后唤醒网格 tick 把返回库存注入网络。
      *
      * @return true 表示至少抽取了部分物品
@@ -581,6 +684,48 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
             if (details == null || !details.supportsPushInputsToExternalInventory()) {
                 continue;
             }
+            // 需求 4a：框架样板按配置槽位强制抽取（配置了 extractSlots 则跳过普通输出匹配路径）
+            if (details instanceof FrameProcessingPattern framePattern && framePattern.getExtractSlots().length > 0) {
+                for (int slot : framePattern.getExtractSlots()) {
+                    if (slot < 0 || slot >= handler.getSlots()) {
+                        continue;
+                    }
+                    ItemStack machineStack = handler.getStackInSlot(slot);
+                    if (machineStack.isEmpty()) {
+                        continue;
+                    }
+                    // I2 修复：先实际抽取，再按返回量插入 returnInv（避免自定义 handler
+                    // 实际抽取量 < 模拟量时 returnInv 记账与机器存量不一致导致物品复制）
+                    ItemStack extracted = handler.extractItem(slot, machineStack.getCount(), false);
+                    if (extracted.isEmpty()) {
+                        continue;
+                    }
+                    var key = AEItemKey.of(extracted);
+                    if (key == null) {
+                        // 非物品栈无法进入 returnInv：回滚到机器槽位
+                        handler.insertItem(slot, extracted, false);
+                        continue;
+                    }
+                    long inserted = returnInv.insert(key, extracted.getCount(), Actionable.MODULATE, actionSource);
+                    if (inserted > 0) {
+                        didSomething = true;
+                    }
+                    if (inserted < extracted.getCount()) {
+                        // returnInv 满：剩余回滚到机器槽位
+                        var remainder = extracted.copy();
+                        remainder.shrink((int) inserted);
+                        var notInserted = handler.insertItem(slot, remainder, false);
+                        if (!notInserted.isEmpty()) {
+                            // 机器拒绝回收：进入 sendList 补发（兜底防物品丢失）
+                            var notInsertedKey = AEItemKey.of(notInserted);
+                            if (notInsertedKey != null) {
+                                this.addToSendList(notInsertedKey, notInserted.getCount());
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
             for (var output : details.getOutputs()) {
                 if (!(output.what() instanceof AEItemKey outputKey)) {
                     continue;
@@ -590,14 +735,30 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
                     if (machineStack.isEmpty() || !outputKey.matches(machineStack)) {
                         continue;
                     }
-                    ItemStack simulated = handler.extractItem(slot, machineStack.getCount(), true);
-                    if (simulated.isEmpty()) {
+                    // I2 修复：先实际抽取，再按返回量插入 returnInv（同 extractSlots 分支）
+                    ItemStack extracted = handler.extractItem(slot, machineStack.getCount(), false);
+                    if (extracted.isEmpty()) {
                         continue;
                     }
-                    long inserted = returnInv.insert(outputKey, simulated.getCount(), Actionable.MODULATE, actionSource);
+                    var key = AEItemKey.of(extracted);
+                    if (key == null) {
+                        handler.insertItem(slot, extracted, false);
+                        continue;
+                    }
+                    long inserted = returnInv.insert(key, extracted.getCount(), Actionable.MODULATE, actionSource);
                     if (inserted > 0) {
-                        handler.extractItem(slot, (int) inserted, false);
                         didSomething = true;
+                    }
+                    if (inserted < extracted.getCount()) {
+                        var remainder = extracted.copy();
+                        remainder.shrink((int) inserted);
+                        var notInserted = handler.insertItem(slot, remainder, false);
+                        if (!notInserted.isEmpty()) {
+                            var notInsertedKey = AEItemKey.of(notInserted);
+                            if (notInsertedKey != null) {
+                                this.addToSendList(notInsertedKey, notInserted.getCount());
+                            }
+                        }
                     }
                 }
             }

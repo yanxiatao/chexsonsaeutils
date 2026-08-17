@@ -44,6 +44,7 @@
   "gui.chexsonsaeutils.crafting_status.blocked": "阻塞数量：%s",
   "gui.chexsonsaeutils.crafting_status.pattern_times": "样板次数：%s",
   "block.chexsonsaeutils.frame_pattern_provider": "框架样板供应器",
+  "item.chexsonsaeutils.frame_pattern": "框架样板",
   "gui.chexsonsaeutils.frame_pattern_provider": "框架样板供应器",
   "gui.chexsonsaeutils.frame_pattern_provider.isolated": "隔离模式",
   "gui.chexsonsaeutils.frame_pattern_provider.isolated_hint": "仅共享能量，不共享频道与存储",

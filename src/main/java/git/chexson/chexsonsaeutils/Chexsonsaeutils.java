@@ -17,6 +17,7 @@ import git.chexson.chexsonsaeutils.frame.FrameTicketController;
 import git.chexson.chexsonsaeutils.cell.CellCommand;
 import git.chexson.chexsonsaeutils.cell.CellRegistration;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
+import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingReloadListener;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeUserConfigStore;
@@ -121,6 +122,7 @@ public class Chexsonsaeutils {
     private void onCommonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(ChexsonsaeutilsContent::registerCommonContent);
         event.enqueueWork(Chexsonsaeutils::applyDirectProcessingMachineRecipeMappings);
+        event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(FramePatternDecoder.INSTANCE));
         if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
         }

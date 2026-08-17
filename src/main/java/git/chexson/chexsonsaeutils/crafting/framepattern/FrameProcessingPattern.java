@@ -1,0 +1,246 @@
+package git.chexson.chexsonsaeutils.crafting.framepattern;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Objects;
+
+import org.jetbrains.annotations.Nullable;
+
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.level.Level;
+
+import appeng.api.crafting.IPatternDetails;
+import appeng.api.crafting.PatternDetailsTooltip;
+import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
+import appeng.api.stacks.KeyCounter;
+import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+
+/**
+ * 框架样板的样板详情实现（IPatternDetails）。
+ * <p>
+ * 动机：框架样板供应器需要把稀疏输入按 slotMapping 强制写入私有维度机器的指定槽位，
+ * 并在完成后按 extractSlots 强制抽取输出。本类在 AEProcessingPattern 的稀疏输入/输出
+ * 语义之上，额外暴露槽位映射与抽取槽位，供 FramePatternProviderLogic 的
+ * pushFramePattern / pullFromMachine 使用。
+ * <p>
+ * 注意：AE2 的 AEPatternHelper 是 package-private，无法直接复用其 condenseStacks，
+ * 此处自实现等价逻辑（LinkedHashMap 保序合并）。
+ */
+public class FrameProcessingPattern implements IPatternDetails {
+    public static final int MAX_INPUT_SLOTS = 9 * 9;
+    public static final int MAX_OUTPUT_SLOTS = 3 * 9;
+
+    private final AEItemKey definition;
+    private final List<GenericStack> sparseInputs, sparseOutputs;
+    private final int[] slotMapping;
+    private final int[] extractSlots;
+    private final Input[] inputs;
+    private final List<GenericStack> condensedOutputs;
+
+    public FrameProcessingPattern(AEItemKey definition) {
+        this.definition = definition;
+
+        var encodedPattern = definition.get(ChexsonsaeutilsContent.ENCODED_FRAME_PATTERN.get());
+        if (encodedPattern == null) {
+            throw new IllegalArgumentException("Given item does not encode a frame pattern: " + definition);
+        } else if (encodedPattern.containsMissingContent()) {
+            // I1 修复：同 AEProcessingPattern，引用已卸载 mod 物品的样板视为无效
+            throw new IllegalArgumentException("Pattern references missing content");
+        }
+
+        this.sparseInputs = encodedPattern.sparseInputs();
+        this.sparseOutputs = encodedPattern.sparseOutputs();
+        this.slotMapping = encodedPattern.slotMapping();
+        this.extractSlots = encodedPattern.extractSlots();
+        var condensedInputs = condenseStacks(sparseInputs);
+        this.inputs = new Input[condensedInputs.size()];
+        for (int i = 0; i < inputs.length; ++i) {
+            inputs[i] = new Input(condensedInputs.get(i));
+        }
+
+        // Ordering is preserved by condenseStacks
+        this.condensedOutputs = condenseStacks(sparseOutputs);
+    }
+
+    /**
+     * 把框架样板数据写入物品的 ENCODED_FRAME_PATTERN 组件。
+     *
+     * @param stack        目标物品（必须是 FramePatternItem）
+     * @param sparseInputs 稀疏输入列表（至少一个非 null）
+     * @param sparseOutputs 稀疏输出列表（第一个必须非 null）
+     * @param slotMapping  与 sparseInputs 对齐的槽位映射，-1 表示未指定
+     * @param extractSlots 强制抽取槽位列表，空数组表示未配置
+     */
+    public static void encode(ItemStack stack, List<GenericStack> sparseInputs, List<GenericStack> sparseOutputs,
+            int[] slotMapping, int[] extractSlots) {
+        if (sparseInputs.stream().noneMatch(Objects::nonNull)) {
+            throw new IllegalArgumentException("At least one input must be non-null.");
+        }
+        Objects.requireNonNull(sparseOutputs.get(0),
+                "The first (primary) output must be non-null.");
+        // I3 修复：槽位映射必须与稀疏输入对齐，不符时 fail-fast 而非静默降级
+        if (slotMapping.length != sparseInputs.size()) {
+            throw new IllegalArgumentException(
+                    "slotMapping length %d does not match sparseInputs size %d"
+                            .formatted(slotMapping.length, sparseInputs.size()));
+        }
+
+        stack.set(ChexsonsaeutilsContent.ENCODED_FRAME_PATTERN.get(), new EncodedFramePattern(
+                sparseInputs, sparseOutputs, slotMapping, extractSlots));
+    }
+
+    @Override
+    public int hashCode() {
+        return definition.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj != null && obj.getClass() == getClass()
+                && ((FrameProcessingPattern) obj).definition.equals(definition);
+    }
+
+    @Override
+    public AEItemKey getDefinition() {
+        return definition;
+    }
+
+    @Override
+    public IInput[] getInputs() {
+        return inputs;
+    }
+
+    @Override
+    public List<GenericStack> getOutputs() {
+        return condensedOutputs;
+    }
+
+    public List<GenericStack> getSparseInputs() {
+        return sparseInputs;
+    }
+
+    public List<GenericStack> getSparseOutputs() {
+        return sparseOutputs;
+    }
+
+    /**
+     * @return 与 sparseInputs 对齐的槽位映射，-1 表示未指定（走普通插入路径）
+     */
+    public int[] getSlotMapping() {
+        return slotMapping;
+    }
+
+    /**
+     * @return 强制抽取槽位列表，空数组表示未配置（走普通输出匹配路径）
+     */
+    public int[] getExtractSlots() {
+        return extractSlots;
+    }
+
+    @Override
+    public void pushInputsToExternalInventory(KeyCounter[] inputHolder, PatternInputSink inputSink) {
+        if (sparseInputs.size() == inputs.length) {
+            // No compression -> no need to reorder
+            IPatternDetails.super.pushInputsToExternalInventory(inputHolder, inputSink);
+            return;
+        }
+
+        var allInputs = new KeyCounter();
+        for (var counter : inputHolder) {
+            allInputs.addAll(counter);
+        }
+
+        // Push according to sparse input order
+        for (var sparseInput : sparseInputs) {
+            if (sparseInput == null) {
+                continue;
+            }
+
+            var key = sparseInput.what();
+            var amount = sparseInput.amount();
+            long available = allInputs.get(key);
+
+            if (available < amount) {
+                throw new RuntimeException("Expected at least %d of %s when pushing pattern, but only %d available"
+                        .formatted(amount, key, available));
+            }
+
+            inputSink.pushInput(key, amount);
+            allInputs.remove(key, amount);
+        }
+    }
+
+    public static PatternDetailsTooltip getInvalidPatternTooltip(ItemStack stack, Level level,
+            @Nullable Exception cause, TooltipFlag flags) {
+        var tooltip = new PatternDetailsTooltip(PatternDetailsTooltip.OUTPUT_TEXT_PRODUCES);
+
+        var encodedPattern = stack.get(ChexsonsaeutilsContent.ENCODED_FRAME_PATTERN.get());
+        if (encodedPattern != null) {
+            encodedPattern.sparseInputs().stream().filter(Objects::nonNull).forEach(tooltip::addInput);
+            encodedPattern.sparseOutputs().stream().filter(Objects::nonNull).forEach(tooltip::addOutput);
+        }
+
+        return tooltip;
+    }
+
+    /**
+     * 合并稀疏输入：去 null、同 key 求和、保持首次出现顺序。
+     * <p>
+     * 与 AE2 AEPatternHelper.condenseStacks 等价（该类 package-private 无法复用）。
+     */
+    private static List<GenericStack> condenseStacks(List<GenericStack> sparseInput) {
+        // Use a linked map to preserve ordering.
+        var map = new LinkedHashMap<AEKey, Long>();
+
+        for (var input : sparseInput) {
+            if (input != null) {
+                map.merge(input.what(), input.amount(), Long::sum);
+            }
+        }
+
+        if (map.isEmpty()) {
+            throw new IllegalStateException("No pattern here!");
+        }
+
+        List<GenericStack> out = new ArrayList<>(map.size());
+        for (var entry : map.entrySet()) {
+            out.add(new GenericStack(entry.getKey(), entry.getValue()));
+        }
+        return out;
+    }
+
+    private static class Input implements IInput {
+        private final GenericStack[] template;
+        private final long multiplier;
+
+        private Input(GenericStack stack) {
+            this.template = new GenericStack[] { new GenericStack(stack.what(), 1) };
+            this.multiplier = stack.amount();
+        }
+
+        @Override
+        public GenericStack[] getPossibleInputs() {
+            return template;
+        }
+
+        @Override
+        public long getMultiplier() {
+            return multiplier;
+        }
+
+        @Override
+        public boolean isValid(AEKey input, Level level) {
+            return input.matches(template[0]);
+        }
+
+        @Nullable
+        @Override
+        public AEKey getRemainingKey(AEKey template) {
+            return null;
+        }
+    }
+}

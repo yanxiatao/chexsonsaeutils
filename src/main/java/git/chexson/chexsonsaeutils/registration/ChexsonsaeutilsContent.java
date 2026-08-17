@@ -25,6 +25,8 @@ import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterR
 import git.chexson.chexsonsaeutils.client.gui.implementations.ParallelCraftingCPUScreen;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMockRecipe;
+import git.chexson.chexsonsaeutils.crafting.framepattern.EncodedFramePattern;
+import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
@@ -35,6 +37,7 @@ import git.chexson.chexsonsaeutils.client.gui.framepatternprovider.FramePatternP
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import appeng.client.gui.style.StyleManager;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
@@ -73,6 +76,8 @@ public final class ChexsonsaeutilsContent {
             DeferredRegister.create(Registries.RECIPE_SERIALIZER, Chexsonsaeutils.MODID);
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS =
             DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Chexsonsaeutils.MODID);
+    public static final DeferredRegister<DataComponentType<?>> DATA_COMPONENT_TYPES =
+            DeferredRegister.create(Registries.DATA_COMPONENT_TYPE, Chexsonsaeutils.MODID);
 
     public static final RegisteredBlock<HighCapacityCraftingMachineBlock> HIGH_CAPACITY_CRAFTING_MACHINE =
             registerBlockWithItem("high_capacity_crafting_machine", HighCapacityCraftingMachineBlock::new);
@@ -105,6 +110,14 @@ public final class ChexsonsaeutilsContent {
     public static final Supplier<Item> FRAME_PATTERN_PROVIDER_ITEM =
             ITEMS.register("frame_pattern_provider",
                     () -> new FramePatternProviderItem(FRAME_PATTERN_PROVIDER_BLOCK.get(), new Item.Properties()));
+    public static final Supplier<FramePatternItem> FRAME_PATTERN_ITEM =
+            ITEMS.register("frame_pattern", FramePatternItem::createItem);
+    public static final Supplier<DataComponentType<EncodedFramePattern>> ENCODED_FRAME_PATTERN =
+            DATA_COMPONENT_TYPES.register("encoded_frame_pattern",
+                    () -> DataComponentType.<EncodedFramePattern>builder()
+                            .persistent(EncodedFramePattern.CODEC)
+                            .networkSynchronized(EncodedFramePattern.STREAM_CODEC)
+                            .build());
     public static final Supplier<BlockEntityType<AutoItemGenBlockEntity>> AUTO_ITEM_GEN_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("auto_item_gen",
                     () -> {
@@ -176,6 +189,7 @@ public final class ChexsonsaeutilsContent {
                         output.accept(AE_DIRECT_PROCESSING_MACHINE_ITEM.get());
                         output.accept(AE2_PARALLEL_CPU_TOOL_ITEM.get());
                         output.accept(FRAME_PATTERN_PROVIDER_ITEM.get());
+                        output.accept(FRAME_PATTERN_ITEM.get());
                         output.accept(INFINITY_CELL_ITEM.get());
                         if (!FMLLoader.isProduction()) {
                             output.accept(AUTO_ITEM_GEN_ITEM.get());
@@ -194,6 +208,7 @@ public final class ChexsonsaeutilsContent {
         RECIPE_TYPES.register(modEventBus);
         RECIPE_SERIALIZERS.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
+        DATA_COMPONENT_TYPES.register(modEventBus);
     }
 
     public static void registerCommonContent() {

@@ -44,6 +44,7 @@
   "gui.chexsonsaeutils.crafting_status.blocked": "Blocked: %s",
   "gui.chexsonsaeutils.crafting_status.pattern_times": "Pattern Times: %s",
   "block.chexsonsaeutils.frame_pattern_provider": "Frame Pattern Provider",
+  "item.chexsonsaeutils.frame_pattern": "Frame Pattern",
   "gui.chexsonsaeutils.frame_pattern_provider": "Frame Pattern Provider",
   "gui.chexsonsaeutils.frame_pattern_provider.isolated": "Isolated Mode",
   "gui.chexsonsaeutils.frame_pattern_provider.isolated_hint": "Share energy only; channels and storage stay separate",
