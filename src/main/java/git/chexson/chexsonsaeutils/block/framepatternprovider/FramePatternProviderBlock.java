@@ -25,10 +25,10 @@ import net.neoforged.neoforge.common.Tags;
  * <p>
  * 交互约定：
  * <ul>
- *   <li>潜行右击：拆框架，恢复原方块（含 BE NBT），框架方块掉落为物品。</li>
- *   <li>非潜行右击且手持带 wrench 标签的物品：打开 GUI（阶段 2 接入 MenuOpener）。</li>
- *   <li>非潜行右击且瞄准点在边框区域：打开 GUI（阶段 2 接入 MenuOpener）。</li>
- *   <li>非潜行右击且瞄准点在内部区域：透传原方块交互。</li>
+ *   <li>潜行右击：拆框架，恢复原方块（含 BE NBT），框架方块掉落为物品；空框架不弹物品也不移除方块。</li>
+ *   <li>非潜行右击且手持带 wrench 标签的物品：打开 GUI。</li>
+ *   <li>非潜行右击且瞄准点在边框区域：打开 GUI。</li>
+ *   <li>非潜行右击且瞄准点在内部区域：打开框架 GUI（不透传原方块交互）。</li>
  * </ul>
  * 捕获目标方块的动作由 {@link git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternProviderItem}
  * 的 useOn 触发（手持框架物品右键已有方块时）。
@@ -87,12 +87,9 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             openMenu(level, player, blockEntity);
             return ItemInteractionResult.sidedSuccess(level.isClientSide());
         }
-        // 内部区域：透传原方块交互（用捕获的 BlockState 与原位置参数）
-        BlockState capturedState = blockEntity.getCapturedState();
-        if (capturedState == null) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-        }
-        return capturedState.useItemOn(heldItem, level, player, hand, hitResult);
+        // 内部区域：打开框架 GUI（ora-2 决策：机器原生 GUI 不做，统一走框架 GUI）
+        openMenu(level, player, blockEntity);
+        return ItemInteractionResult.sidedSuccess(level.isClientSide());
     }
 
     @Override
@@ -114,16 +111,15 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             openMenu(level, player, blockEntity);
             return InteractionResult.sidedSuccess(level.isClientSide());
         }
-        // 内部区域：透传原方块交互（用捕获的 BlockState 与原位置参数）
-        BlockState capturedState = blockEntity.getCapturedState();
-        if (capturedState == null) {
-            return InteractionResult.PASS;
-        }
-        return capturedState.useWithoutItem(level, player, hitResult);
+        // 内部区域：打开框架 GUI（ora-2 决策：机器原生 GUI 不做，统一走框架 GUI）
+        openMenu(level, player, blockEntity);
+        return InteractionResult.sidedSuccess(level.isClientSide());
     }
 
     /**
      * 拆框架（手持物品路径）：恢复原方块（含 BE NBT），框架方块掉落为物品。
+     * <p>
+     * 空框架（未包裹任何方块）不弹物品也不移除方块，按正常挖掘破坏处理（B2 修复）。
      */
     private ItemInteractionResult dismantleFrame(
             Level level,
@@ -131,6 +127,9 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             FramePatternProviderBlockEntity blockEntity
     ) {
         if (!level.isClientSide()) {
+            if (!blockEntity.hasCapturedContent()) {
+                return ItemInteractionResult.sidedSuccess(false);
+            }
             blockEntity.restoreCapturedBlock(level, pos);
             popResource(level, pos, new ItemStack(this));
         }
@@ -139,6 +138,8 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
 
     /**
      * 拆框架（空手路径）：恢复原方块（含 BE NBT），框架方块掉落为物品。
+     * <p>
+     * 空框架（未包裹任何方块）不弹物品也不移除方块，按正常挖掘破坏处理（B2 修复）。
      */
     private InteractionResult dismantleFrameWithoutItem(
             Level level,
@@ -146,6 +147,9 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             FramePatternProviderBlockEntity blockEntity
     ) {
         if (!level.isClientSide()) {
+            if (!blockEntity.hasCapturedContent()) {
+                return InteractionResult.sidedSuccess(false);
+            }
             blockEntity.restoreCapturedBlock(level, pos);
             popResource(level, pos, new ItemStack(this));
         }
@@ -153,21 +157,25 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
     }
 
     /**
-     * 破坏方块时恢复原方块（含 BE NBT）并掉落框架物品。
+     * 破坏方块时恢复原方块（含 BE NBT）。
      * <p>
-     * 注意：onRemove 在方块被替换（如捕获流程 setBlock）时也会触发，此时框架 BE 已被移除，
-     * getBlockEntity 返回 null，不会误恢复。
+     * 掉落语义：挖掘（生存）与爆炸由 getDrops 掉 1 个框架物品，创造模式不掉；
+     * shift 右击拆框架由 dismantleFrame/dismantleFrameWithoutItem 手动 popResource。
+     * 此处不再 popResource，避免与 getDrops 叠加造成双倍掉落。
+     * <p>
+     * 顺序约定：先取 BE 引用 → super.onRemove 先执行（移除本框架 BE）→ 再恢复。
+     * 嵌套 setBlock（restoreCapturedBlock 内部恢复机器）触发本方法时，restoring 标志置位，
+     * 跳过恢复逻辑防递归；捕获流程 setBlock 触发的是原机器方块的 onRemove，与本方法无关。
      */
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
-        if (!level.isClientSide() && !newState.is(state.getBlock())) {
-            FramePatternProviderBlockEntity blockEntity = this.getBlockEntity(level, pos);
-            if (blockEntity != null && blockEntity.hasCapturedContent()) {
+        FramePatternProviderBlockEntity blockEntity = this.getBlockEntity(level, pos);
+        super.onRemove(state, level, pos, newState, isMoving);
+        if (!level.isClientSide() && !newState.is(state.getBlock()) && blockEntity != null && !blockEntity.isRestoring()) {
+            if (blockEntity.hasCapturedContent()) {
                 blockEntity.restoreCapturedBlock(level, pos);
-                popResource(level, pos, new ItemStack(this));
             }
         }
-        super.onRemove(state, level, pos, newState, isMoving);
     }
 
     /**

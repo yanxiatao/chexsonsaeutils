@@ -19,16 +19,19 @@ import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.helpers.patternprovider.PatternContainer;
 import appeng.util.inv.AppEngInternalInventory;
 import com.mojang.logging.LogUtils;
+import git.chexson.chexsonsaeutils.frame.FrameDimensionImpl;
+import git.chexson.chexsonsaeutils.frame.FrameStorageImpl;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -36,6 +39,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 框架样板供应器方块实体。
@@ -51,8 +55,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private static final String NBT_CAPTURED_STATE = "capturedState";
-    private static final String NBT_CAPTURED_TYPE_ID = "capturedTypeId";
-    private static final String NBT_CAPTURED_DATA = "capturedData";
+    private static final String NBT_MACHINE_BACKUP = "machineBackup";
+    private static final String NBT_FRAME_ID = "frameId";
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_PATTERN_INVENTORY = "patternInventory";
     private static final String NBT_RETURN_INVENTORY = "returnInventory";
@@ -68,15 +72,17 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     /** 返回库存：阶段 2 仅提供 GUI 存取，阶段 3 接入推送逻辑后使用。 */
     private final AppEngInternalInventory returnInventory = new AppEngInternalInventory(RETURN_SLOTS);
 
-    /** 被包裹的原方块状态，null 表示未包裹任何方块。 */
+    /** 被包裹的原方块状态，null 表示未包裹任何方块（渲染与收敛用）。 */
     @Nullable
     private BlockState capturedState;
-    /** 被包裹的原 BE 类型注册名，原方块无 BE 时为 null。 */
+    /** 机器完整 NBT 备份（saveWithId 输出，含 BE 类型 id）：崩溃中间态幂等收敛时用于在私有维度重物化。 */
     @Nullable
-    private ResourceLocation capturedTypeId;
-    /** 被包裹的原 BE 的 saveAdditional 数据，原方块无 BE 时为 null。 */
+    private CompoundTag machineBackup;
+    /** 框架唯一 ID：主世界框架 ↔ 私有维度机器的关联键（FrameStorage 映射表）。 */
     @Nullable
-    private CompoundTag capturedData;
+    private UUID frameId;
+    /** 搬回协议执行中标志：防止嵌套 setBlock 触发本方块 onRemove 时递归恢复（B1 时序教训）。 */
+    private boolean restoring;
 
     public FramePatternProviderBlockEntity(BlockPos pos, BlockState blockState) {
         super(ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(), pos, blockState);
@@ -101,11 +107,11 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         if (capturedState != null) {
             data.put(NBT_CAPTURED_STATE, NbtUtils.writeBlockState(capturedState));
         }
-        if (capturedTypeId != null) {
-            data.putString(NBT_CAPTURED_TYPE_ID, capturedTypeId.toString());
+        if (machineBackup != null) {
+            data.put(NBT_MACHINE_BACKUP, machineBackup);
         }
-        if (capturedData != null) {
-            data.put(NBT_CAPTURED_DATA, capturedData);
+        if (frameId != null) {
+            data.putUUID(NBT_FRAME_ID, frameId);
         }
     }
 
@@ -121,33 +127,61 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
                         data.getCompound(NBT_CAPTURED_STATE)
                 )
                 : null;
-        capturedTypeId = data.contains(NBT_CAPTURED_TYPE_ID)
-                ? ResourceLocation.tryParse(data.getString(NBT_CAPTURED_TYPE_ID))
-                : null;
-        capturedData = data.contains(NBT_CAPTURED_DATA) ? data.getCompound(NBT_CAPTURED_DATA) : null;
+        machineBackup = data.contains(NBT_MACHINE_BACKUP) ? data.getCompound(NBT_MACHINE_BACKUP) : null;
+        if (machineBackup == null && data.contains("capturedTypeId") && data.contains("capturedData")) {
+            // 阶段 1 旧存档兼容：capturedTypeId（字符串）+ capturedData（saveAdditional 输出，不含 id）
+            // 组装为 saveWithId 格式 {id: "...", ...业务字段}，loadStatic 依赖 id 字段解析 BE 类型
+            CompoundTag legacyBackup = new CompoundTag();
+            legacyBackup.putString("id", data.getString("capturedTypeId"));
+            legacyBackup.merge(data.getCompound("capturedData"));
+            machineBackup = legacyBackup;
+        }
+        frameId = data.contains(NBT_FRAME_ID) ? data.getUUID(NBT_FRAME_ID) : null;
     }
 
     /**
-     * 捕获目标方块：读取原方块 BlockState 与原 BE 的 NBT，替换为框架方块，并把捕获数据写入新框架 BE。
+     * 捕获目标方块：把原机器（方块 + BE NBT）搬移到私有维度真实运行，主世界替换为框架方块。
+     * <p>
+     * 协议：saveWithId 备份 → 私有维度 allocateNextPosition 放置机器 → 登记 frameId 映射并强制加载
+     * → 主世界 setBlock 替换为框架方块。原机器 BE 在 setBlock 前已被 LevelChunk 移出映射表，
+     * 其 onRemove 中 getBlockEntity 返回 null，不会掉落内部物品。
      * <p>
      * 调用前提：pos 处仍是目标方块（本方法由
      * {@link git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternProviderItem#useOn} 在服务端调用）。
-     * 原方块掉落物不产生：先移除原 BE 再 setBlock，原方块 onRemove 中 getBlockEntity 返回 null。
      *
-     * @param level 目标方块所在世界
+     * @param level 目标方块所在世界（必须为服务端）
      * @param pos   目标方块位置
      */
     public static void captureBlock(Level level, BlockPos pos) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            throw new IllegalStateException("捕获必须在服务端执行，位置 " + pos);
+        }
         BlockState targetState = level.getBlockState(pos);
         BlockEntity targetBlockEntity = level.getBlockEntity(pos);
-        ResourceLocation typeId = null;
-        CompoundTag data = null;
+        CompoundTag machineTag = null;
         if (targetBlockEntity != null) {
-            typeId = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(targetBlockEntity.getType());
-            // saveWithFullMetadata 包含 BE 类型 id 与 saveAdditional 数据，恢复时可直接 loadStatic
-            data = targetBlockEntity.saveWithFullMetadata(level.registryAccess());
-            level.removeBlockEntity(pos);
+            // saveWithId 包含 BE 类型 id 与 saveAdditional 数据，私有维度重建与崩溃收敛都可用
+            machineTag = targetBlockEntity.saveWithId(level.registryAccess());
         }
+        MinecraftServer server = serverLevel.getServer();
+        ServerLevel frameLevel = FrameDimensionImpl.instance().getLevel(server);
+        FrameStorageImpl storage = FrameStorageImpl.instance();
+        // 1. 分配私有维度位置并放置机器（真实运行，ticking 由 FrameTicketController 驱动）
+        BlockPos framePos = storage.allocateNextPosition(frameLevel);
+        frameLevel.setBlock(framePos, targetState, Block.UPDATE_ALL);
+        if (machineTag != null) {
+            BlockEntity machine = BlockEntity.loadStatic(framePos, targetState, machineTag, frameLevel.registryAccess());
+            if (machine != null) {
+                frameLevel.setBlockEntity(machine);
+            } else {
+                LOGGER.error("捕获失败：私有维度无法重建机器 BE，类型 {}，位置 {}", machineTag.getString("id"), framePos);
+            }
+        }
+        // 2. 登记映射 + 强制加载（ticking=true，机器在私有维度持续运行）
+        UUID frameId = UUID.randomUUID();
+        storage.putFramePosition(frameLevel, frameId, framePos);
+        storage.forceload(frameLevel, pos, framePos.getX() >> 4, framePos.getZ() >> 4, true);
+        // 3. 主世界替换为框架方块（原机器 BE 已出映射表，其 onRemove 不会掉落内部物品）
         level.setBlock(
                 pos,
                 ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_BLOCK.get().defaultBlockState(),
@@ -155,8 +189,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         );
         if (level.getBlockEntity(pos) instanceof FramePatternProviderBlockEntity frameBlockEntity) {
             frameBlockEntity.capturedState = targetState;
-            frameBlockEntity.capturedTypeId = typeId;
-            frameBlockEntity.capturedData = data;
+            frameBlockEntity.machineBackup = machineTag;
+            frameBlockEntity.frameId = frameId;
             frameBlockEntity.saveChanges();
         } else {
             LOGGER.error("捕获失败：替换为框架方块后未找到框架 BE，位置 {}", pos);
@@ -176,21 +210,126 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         if (capturedState == null) {
             return;
         }
-        level.setBlock(pos, capturedState, Block.UPDATE_ALL);
-        if (capturedTypeId != null && capturedData != null) {
-            // loadStatic 从 capturedData 中的 BE 类型 id 解析类型并调用 loadAdditional，
-            // 数据损坏时内部捕获异常并返回 null（保留 setBlock 创建的默认 BE）
-            BlockEntity restoredBlockEntity = BlockEntity.loadStatic(pos, capturedState, capturedData, level.registryAccess());
-            if (restoredBlockEntity == null) {
-                LOGGER.warn("恢复原 BE 失败：类型 {} 无法创建实例，位置 {}", capturedTypeId, pos);
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        restoring = true;
+        try {
+            MinecraftServer server = serverLevel.getServer();
+            ServerLevel frameLevel = FrameDimensionImpl.instance().getLevel(server);
+            FrameStorageImpl storage = FrameStorageImpl.instance();
+            UUID currentFrameId = frameId;
+            CompoundTag machineTag = machineBackup;
+            if (currentFrameId != null) {
+                BlockPos framePos = storage.getFramePosition(frameLevel, currentFrameId);
+                if (framePos != null) {
+                    BlockEntity machine = frameLevel.getBlockEntity(framePos);
+                    if (machine != null) {
+                        machineTag = machine.saveWithId(frameLevel.registryAccess());
+                    }
+                    // 先摘除私有维度 BE 再移除方块，避免原方块 onRemove 把内部物品掉在私有维度
+                    frameLevel.removeBlockEntity(framePos);
+                    frameLevel.setBlock(framePos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+                    storage.removeFramePosition(frameLevel, currentFrameId);
+                    storage.forceload(frameLevel, pos, framePos.getX() >> 4, framePos.getZ() >> 4, false);
+                } else {
+                    LOGGER.warn("拆除：frameId {} 无私有维度映射，使用框架内备份恢复，位置 {}", currentFrameId, pos);
+                }
+            }
+            // 主世界恢复机器方块 + BE（嵌套 onRemove 因 restoring 标志跳过恢复逻辑）
+            level.setBlock(pos, capturedState, Block.UPDATE_ALL);
+            if (machineTag != null) {
+                BlockEntity restoredBlockEntity = BlockEntity.loadStatic(pos, capturedState, machineTag, level.registryAccess());
+                if (restoredBlockEntity != null) {
+                    level.setBlockEntity(restoredBlockEntity);
+                } else {
+                    LOGGER.warn("恢复原 BE 失败：备份数据无法创建实例，位置 {}", pos);
+                }
+            }
+            // TODO(阶段3): 拆除时框架自身样板/返回库存的迁移或丢弃处理
+            capturedState = null;
+            machineBackup = null;
+            frameId = null;
+            saveChanges();
+        } finally {
+            restoring = false;
+        }
+    }
+
+    /**
+     * 服务端加载时收敛捕获状态：崩溃中间态（映射缺失 / 私有维度位置无机器）从备份幂等重物化。
+     * <p>
+     * 收敛规则：frameId 无映射 → 从 machineBackup 重物化到新分配位置并重建映射；
+     * 有映射但位置无机器 → 从 machineBackup 重物化到原位置；位置有机器 → 正常，无需处理。
+     * 备份也缺失时记录 error 日志（数据不可恢复，Fail Fast）。
+     */
+    private void reconcileCapturedMachine() {
+        if (capturedState == null || frameId == null) {
+            return;
+        }
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        MinecraftServer server = serverLevel.getServer();
+        ServerLevel frameLevel = FrameDimensionImpl.instance().getLevel(server);
+        FrameStorageImpl storage = FrameStorageImpl.instance();
+        BlockPos framePos = storage.getFramePosition(frameLevel, frameId);
+        if (framePos == null) {
+            if (machineBackup == null) {
+                LOGGER.error("收敛失败：frameId {} 无映射且无备份，机器数据不可恢复，位置 {}", frameId, worldPosition);
+                return;
+            }
+            BlockPos newPos = storage.allocateNextPosition(frameLevel);
+            materializeMachine(frameLevel, newPos, capturedState, machineBackup);
+            storage.putFramePosition(frameLevel, frameId, newPos);
+            storage.forceload(frameLevel, worldPosition, newPos.getX() >> 4, newPos.getZ() >> 4, true);
+            LOGGER.warn("收敛：frameId {} 映射缺失，已从备份重物化到 {}", frameId, newPos);
+            return;
+        }
+        BlockState privateState = frameLevel.getBlockState(framePos);
+        if (privateState.isAir() || !privateState.is(capturedState.getBlock())) {
+            if (machineBackup == null) {
+                LOGGER.error("收敛失败：frameId {} 位置 {} 无机器且无备份，位置 {}", frameId, framePos, worldPosition);
+                return;
+            }
+            materializeMachine(frameLevel, framePos, capturedState, machineBackup);
+            LOGGER.warn("收敛：frameId {} 位置 {} 无机器，已从备份重物化", frameId, framePos);
+        }
+    }
+
+    /**
+     * 在私有维度按备份重建机器（方块 + BE），供捕获与收敛共用。
+     *
+     * @param frameLevel 私有维度
+     * @param framePos   目标位置
+     * @param state      机器方块状态
+     * @param machineTag 机器 BE 完整备份（saveWithId 输出）
+     */
+    private static void materializeMachine(ServerLevel frameLevel, BlockPos framePos, BlockState state, CompoundTag machineTag) {
+        frameLevel.setBlock(framePos, state, Block.UPDATE_ALL);
+        if (machineTag != null) {
+            BlockEntity machine = BlockEntity.loadStatic(framePos, state, machineTag, frameLevel.registryAccess());
+            if (machine != null) {
+                frameLevel.setBlockEntity(machine);
             } else {
-                level.setBlockEntity(restoredBlockEntity);
+                LOGGER.error("重物化失败：机器 BE 无法创建实例，位置 {}", framePos);
             }
         }
-        capturedState = null;
-        capturedTypeId = null;
-        capturedData = null;
-        saveChanges();
+    }
+
+    /**
+     * @return true 表示搬回协议执行中（嵌套 onRemove 时用于跳过恢复逻辑）
+     */
+    public boolean isRestoring() {
+        return restoring;
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level != null && !level.isClientSide() && level.getServer() != null) {
+            reconcileCapturedMachine();
+        }
     }
 
     /**
