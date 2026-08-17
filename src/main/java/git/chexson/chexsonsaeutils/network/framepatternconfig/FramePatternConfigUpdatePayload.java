@@ -1,0 +1,75 @@
+package git.chexson.chexsonsaeutils.network.framepatternconfig;
+
+import java.util.List;
+
+import io.netty.buffer.ByteBuf;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+
+import appeng.api.stacks.GenericStack;
+import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
+
+/**
+ * 框架样板配置 GUI 的「服务端 → 客户端」数据同步负载。
+ * <p>
+ * 动机：配置 GUI 需要展示输入样板的稀疏输入列表与当前槽位映射（变长数据），
+ * 而 AE2 的 @GuiSync 注解只支持定长字段，因此用自定义负载推送。
+ * 客户端按 containerId 校验后写入菜单字段（updateFromServer）。
+ */
+public record FramePatternConfigUpdatePayload(
+        int containerId,
+        List<GenericStack> sparseInputs,
+        int[] slotMapping,
+        int[] extractSlots
+) implements CustomPacketPayload {
+
+    public static final Type<FramePatternConfigUpdatePayload> TYPE = new Type<>(
+            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "frame_pattern_config_update")
+    );
+
+    private static final StreamCodec<ByteBuf, int[]> INT_ARRAY_STREAM_CODEC = ByteBufCodecs.INT
+            .apply(ByteBufCodecs.<ByteBuf, Integer>list())
+            .map(list -> list.stream().mapToInt(Integer::intValue).toArray(),
+                    arr -> {
+                        var list = new java.util.ArrayList<Integer>(arr.length);
+                        for (int v : arr) {
+                            list.add(v);
+                        }
+                        return list;
+                    });
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, FramePatternConfigUpdatePayload> STREAM_CODEC =
+            StreamCodec.composite(
+                    ByteBufCodecs.VAR_INT,
+                    FramePatternConfigUpdatePayload::containerId,
+                    GenericStack.STREAM_CODEC.apply(ByteBufCodecs.list()),
+                    FramePatternConfigUpdatePayload::sparseInputs,
+                    INT_ARRAY_STREAM_CODEC,
+                    FramePatternConfigUpdatePayload::slotMapping,
+                    INT_ARRAY_STREAM_CODEC,
+                    FramePatternConfigUpdatePayload::extractSlots,
+                    FramePatternConfigUpdatePayload::new
+            );
+
+    public static void handle(FramePatternConfigUpdatePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            var mc = Minecraft.getInstance();
+            if (mc.player != null && mc.player.containerMenu instanceof FramePatternConfigMenu menu
+                    && menu.containerId == payload.containerId()) {
+                menu.updateFromServer(payload.sparseInputs(), payload.slotMapping(), payload.extractSlots());
+            }
+        });
+    }
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
+}

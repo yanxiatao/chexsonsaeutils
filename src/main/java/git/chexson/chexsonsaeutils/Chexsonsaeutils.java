@@ -30,7 +30,9 @@ import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
+import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
+import git.chexson.chexsonsaeutils.network.framepatternconfig.FramePatternConfigUpdatePayload;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacementDecoder;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.world.inventory.MenuType;
@@ -123,6 +125,7 @@ public class Chexsonsaeutils {
         event.enqueueWork(ChexsonsaeutilsContent::registerCommonContent);
         event.enqueueWork(Chexsonsaeutils::applyDirectProcessingMachineRecipeMappings);
         event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(FramePatternDecoder.INSTANCE));
+        event.enqueueWork(FramePatternConfigLocator::register);
         if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
         }
@@ -152,6 +155,11 @@ public class Chexsonsaeutils {
                 DirectProcessingJeiImportPayload.TYPE,
                 DirectProcessingJeiImportPayload.STREAM_CODEC,
                 DirectProcessingJeiImportPayload::handle
+        );
+        event.registrar("1").playToClient(
+                FramePatternConfigUpdatePayload.TYPE,
+                FramePatternConfigUpdatePayload.STREAM_CODEC,
+                FramePatternConfigUpdatePayload::handle
         );
     }
 

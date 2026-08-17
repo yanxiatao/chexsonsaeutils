@@ -40,6 +40,13 @@ repositories {
             includeGroup 'curse.maven'
         }
     }
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content {
+            includeGroup 'maven.modrinth'
+        }
+    }
 }
 
 neoForge {
@@ -97,6 +104,9 @@ dependencies {
     compileOnly "curse.maven:building-gadgets-298187:${building_gadgets2_file_id}"
     compileOnly "curse.maven:ftb-ultimine-forge-386134:${ftb_ultimine_file_id}"
     compileOnly files('libs/ExtendedCrafting-1.21.1-7.0.8.jar')
+    // advancedae/appflux：软依赖（运行时按 ModLoaded 检测，仅编译期引用）
+    compileOnly "maven.modrinth:advancedae:1.6.11-1.21.1"
+    compileOnly "maven.modrinth:appflux:1.21-2.1.5-neoforge"
     localRuntime "curse.maven:architectury-api-419699:${architectury_api_file_id}"
     localRuntime "curse.maven:ftb-library-forge-404465:${ftb_library_file_id}"
     localRuntime "org.appliedenergistics:appliedenergistics2:${ae2_version}"
