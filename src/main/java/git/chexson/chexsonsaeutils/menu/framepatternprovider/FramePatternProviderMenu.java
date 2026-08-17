@@ -17,11 +17,13 @@ import java.util.Objects;
 /**
  * 框架样板供应器菜单。
  * <p>
- * 槽位构成：36 个样板槽（ENCODED_PATTERN，仅可放入 AE2 样板物品）、9 格返回库存（STORAGE）、
- * 升级卡槽（由 {@link UpgradeableMenu} 自动添加）。样板推送逻辑属于阶段 3，本菜单只负责存取。
+ * 槽位构成：36 个样板槽（ENCODED_PATTERN，仅可放入 AE2 样板物品，来自
+ * {@link git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogic#getPatternInv()}）、
+ * 9 格返回库存（STORAGE，来自 logic 的 returnInv）、升级卡槽（由 {@link UpgradeableMenu} 自动添加）。
+ * 左工具栏动作：隔离模式切换（toggle_isolated）与主动抽取（pull_from_machine，需求 8）。
  * <p>
  * 打开方式：由 {@link git.chexson.chexsonsaeutils.block.framepatternprovider.FramePatternProviderBlock}
- * 在潜行右击之外的交互路径（wrench 或瞄准边框）调用 MenuOpener 打开。
+ * 在非潜行右击路径调用 MenuOpener 打开。
  */
 public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProviderBlockEntity> {
 
@@ -38,6 +40,7 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
     public FramePatternProviderMenu(int id, Inventory playerInventory, FramePatternProviderBlockEntity host) {
         super(TYPE, id, playerInventory, host);
         registerClientAction("toggle_isolated", () -> getHost().setIsolated(!getHost().isIsolated()));
+        registerClientAction("pull_from_machine", () -> getHost().getLogic().pullFromMachine());
     }
 
     @Override
@@ -62,9 +65,18 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
         sendClientAction("toggle_isolated");
     }
 
+    /**
+     * 客户端按钮点击入口：发送 pull_from_machine 动作到服务端，
+     * 主动抽取私有维度机器输出到返回库存（需求 8）。
+     */
+    public void pullFromMachine() {
+        sendClientAction("pull_from_machine");
+    }
+
     @Override
     protected void setupInventorySlots() {
-        var patternInventory = getHost().getTerminalPatternInventory();
+        var logic = getHost().getLogic();
+        var patternInventory = logic.getPatternInv();
         for (int slot = 0; slot < patternInventory.size(); slot++) {
             addSlot(
                     new RestrictedInputSlot(
@@ -75,7 +87,7 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
                     SlotSemantics.ENCODED_PATTERN
             );
         }
-        var returnInventory = getHost().getReturnInventory();
+        var returnInventory = logic.getReturnInv().createMenuWrapper();
         for (int slot = 0; slot < returnInventory.size(); slot++) {
             addSlot(new AppEngSlot(returnInventory, slot), SlotSemantics.STORAGE);
         }

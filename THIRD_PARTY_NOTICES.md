@@ -1,5 +1,23 @@
 # Third Party Notices
 
+## Applied Energistics 2 (AE2)
+
+- Source: https://github.com/AppliedEnergistics/Applied-Energistics-2
+- Local reference path: `reference-sources/ae2`
+- Reference version: 19.2.17 (Minecraft 1.21.1 / NeoForge)
+- License: LGPL-3.0
+
+This project forks `appeng/helpers/patternprovider/PatternProviderLogic.java` into
+`src/main/java/git/chexson/chexsonsaeutils/helpers/framepatternprovider/FramePatternProviderLogic.java`
+(adapted for the frame pattern provider's private-dimension machine target).
+The LGPL-3.0 license header is preserved in the forked file.
+
+```text
+GNU LESSER GENERAL PUBLIC LICENSE
+Version 3, 29 June 2007
+https://www.gnu.org/licenses/lgpl-3.0.html
+```
+
 ## REFactoryTeam/AEA
 
 - Source: https://github.com/REFactoryTeam/AEA

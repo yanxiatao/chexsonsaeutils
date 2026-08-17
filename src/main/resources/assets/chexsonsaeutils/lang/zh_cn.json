@@ -49,6 +49,8 @@
   "gui.chexsonsaeutils.frame_pattern_provider.isolated_hint": "仅共享能量，不共享频道与存储",
   "gui.chexsonsaeutils.frame_pattern_provider.merged": "并入主网格",
   "gui.chexsonsaeutils.frame_pattern_provider.merged_hint": "机器并入主网格，共享频道与存储",
+  "gui.chexsonsaeutils.frame_pattern_provider.pull": "主动抽取",
+  "gui.chexsonsaeutils.frame_pattern_provider.pull_hint": "把私有维度机器的输出抽取到返回库存",
   "block.chexsonsaeutils.high_capacity_crafting_machine": "§1归§8墟§r",
   "block.chexsonsaeutils.ae_direct_processing_machine": "§b径§3行§r",
   "gui.chexsonsaeutils.ae_direct_processing_machine": "§b径§3行§r",

@@ -49,6 +49,8 @@
   "gui.chexsonsaeutils.frame_pattern_provider.isolated_hint": "Share energy only; channels and storage stay separate",
   "gui.chexsonsaeutils.frame_pattern_provider.merged": "Merged into Main Grid",
   "gui.chexsonsaeutils.frame_pattern_provider.merged_hint": "Machine joins the main grid; channels and storage are shared",
+  "gui.chexsonsaeutils.frame_pattern_provider.pull": "Pull from Machine",
+  "gui.chexsonsaeutils.frame_pattern_provider.pull_hint": "Pull the machine's output in the private dimension into the return inventory",
   "block.chexsonsaeutils.high_capacity_crafting_machine": "§1Abyssal §8Convergence§r",
   "block.chexsonsaeutils.ae_direct_processing_machine": "§bStraight§3away§r",
   "gui.chexsonsaeutils.ae_direct_processing_machine": "§bStraight§3away§r",

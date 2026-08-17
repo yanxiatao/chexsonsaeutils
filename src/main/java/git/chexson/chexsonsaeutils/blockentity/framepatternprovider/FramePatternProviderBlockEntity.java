@@ -1,35 +1,29 @@
 package git.chexson.chexsonsaeutils.blockentity.framepatternprovider;
 
-import appeng.api.crafting.IPatternDetails;
-import appeng.api.implementations.blockentities.PatternContainerGroup;
-import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.GridFlags;
-import appeng.api.networking.IGrid;
-import appeng.api.networking.IGridNode;
-import appeng.api.networking.crafting.ICraftingProvider;
-import appeng.api.networking.ticking.IGridTickable;
-import appeng.api.networking.ticking.TickRateModulation;
-import appeng.api.networking.ticking.TickingRequest;
+import appeng.api.networking.IGridNodeListener;
 import appeng.api.stacks.AEItemKey;
-import appeng.api.stacks.KeyCounter;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.blockentity.ServerTickingBlockEntity;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
-import appeng.helpers.patternprovider.PatternContainer;
 import appeng.util.inv.AppEngInternalInventory;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.frame.FrameDimensionImpl;
 import git.chexson.chexsonsaeutils.frame.FrameStorageImpl;
+import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogic;
+import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -41,6 +35,7 @@ import net.neoforged.neoforge.items.IItemHandler;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 
@@ -48,14 +43,16 @@ import java.util.UUID;
  * 框架样板供应器方块实体。
  * <p>
  * 负责持久化被包裹的原方块信息：原方块 BlockState、原 BE 类型注册名与原 BE 的 NBT 数据。
- * 阶段 3 将在此 BE 上接入 AE2 PatternProviderLogic（样板供应、推送、终端展示）。
+ * 样板供应逻辑由 {@link FramePatternProviderLogic}（fork 自 AE2 PatternProviderLogic）承担：
+ * 36 样板槽、推送私有维度机器、返回库存回收机器输出（需求 8）。
  * <p>
- * 网格节点：REQUIRE_CHANNEL + ICraftingProvider 服务 + IGridTickable 骨架（阶段 3 填充）。
+ * 网格节点：REQUIRE_CHANNEL；ICraftingProvider 与 IGridTickable 服务由 logic 在构造时注册
+ * （字段初始化先于构造器体，logic 注册的服务不会被本类覆盖）。
  * 虚拟连接：{@link FrameLinkManager} 负责与私有维度机器的跨维度连接（非隔离并入主网格，
  * 隔离仅共享能量），连接状态由 serverTick 每 tick 驱动。
  */
 public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
-        implements ICraftingProvider, PatternContainer, IUpgradeableObject, IGridTickable, ServerTickingBlockEntity {
+        implements FramePatternProviderLogicHost, IUpgradeableObject, ServerTickingBlockEntity {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -63,20 +60,18 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     private static final String NBT_MACHINE_BACKUP = "machineBackup";
     private static final String NBT_FRAME_ID = "frameId";
     private static final String NBT_UPGRADES = "upgrades";
-    private static final String NBT_PATTERN_INVENTORY = "patternInventory";
-    private static final String NBT_RETURN_INVENTORY = "returnInventory";
     private static final String NBT_ISOLATED = "isolated";
     private static final int UPGRADE_SLOTS = 5;
     /** 样板槽数量：4 行 x 9 列，与 GUI 布局一致。 */
     private static final int PATTERN_SLOTS = 36;
-    /** 返回库存格数：存放样板推送后未被目标机器接收的产物。 */
-    private static final int RETURN_SLOTS = 9;
 
     private final IUpgradeInventory upgrades;
-    /** 样板库存：阶段 2 仅提供 GUI 存取，阶段 3 接入 PatternProviderLogic 后由逻辑层接管。 */
-    private final AppEngInternalInventory patternInventory = new AppEngInternalInventory(PATTERN_SLOTS);
-    /** 返回库存：阶段 2 仅提供 GUI 存取，阶段 3 接入推送逻辑后使用。 */
-    private final AppEngInternalInventory returnInventory = new AppEngInternalInventory(RETURN_SLOTS);
+    /**
+     * 样板供应逻辑（fork 自 AE2 PatternProviderLogic）：拥有 36 样板槽 + 9 格返回库存，
+     * 推送目标为私有维度机器。字段初始化创建（与 AE2 PatternProviderBlockEntity 一致）——
+     * 网格节点在 onReady 时才创建，logic 的 addService 必须在节点创建前生效。
+     */
+    private final FramePatternProviderLogic logic = createLogic();
 
     /** 被包裹的原方块状态，null 表示未包裹任何方块（渲染与收敛用）。 */
     @Nullable
@@ -103,19 +98,25 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
                 UPGRADE_SLOTS,
                 this::saveChanges
         );
+        // ICraftingProvider 与 IGridTickable 服务由 logic 注册（字段初始化先于本构造器体）
         this.getMainNode()
                 .setFlags(GridFlags.REQUIRE_CHANNEL)
-                .setIdlePowerUsage(0.0)
-                .addService(ICraftingProvider.class, this)
-                .addService(IGridTickable.class, this);
+                .setIdlePowerUsage(0.0);
+    }
+
+    /**
+     * 创建样板供应逻辑（36 样板槽）。
+     */
+    protected FramePatternProviderLogic createLogic() {
+        return new FramePatternProviderLogic(this.getMainNode(), this, PATTERN_SLOTS);
     }
 
     @Override
     public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.saveAdditional(data, registries);
         upgrades.writeToNBT(data, NBT_UPGRADES, registries);
-        patternInventory.writeToNBT(data, NBT_PATTERN_INVENTORY, registries);
-        returnInventory.writeToNBT(data, NBT_RETURN_INVENTORY, registries);
+        // 样板库存/返回库存由 logic 写入（key: patterns/returnInv）
+        logic.writeToNBT(data, registries);
         if (capturedState != null) {
             data.put(NBT_CAPTURED_STATE, NbtUtils.writeBlockState(capturedState));
         }
@@ -132,8 +133,9 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
         super.loadTag(data, registries);
         upgrades.readFromNBT(data, NBT_UPGRADES, registries);
-        patternInventory.readFromNBT(data, NBT_PATTERN_INVENTORY, registries);
-        returnInventory.readFromNBT(data, NBT_RETURN_INVENTORY, registries);
+        logic.readFromNBT(data, registries);
+        // 阶段 2 旧存档兼容：patternInventory/returnInventory → patterns/returnInv
+        logic.migrateLegacyInventory(data, registries);
         capturedState = data.contains(NBT_CAPTURED_STATE)
                 ? NbtUtils.readBlockState(
                         registries.lookupOrThrow(Registries.BLOCK),
@@ -157,8 +159,12 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
      * 捕获目标方块：把原机器（方块 + BE NBT）搬移到私有维度真实运行，主世界替换为框架方块。
      * <p>
      * 协议：saveWithId 备份 → 私有维度 allocateNextPosition 放置机器 → 登记 frameId 映射并强制加载
-     * → 主世界 setBlock 替换为框架方块。原机器 BE 在 setBlock 前已被 LevelChunk 移出映射表，
-     * 其 onRemove 中 getBlockEntity 返回 null，不会掉落内部物品。
+     * → 主世界先 removeBlockEntity 摘除机器 BE → setBlock 替换为框架方块。
+     * <p>
+     * 时序说明（B1 修复）：1.21.1 服务端 LevelChunk.setBlockState 先调原方块 onRemove（此时 BE 仍在
+     * 映射表），BE 移除发生在 onRemove 内部。熔炉等带 dropContents 的机器若直接 setBlock，内部物品会
+     * 掉主世界，而 machineTag（saveWithId 含物品）已写入私有维度 → 物品复制。故 setBlock 前必须先
+     * removeBlockEntity 摘除 BE，使其 onRemove 中 getBlockEntity 返回 null，不触发掉落。
      * <p>
      * 调用前提：pos 处仍是目标方块（本方法由
      * {@link git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternProviderItem#useOn} 在服务端调用）。
@@ -195,7 +201,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         UUID frameId = UUID.randomUUID();
         storage.putFramePosition(frameLevel, frameId, framePos);
         storage.forceload(frameLevel, pos, framePos.getX() >> 4, framePos.getZ() >> 4, true);
-        // 3. 主世界替换为框架方块（原机器 BE 已出映射表，其 onRemove 不会掉落内部物品）
+        // 3. 先摘除主世界机器 BE 再替换为框架方块（B1 修复：防 onRemove 掉落内部物品导致复制）
+        level.removeBlockEntity(pos);
         level.setBlock(
                 pos,
                 ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_BLOCK.get().defaultBlockState(),
@@ -218,6 +225,9 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
      * <p>
      * 先 setBlock 恢复原方块（此过程会移除本框架 BE，触发本方块 onRemove 但 BE 已不存在，不会递归），
      * 再按捕获的 BE 类型注册名重建原 BE 并写入 NBT。
+     * <p>
+     * 样板库存/返回库存的掉落由 onRemove 路径的 {@link #addAdditionalDrops} 处理
+     * （挖掘、爆炸、拆除 setBlock 均触发 onRemove）。
      *
      * @param level 所在世界
      * @param pos   本框架方块位置（即原方块位置）
@@ -262,7 +272,6 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
                     LOGGER.warn("恢复原 BE 失败：备份数据无法创建实例，位置 {}", pos);
                 }
             }
-            // TODO(阶段3): 拆除时框架自身样板/返回库存的迁移或丢弃处理
             capturedState = null;
             machineBackup = null;
             frameId = null;
@@ -354,6 +363,18 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     @Override
+    public void onReady() {
+        super.onReady();
+        // 节点就绪后刷新样板列表（loadTag 已由 logic 读取，此处触发 requestUpdate 让网格感知）
+        this.logic.updatePatterns();
+    }
+
+    @Override
+    public void onMainNodeStateChanged(IGridNodeListener.State reason) {
+        this.logic.onMainNodeStateChanged();
+    }
+
+    @Override
     public void onChunkUnloaded() {
         super.onChunkUnloaded();
         linkManager.teardownLink();
@@ -362,6 +383,7 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     @Override
     public void setRemoved() {
         super.setRemoved();
+        // logic 无独立资源（mainNode 由 super.setRemoved 销毁），仅销毁跨维度虚拟连接
         linkManager.teardownLink();
     }
 
@@ -426,9 +448,9 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     /**
      * 外部 ITEM capability 透传：服务端返回私有维度机器的 IItemHandler，客户端返回空实现。
      * <p>
-     * 样板库存/返回库存是 AE2 内部库存（AppEngInternalInventory，走网格存储），
-     * capability 透传只针对外部管道访问；客户端无法访问服务端私有维度，
-     * Waila/Jade 等客户端查询场景后置处理（阶段 6），此处返回空实现避免 NPE。
+     * 样板库存/返回库存是 AE2 内部库存（走网格存储），capability 透传只针对外部管道访问；
+     * 客户端无法访问服务端私有维度，Waila/Jade 等客户端查询场景后置处理（阶段 6），
+     * 此处返回空实现避免 NPE。
      */
     public IItemHandler getMachineItemHandler() {
         if (level == null || level.isClientSide()) {
@@ -452,63 +474,41 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     @Override
-    public List<IPatternDetails> getAvailablePatterns() {
-        // TODO(阶段3): 接入 PatternProviderLogic 后返回真实样板列表
-        return List.of();
+    public FramePatternProviderLogic getLogic() {
+        return logic;
     }
 
     @Override
-    public boolean pushPattern(IPatternDetails patternDetails, KeyCounter[] inputHolder) {
-        // TODO(阶段3): 接入 PatternProviderLogic 后实现样板推送
-        return false;
+    public EnumSet<Direction> getTargets() {
+        // 需求 8：输入输出隔离——机器在私有维度，周围无方块，不向周围发/收
+        return EnumSet.noneOf(Direction.class);
     }
 
     @Override
-    public boolean isBusy() {
-        return false;
+    public AEItemKey getTerminalIcon() {
+        return AEItemKey.of(ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_ITEM.get());
     }
 
     @Override
-    @Nullable
-    public IGrid getGrid() {
-        return getMainNode().getGrid();
+    public ItemStack getMainMenuIcon() {
+        return new ItemStack(ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_ITEM.get());
     }
 
     @Override
-    public InternalInventory getTerminalPatternInventory() {
-        return patternInventory;
-    }
-
-    /**
-     * @return 返回库存（9 格），存放样板推送后未被目标机器接收的产物
-     */
-    public InternalInventory getReturnInventory() {
-        return returnInventory;
+    public void addAdditionalDrops(Level level, BlockPos pos, List<ItemStack> drops) {
+        super.addAdditionalDrops(level, pos, drops);
+        // 样板库存/返回库存/sendList 掉落（挖掘、爆炸、拆除 setBlock 均经 onRemove 触发）
+        this.logic.addDrops(drops);
     }
 
     @Override
-    public PatternContainerGroup getTerminalGroup() {
-        return new PatternContainerGroup(
-                AEItemKey.of(ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_ITEM.get()),
-                getName(),
-                List.of()
-        );
+    public void clearContent() {
+        super.clearContent();
+        this.logic.clearContent();
     }
 
     @Override
     public IUpgradeInventory getUpgrades() {
         return upgrades;
-    }
-
-    @Override
-    public TickingRequest getTickingRequest(IGridNode node) {
-        // TODO(阶段3): 接入 PatternProviderLogic 后按需返回 tick 请求
-        return new TickingRequest(1, 20, true);
-    }
-
-    @Override
-    public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLastCall) {
-        // TODO(阶段3): 接入 PatternProviderLogic 后实现网格 tick
-        return TickRateModulation.SLEEP;
     }
 }
