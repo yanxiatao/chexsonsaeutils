@@ -84,6 +84,17 @@ public class FramePatternProviderScreen extends AEBaseScreen<FramePatternProvide
         };
         this.nextPageButton.setMessage(Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.next_page"));
         this.addToLeftToolbar(this.nextPageButton);
+        // 扩容按钮（需求 5 阶段 5b）：打开扩容 GUI（消耗 ExtendedAE 扩展样板供应器增加页数）
+        IconButton upgradeButton = new IconButton(btn -> this.menu.openUpgradeGuiClient()) {
+            @Override
+            protected Icon getIcon() {
+                return Icon.ENTER;
+            }
+        };
+        upgradeButton.setMessage(Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.upgrade")
+                .append("\n")
+                .append(Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.upgrade_hint")));
+        this.addToLeftToolbar(upgradeButton);
     }
 
     @Override

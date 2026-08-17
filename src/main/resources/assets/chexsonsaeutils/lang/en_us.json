@@ -58,6 +58,8 @@
   "gui.chexsonsaeutils.frame_pattern_provider.configure_off_hint": "Turn on config mode, then click a processing pattern slot to open the config screen",
   "gui.chexsonsaeutils.frame_pattern_provider.prev_page": "Previous Page",
   "gui.chexsonsaeutils.frame_pattern_provider.next_page": "Next Page",
+  "gui.chexsonsaeutils.frame_pattern_provider.upgrade": "Upgrade",
+  "gui.chexsonsaeutils.frame_pattern_provider.upgrade_hint": "Open the upgrade screen: consume ExtendedAE pattern providers to add pattern pages",
   "gui.chexsonsaeutils.frame_pattern_config": "Frame Pattern Config",
   "gui.chexsonsaeutils.frame_pattern_config.input_slot": "Input Pattern",
   "gui.chexsonsaeutils.frame_pattern_config.output_slot": "Output Frame Pattern",

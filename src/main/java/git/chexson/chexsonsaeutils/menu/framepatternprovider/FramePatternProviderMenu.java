@@ -12,6 +12,8 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
+import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
+import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
@@ -61,6 +63,7 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
         registerClientAction("toggle_config_mode", () -> configMode = !configMode);
         registerClientAction("open_config_for_slot", Integer.class, this::openConfigForSlot);
         registerClientAction("set_page", Integer.class, this::setPageFromClient);
+        registerClientAction("open_upgrade_gui", this::openUpgradeGui);
         // setupInventorySlots 已由 UpgradeableMenu 构造执行，此处按初始页启用槽位
         updateSlotActivity();
     }
@@ -164,6 +167,23 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
      */
     public int getPages() {
         return pages;
+    }
+
+    /**
+     * 客户端扩展按钮点击入口：发送 open_upgrade_gui 动作到服务端（需求 5 阶段 5b）。
+     */
+    public void openUpgradeGuiClient() {
+        sendClientAction("open_upgrade_gui");
+    }
+
+    /**
+     * 服务端入口：打开扩容 GUI（瞬态宿主 locator，玩家自行放入物品）。
+     */
+    private void openUpgradeGui() {
+        if (!isServerSide()) {
+            return;
+        }
+        MenuOpener.open(FramePatternUpgradeMenu.TYPE, getPlayer(), new FramePatternUpgradeLocator());
     }
 
     /**

@@ -1,0 +1,171 @@
+package git.chexson.chexsonsaeutils.menu.framepatternupgrade;
+
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.item.ItemStack;
+
+import appeng.api.inventories.InternalInventory;
+import appeng.menu.AEBaseMenu;
+import appeng.menu.SlotSemantics;
+import appeng.menu.guisync.GuiSync;
+import appeng.menu.implementations.MenuTypeBuilder;
+import appeng.menu.slot.AppEngSlot;
+import appeng.menu.slot.RestrictedInputSlot;
+import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
+import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternProviderItem;
+import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+
+/**
+ * 扩容 GUI 菜单（需求 5 阶段 5b）。
+ * <p>
+ * 槽位构成（仿 CondenserMenu 3 槽 + 玩家背包）：槽 0 = 存储槽
+ * （STORAGE_CELL，仅可放入 {@link FramePatternProviderItem}，上限 1 个）、
+ * 槽 1 = 输入槽（MACHINE_INPUT，仅可放入 ExtendedAE 扩展样板供应器物品
+ * {@code extendedae:ex_pattern_provider}，见 {@link ExtendedAeCompat}）+ 玩家背包槽位。
+ * <p>
+ * 服务端行为：确认按钮 client action「expand」——校验存储槽物品是框架供应器
+ * 且页数未达上限 → 消耗输入槽 1 个扩展物品 → 存储槽物品 FRAME_PATTERN_PAGES
+ * 组件 +1；达上限不消耗。可扩容状态经 @GuiSync 同步到客户端（按钮可用性）。
+ * <p>
+ * 打开方式：FramePatternProviderScreen 左工具栏扩展按钮 → MenuOpener.open
+ * （locator 为 {@link FramePatternUpgradeLocator}）。
+ */
+public class FramePatternUpgradeMenu extends AEBaseMenu {
+
+    public static final MenuType<FramePatternUpgradeMenu> TYPE = MenuTypeBuilder
+            .create(FramePatternUpgradeMenu::new, FramePatternUpgradeHost.class)
+            .buildUnregistered(ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "frame_pattern_upgrade"));
+
+    /** 宿主库存变更回调（由宿主转发，见 {@link FramePatternUpgradeHost#setInventoryChangedHandler}）。 */
+    public interface InventoryChangedHandler {
+        void handleChange(InternalInventory inv, int slot);
+    }
+
+    private final FramePatternUpgradeHost host;
+    private final net.minecraft.world.inventory.Slot storageSlot;
+    private final net.minecraft.world.inventory.Slot inputSlot;
+
+    /** 存储槽物品的当前页数（客户端同步显示）。 */
+    @GuiSync(1)
+    public int pages = 1;
+
+    /** 可扩容状态：存储槽是框架供应器物品 + 输入槽有扩展物品 + 页数未达上限。 */
+    @GuiSync(2)
+    public boolean canExpand = false;
+
+    public FramePatternUpgradeMenu(int id, Inventory playerInventory, FramePatternUpgradeHost host) {
+        // AEBaseMenu 要求宿主为 BlockEntity/IPart/ItemMenuHost，此菜单宿主为瞬态对象，
+        // 传 null 绕过校验（本菜单不使用 IActionHost 功能）。
+        super(TYPE, id, playerInventory, null);
+        this.host = host;
+        this.createPlayerInventorySlots(playerInventory);
+        this.addSlot(this.storageSlot = new RestrictedInputSlot(
+                RestrictedInputSlot.PlacableItemType.STORAGE_COMPONENT, host.getInventory(), 0
+        ).setStackLimit(1), SlotSemantics.STORAGE_CELL);
+        // 输入槽过滤器在宿主库存层实现（仅 ExtendedAE 扩展样板供应器，见 FramePatternUpgradeHost）
+        this.addSlot(this.inputSlot = new AppEngSlot(host.getInventory(), 1), SlotSemantics.MACHINE_INPUT);
+
+        this.host.setInventoryChangedHandler(this::onHostInventoryChanged);
+        registerClientAction("expand", this::expand);
+        updateState();
+    }
+
+    @Override
+    public void broadcastChanges() {
+        updateState();
+        super.broadcastChanges();
+    }
+
+    /**
+     * 服务端重算同步状态（库存变更与每 tick 广播共用）。
+     */
+    private void updateState() {
+        if (!isServerSide()) {
+            return;
+        }
+        var providerStack = this.storageSlot.getItem();
+        if (providerStack.getItem() instanceof FramePatternProviderItem) {
+            this.pages = Math.max(1, providerStack.getOrDefault(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), 1));
+        } else {
+            this.pages = 1;
+        }
+        this.canExpand = isExpandable();
+    }
+
+    /**
+     * @return 是否满足扩容条件：存储槽是框架供应器 + 输入槽是 ExtendedAE 扩展样板供应器
+     * + 页数未达上限
+     */
+    private boolean isExpandable() {
+        if (!(this.storageSlot.getItem().getItem() instanceof FramePatternProviderItem)) {
+            return false;
+        }
+        if (!ExtendedAeCompat.isExPatternProvider(this.inputSlot.getItem())) {
+            return false;
+        }
+        return this.pages < FramePatternProviderBlockEntity.maxPages();
+    }
+
+    /**
+     * 服务端入口：确认扩容——消耗 1 个扩展物品，存储槽物品页数 +1（达上限不消耗）。
+     * <p>
+     * I1 修复：重新读取实际页数后再次校验上限（Fail Fast），与 isExpandable 判定一致，
+     * 防止客户端伪造动作绕过（isExpandable 基于同步缓存，此处以物品组件实际值为准）。
+     */
+    private void expand() {
+        if (!isServerSide() || !isExpandable()) {
+            return;
+        }
+        var providerStack = this.storageSlot.getItem();
+        int pages = Math.max(1, providerStack.getOrDefault(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), 1));
+        if (pages >= FramePatternProviderBlockEntity.maxPages()) {
+            return;
+        }
+        providerStack.set(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), pages + 1);
+        this.inputSlot.getItem().shrink(1);
+        updateState();
+    }
+
+    /**
+     * 客户端确认按钮点击入口：发送 expand 动作到服务端。
+     */
+    public void expandClient() {
+        sendClientAction("expand");
+    }
+
+    /**
+     * @return 存储槽物品当前页数（客户端同步值）
+     */
+    public int getPages() {
+        return this.pages;
+    }
+
+    /**
+     * @return 配置允许的最大页数（客户端直接读配置，无需同步）
+     */
+    public int getMaxPages() {
+        return FramePatternProviderBlockEntity.maxPages();
+    }
+
+    /**
+     * @return 输入槽扩展物品数量（客户端读槽位物品）
+     */
+    public int getInputCount() {
+        return this.inputSlot.getItem().getCount();
+    }
+
+    /**
+     * @return 是否可扩容（客户端同步值，控制按钮可用性）
+     */
+    public boolean isCanExpand() {
+        return this.canExpand;
+    }
+
+    private void onHostInventoryChanged(InternalInventory inv, int slot) {
+        // 库存变更（服务端侧）即重算同步状态；客户端侧无行为（宿主 isClientSide 恒 false）
+        updateState();
+    }
+}

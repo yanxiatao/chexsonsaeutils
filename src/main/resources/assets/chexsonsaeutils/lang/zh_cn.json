@@ -58,6 +58,8 @@
   "gui.chexsonsaeutils.frame_pattern_provider.configure_off_hint": "开启配置模式后，点击处理样板槽位打开配置界面",
   "gui.chexsonsaeutils.frame_pattern_provider.prev_page": "上一页",
   "gui.chexsonsaeutils.frame_pattern_provider.next_page": "下一页",
+  "gui.chexsonsaeutils.frame_pattern_provider.upgrade": "扩容",
+  "gui.chexsonsaeutils.frame_pattern_provider.upgrade_hint": "打开扩容界面：消耗扩展样板供应器增加样板页数",
   "gui.chexsonsaeutils.frame_pattern_config": "框架样板配置",
   "gui.chexsonsaeutils.frame_pattern_config.input_slot": "输入样板",
   "gui.chexsonsaeutils.frame_pattern_config.output_slot": "输出框架样板",

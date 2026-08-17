@@ -31,6 +31,7 @@ import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
+import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
 import git.chexson.chexsonsaeutils.network.framepatternconfig.FramePatternConfigUpdatePayload;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacementDecoder;
@@ -126,6 +127,7 @@ public class Chexsonsaeutils {
         event.enqueueWork(Chexsonsaeutils::applyDirectProcessingMachineRecipeMappings);
         event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(FramePatternDecoder.INSTANCE));
         event.enqueueWork(FramePatternConfigLocator::register);
+        event.enqueueWork(FramePatternUpgradeLocator::register);
         if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
         }
