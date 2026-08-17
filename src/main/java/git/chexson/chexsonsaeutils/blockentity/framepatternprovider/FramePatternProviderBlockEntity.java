@@ -36,6 +36,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.items.IItemHandler;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -91,6 +93,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     private boolean isolated;
     /** 跨维度虚拟连接管理器（与私有维度机器的网格连接）。 */
     private final FrameLinkManager linkManager = new FrameLinkManagerImpl(this);
+    /** 跨维度机器访问 API（私有维度机器的库存/能量 capability 查询）。 */
+    private final FrameMachineAccess machineAccess = new FrameMachineAccessImpl(this);
 
     public FramePatternProviderBlockEntity(BlockPos pos, BlockState blockState) {
         super(ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(), pos, blockState);
@@ -410,6 +414,41 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         this.isolated = isolated;
         saveChanges();
         linkManager.rebuild();
+    }
+
+    /**
+     * @return 跨维度机器访问 API（私有维度机器的库存/能量 capability 查询）
+     */
+    public FrameMachineAccess getMachineAccess() {
+        return machineAccess;
+    }
+
+    /**
+     * 外部 ITEM capability 透传：服务端返回私有维度机器的 IItemHandler，客户端返回空实现。
+     * <p>
+     * 样板库存/返回库存是 AE2 内部库存（AppEngInternalInventory，走网格存储），
+     * capability 透传只针对外部管道访问；客户端无法访问服务端私有维度，
+     * Waila/Jade 等客户端查询场景后置处理（阶段 6），此处返回空实现避免 NPE。
+     */
+    public IItemHandler getMachineItemHandler() {
+        if (level == null || level.isClientSide()) {
+            return FrameMachineAccessImpl.EMPTY_ITEM_HANDLER;
+        }
+        IItemHandler handler = machineAccess.getMachineItemHandler();
+        return handler != null ? handler : FrameMachineAccessImpl.EMPTY_ITEM_HANDLER;
+    }
+
+    /**
+     * 外部 ENERGY capability 透传：服务端返回私有维度机器的 IEnergyStorage，客户端返回空实现。
+     * <p>
+     * appflux 灌电路径基础（阶段 6 用）；客户端无法访问服务端私有维度，返回空实现避免 NPE。
+     */
+    public IEnergyStorage getMachineEnergyHandler() {
+        if (level == null || level.isClientSide()) {
+            return FrameMachineAccessImpl.EMPTY_ENERGY_STORAGE;
+        }
+        IEnergyStorage handler = machineAccess.getMachineEnergyHandler();
+        return handler != null ? handler : FrameMachineAccessImpl.EMPTY_ENERGY_STORAGE;
     }
 
     @Override

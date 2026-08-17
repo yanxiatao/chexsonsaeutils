@@ -232,6 +232,17 @@ public final class ChexsonsaeutilsContent {
                 AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY.get(),
                 (blockEntity, side) -> blockEntity.getAutomationItemHandler()
         );
+        // 框架样板供应器：ITEM/ENERGY capability 跨维度透传到私有维度机器
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                (blockEntity, side) -> blockEntity.getMachineItemHandler()
+        );
+        event.registerBlockEntity(
+                Capabilities.EnergyStorage.BLOCK,
+                FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                (blockEntity, side) -> blockEntity.getMachineEnergyHandler()
+        );
     }
 
     public static void registerClientScreens(RegisterMenuScreensEvent event) {
