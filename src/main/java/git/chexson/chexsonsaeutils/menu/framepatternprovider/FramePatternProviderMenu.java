@@ -56,6 +56,10 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
     @GuiSync(6)
     public int pages = 1;
 
+    /** 输入过滤开关（需求 6a）：服务端权威（Logic NBT 持久化），客户端按钮据此显示。 */
+    @GuiSync(7)
+    public boolean filteredImport = false;
+
     public FramePatternProviderMenu(int id, Inventory playerInventory, FramePatternProviderBlockEntity host) {
         super(TYPE, id, playerInventory, host);
         registerClientAction("toggle_isolated", () -> getHost().setIsolated(!getHost().isIsolated()));
@@ -64,6 +68,8 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
         registerClientAction("open_config_for_slot", Integer.class, this::openConfigForSlot);
         registerClientAction("set_page", Integer.class, this::setPageFromClient);
         registerClientAction("open_upgrade_gui", this::openUpgradeGui);
+        registerClientAction("toggle_filtered_import",
+                () -> getHost().getLogic().setFilteredImport(!getHost().getLogic().isFilteredImport()));
         // setupInventorySlots 已由 UpgradeableMenu 构造执行，此处按初始页启用槽位
         updateSlotActivity();
     }
@@ -73,6 +79,7 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
         if (isServerSide()) {
             isolated = getHost().isIsolated();
             pages = getHost().getPages();
+            filteredImport = getHost().getLogic().isFilteredImport();
             if (page >= pages) {
                 // 页数收缩（配置调低/5b 降级）时收敛当前页
                 page = Math.max(0, pages - 1);
@@ -109,6 +116,20 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
      */
     public void pullFromMachine() {
         sendClientAction("pull_from_machine");
+    }
+
+    /**
+     * @return 输入过滤开关（需求 6a，客户端同步值）
+     */
+    public boolean isFilteredImport() {
+        return filteredImport;
+    }
+
+    /**
+     * 客户端按钮点击入口：发送 toggle_filtered_import 动作到服务端切换输入过滤（需求 6a）。
+     */
+    public void toggleFilteredImport() {
+        sendClientAction("toggle_filtered_import");
     }
 
     /**

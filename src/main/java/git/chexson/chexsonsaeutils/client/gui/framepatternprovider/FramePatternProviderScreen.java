@@ -33,6 +33,7 @@ public class FramePatternProviderScreen extends AEBaseScreen<FramePatternProvide
 
     private final ToggleButton isolatedButton;
     private final ToggleButton configButton;
+    private final ToggleButton filterImportButton;
     private final IconButton prevPageButton;
     private final IconButton nextPageButton;
 
@@ -67,6 +68,16 @@ public class FramePatternProviderScreen extends AEBaseScreen<FramePatternProvide
                 Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.configure_off"),
                 Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.configure_off_hint")));
         this.addToLeftToolbar(this.configButton);
+        // 输入过滤按钮（需求 6a）：过滤开启时 returnInv 注入网络只放行已配置样板的输出物品
+        this.filterImportButton = new ToggleButton(Icon.FILTER_ON_EXTRACT_ENABLED,
+                Icon.FILTER_ON_EXTRACT_DISABLED, btn -> this.menu.toggleFilteredImport());
+        this.filterImportButton.setTooltipOn(List.of(
+                Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.filtered_import_on"),
+                Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.filtered_import_on_hint")));
+        this.filterImportButton.setTooltipOff(List.of(
+                Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off"),
+                Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off_hint")));
+        this.addToLeftToolbar(this.filterImportButton);
         // 翻页按钮（需求 5）：上一页/下一页，边界页隐藏
         this.prevPageButton = new IconButton(btn -> this.menu.setPage(this.menu.getPage() - 1)) {
             @Override
@@ -102,6 +113,7 @@ public class FramePatternProviderScreen extends AEBaseScreen<FramePatternProvide
         super.updateBeforeRender();
         this.isolatedButton.setState(this.menu.isIsolated());
         this.configButton.setState(this.menu.isConfigMode());
+        this.filterImportButton.setState(this.menu.isFilteredImport());
         // 需求 5：每帧按当前页刷新样板槽渲染可见性（服务端另有 isSlotEnabled 交互防护）
         this.updatePageSlotActivity();
         this.prevPageButton.setVisibility(this.menu.getPage() > 0);

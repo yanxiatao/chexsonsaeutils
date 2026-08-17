@@ -112,6 +112,8 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     public static final String NBT_SEND_LIST = "sendList";
     public static final String NBT_SEND_DIRECTION = "sendDirection";
     public static final String NBT_RETURN_INV = "returnInv";
+    /** 需求 6a：输入过滤开关 NBT key。 */
+    public static final String NBT_FILTERED_IMPORT = "filteredImport";
 
     private final FramePatternProviderLogicHost host;
     private final IManagedGridNode mainNode;
@@ -136,6 +138,18 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     private Direction sendDirection;
     // Stack returning logic
     private final PatternProviderReturnInventory returnInv;
+    /**
+     * 需求 6a：输入过滤开关（NBT 持久化，Menu @GuiSync 同步）。
+     * 过滤开启时 returnInv 注入网络只放行已配置样板的输出物品（outputCache）。
+     */
+    private boolean filteredImport;
+    /**
+     * 需求 6a：已配置样板的输出物品集合（updatePatterns 时重建）。
+     * 适配说明：advancedae 的 trackedCrafts（进行中 crafting 请求）语义不适用——
+     * 本项目 fork 仅支持 processing 样板（crafting 请求路径已删除），故只保留
+     * outputCache 等价语义（放行样板输出物品回网络）。
+     */
+    private final HashSet<AEKey> outputCache = new HashSet<>();
 
     private YesNo redstoneState = YesNo.UNDECIDED;
 
@@ -168,7 +182,14 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         this.returnInv = new PatternProviderReturnInventory(() -> {
             this.mainNode.ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
             this.host.saveChanges();
-        });
+        }) {
+            {
+                // 需求 6a：输入过滤——过滤开启时只放行已配置样板的输出物品（仿 advancedae
+                // AdvPatternProviderReturnInventory，适配本项目无 trackedCrafts 的结构）
+                this.setFilter((slot, what) -> !FramePatternProviderLogic.this.filteredImport
+                        || FramePatternProviderLogic.this.outputCache.contains(what));
+            }
+        };
     }
 
     public int getPriority() {
@@ -209,6 +230,7 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         }
 
         tag.put(NBT_RETURN_INV, this.returnInv.writeToTag(registries));
+        tag.putBoolean(NBT_FILTERED_IMPORT, this.filteredImport);
     }
 
     public void readFromNBT(CompoundTag tag, HolderLookup.Provider registries) {
@@ -248,6 +270,27 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         }
 
         this.returnInv.readFromTag(tag.getList("returnInv", Tag.TAG_COMPOUND), registries);
+        this.filteredImport = tag.getBoolean(NBT_FILTERED_IMPORT);
+    }
+
+    /**
+     * @return 输入过滤开关（需求 6a）：开启时 returnInv 注入网络只放行已配置样板的输出物品
+     */
+    public boolean isFilteredImport() {
+        return filteredImport;
+    }
+
+    /**
+     * 设置输入过滤开关（需求 6a），服务端权威（Menu client action 调用）。
+     *
+     * @param filteredImport 新状态
+     */
+    public void setFilteredImport(boolean filteredImport) {
+        if (this.filteredImport == filteredImport) {
+            return;
+        }
+        this.filteredImport = filteredImport;
+        this.host.saveChanges();
     }
 
     /**
@@ -313,12 +356,18 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     public void updatePatterns() {
         patterns.clear();
         patternInputs.clear();
+        outputCache.clear();
 
         for (var stack : this.patternInventory) {
             var details = PatternDetailsHelper.decodePattern(stack, this.host.getBlockEntity().getLevel());
 
             if (details != null) {
                 patterns.add(details);
+
+                // 需求 6a：收集样板输出物品（输入过滤放行集合）
+                for (var output : details.getOutputs()) {
+                    outputCache.add(output.what());
+                }
 
                 for (var iinput : details.getInputs()) {
                     for (var inputCandidate : iinput.getPossibleInputs()) {
