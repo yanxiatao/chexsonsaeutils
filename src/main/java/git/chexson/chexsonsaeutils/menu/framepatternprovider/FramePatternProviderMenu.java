@@ -1,6 +1,7 @@
 package git.chexson.chexsonsaeutils.menu.framepatternprovider;
 
 import appeng.menu.SlotSemantics;
+import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.implementations.UpgradeableMenu;
 import appeng.menu.slot.AppEngSlot;
@@ -30,8 +31,35 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
                     ResourceLocation.tryParse(Chexsonsaeutils.MODID + ":frame_pattern_provider")
             ));
 
+    /** 隔离模式状态（服务端广播到客户端，客户端按钮据此显示）。 */
+    @GuiSync(3)
+    public boolean isolated = false;
+
     public FramePatternProviderMenu(int id, Inventory playerInventory, FramePatternProviderBlockEntity host) {
         super(TYPE, id, playerInventory, host);
+        registerClientAction("toggle_isolated", () -> getHost().setIsolated(!getHost().isIsolated()));
+    }
+
+    @Override
+    public void broadcastChanges() {
+        if (isServerSide()) {
+            isolated = getHost().isIsolated();
+        }
+        super.broadcastChanges();
+    }
+
+    /**
+     * @return 当前隔离模式状态（客户端同步值）
+     */
+    public boolean isIsolated() {
+        return isolated;
+    }
+
+    /**
+     * 客户端按钮点击入口：发送 toggle_isolated 动作到服务端切换隔离模式。
+     */
+    public void toggleIsolated() {
+        sendClientAction("toggle_isolated");
     }
 
     @Override

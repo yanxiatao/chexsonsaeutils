@@ -15,6 +15,7 @@ import appeng.api.stacks.KeyCounter;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
+import appeng.blockentity.ServerTickingBlockEntity;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.helpers.patternprovider.PatternContainer;
 import appeng.util.inv.AppEngInternalInventory;
@@ -48,9 +49,11 @@ import java.util.UUID;
  * 阶段 3 将在此 BE 上接入 AE2 PatternProviderLogic（样板供应、推送、终端展示）。
  * <p>
  * 网格节点：REQUIRE_CHANNEL + ICraftingProvider 服务 + IGridTickable 骨架（阶段 3 填充）。
+ * 虚拟连接：{@link FrameLinkManager} 负责与私有维度机器的跨维度连接（非隔离并入主网格，
+ * 隔离仅共享能量），连接状态由 serverTick 每 tick 驱动。
  */
 public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
-        implements ICraftingProvider, PatternContainer, IUpgradeableObject, IGridTickable {
+        implements ICraftingProvider, PatternContainer, IUpgradeableObject, IGridTickable, ServerTickingBlockEntity {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -60,6 +63,7 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_PATTERN_INVENTORY = "patternInventory";
     private static final String NBT_RETURN_INVENTORY = "returnInventory";
+    private static final String NBT_ISOLATED = "isolated";
     private static final int UPGRADE_SLOTS = 5;
     /** 样板槽数量：4 行 x 9 列，与 GUI 布局一致。 */
     private static final int PATTERN_SLOTS = 36;
@@ -83,6 +87,10 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     private UUID frameId;
     /** 搬回协议执行中标志：防止嵌套 setBlock 触发本方块 onRemove 时递归恢复（B1 时序教训）。 */
     private boolean restoring;
+    /** 隔离模式：true 时私有网格只与主网格共享能量（overlay 桥），不合并网格、不占频道。 */
+    private boolean isolated;
+    /** 跨维度虚拟连接管理器（与私有维度机器的网格连接）。 */
+    private final FrameLinkManager linkManager = new FrameLinkManagerImpl(this);
 
     public FramePatternProviderBlockEntity(BlockPos pos, BlockState blockState) {
         super(ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(), pos, blockState);
@@ -113,6 +121,7 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         if (frameId != null) {
             data.putUUID(NBT_FRAME_ID, frameId);
         }
+        data.putBoolean(NBT_ISOLATED, isolated);
     }
 
     @Override
@@ -137,6 +146,7 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
             machineBackup = legacyBackup;
         }
         frameId = data.contains(NBT_FRAME_ID) ? data.getUUID(NBT_FRAME_ID) : null;
+        isolated = data.getBoolean(NBT_ISOLATED);
     }
 
     /**
@@ -192,6 +202,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
             frameBlockEntity.machineBackup = machineTag;
             frameBlockEntity.frameId = frameId;
             frameBlockEntity.saveChanges();
+            // 捕获后立即创建虚拟节点（机器节点需等私有维度首 tick 就绪，连接由 serverTick 补建）
+            frameBlockEntity.linkManager.ensureVirtualNode();
         } else {
             LOGGER.error("捕获失败：替换为框架方块后未找到框架 BE，位置 {}", pos);
         }
@@ -251,6 +263,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
             machineBackup = null;
             frameId = null;
             saveChanges();
+            // 机器已搬回主世界，销毁跨维度虚拟连接
+            linkManager.teardownLink();
         } finally {
             restoring = false;
         }
@@ -329,7 +343,27 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         super.onLoad();
         if (level != null && !level.isClientSide() && level.getServer() != null) {
             reconcileCapturedMachine();
+            if (hasCapturedContent()) {
+                linkManager.ensureVirtualNode();
+            }
         }
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        super.onChunkUnloaded();
+        linkManager.teardownLink();
+    }
+
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        linkManager.teardownLink();
+    }
+
+    @Override
+    public void serverTick() {
+        linkManager.tick();
     }
 
     /**
@@ -345,6 +379,37 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
      */
     public boolean hasCapturedContent() {
         return capturedState != null;
+    }
+
+    /**
+     * @return 框架唯一 ID（FrameStorage 映射键），未捕获时为 null
+     */
+    @Nullable
+    public UUID getFrameId() {
+        return frameId;
+    }
+
+    /**
+     * @return true 表示隔离模式（私有网格只与主网格共享能量）
+     */
+    public boolean isIsolated() {
+        return isolated;
+    }
+
+    /**
+     * 切换隔离模式并重建跨维度连接拓扑。
+     * <p>
+     * 非隔离：机器并入主网格（共享频道与存储）；隔离：仅经 overlay 桥共享能量。
+     *
+     * @param isolated 目标隔离状态
+     */
+    public void setIsolated(boolean isolated) {
+        if (this.isolated == isolated) {
+            return;
+        }
+        this.isolated = isolated;
+        saveChanges();
+        linkManager.rebuild();
     }
 
     @Override

@@ -12,6 +12,9 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -60,6 +63,23 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
         }
         // 基岩、屏障等不可破坏方块 destroySpeed < 0，不允许被框架包裹
         return targetState.getDestroySpeed(level, pos) >= 0;
+    }
+
+    /**
+     * 服务端 ticker：驱动跨维度虚拟连接的建立/销毁（机器节点就绪检查）。
+     * <p>
+     * 项目 BE 注册不走 AE2 的自动 ticker 通道，需在此显式提供。
+     */
+    @Override
+    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
+        if (level.isClientSide()) {
+            return null;
+        }
+        return (lvl, pos, st, be) -> {
+            if (be instanceof FramePatternProviderBlockEntity frameBlockEntity) {
+                frameBlockEntity.serverTick();
+            }
+        };
     }
 
     @Override
