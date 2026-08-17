@@ -11,6 +11,9 @@ import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMach
 import git.chexson.chexsonsaeutils.cell.InfinityCellStore;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.FeatureGates;
+import git.chexson.chexsonsaeutils.frame.FrameDimensionImpl;
+import git.chexson.chexsonsaeutils.frame.FrameStorageImpl;
+import git.chexson.chexsonsaeutils.frame.FrameTicketController;
 import git.chexson.chexsonsaeutils.cell.CellCommand;
 import git.chexson.chexsonsaeutils.cell.CellRegistration;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
@@ -105,11 +108,13 @@ public class Chexsonsaeutils {
         modEventBus.addListener(this::onConfigReload);
         modEventBus.addListener(this::onRegisterCapabilities);
         modEventBus.addListener(this::onRegisterPayloadHandlers);
+        modEventBus.addListener(FrameTicketController.instance()::register);
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListeners);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(this::onLevelLoad);
         NeoForge.EVENT_BUS.addListener(this::onLevelSave);
         NeoForge.EVENT_BUS.addListener(this::onLevelUnload);
+        NeoForge.EVENT_BUS.addListener(this::onFrameLevelLoad);
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
     }
 
@@ -175,6 +180,13 @@ public class Chexsonsaeutils {
         if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level
                 && level.dimension() == Level.OVERWORLD) {
             saveInfinityCellStore(level);
+        }
+    }
+
+    private void onFrameLevelLoad(LevelEvent.Load event) {
+        if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level
+                && FrameDimensionImpl.instance().isFrameLevel(level)) {
+            FrameStorageImpl.instance().reinstateForceloads(level);
         }
     }
 
