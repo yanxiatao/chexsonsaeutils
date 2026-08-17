@@ -144,7 +144,11 @@ config/*.bak
 
 # codemap auto-generated state and docs
 .slim/
+.slim/deepwork/
 **/codemap.md
+
+# OpenCode local ignore rules (tool config, not project source)
+.ignore
 
 # Eclipse IDE
 .classpath

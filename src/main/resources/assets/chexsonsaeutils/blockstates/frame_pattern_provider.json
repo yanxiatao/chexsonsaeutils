@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "chexsonsaeutils:block/frame_pattern_provider"
+    }
+  }
+}

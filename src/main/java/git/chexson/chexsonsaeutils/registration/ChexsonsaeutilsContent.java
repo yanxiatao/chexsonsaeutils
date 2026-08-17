@@ -12,10 +12,13 @@ import git.chexson.chexsonsaeutils.block.crafting.AEDirectProcessingMachineBlock
 import git.chexson.chexsonsaeutils.block.crafting.AE2ParallelCpuToolBlock;
 import git.chexson.chexsonsaeutils.block.crafting.HighCapacityCraftingMachineBlock;
 import git.chexson.chexsonsaeutils.block.debug.AutoItemGenBlock;
+import git.chexson.chexsonsaeutils.block.framepatternprovider.FramePatternProviderBlock;
 import git.chexson.chexsonsaeutils.blockentity.debug.AutoItemGenBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
+import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternProviderItem;
 import git.chexson.chexsonsaeutils.client.gui.implementations.AEDirectProcessingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.HighCapacityCraftingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
@@ -95,6 +98,11 @@ public final class ChexsonsaeutilsContent {
             registerBlockWithItem("auto_item_gen", AutoItemGenBlock::new);
     public static final Supplier<AutoItemGenBlock> AUTO_ITEM_GEN_BLOCK = AUTO_ITEM_GEN.block();
     public static final Supplier<Item> AUTO_ITEM_GEN_ITEM = AUTO_ITEM_GEN.item();
+    public static final Supplier<FramePatternProviderBlock> FRAME_PATTERN_PROVIDER_BLOCK =
+            BLOCKS.register("frame_pattern_provider", FramePatternProviderBlock::new);
+    public static final Supplier<Item> FRAME_PATTERN_PROVIDER_ITEM =
+            ITEMS.register("frame_pattern_provider",
+                    () -> new FramePatternProviderItem(FRAME_PATTERN_PROVIDER_BLOCK.get(), new Item.Properties()));
     public static final Supplier<BlockEntityType<AutoItemGenBlockEntity>> AUTO_ITEM_GEN_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("auto_item_gen",
                     () -> {
@@ -133,6 +141,14 @@ public final class ChexsonsaeutilsContent {
                             AE2_PARALLEL_CPU_TOOL_BLOCK.get()
                     ).build(null)
             );
+    public static final Supplier<BlockEntityType<FramePatternProviderBlockEntity>>
+            FRAME_PATTERN_PROVIDER_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
+                    "frame_pattern_provider",
+                    () -> BlockEntityType.Builder.of(
+                            FramePatternProviderBlockEntity::new,
+                            FRAME_PATTERN_PROVIDER_BLOCK.get()
+                    ).build(null)
+            );
 
     public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAPACITY_CRAFTING_MACHINE_MENU =
             MENU_TYPES.register("high_capacity_crafting_machine", () -> HighCapacityCraftingMachineMenu.TYPE);
@@ -155,6 +171,7 @@ public final class ChexsonsaeutilsContent {
                         output.accept(HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get());
                         output.accept(AE_DIRECT_PROCESSING_MACHINE_ITEM.get());
                         output.accept(AE2_PARALLEL_CPU_TOOL_ITEM.get());
+                        output.accept(FRAME_PATTERN_PROVIDER_ITEM.get());
                         output.accept(INFINITY_CELL_ITEM.get());
                         if (!FMLLoader.isProduction()) {
                             output.accept(AUTO_ITEM_GEN_ITEM.get());
@@ -180,6 +197,7 @@ public final class ChexsonsaeutilsContent {
         registerAEDirectProcessingMachineBootstrap();
         registerAE2ParallelCpuToolBootstrap();
         registerAutoItemGenBootstrap();
+        registerFramePatternProviderBootstrap();
         registerMultiLevelEmitterBootstrap();
         CellRegistration.bootstrap(INFINITY_CELL_ITEM);
     }
@@ -307,6 +325,20 @@ public final class ChexsonsaeutilsContent {
         AEBaseBlockEntity.registerBlockEntityItem(
                 AUTO_ITEM_GEN_BLOCK_ENTITY.get(),
                 AUTO_ITEM_GEN_ITEM.get()
+        );
+    }
+
+    private static void registerFramePatternProviderBootstrap() {
+        FramePatternProviderBlock block = FRAME_PATTERN_PROVIDER_BLOCK.get();
+        block.setBlockEntity(
+                FramePatternProviderBlockEntity.class,
+                FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                null,
+                null
+        );
+        AEBaseBlockEntity.registerBlockEntityItem(
+                FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                FRAME_PATTERN_PROVIDER_ITEM.get()
         );
     }
 
