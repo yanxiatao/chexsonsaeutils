@@ -46,18 +46,35 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
     @GuiSync(4)
     public boolean configMode = false;
 
+    /** 当前样板页（需求 5）：服务端权威，clamp 到 [0, pages-1]，翻页只切换槽位可见性。 */
+    @GuiSync(5)
+    public int page = 0;
+
+    /** 已解锁样板页数（需求 5）：来自 BE，服务端广播。 */
+    @GuiSync(6)
+    public int pages = 1;
+
     public FramePatternProviderMenu(int id, Inventory playerInventory, FramePatternProviderBlockEntity host) {
         super(TYPE, id, playerInventory, host);
         registerClientAction("toggle_isolated", () -> getHost().setIsolated(!getHost().isIsolated()));
         registerClientAction("pull_from_machine", () -> getHost().getLogic().pullFromMachine());
         registerClientAction("toggle_config_mode", () -> configMode = !configMode);
         registerClientAction("open_config_for_slot", Integer.class, this::openConfigForSlot);
+        registerClientAction("set_page", Integer.class, this::setPageFromClient);
+        // setupInventorySlots 已由 UpgradeableMenu 构造执行，此处按初始页启用槽位
+        updateSlotActivity();
     }
 
     @Override
     public void broadcastChanges() {
         if (isServerSide()) {
             isolated = getHost().isIsolated();
+            pages = getHost().getPages();
+            if (page >= pages) {
+                // 页数收缩（配置调低/5b 降级）时收敛当前页
+                page = Math.max(0, pages - 1);
+                updateSlotActivity();
+            }
         }
         super.broadcastChanges();
     }
@@ -96,6 +113,57 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
      */
     public void toggleConfigMode() {
         sendClientAction("toggle_config_mode");
+    }
+
+    /**
+     * 客户端翻页按钮点击入口：发送 set_page 动作到服务端（需求 5）。
+     */
+    public void setPage(int newPage) {
+        sendClientAction("set_page", newPage);
+    }
+
+    /**
+     * 服务端入口：翻页动作处理，clamp 到 [0, pages-1] 后按页启用/禁用样板槽。
+     * <p>
+     * 交互防护：AppEngSlot 的 mayPlace/mayPickup 只查 isSlotEnabled（active 仅影响渲染），
+     * 服务端必须按页禁用非当前页槽位，防止伪造点击操作其他页的样板。
+     */
+    private void setPageFromClient(int newPage) {
+        if (!isServerSide()) {
+            return;
+        }
+        int clamped = Math.max(0, Math.min(newPage, pages - 1));
+        if (clamped == page) {
+            return;
+        }
+        page = clamped;
+        updateSlotActivity();
+    }
+
+    /**
+     * 服务端按当前页启用/禁用样板槽（每页 36 槽）。
+     */
+    private void updateSlotActivity() {
+        for (var slot : getSlots(SlotSemantics.ENCODED_PATTERN)) {
+            if (slot instanceof AppEngSlot appEngSlot) {
+                int slotPage = appEngSlot.getSlotIndex() / FramePatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE;
+                appEngSlot.setSlotEnabled(slotPage == page);
+            }
+        }
+    }
+
+    /**
+     * @return 当前样板页（客户端同步值，0 起）
+     */
+    public int getPage() {
+        return page;
+    }
+
+    /**
+     * @return 已解锁样板页数（客户端同步值）
+     */
+    public int getPages() {
+        return pages;
     }
 
     /**

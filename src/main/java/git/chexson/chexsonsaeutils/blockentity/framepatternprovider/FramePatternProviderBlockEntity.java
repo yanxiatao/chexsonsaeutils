@@ -10,6 +10,7 @@ import appeng.blockentity.ServerTickingBlockEntity;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.util.inv.AppEngInternalInventory;
 import com.mojang.logging.LogUtils;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.frame.FrameDimensionImpl;
 import git.chexson.chexsonsaeutils.frame.FrameStorageImpl;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogic;
@@ -61,9 +62,10 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     private static final String NBT_FRAME_ID = "frameId";
     private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_ISOLATED = "isolated";
+    private static final String NBT_PAGES = "pages";
     private static final int UPGRADE_SLOTS = 5;
-    /** 样板槽数量：4 行 x 9 列，与 GUI 布局一致。 */
-    private static final int PATTERN_SLOTS = 36;
+    /** 每页样板槽数量：4 行 x 9 列，与 GUI 布局一致。 */
+    public static final int PATTERN_SLOTS_PER_PAGE = 36;
 
     private final IUpgradeInventory upgrades;
     /**
@@ -86,6 +88,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     private boolean restoring;
     /** 隔离模式：true 时私有网格只与主网格共享能量（overlay 桥），不合并网格、不占频道。 */
     private boolean isolated;
+    /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxPages()]；5b 阶段由扩容物品增加。 */
+    private int pages = 1;
     /** 跨维度虚拟连接管理器（与私有维度机器的网格连接）。 */
     private final FrameLinkManager linkManager = new FrameLinkManagerImpl(this);
     /** 跨维度机器访问 API（私有维度机器的库存/能量 capability 查询）。 */
@@ -105,10 +109,17 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * 创建样板供应逻辑（36 样板槽）。
+     * 创建样板供应逻辑：容量 = 配置的最大页数 x 每页 36 槽（固定，翻页只切换可见性）。
      */
     protected FramePatternProviderLogic createLogic() {
-        return new FramePatternProviderLogic(this.getMainNode(), this, PATTERN_SLOTS);
+        return new FramePatternProviderLogic(this.getMainNode(), this, maxPages() * PATTERN_SLOTS_PER_PAGE);
+    }
+
+    /**
+     * @return 配置允许的最大样板页数（1-8，默认 8）
+     */
+    public static int maxPages() {
+        return ChexsonsaeutilsCompatibilityConfig.MAX_FRAME_PATTERN_PAGES.get();
     }
 
     @Override
@@ -127,6 +138,7 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
             data.putUUID(NBT_FRAME_ID, frameId);
         }
         data.putBoolean(NBT_ISOLATED, isolated);
+        data.putInt(NBT_PAGES, pages);
     }
 
     @Override
@@ -153,6 +165,9 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         }
         frameId = data.contains(NBT_FRAME_ID) ? data.getUUID(NBT_FRAME_ID) : null;
         isolated = data.getBoolean(NBT_ISOLATED);
+        // 旧存档无 pages key：getInt 为 0，clamp 到 1
+        int rawPages = data.getInt(NBT_PAGES);
+        this.pages = clampPages(rawPages);
     }
 
     /**
@@ -171,8 +186,9 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
      *
      * @param level 目标方块所在世界（必须为服务端）
      * @param pos   目标方块位置
+     * @param pages 掉落物品携带的已解锁样板页数（拆除保留闭环，clamp 到 [1, maxPages()]）
      */
-    public static void captureBlock(Level level, BlockPos pos) {
+    public static void captureBlock(Level level, BlockPos pos, int pages) {
         if (!(level instanceof ServerLevel serverLevel)) {
             throw new IllegalStateException("捕获必须在服务端执行，位置 " + pos);
         }
@@ -212,6 +228,7 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
             frameBlockEntity.capturedState = targetState;
             frameBlockEntity.machineBackup = machineTag;
             frameBlockEntity.frameId = frameId;
+            frameBlockEntity.setPages(pages);
             frameBlockEntity.saveChanges();
             // 捕获后立即创建虚拟节点（机器节点需等私有维度首 tick 就绪，连接由 serverTick 补建）
             frameBlockEntity.linkManager.ensureVirtualNode();
@@ -436,6 +453,38 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         this.isolated = isolated;
         saveChanges();
         linkManager.rebuild();
+    }
+
+    /**
+     * @return 已解锁样板页数（默认 1，clamp 到 [1, maxPages()]）
+     */
+    public int getPages() {
+        return pages;
+    }
+
+    /**
+     * 设置已解锁样板页数（clamp 到 [1, maxPages()]，越界值收敛并告警）。
+     * <p>
+     * 注意：loadTag 路径不调用本方法（加载期间 saveChanges 会触发过早写盘），直接赋值字段。
+     */
+    public void setPages(int pages) {
+        this.pages = clampPages(pages);
+        saveChanges();
+    }
+
+    /**
+     * 页数收敛到 [1, maxPages()]；发生截断时输出告警日志（I1 修复，loadTag/setPages 共用）。
+     *
+     * @param rawPages 待收敛的原始页数
+     * @return 收敛后的页数
+     */
+    private int clampPages(int rawPages) {
+        int max = maxPages();
+        int clamped = Math.max(1, Math.min(rawPages, max));
+        if (clamped != rawPages) {
+            LOGGER.warn("样板页数截断：old={}, new={}, maxPages={}", rawPages, clamped, max);
+        }
+        return clamped;
     }
 
     /**

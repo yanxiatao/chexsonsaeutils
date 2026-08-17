@@ -56,6 +56,8 @@
   "gui.chexsonsaeutils.frame_pattern_provider.configure_on_hint": "Config mode is on: click a processing pattern slot to open the config screen; click again to exit",
   "gui.chexsonsaeutils.frame_pattern_provider.configure_off": "Configure Patterns",
   "gui.chexsonsaeutils.frame_pattern_provider.configure_off_hint": "Turn on config mode, then click a processing pattern slot to open the config screen",
+  "gui.chexsonsaeutils.frame_pattern_provider.prev_page": "Previous Page",
+  "gui.chexsonsaeutils.frame_pattern_provider.next_page": "Next Page",
   "gui.chexsonsaeutils.frame_pattern_config": "Frame Pattern Config",
   "gui.chexsonsaeutils.frame_pattern_config.input_slot": "Input Pattern",
   "gui.chexsonsaeutils.frame_pattern_config.output_slot": "Output Frame Pattern",

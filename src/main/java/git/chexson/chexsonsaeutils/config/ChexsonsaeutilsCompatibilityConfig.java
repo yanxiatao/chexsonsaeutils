@@ -10,6 +10,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue CRAFTING_CONTINUATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED;
     public static final ModConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
+    public static final ModConfigSpec.IntValue MAX_FRAME_PATTERN_PAGES;
     public static final ModConfigSpec.BooleanValue DYEABLE_PATTERNS_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT;
     public static final ModConfigSpec.BooleanValue ENHANCED_CRAFTING_STATUS_ENABLED;
@@ -52,6 +53,13 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.processingPatternReplacementEnabled")
                 .define("processingPatternReplacementEnabled", true);
+        MAX_FRAME_PATTERN_PAGES = builder
+                .comment("Maximum pattern pages of the frame pattern provider.",
+                        "Each page holds 36 pattern slots; the pattern inventory capacity is pages * 36.",
+                        "Extending pages is unlocked by consuming items (phase 5b), and expanded pages are",
+                        "kept when the frame is dismantled. Takes effect after restart.")
+                .translation("configuration.chexsonsaeutils.maxFramePatternPages")
+                .defineInRange("maxFramePatternPages", 8, 1, 8);
         builder.pop();
 
         builder.comment("AEA Feature Migration")

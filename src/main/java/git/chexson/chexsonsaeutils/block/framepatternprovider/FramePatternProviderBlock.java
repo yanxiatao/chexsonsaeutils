@@ -5,6 +5,7 @@ import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -16,9 +17,13 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.loot.LootParams;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.Tags;
+
+import java.util.List;
 
 /**
  * 框架样板供应器方块。
@@ -151,7 +156,7 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
                 return ItemInteractionResult.sidedSuccess(false);
             }
             blockEntity.restoreCapturedBlock(level, pos);
-            popResource(level, pos, new ItemStack(this));
+            popResource(level, pos, createDroppedStack(blockEntity));
         }
         return ItemInteractionResult.sidedSuccess(level.isClientSide());
     }
@@ -171,7 +176,7 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
                 return InteractionResult.sidedSuccess(false);
             }
             blockEntity.restoreCapturedBlock(level, pos);
-            popResource(level, pos, new ItemStack(this));
+            popResource(level, pos, createDroppedStack(blockEntity));
         }
         return InteractionResult.sidedSuccess(level.isClientSide());
     }
@@ -196,6 +201,33 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
                 blockEntity.restoreCapturedBlock(level, pos);
             }
         }
+    }
+
+    /**
+     * 构造掉落物品：携带已解锁样板页数组件（需求 5 拆除保留闭环）。
+     * <p>
+     * 拆框架路径（dismantleFrame/dismantleFrameWithoutItem）与挖掘掉落路径（getDrops）共用。
+     */
+    private static ItemStack createDroppedStack(FramePatternProviderBlockEntity blockEntity) {
+        ItemStack stack = new ItemStack(ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_ITEM.get());
+        stack.set(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), blockEntity.getPages());
+        return stack;
+    }
+
+    /**
+     * 挖掘掉落：携带已解锁样板页数组件（需求 5 拆除保留闭环）。
+     * <p>
+     * destroyBlock 流程中 getDrops 在 setBlock(air) 之前调用，BE 仍可访问；
+     * 覆写保持原版单物品掉落语义，仅附加页数组件。
+     */
+    @Override
+    public List<ItemStack> getDrops(BlockState state, LootParams.Builder params) {
+        ItemStack stack = new ItemStack(ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_ITEM.get());
+        if (params.getOptionalParameter(LootContextParams.BLOCK_ENTITY)
+                instanceof FramePatternProviderBlockEntity blockEntity) {
+            stack.set(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), blockEntity.getPages());
+        }
+        return List.of(stack);
     }
 
     /**

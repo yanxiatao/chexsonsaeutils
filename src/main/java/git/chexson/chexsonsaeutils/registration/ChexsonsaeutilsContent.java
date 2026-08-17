@@ -39,7 +39,9 @@ import git.chexson.chexsonsaeutils.client.gui.framepatternprovider.FramePatternP
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import appeng.client.gui.style.StyleManager;
+import com.mojang.serialization.Codec;
 import net.minecraft.core.component.DataComponentType;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
@@ -119,6 +121,13 @@ public final class ChexsonsaeutilsContent {
                     () -> DataComponentType.<EncodedFramePattern>builder()
                             .persistent(EncodedFramePattern.CODEC)
                             .networkSynchronized(EncodedFramePattern.STREAM_CODEC)
+                            .build());
+    /** 框架样板供应器的已扩展样板页数（拆除保留闭环：BE NBT → 掉落物品组件 → 放置/捕获读回）。 */
+    public static final Supplier<DataComponentType<Integer>> FRAME_PATTERN_PAGES =
+            DATA_COMPONENT_TYPES.register("frame_pattern_pages",
+                    () -> DataComponentType.<Integer>builder()
+                            .persistent(Codec.INT)
+                            .networkSynchronized(ByteBufCodecs.VAR_INT)
                             .build());
     public static final Supplier<BlockEntityType<AutoItemGenBlockEntity>> AUTO_ITEM_GEN_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("auto_item_gen",
