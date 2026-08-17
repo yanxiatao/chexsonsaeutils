@@ -44,6 +44,7 @@
   "gui.chexsonsaeutils.crafting_status.blocked": "Blocked: %s",
   "gui.chexsonsaeutils.crafting_status.pattern_times": "Pattern Times: %s",
   "block.chexsonsaeutils.frame_pattern_provider": "Frame Pattern Provider",
+  "gui.chexsonsaeutils.frame_pattern_provider": "Frame Pattern Provider",
   "block.chexsonsaeutils.high_capacity_crafting_machine": "§1Abyssal §8Convergence§r",
   "block.chexsonsaeutils.ae_direct_processing_machine": "§bStraight§3away§r",
   "gui.chexsonsaeutils.ae_direct_processing_machine": "§bStraight§3away§r",

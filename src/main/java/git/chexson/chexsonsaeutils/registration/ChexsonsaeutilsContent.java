@@ -30,6 +30,8 @@ import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMach
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
+import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
+import git.chexson.chexsonsaeutils.client.gui.framepatternprovider.FramePatternProviderScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import appeng.client.gui.style.StyleManager;
@@ -156,6 +158,8 @@ public final class ChexsonsaeutilsContent {
             MENU_TYPES.register("ae_direct_processing_machine", () -> AEDirectProcessingMachineMenu.TYPE);
     public static final Supplier<MenuType<ParallelCraftingCPUMenu>> AE2_PARALLEL_CPU_TOOL_CPU_MENU =
             MENU_TYPES.register("ae2_parallel_cpu_tool_cpu", () -> ParallelCraftingCPUMenu.TYPE);
+    public static final Supplier<MenuType<FramePatternProviderMenu>> FRAME_PATTERN_PROVIDER_MENU =
+            MENU_TYPES.register("frame_pattern_provider", () -> FramePatternProviderMenu.TYPE);
     public static final Supplier<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> MULTI_LEVEL_EMITTER_MENU =
             MENU_TYPES.register(
                     MultiLevelEmitterMenu.registrationKey(),
@@ -245,6 +249,7 @@ public final class ChexsonsaeutilsContent {
                 )
         );
         event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new);
+        event.register(FRAME_PATTERN_PROVIDER_MENU.get(), FramePatternProviderScreen::new);
     }
 
     public static String emitterRegistryPath() {

@@ -24,6 +24,7 @@ import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachin
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
+import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacementDecoder;
@@ -92,6 +93,8 @@ public class Chexsonsaeutils {
                     ChexsonsaeutilsContent.AE2_PARALLEL_CPU_TOOL_BLOCK_ENTITY;
     public static final Supplier<MenuType<ParallelCraftingCPUMenu>> AE2_PARALLEL_CPU_TOOL_CPU_MENU =
             ChexsonsaeutilsContent.AE2_PARALLEL_CPU_TOOL_CPU_MENU;
+    public static final Supplier<MenuType<FramePatternProviderMenu>> FRAME_PATTERN_PROVIDER_MENU =
+            ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_MENU;
 
     public Chexsonsaeutils(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, ChexsonsaeutilsCompatibilityConfig.SPEC);

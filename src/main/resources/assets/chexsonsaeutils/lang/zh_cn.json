@@ -44,6 +44,7 @@
   "gui.chexsonsaeutils.crafting_status.blocked": "阻塞数量：%s",
   "gui.chexsonsaeutils.crafting_status.pattern_times": "样板次数：%s",
   "block.chexsonsaeutils.frame_pattern_provider": "框架样板供应器",
+  "gui.chexsonsaeutils.frame_pattern_provider": "框架样板供应器",
   "block.chexsonsaeutils.high_capacity_crafting_machine": "§1归§8墟§r",
   "block.chexsonsaeutils.ae_direct_processing_machine": "§b径§3行§r",
   "gui.chexsonsaeutils.ae_direct_processing_machine": "§b径§3行§r",

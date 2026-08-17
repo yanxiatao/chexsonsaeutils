@@ -1,6 +1,9 @@
 package git.chexson.chexsonsaeutils.block.framepatternprovider;
 
 import appeng.block.AEBaseEntityBlock;
+import appeng.menu.MenuOpener;
+import appeng.menu.locator.MenuLocators;
+import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
@@ -77,11 +80,11 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             return dismantleFrame(level, pos, blockEntity);
         }
         if (heldItem.is(Tags.Items.TOOLS_WRENCH)) {
-            // TODO(阶段2): 接入 MenuOpener 打开框架样板供应器 GUI
+            openMenu(level, player, blockEntity);
             return ItemInteractionResult.sidedSuccess(level.isClientSide());
         }
         if (isOnBorder(hitResult, pos)) {
-            // TODO(阶段2): 接入 MenuOpener 打开框架样板供应器 GUI
+            openMenu(level, player, blockEntity);
             return ItemInteractionResult.sidedSuccess(level.isClientSide());
         }
         // 内部区域：透传原方块交互（用捕获的 BlockState 与原位置参数）
@@ -108,7 +111,7 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             return dismantleFrameWithoutItem(level, pos, blockEntity);
         }
         if (isOnBorder(hitResult, pos)) {
-            // TODO(阶段2): 接入 MenuOpener 打开框架样板供应器 GUI
+            openMenu(level, player, blockEntity);
             return InteractionResult.sidedSuccess(level.isClientSide());
         }
         // 内部区域：透传原方块交互（用捕获的 BlockState 与原位置参数）
@@ -165,6 +168,21 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             }
         }
         super.onRemove(state, level, pos, newState, isMoving);
+    }
+
+    /**
+     * 打开框架样板供应器 GUI。
+     * <p>
+     * 只在服务端调用 MenuOpener（客户端由菜单打开包自动处理），与项目现有方块开 GUI 方式一致。
+     */
+    private void openMenu(Level level, Player player, FramePatternProviderBlockEntity blockEntity) {
+        if (!level.isClientSide()) {
+            MenuOpener.open(
+                    Chexsonsaeutils.FRAME_PATTERN_PROVIDER_MENU.get(),
+                    player,
+                    MenuLocators.forBlockEntity(blockEntity)
+            );
+        }
     }
 
     /**

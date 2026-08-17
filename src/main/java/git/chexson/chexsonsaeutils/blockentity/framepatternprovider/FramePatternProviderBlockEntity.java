@@ -17,6 +17,7 @@ import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.helpers.patternprovider.PatternContainer;
+import appeng.util.inv.AppEngInternalInventory;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.core.BlockPos;
@@ -53,9 +54,19 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     private static final String NBT_CAPTURED_TYPE_ID = "capturedTypeId";
     private static final String NBT_CAPTURED_DATA = "capturedData";
     private static final String NBT_UPGRADES = "upgrades";
+    private static final String NBT_PATTERN_INVENTORY = "patternInventory";
+    private static final String NBT_RETURN_INVENTORY = "returnInventory";
     private static final int UPGRADE_SLOTS = 5;
+    /** 样板槽数量：4 行 x 9 列，与 GUI 布局一致。 */
+    private static final int PATTERN_SLOTS = 36;
+    /** 返回库存格数：存放样板推送后未被目标机器接收的产物。 */
+    private static final int RETURN_SLOTS = 9;
 
     private final IUpgradeInventory upgrades;
+    /** 样板库存：阶段 2 仅提供 GUI 存取，阶段 3 接入 PatternProviderLogic 后由逻辑层接管。 */
+    private final AppEngInternalInventory patternInventory = new AppEngInternalInventory(PATTERN_SLOTS);
+    /** 返回库存：阶段 2 仅提供 GUI 存取，阶段 3 接入推送逻辑后使用。 */
+    private final AppEngInternalInventory returnInventory = new AppEngInternalInventory(RETURN_SLOTS);
 
     /** 被包裹的原方块状态，null 表示未包裹任何方块。 */
     @Nullable
@@ -85,6 +96,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.saveAdditional(data, registries);
         upgrades.writeToNBT(data, NBT_UPGRADES, registries);
+        patternInventory.writeToNBT(data, NBT_PATTERN_INVENTORY, registries);
+        returnInventory.writeToNBT(data, NBT_RETURN_INVENTORY, registries);
         if (capturedState != null) {
             data.put(NBT_CAPTURED_STATE, NbtUtils.writeBlockState(capturedState));
         }
@@ -100,6 +113,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
         super.loadTag(data, registries);
         upgrades.readFromNBT(data, NBT_UPGRADES, registries);
+        patternInventory.readFromNBT(data, NBT_PATTERN_INVENTORY, registries);
+        returnInventory.readFromNBT(data, NBT_RETURN_INVENTORY, registries);
         capturedState = data.contains(NBT_CAPTURED_STATE)
                 ? NbtUtils.readBlockState(
                         registries.lookupOrThrow(Registries.BLOCK),
@@ -218,8 +233,14 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public InternalInventory getTerminalPatternInventory() {
-        // TODO(阶段3): 接入 PatternProviderLogic 后返回真实样板库存
-        return InternalInventory.empty();
+        return patternInventory;
+    }
+
+    /**
+     * @return 返回库存（9 格），存放样板推送后未被目标机器接收的产物
+     */
+    public InternalInventory getReturnInventory() {
+        return returnInventory;
     }
 
     @Override
