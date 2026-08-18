@@ -5,10 +5,13 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.NoiseColumn;
@@ -33,8 +36,12 @@ import net.minecraft.world.level.levelgen.blending.Blender;
  * 本生成器不生成任何方块（全空气），生物群系固定为 plains，
  * 结构参考 AE2 的 SpatialStorageChunkGenerator，但去掉了方块填充。
  * <p>
- * 注意：本生成器仅由 MinecraftServerMixin 直接构造，不参与数据包反序列化，
- * 因此 codec() 直接失败（Fail Fast），不提供序列化路径。
+ * 注意：本生成器仅由 MinecraftServerMixin 直接构造，不参与数据包反序列化；
+ * 但 codec() 必须返回合法编解码器——ChunkMap 读取任何区块时都经
+ * getTypeNameForDataFixer() 调用 codec()，抛异常会导致本维度所有区块
+ * 磁盘读取失败（UnsupportedOperationException 刷屏）。
+ * 与 AE2 SpatialStorageChunkGenerator 一致，CODEC 注册到 CHUNK_GENERATOR
+ * 注册表（见 Chexsonsaeutils 构造器 RegisterEvent），保证 DFU 上下文完整。
  */
 public class FramesChunkGenerator extends ChunkGenerator {
 
@@ -43,6 +50,22 @@ public class FramesChunkGenerator extends ChunkGenerator {
 
     /** 私有维度总高度。与 dimension_type/frames.json 的 height 一致。 */
     public static final int HEIGHT = 256;
+
+    /** 区块生成器注册表 ID（照 AE2 SpatialStorageDimensionIds.CHUNK_GENERATOR_ID）。 */
+    public static final ResourceLocation CHUNK_GENERATOR_ID =
+            ResourceLocation.fromNamespaceAndPath("chexsonsaeutils", "frames");
+
+    /**
+     * 区块类型编解码器（供 ChunkMap 读取区块时的 datafixer 路径使用）。
+     * <p>
+     * RegistryOps.retrieveGetter(Registries.BIOME) 从动态注册表重建 HolderGetter——
+     * 反序列化出的 biome holder 必须与注册表内实例相同（内部用 identity map
+     * 做 Object->ID 查找），照 AE2 SpatialStorageChunkGenerator 的 CODEC 实现。
+     */
+    public static final MapCodec<FramesChunkGenerator> CODEC = RecordCodecBuilder.mapCodec(instance -> instance
+            .group(
+                    RegistryOps.retrieveGetter(Registries.BIOME))
+            .apply(instance, instance.stable(FramesChunkGenerator::new)));
 
     /** 全空气竖直采样，供特征生成等逻辑查询。 */
     private final NoiseColumn columnSample;
@@ -56,8 +79,7 @@ public class FramesChunkGenerator extends ChunkGenerator {
 
     @Override
     protected MapCodec<? extends ChunkGenerator> codec() {
-        throw new UnsupportedOperationException(
-                "FramesChunkGenerator 仅由 MinecraftServerMixin 直接构造，不参与数据包反序列化");
+        return CODEC;
     }
 
     @Override
