@@ -88,7 +88,7 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     private boolean restoring;
     /** 隔离模式：true 时私有网格只与主网格共享能量（overlay 桥），不合并网格、不占频道。 */
     private boolean isolated;
-    /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxPages()]；5b 阶段由扩容物品增加。 */
+    /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxFramePatternPages()]；5b 阶段由扩容物品增加。 */
     private int pages = 1;
     /** 跨维度虚拟连接管理器（与私有维度机器的网格连接）。 */
     private final FrameLinkManager linkManager = new FrameLinkManagerImpl(this);
@@ -112,14 +112,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
      * 创建样板供应逻辑：容量 = 配置的最大页数 x 每页 36 槽（固定，翻页只切换可见性）。
      */
     protected FramePatternProviderLogic createLogic() {
-        return new FramePatternProviderLogic(this.getMainNode(), this, maxPages() * PATTERN_SLOTS_PER_PAGE);
-    }
-
-    /**
-     * @return 配置允许的最大样板页数（1-8，默认 8）
-     */
-    public static int maxPages() {
-        return ChexsonsaeutilsCompatibilityConfig.MAX_FRAME_PATTERN_PAGES.get();
+        return new FramePatternProviderLogic(this.getMainNode(), this,
+                ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages() * PATTERN_SLOTS_PER_PAGE);
     }
 
     @Override
@@ -186,7 +180,7 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
      *
      * @param level 目标方块所在世界（必须为服务端）
      * @param pos   目标方块位置
-     * @param pages 掉落物品携带的已解锁样板页数（拆除保留闭环，clamp 到 [1, maxPages()]）
+     * @param pages 掉落物品携带的已解锁样板页数（拆除保留闭环，clamp 到 [1, maxFramePatternPages()]）
      */
     public static void captureBlock(Level level, BlockPos pos, int pages) {
         if (!(level instanceof ServerLevel serverLevel)) {
@@ -456,14 +450,14 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * @return 已解锁样板页数（默认 1，clamp 到 [1, maxPages()]）
+     * @return 已解锁样板页数（默认 1，clamp 到 [1, maxFramePatternPages()]）
      */
     public int getPages() {
         return pages;
     }
 
     /**
-     * 设置已解锁样板页数（clamp 到 [1, maxPages()]，越界值收敛并告警）。
+     * 设置已解锁样板页数（clamp 到 [1, maxFramePatternPages()]，越界值收敛并告警）。
      * <p>
      * 注意：loadTag 路径不调用本方法（加载期间 saveChanges 会触发过早写盘），直接赋值字段。
      */
@@ -473,13 +467,13 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * 页数收敛到 [1, maxPages()]；发生截断时输出告警日志（I1 修复，loadTag/setPages 共用）。
+     * 页数收敛到 [1, maxFramePatternPages()]；发生截断时输出告警日志（I1 修复，loadTag/setPages 共用）。
      *
      * @param rawPages 待收敛的原始页数
      * @return 收敛后的页数
      */
     private int clampPages(int rawPages) {
-        int max = maxPages();
+        int max = ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages();
         int clamped = Math.max(1, Math.min(rawPages, max));
         if (clamped != rawPages) {
             LOGGER.warn("样板页数截断：old={}, new={}, maxPages={}", rawPages, clamped, max);

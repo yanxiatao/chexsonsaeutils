@@ -196,4 +196,13 @@ public final class ChexsonsaeutilsCompatibilityConfig {
 
     private ChexsonsaeutilsCompatibilityConfig() {
     }
+
+    /**
+     * @return 配置允许的最大样板页数（1-8，默认 8）。
+     *         阶段 1 共享层泛化：原 FramePatternProviderBlockEntity.maxPages() 静态
+     *         方法移至此处，框架样板供应器与定制样板供应器共用
+     */
+    public static int maxFramePatternPages() {
+        return MAX_FRAME_PATTERN_PAGES.get();
+    }
 }

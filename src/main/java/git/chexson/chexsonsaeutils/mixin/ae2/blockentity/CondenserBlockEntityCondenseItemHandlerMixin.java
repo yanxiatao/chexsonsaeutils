@@ -12,18 +12,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import appeng.blockentity.misc.CondenserBlockEntity;
-import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
-import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternProviderItem;
+import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternExpandableItem;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
  * 物质聚合器扩容 mixin（需求 5 阶段 5b，方式 B）。
  * <p>
- * 动机：玩家在真物质聚合器中扩容框架样板供应器——存储元件槽放框架供应器物品
- * （IStorageComponent，容量 = 页数 x 1024 字节），输入槽（TRASH/void 槽）放
- * ExtendedAE 扩展样板供应器物品（extendedae:ex_pattern_provider）→ 消耗 1 个
- * → 框架供应器物品 FRAME_PATTERN_PAGES 组件 +1。
+ * 动机：玩家在真物质聚合器中扩容可扩容样板供应器物品——存储元件槽放可扩容样板
+ * 供应器物品（FramePatternExpandableItem + IStorageComponent，容量 = 页数 x 1024 字节），
+ * 输入槽（TRASH/void 槽）放 ExtendedAE 扩展样板供应器物品（extendedae:ex_pattern_provider）
+ * → 消耗 1 个 → 物品 FRAME_PATTERN_PAGES 组件 +1。
  * <p>
  * 注入点：CondenseItemHandler（CondenserBlockEntity 私有内部类，void 槽）的
  * insertItem（管道/漏斗/ME 输出路径）与 setItemDirect（玩家 GUI 拖放路径，
@@ -31,7 +31,7 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * <p>
  * 行为矩阵：
  * <ul>
- *   <li>存储槽非框架供应器 / 输入物品非扩展样板供应器 → 不拦截（原版 condense）。</li>
+ *   <li>存储槽非可扩容样板供应器 / 输入物品非扩展样板供应器 → 不拦截（原版 condense）。</li>
  *   <li>匹配且页数未达上限 → 消耗 1 个 + 页数 +1；insertItem 返回剩余物品（回管道），
  *       setItemDirect 剩余物品掉落在聚合器位置（不丢数据）。</li>
  *   <li>匹配但达上限 → 拒绝插入（insertItem 返回原栈 / setItemDirect 取消），
@@ -103,14 +103,14 @@ public abstract class CondenserBlockEntityCondenseItemHandlerMixin {
     private ExpandResult tryExpand(ItemStack stack) {
         var condenser = this$0;
         var storageStack = condenser.getInternalInventory().getStackInSlot(2);
-        if (!(storageStack.getItem() instanceof FramePatternProviderItem)) {
+        if (!(storageStack.getItem() instanceof FramePatternExpandableItem)) {
             return ExpandResult.NONE;
         }
         if (!ExtendedAeCompat.isExPatternProvider(stack)) {
             return ExpandResult.NONE;
         }
         int pages = Math.max(1, storageStack.getOrDefault(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), 1));
-        if (pages >= FramePatternProviderBlockEntity.maxPages()) {
+        if (pages >= ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages()) {
             return ExpandResult.REJECTED;
         }
         storageStack.set(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), pages + 1);

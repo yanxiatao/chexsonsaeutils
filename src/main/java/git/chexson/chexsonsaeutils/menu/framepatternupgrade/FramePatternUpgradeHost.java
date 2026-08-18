@@ -5,15 +5,15 @@ import net.minecraft.world.item.ItemStack;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
-import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternProviderItem;
+import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternExpandableItem;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu.InventoryChangedHandler;
 
 /**
  * 扩容 GUI 的菜单宿主（MenuHost）。
  * <p>
- * 动机：扩容 GUI 操作的是「物品」（框架供应器物品 + ExtendedAE 扩展样板供应器），
- * 不依附任何方块，需要瞬态宿主承载会话库存：槽 0 = 存储槽（框架供应器物品，仅 1 个）、
- * 槽 1 = 输入槽（仅 ExtendedAE 扩展样板供应器物品，过滤器在库存层实现——
+ * 动机：扩容 GUI 操作的是「物品」（可扩容样板供应器物品 + ExtendedAE 扩展样板供应器），
+ * 不依附任何方块，需要瞬态宿主承载会话库存：槽 0 = 存储槽（可扩容样板供应器物品，
+ * 仅 1 个）、槽 1 = 输入槽（仅 ExtendedAE 扩展样板供应器物品，过滤器在库存层实现——
  * AppEngSlot.mayPlace 委托 inventory.isItemValid）。宿主由
  * {@link FramePatternUpgradeLocator} 在打开菜单时构造，菜单关闭即丢弃，
  * 无需持久化（saveChangedInventory 为空实现）。
@@ -22,7 +22,7 @@ import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeM
  */
 public class FramePatternUpgradeHost implements InternalInventoryHost {
 
-    /** 槽 0 = 框架供应器物品（存储槽），槽 1 = ExtendedAE 扩展样板供应器（输入槽）。 */
+    /** 槽 0 = 可扩容样板供应器物品（存储槽），槽 1 = ExtendedAE 扩展样板供应器（输入槽）。 */
     private final AppEngInternalInventory inventory = new AppEngInternalInventory(this, 2) {
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
@@ -30,10 +30,10 @@ public class FramePatternUpgradeHost implements InternalInventoryHost {
             if (getSlotLimit(slot) == 0) {
                 return false;
             }
-            // S2 修复：存储槽仅接受框架供应器物品（其他 IStorageComponent 不可放入）；
-            // 输入槽仅接受 ExtendedAE 扩展样板供应器
+            // S2 修复：存储槽仅接受可扩容样板供应器物品（FramePatternExpandableItem，
+            // 其他 IStorageComponent 不可放入）；输入槽仅接受 ExtendedAE 扩展样板供应器
             return switch (slot) {
-                case 0 -> stack.getItem() instanceof FramePatternProviderItem;
+                case 0 -> stack.getItem() instanceof FramePatternExpandableItem;
                 case 1 -> ExtendedAeCompat.isExPatternProvider(stack);
                 default -> super.isItemValid(slot, stack);
             };

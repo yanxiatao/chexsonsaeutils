@@ -96,8 +96,10 @@ import appeng.util.inv.PlayerInternalInventory;
 /**
  * 框架样板供应器的样板供应逻辑（fork 自 AE2 PatternProviderLogic）。
  * <p>
- * 与 AE2 原版的差异（需求 8 隔离语义）：推送目标固定为私有维度机器
+ * 与 AE2 原版的差异（需求 8 隔离语义）：推送目标经 {@link #resolveMachineHandler()}
+ * 解析——单 handler 模式（框架样板供应器）固定为私有维度机器
  * （{@link FramePatternProviderLogicHost#getMachineItemHandler()}），不向周围方块发/收；
+ * 多方向模式（定制样板供应器）遍历 getTargets() 方向取第一个可用机器。
  * 返回库存只收机器输出；额外提供 {@link #pullFromMachine()} 主动抽取机器输出到返回库存。
  * 其余行为（样板解码、阻塞模式、锁定模式、sendList 补发、终端展示）与 AE2 一致。
  * <p>
@@ -415,8 +417,10 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
             return pushFramePattern(framePattern, inputHolder);
         }
 
-        // 需求 8 改造：推送目标固定为私有维度机器（无 side 语义，机器本体单库存），
-        // 不向周围方块发/收（原版此处遍历 getActiveSides 的相邻机器与适配器）。
+        // 阶段 1 泛化：机器目标解析见 getMachineTarget()——单 handler 模式（框架语义）
+        // 固定为私有维度机器（无 side 语义，机器本体单库存），多方向模式（定制样板
+        // 供应器）取第一个可用方向的机器；不向周围方块发/收（原版此处遍历
+        // getActiveSides 的相邻机器与适配器）。
         var target = getMachineTarget();
         if (target == null) {
             return false;
@@ -459,7 +463,10 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
      * @return true 表示推送成功
      */
     private boolean pushFramePattern(FrameProcessingPattern pattern, KeyCounter[] inputHolder) {
-        IItemHandler handler = host.getMachineItemHandler();
+        IItemHandler handler = resolveMachineHandler();
+        if (handler == null) {
+            return false;
+        }
         boolean modifiable = handler instanceof IItemHandlerModifiable;
         if (!modifiable) {
             // S3 修复：非 modifiable 机器无法强制写入，指定槽位静默降级为普通插入——输出日志
@@ -613,15 +620,47 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     }
 
     /**
+     * 解析机器物品 handler（阶段 1 共享层泛化：单 handler 模式 / 多方向模式）。
+     * <p>
+     * getTargets() 空集 = 单 handler 模式（框架样板供应器语义）：委托无参
+     * {@link FramePatternProviderLogicHost#getMachineItemHandler()}，宿主保证永不
+     * 返回 null（空实现兜底），行为与改造前完全一致。
+     * 非空 = 多方向模式（定制样板供应器语义）：遍历方向调用
+     * {@link FramePatternProviderLogicHost#getMachineItemHandler(Direction)}，
+     * 取第一个可用 handler（null 跳过）；全部为 null 时返回 null（调用方拒绝推送）。
+     *
+     * @return 机器物品 handler；多方向模式下无可用方向时返回 null
+     */
+    @Nullable
+    private IItemHandler resolveMachineHandler() {
+        var targets = host.getTargets();
+        if (targets.isEmpty()) {
+            return host.getMachineItemHandler();
+        }
+        for (var direction : targets) {
+            var handler = host.getMachineItemHandler(direction);
+            if (handler != null) {
+                return handler;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 需求 8 改造：解析私有维度机器为推送目标（替代原版 findAdapter 的相邻方块缓存）。
      * <p>
      * 机器为 IItemHandler（物品通道），非物品通道的 AEKey 插入返回 0。
-     * 宿主永不返回 null（客户端/机器不可达时返回空实现，0 槽天然空操作），故无需判空（S2）。
+     * 单 handler 模式（框架语义）宿主永不返回 null（客户端/机器不可达时返回空实现，
+     * 0 槽天然空操作），故无需判空（S2）；多方向模式（定制样板供应器）无可用方向时
+     * 返回 null，调用方拒绝推送。
      *
-     * @return 私有维度机器的推送目标包装
+     * @return 私有维度机器的推送目标包装；多方向模式下无可用方向时返回 null
      */
     private PatternProviderTarget getMachineTarget() {
-        IItemHandler handler = host.getMachineItemHandler();
+        IItemHandler handler = resolveMachineHandler();
+        if (handler == null) {
+            return null;
+        }
         return new PatternProviderTarget() {
             @Override
             public long insert(AEKey what, long amount, Actionable type) {
@@ -670,7 +709,8 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     }
 
     /**
-     * 需求 8 改造：sendList 补发到私有维度机器（原版按 sendDirection 找相邻适配器）。
+     * 需求 8 改造：sendList 补发到机器（原版按 sendDirection 找相邻适配器）。
+     * 机器目标解析见 {@link #getMachineTarget()}（单 handler 模式 / 多方向模式）。
      * sendDirection 字段保留仅为旧存档 NBT 兼容，此处不再依赖。
      */
     private boolean sendStacksOut() {
@@ -724,8 +764,10 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     }
 
     /**
-     * 需求 8 主动抽取：把私有维度机器中与样板输出匹配的物品抽取到返回库存。
+     * 需求 8 主动抽取：把机器中与样板输出匹配的物品抽取到返回库存。
      * <p>
+     * 机器目标解析见 {@link #resolveMachineHandler()}：单 handler 模式（框架语义）
+     * 抽取私有维度机器；多方向模式（定制样板供应器）抽取第一个可用方向的机器。
      * 只抽取 processing 样板的输出（I2 修复）：熔炉等机器的输入/燃料槽与样板输出不匹配，
      * 不会被抽走，避免机器断粮。crafting 样板（supportsPushInputsToExternalInventory 为 false）
      * 无法推送到本机器，跳过其输出。I2 修复：先实际抽取再按返回量插入 returnInv
@@ -736,7 +778,10 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
      * @return true 表示至少抽取了部分物品
      */
     public boolean pullFromMachine() {
-        IItemHandler handler = host.getMachineItemHandler();
+        IItemHandler handler = resolveMachineHandler();
+        if (handler == null) {
+            return false;
+        }
         boolean didSomething = false;
         for (var stack : this.patternInventory) {
             var details = PatternDetailsHelper.decodePattern(stack, this.host.getBlockEntity().getLevel());

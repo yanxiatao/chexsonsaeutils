@@ -13,20 +13,20 @@ import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.slot.AppEngSlot;
 import appeng.menu.slot.RestrictedInputSlot;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
-import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternProviderItem;
+import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternExpandableItem;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
  * 扩容 GUI 菜单（需求 5 阶段 5b）。
  * <p>
  * 槽位构成（仿 CondenserMenu 3 槽 + 玩家背包）：槽 0 = 存储槽
- * （STORAGE_CELL，仅可放入 {@link FramePatternProviderItem}，上限 1 个）、
+ * （STORAGE_CELL，仅可放入 {@link FramePatternExpandableItem}，上限 1 个）、
  * 槽 1 = 输入槽（MACHINE_INPUT，仅可放入 ExtendedAE 扩展样板供应器物品
  * {@code extendedae:ex_pattern_provider}，见 {@link ExtendedAeCompat}）+ 玩家背包槽位。
  * <p>
- * 服务端行为：确认按钮 client action「expand」——校验存储槽物品是框架供应器
+ * 服务端行为：确认按钮 client action「expand」——校验存储槽物品是可扩容样板供应器
  * 且页数未达上限 → 消耗输入槽 1 个扩展物品 → 存储槽物品 FRAME_PATTERN_PAGES
  * 组件 +1；达上限不消耗。可扩容状态经 @GuiSync 同步到客户端（按钮可用性）。
  * <p>
@@ -87,7 +87,7 @@ public class FramePatternUpgradeMenu extends AEBaseMenu {
             return;
         }
         var providerStack = this.storageSlot.getItem();
-        if (providerStack.getItem() instanceof FramePatternProviderItem) {
+        if (providerStack.getItem() instanceof FramePatternExpandableItem) {
             this.pages = Math.max(1, providerStack.getOrDefault(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), 1));
         } else {
             this.pages = 1;
@@ -96,17 +96,17 @@ public class FramePatternUpgradeMenu extends AEBaseMenu {
     }
 
     /**
-     * @return 是否满足扩容条件：存储槽是框架供应器 + 输入槽是 ExtendedAE 扩展样板供应器
-     * + 页数未达上限
+     * @return 是否满足扩容条件：存储槽是可扩容样板供应器物品（FramePatternExpandableItem）
+     * + 输入槽是 ExtendedAE 扩展样板供应器 + 页数未达上限
      */
     private boolean isExpandable() {
-        if (!(this.storageSlot.getItem().getItem() instanceof FramePatternProviderItem)) {
+        if (!(this.storageSlot.getItem().getItem() instanceof FramePatternExpandableItem)) {
             return false;
         }
         if (!ExtendedAeCompat.isExPatternProvider(this.inputSlot.getItem())) {
             return false;
         }
-        return this.pages < FramePatternProviderBlockEntity.maxPages();
+        return this.pages < ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages();
     }
 
     /**
@@ -121,7 +121,7 @@ public class FramePatternUpgradeMenu extends AEBaseMenu {
         }
         var providerStack = this.storageSlot.getItem();
         int pages = Math.max(1, providerStack.getOrDefault(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), 1));
-        if (pages >= FramePatternProviderBlockEntity.maxPages()) {
+        if (pages >= ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages()) {
             return;
         }
         providerStack.set(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), pages + 1);
@@ -147,7 +147,7 @@ public class FramePatternUpgradeMenu extends AEBaseMenu {
      * @return 配置允许的最大页数（客户端直接读配置，无需同步）
      */
     public int getMaxPages() {
-        return FramePatternProviderBlockEntity.maxPages();
+        return ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages();
     }
 
     /**

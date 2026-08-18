@@ -14,7 +14,6 @@ import com.glodblock.github.appflux.common.me.key.FluxKey;
 import com.glodblock.github.appflux.common.me.key.type.EnergyType;
 import com.glodblock.github.appflux.config.AFConfig;
 import com.glodblock.github.appflux.util.AFUtil;
-import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
 
@@ -29,6 +28,11 @@ import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
  * 再从网格 FE 存储 extract，实际注入后把差额插回网格（不丢能量）。
  * 单次上限受 {@code AFConfig.getFluxAccessorIO()} 约束（默认 Long.MAX_VALUE，
  * 即"强行灌满"）。
+ * <p>
+ * 阶段 1 共享层泛化：感应卡检测与能量目标经宿主接口解析（原 instanceof
+ * FramePatternProviderBlockEntity 强转）——升级库存 {@code host.getUpgrades()}、
+ * 能量 handler {@code host.getMachineEnergyHandler()}（无参版，框架语义：单 handler；
+ * 定制样板供应器在 BE 层实现方向逻辑）。
  */
 public class AppFluxEnergyInjectorImpl implements FrameEnergyInjector {
 
@@ -62,39 +66,34 @@ public class AppFluxEnergyInjectorImpl implements FrameEnergyInjector {
 
     @Override
     public boolean isInstalled() {
-        if (host.getBlockEntity() instanceof FramePatternProviderBlockEntity be) {
-            return be.getUpgrades().isInstalled(AFSingletons.INDUCTION_CARD);
-        }
-        return false;
+        return host.getUpgrades().isInstalled(AFSingletons.INDUCTION_CARD);
     }
 
     @Override
     public int injectEnergy(int maxAmount) {
-        if (host.getBlockEntity() instanceof FramePatternProviderBlockEntity be) {
-            IEnergyStorage accepter = be.getMachineEnergyHandler();
-            if (accepter == null) {
-                return 0;
-            }
-            var grid = mainNode.getGrid();
-            if (grid == null) {
-                return 0;
-            }
-            var storage = grid.getStorageService();
-            // 单次上限：调用方上限与 appflux 配置取小
-            int cap = Math.min(maxAmount, AFUtil.clampLong(AFConfig.getFluxAccessorIO()));
-            var toAdd = accepter.receiveEnergy(cap, true);
-            if (toAdd > 0) {
-                var drained = storage.getInventory().extract(FluxKey.of(EnergyType.FE), toAdd, Actionable.MODULATE,
-                        actionSource);
-                if (drained > 0) {
-                    var actuallyDrained = accepter.receiveEnergy((int) drained, false);
-                    var differ = drained - actuallyDrained;
-                    if (differ > 0) {
-                        storage.getInventory().insert(FluxKey.of(EnergyType.FE), differ, Actionable.MODULATE,
-                                actionSource);
-                    }
-                    return actuallyDrained;
+        IEnergyStorage accepter = host.getMachineEnergyHandler();
+        if (accepter == null) {
+            return 0;
+        }
+        var grid = mainNode.getGrid();
+        if (grid == null) {
+            return 0;
+        }
+        var storage = grid.getStorageService();
+        // 单次上限：调用方上限与 appflux 配置取小
+        int cap = Math.min(maxAmount, AFUtil.clampLong(AFConfig.getFluxAccessorIO()));
+        var toAdd = accepter.receiveEnergy(cap, true);
+        if (toAdd > 0) {
+            var drained = storage.getInventory().extract(FluxKey.of(EnergyType.FE), toAdd, Actionable.MODULATE,
+                    actionSource);
+            if (drained > 0) {
+                var actuallyDrained = accepter.receiveEnergy((int) drained, false);
+                var differ = drained - actuallyDrained;
+                if (differ > 0) {
+                    storage.getInventory().insert(FluxKey.of(EnergyType.FE), differ, Actionable.MODULATE,
+                            actionSource);
                 }
+                return actuallyDrained;
             }
         }
         return 0;

@@ -28,8 +28,12 @@ import net.minecraft.world.level.block.state.BlockState;
  * 扩容 GUI 的存储槽；getBytes 语义为「容量表示页数」——每页 1024 字节（与 1k 存储元件
  * 同量级）。isStorageComponent 恒 true：既满足物质聚合器判定，又让 TRASH 槽
  * （反向排除 IStorageComponent）天然拒绝本物品，防误吞。
+ * <p>
+ * 阶段 1 共享层泛化：实现 {@link FramePatternExpandableItem} 标记接口，使扩容 GUI
+ * （FramePatternUpgradeMenu）与物质聚合器扩容 mixin 按接口判定（原 instanceof
+ * 本类），定制样板供应器物品实现同一接口即可获得扩容能力。
  */
-public class FramePatternProviderItem extends BlockItem implements IStorageComponent {
+public class FramePatternProviderItem extends BlockItem implements IStorageComponent, FramePatternExpandableItem {
 
     /** 每页样板容量对应的字节数（"容量表示页数"语义，与 1k 存储元件同量级）。 */
     private static final int BYTES_PER_PAGE = 1024;
