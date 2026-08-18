@@ -14,6 +14,7 @@ import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.frame.FrameDimensionImpl;
 import git.chexson.chexsonsaeutils.frame.FrameStorageImpl;
 import git.chexson.chexsonsaeutils.frame.FrameTicketController;
+import git.chexson.chexsonsaeutils.frame.FramesChunkGenerator;
 import git.chexson.chexsonsaeutils.cell.CellCommand;
 import git.chexson.chexsonsaeutils.cell.CellRegistration;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
@@ -31,7 +32,6 @@ import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
 import git.chexson.chexsonsaeutils.client.SlotNumberOverlay;
-import git.chexson.chexsonsaeutils.integration.appflux.AppFluxCompat;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
@@ -43,6 +43,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.neoforged.neoforge.registries.RegisterEvent;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -117,6 +121,12 @@ public class Chexsonsaeutils {
         modEventBus.addListener(this::onRegisterPayloadHandlers);
         modEventBus.addListener(SlotNumberOverlay::registerKeyMapping);
         modEventBus.addListener(FrameTicketController.instance()::register);
+        modEventBus.addListener((RegisterEvent event) -> {
+            if (event.getRegistryKey() == Registries.CHUNK_GENERATOR) {
+                Registry.register(BuiltInRegistries.CHUNK_GENERATOR, FramesChunkGenerator.CHUNK_GENERATOR_ID,
+                        FramesChunkGenerator.CODEC);
+            }
+        });
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListeners);
         NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenRender);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
@@ -133,7 +143,6 @@ public class Chexsonsaeutils {
         event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(FramePatternDecoder.INSTANCE));
         event.enqueueWork(FramePatternConfigLocator::register);
         event.enqueueWork(FramePatternUpgradeLocator::register);
-        event.enqueueWork(AppFluxCompat::registerUpgrade);
         if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
         }
