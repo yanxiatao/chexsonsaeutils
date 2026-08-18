@@ -13,6 +13,7 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -85,6 +86,19 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
                 frameBlockEntity.serverTick();
             }
         };
+    }
+
+    /**
+     * 邻居方块变化：驱动红石锁定模式（LOCK_UNTIL_PULSE）解锁判定（照 AE2
+     * PatternProviderBlock 先例——logic.updateRedstoneState 的唯一触发点）。
+     */
+    @Override
+    public void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos fromPos,
+            boolean isMoving) {
+        var be = this.getBlockEntity(level, pos);
+        if (be != null) {
+            be.getLogic().updateRedstoneState();
+        }
     }
 
     @Override

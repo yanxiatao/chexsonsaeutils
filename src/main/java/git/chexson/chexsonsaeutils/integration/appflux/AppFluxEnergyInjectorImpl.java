@@ -9,6 +9,7 @@ import appeng.api.networking.IGridNode;
 import appeng.api.networking.IManagedGridNode;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.config.Actionable;
+import appeng.api.upgrades.IUpgradeableObject;
 import com.glodblock.github.appflux.common.AFSingletons;
 import com.glodblock.github.appflux.common.me.key.FluxKey;
 import com.glodblock.github.appflux.common.me.key.type.EnergyType;
@@ -66,7 +67,10 @@ public class AppFluxEnergyInjectorImpl implements FrameEnergyInjector {
 
     @Override
     public boolean isInstalled() {
-        return host.getUpgrades().isInstalled(AFSingletons.INDUCTION_CARD);
+        // 升级库存经 IUpgradeableObject 访问：FramePatternProviderLogicHost 不声明
+        // getUpgrades()（泛型菜单双边界 T extends Host & IUpgradeableObject 要求两接口
+        // 无同签名方法冲突），所有宿主均实现 IUpgradeableObject，cast 运行时安全
+        return ((IUpgradeableObject) host).getUpgrades().isInstalled(AFSingletons.INDUCTION_CARD);
     }
 
     @Override

@@ -75,11 +75,12 @@ public interface FramePatternProviderLogicHost extends IConfigurableObject, IPri
     IItemHandler getMachineItemHandler();
 
     /**
-     * @return 宿主升级库存（appflux 感应卡检测用，见
-     *         {@link git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl}）。
-     *         框架样板供应器已有升级库存（IUpgradeableObject）
+     * @return 已解锁样板页数（需求 5，翻页 GUI 用）。默认 1：逻辑层共享接口不强制
+     *         翻页语义，宿主（框架样板供应器/定制样板供应器）按自身页数持久化覆写
      */
-    IUpgradeInventory getUpgrades();
+    default int getPages() {
+        return 1;
+    }
 
     /**
      * @return 机器能量 handler（appflux 灌电目标）。框架语义：永不返回 null（客户端

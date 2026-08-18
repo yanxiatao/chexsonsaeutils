@@ -26,6 +26,13 @@
  * 4. getTerminalGroup：机器在私有维度，无相邻机器分组，直接用宿主图标。
  * 5. 新增 pullFromMachine()：主动抽取机器输出到返回库存（需求 8 主动抽取按钮）。
  * 6. sendDirection 字段保留仅为旧存档 NBT 兼容，新逻辑无方向语义。
+ * 7. 阶段 1 起支持双模式（空集/非空 target）：
+ *    - 空集（框架样板供应器）：宿主 getTargets() 返回空集，resolveMachineHandler()
+ *      退回单 handler 语义（无参 getMachineItemHandler() 的私有维度机器）。
+ *    - 非空集（定制样板供应器）：宿主 getTargets() 返回方向集合（PUSH_DIRECTION），
+ *      resolveMachineHandler() 遍历方向取第一个可用 handler（null = 该方向无机器）。
+ *    已知局限：多方向模式只推送第一个可用方向的机器，非真正全方向并发推送
+ *    （推送循环结构沿用 fork 前单目标设计，多方向并发需重构推送事务）。
  */
 
 package git.chexson.chexsonsaeutils.helpers.framepatternprovider;

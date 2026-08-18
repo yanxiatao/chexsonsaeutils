@@ -11,6 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import appeng.api.implementations.items.IStorageComponent;
 import appeng.blockentity.misc.CondenserBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
@@ -103,7 +104,10 @@ public abstract class CondenserBlockEntityCondenseItemHandlerMixin {
     private ExpandResult tryExpand(ItemStack stack) {
         var condenser = this$0;
         var storageStack = condenser.getInternalInventory().getStackInSlot(2);
-        if (!(storageStack.getItem() instanceof FramePatternExpandableItem)) {
+        // R1-S2 防御：存储槽物品必须同时是存储组件（IStorageComponent）与可扩容供应器，
+        // 防止未来某个实现只满足标记接口而破坏物质聚合器存储元件语义
+        if (!(storageStack.getItem() instanceof IStorageComponent)
+                || !(storageStack.getItem() instanceof FramePatternExpandableItem)) {
             return ExpandResult.NONE;
         }
         if (!ExtendedAeCompat.isExPatternProvider(stack)) {
