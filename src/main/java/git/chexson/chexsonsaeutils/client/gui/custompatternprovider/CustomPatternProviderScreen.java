@@ -8,12 +8,11 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 
-import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.Icon;
+import appeng.client.gui.implementations.PatternProviderScreen;
 import appeng.client.gui.style.StyleManager;
 import appeng.client.gui.widgets.IconButton;
 import appeng.client.gui.widgets.ToggleButton;
-import appeng.client.gui.widgets.UpgradesPanel;
 import appeng.core.definitions.AEItems;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
@@ -22,14 +21,17 @@ import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProvi
 import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
 
 /**
- * 定制样板供应器屏幕（阶段 2）。
+ * 定制样板供应器屏幕（阶段 3：继承 AE2 原版 PatternProviderScreen）。
  * <p>
  * 布局由 {@code assets/ae2/screens/custom_pattern_provider.json} 定义（照框架版
- * 200x245，StyleManager 从 {@code ae2:screens/} 命名空间加载），包含 36 样板槽、
- * 9 格返回库存与升级卡面板。
+ * 200x245，StyleManager 从 {@code ae2:screens/} 命名空间加载），包含 36 样板槽与
+ * 9 格返回库存。升级卡槽位显示由 appflux 自理（照 extendedae 模式，本项目不注册
+ * 升级卡、不显示升级槽）。父类构造器
+ * 已添加原版按钮（blockingMode/lockCraftingMode/openPriority/showInPatternAccessTerminal）
+ * 与 lockReason 指示器（json 必须定义 lockReason/openPriority widget，否则构造抛异常）。
  * 左工具栏（照框架版去隔离模式按钮）：主动抽取、样板配置、输入过滤、翻页、扩容。
  */
-public class CustomPatternProviderScreen extends AEBaseScreen<CustomPatternProviderMenu> {
+public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPatternProviderMenu<?>> {
 
     private final ToggleButton configButton;
     private final ToggleButton filterImportButton;
@@ -38,7 +40,6 @@ public class CustomPatternProviderScreen extends AEBaseScreen<CustomPatternProvi
 
     public CustomPatternProviderScreen(CustomPatternProviderMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/custom_pattern_provider.json"));
-        this.widgets.add("upgrades", new UpgradesPanel(menu.getSlots(SlotSemantics.UPGRADE), menu.getHost()));
         // 主动抽取按钮：一次性动作（非 toggle），点击发送 pull_from_machine 到服务端
         IconButton pullButton = new IconButton(btn -> this.menu.pullFromMachine()) {
             @Override

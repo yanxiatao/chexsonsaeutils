@@ -5,9 +5,8 @@ import appeng.menu.MenuOpener;
 import appeng.menu.SlotSemantics;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
-import appeng.menu.implementations.UpgradeableMenu;
+import appeng.menu.implementations.PatternProviderMenu;
 import appeng.menu.slot.AppEngSlot;
-import appeng.menu.slot.RestrictedInputSlot;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
@@ -21,18 +20,19 @@ import net.minecraft.world.inventory.MenuType;
 import java.util.Objects;
 
 /**
- * 框架样板供应器菜单。
+ * 框架样板供应器菜单（阶段 3：继承 AE2 原版 PatternProviderMenu）。
  * <p>
- * 槽位构成：36 个样板槽（ENCODED_PATTERN，仅可放入 AE2 样板物品，来自
- * {@link git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogic#getPatternInv()}）、
- * 9 格返回库存（STORAGE，来自 logic 的 returnInv）、升级卡槽（由 {@link UpgradeableMenu} 自动添加）。
+ * 槽位构成：父类构造器按 {@code logic.getPatternInv()} 建全部样板槽
+ * （ENCODED_PATTERN，容量 = 配置最大页数 x 36，仅可放入 AE2 样板物品）与 9 格返回库存
+ * （STORAGE）。升级卡槽位支持由 appflux 自理（照 extendedae 模式，本项目不注册
+ * 升级卡、不显示升级槽）。
  * 左工具栏动作：隔离模式切换（toggle_isolated）、主动抽取（pull_from_machine，需求 8）
  * 与样板配置模式切换（toggle_config_mode，需求 4b）。
  * <p>
  * 打开方式：由 {@link git.chexson.chexsonsaeutils.block.framepatternprovider.FramePatternProviderBlock}
  * 在非潜行右击路径调用 MenuOpener 打开。
  */
-public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProviderBlockEntity> {
+public class FramePatternProviderMenu extends PatternProviderMenu {
 
     public static final MenuType<FramePatternProviderMenu> TYPE = MenuTypeBuilder
             .create(FramePatternProviderMenu::new, FramePatternProviderBlockEntity.class)
@@ -40,12 +40,14 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
                     ResourceLocation.tryParse(Chexsonsaeutils.MODID + ":frame_pattern_provider")
             ));
 
+    private final FramePatternProviderBlockEntity host;
+
     /** 隔离模式状态（服务端广播到客户端，客户端按钮据此显示）。 */
-    @GuiSync(3)
+    @GuiSync(1)
     public boolean isolated = false;
 
     /** 样板配置模式状态（需求 4b）：服务端翻转并同步，配置模式下点击处理样板槽位打开配置 GUI。 */
-    @GuiSync(4)
+    @GuiSync(2)
     public boolean configMode = false;
 
     /** 当前样板页（需求 5）：服务端权威，clamp 到 [0, pages-1]，翻页只切换槽位可见性。 */
@@ -57,11 +59,12 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
     public int pages = 1;
 
     /** 输入过滤开关（需求 6a）：服务端权威（Logic NBT 持久化），客户端按钮据此显示。 */
-    @GuiSync(7)
+    @GuiSync(10)
     public boolean filteredImport = false;
 
     public FramePatternProviderMenu(int id, Inventory playerInventory, FramePatternProviderBlockEntity host) {
         super(TYPE, id, playerInventory, host);
+        this.host = host;
         registerClientAction("toggle_isolated", () -> getHost().setIsolated(!getHost().isIsolated()));
         registerClientAction("pull_from_machine", () -> getHost().getLogic().pullFromMachine());
         registerClientAction("toggle_config_mode", () -> configMode = !configMode);
@@ -70,8 +73,15 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
         registerClientAction("open_upgrade_gui", this::openUpgradeGui);
         registerClientAction("toggle_filtered_import",
                 () -> getHost().getLogic().setFilteredImport(!getHost().getLogic().isFilteredImport()));
-        // setupInventorySlots 已由 UpgradeableMenu 构造执行，此处按初始页启用槽位
+        // 父类构造器已建全部样板槽，此处按初始页启用槽位
         updateSlotActivity();
+    }
+
+    /**
+     * @return 宿主方块实体
+     */
+    public FramePatternProviderBlockEntity getHost() {
+        return host;
     }
 
     @Override
@@ -237,25 +247,5 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
      */
     public void openConfigForSlotClient(int slotIndex) {
         sendClientAction("open_config_for_slot", slotIndex);
-    }
-
-    @Override
-    protected void setupInventorySlots() {
-        var logic = getHost().getLogic();
-        var patternInventory = logic.getPatternInv();
-        for (int slot = 0; slot < patternInventory.size(); slot++) {
-            addSlot(
-                    new RestrictedInputSlot(
-                            RestrictedInputSlot.PlacableItemType.PROVIDER_PATTERN,
-                            patternInventory,
-                            slot
-                    ),
-                    SlotSemantics.ENCODED_PATTERN
-            );
-        }
-        var returnInventory = logic.getReturnInv().createMenuWrapper();
-        for (int slot = 0; slot < returnInventory.size(); slot++) {
-            addSlot(new AppEngSlot(returnInventory, slot), SlotSemantics.STORAGE);
-        }
     }
 }

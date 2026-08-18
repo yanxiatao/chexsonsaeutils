@@ -11,29 +11,30 @@ import appeng.menu.MenuOpener;
 import appeng.menu.SlotSemantics;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
-import appeng.menu.implementations.UpgradeableMenu;
+import appeng.menu.implementations.PatternProviderMenu;
 import appeng.menu.slot.AppEngSlot;
-import appeng.menu.slot.RestrictedInputSlot;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
-import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu;
+import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
 
 /**
- * 定制样板供应器菜单（阶段 2，泛型版本）。
+ * 定制样板供应器菜单（阶段 3：继承 AE2 原版 PatternProviderMenu）。
  * <p>
  * 泛型动机：框架版菜单直接绑定 {@link FramePatternProviderBlockEntity}，本类改为绑定
  * {@link FramePatternProviderLogicHost} + {@link appeng.api.upgrades.IUpgradeableObject}
  * 双边界——框架与定制两个 BE 都满足，菜单逻辑（槽位/翻页/配置/扩容）完全共享，
  * 未来第三种宿主无需再复制菜单。
  * <p>
- * 槽位构成：36 个样板槽/页（ENCODED_PATTERN，仅可放入 AE2 样板物品，容量 =
- * 配置最大页数 x 36）、9 格返回库存（STORAGE）、升级卡槽（UpgradeableMenu 自动添加）。
+ * 槽位构成：父类构造器按 {@code logic.getPatternInv()} 建全部样板槽
+ * （ENCODED_PATTERN，容量 = 配置最大页数 x 36，仅可放入 AE2 样板物品）、9 格返回库存
+ * （STORAGE）。升级卡槽位支持由 appflux 自理（照 extendedae 模式，本项目不注册
+ * 升级卡、不显示升级槽）。
  * 左工具栏动作（照框架版去隔离模式）：主动抽取（pull_from_machine）、样板配置模式
  * （toggle_config_mode，需求 4b）、翻页（set_page，需求 5）、扩容（open_upgrade_gui，
  * 需求 5 阶段 5b）、输入过滤（toggle_filtered_import，需求 6a）。
@@ -46,7 +47,7 @@ import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeM
  * 对方块（BlockEntityLocator）与面板（PartLocator）的 host 解析都通过 instanceof 校验。
  */
 public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost & appeng.api.upgrades.IUpgradeableObject>
-        extends UpgradeableMenu<T> {
+        extends PatternProviderMenu {
 
     public static final MenuType<CustomPatternProviderMenu<?>> TYPE = MenuTypeBuilder
             .<CustomPatternProviderMenu<?>, CustomPatternProviderHost>create(
@@ -55,24 +56,27 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
                     ResourceLocation.tryParse(Chexsonsaeutils.MODID + ":custom_pattern_provider")
             ));
 
+    private final T host;
+
     /** 样板配置模式状态（需求 4b）：服务端翻转并同步，配置模式下点击处理样板槽位打开配置 GUI。 */
     @GuiSync(2)
     public boolean configMode = false;
 
     /** 当前样板页（需求 5）：服务端权威，clamp 到 [0, pages-1]，翻页只切换槽位可见性。 */
-    @GuiSync(3)
+    @GuiSync(8)
     public int page = 0;
 
     /** 已解锁样板页数（需求 5）：来自宿主，服务端广播。 */
-    @GuiSync(4)
+    @GuiSync(9)
     public int pages = 1;
 
     /** 输入过滤开关（需求 6a）：服务端权威（Logic NBT 持久化），客户端按钮据此显示。 */
-    @GuiSync(7)
+    @GuiSync(10)
     public boolean filteredImport = false;
 
     public CustomPatternProviderMenu(int id, Inventory playerInventory, T host) {
         super(TYPE, id, playerInventory, host);
+        this.host = host;
         registerClientAction("pull_from_machine", () -> getHost().getLogic().pullFromMachine());
         registerClientAction("toggle_config_mode", () -> configMode = !configMode);
         registerClientAction("open_config_for_slot", Integer.class, this::openConfigForSlot);
@@ -80,8 +84,15 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
         registerClientAction("open_upgrade_gui", this::openUpgradeGui);
         registerClientAction("toggle_filtered_import",
                 () -> getHost().getLogic().setFilteredImport(!getHost().getLogic().isFilteredImport()));
-        // setupInventorySlots 已由 UpgradeableMenu 构造执行，此处按初始页启用槽位
+        // 父类构造器已建全部样板槽，此处按初始页启用槽位
         updateSlotActivity();
+    }
+
+    /**
+     * @return 宿主（方块实体或面板）
+     */
+    public T getHost() {
+        return host;
     }
 
     @Override
@@ -234,25 +245,5 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
      */
     public void openConfigForSlotClient(int slotIndex) {
         sendClientAction("open_config_for_slot", slotIndex);
-    }
-
-    @Override
-    protected void setupInventorySlots() {
-        var logic = getHost().getLogic();
-        var patternInventory = logic.getPatternInv();
-        for (int slot = 0; slot < patternInventory.size(); slot++) {
-            addSlot(
-                    new RestrictedInputSlot(
-                            RestrictedInputSlot.PlacableItemType.PROVIDER_PATTERN,
-                            patternInventory,
-                            slot
-                    ),
-                    SlotSemantics.ENCODED_PATTERN
-            );
-        }
-        var returnInventory = logic.getReturnInv().createMenuWrapper();
-        for (int slot = 0; slot < returnInventory.size(); slot++) {
-            addSlot(new AppEngSlot(returnInventory, slot), SlotSemantics.STORAGE);
-        }
     }
 }

@@ -25,17 +25,18 @@
       "left": 8,
       "top": 213,
       "grid": "HORIZONTAL"
-    },
-    "UPGRADE": {
-      "left": 196,
-      "top": 82,
-      "grid": "VERTICAL"
     }
   },
   "widgets": {
-    "upgrades": {
+    "openPriority": {
       "left": 176,
-      "top": 82
+      "top": -5,
+      "width": 20,
+      "height": 20
+    },
+    "lockReason": {
+      "left": 5,
+      "top": 15
     }
   },
   "text": {
