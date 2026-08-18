@@ -18,7 +18,15 @@
 
 /*
  * 本文件 fork 自 AE2 19.2.17 的 appeng/helpers/patternprovider/PatternProviderLogic.java，
- * 保留 LGPL-3.0 头（见 THIRD_PARTY_NOTICES.md）。改动点（均以注释标注）：
+ * 保留 LGPL-3.0 头（见 THIRD_PARTY_NOTICES.md）。
+ * 阶段 2 继承改造（R2 评审确认）：本类改为 extends PatternProviderLogic，宿主 getLogic()
+ * 返回类型与 AE2 PatternProviderLogicHost 兼容（阶段 3 GUI 复用铺路）。
+ * 父类所有字段/关键方法均为 private，无法直接访问，故本类自建定制状态
+ * （sendList/returnInv/patternInputs/unlockEvent/unlockStack/redstoneState/sendDirection/
+ * priority/filteredImport/outputCache/energyInjector），并覆写父类同名方法保留 fork 语义；
+ * 父类字段（patternInventory/configManager/patterns）经 public 访问器
+ * （getPatternInv/getConfigManager/super.updatePatterns）复用。
+ * 改动点（均以注释标注）：
  * 1. 包名与宿主类型改为本项目（FramePatternProviderLogicHost）。
  * 2. target 解析：删除相邻方块缓存（PatternProviderTargetCache/findAdapter/getActiveSides），
  *    改为私有维度机器（FrameMachineAccess.getMachineItemHandler()，无 side 语义）。
@@ -33,6 +41,12 @@
  *      resolveMachineHandler() 遍历方向取第一个可用 handler（null = 该方向无机器）。
  *    已知局限：多方向模式只推送第一个可用方向的机器，非真正全方向并发推送
  *    （推送循环结构沿用 fork 前单目标设计，多方向并发需重构推送事务）。
+ * 8. 继承改造（阶段 2）：父类 Ticker 由本类构造器 addService 覆盖（ManagedGridNode
+ *    addService 为 putInstance 覆盖语义）——父类 Ticker 驱动父类 doWork（sendStacksOut
+ *    依赖 sendDirection + 相邻方块适配器，sendDirection 为 null 且 sendList 非空时抛
+ *    IllegalStateException），本类推送目标为私有维度机器，必须由本类 Ticker 驱动
+ *    本类 doWork（灌电 + 机器目标补发）；父类 sendList/returnInv/patternInputs/
+ *    unlockEvent/unlockStack/redstoneState/priority 恒空/恒 0 闲置。
  */
 
 package git.chexson.chexsonsaeutils.helpers.framepatternprovider;
@@ -48,31 +62,21 @@ import org.slf4j.LoggerFactory;
 
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemContainerContents;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.IItemHandlerModifiable;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 
 import appeng.api.config.Actionable;
 import appeng.api.config.LockCraftingMode;
-import appeng.api.config.Setting;
 import appeng.api.config.Settings;
 import appeng.api.config.YesNo;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
-import appeng.api.ids.AEComponents;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
-import appeng.api.inventories.InternalInventory;
-import appeng.api.networking.GridFlags;
-import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IManagedGridNode;
 import appeng.api.networking.crafting.ICraftingProvider;
@@ -84,24 +88,28 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
-import appeng.api.util.IConfigManager;
-import appeng.core.AELog;
-import git.chexson.chexsonsaeutils.crafting.framepattern.FrameProcessingPattern;
-import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
-import git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl;
-import appeng.core.definitions.AEItems;
-import appeng.core.localization.PlayerMessages;
 import appeng.core.settings.TickRates;
+import appeng.helpers.patternprovider.PatternProviderLogic;
 import appeng.helpers.patternprovider.PatternProviderReturnInventory;
 import appeng.helpers.patternprovider.PatternProviderTarget;
 import appeng.helpers.patternprovider.UnlockCraftingEvent;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
-import appeng.util.inv.InternalInventoryHost;
-import appeng.util.inv.PlayerInternalInventory;
+import git.chexson.chexsonsaeutils.crafting.framepattern.FrameProcessingPattern;
+import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
+import git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl;
 
 /**
- * 框架样板供应器的样板供应逻辑（fork 自 AE2 PatternProviderLogic）。
+ * 框架样板供应器的样板供应逻辑（继承 AE2 PatternProviderLogic）。
+ * <p>
+ * 继承改造（阶段 2，R2 评审确认）：宿主 getLogic() 返回类型与 AE2
+ * PatternProviderLogicHost 兼容，为阶段 3 GUI 复用（Menu/Screen 继承
+ * PatternProviderMenu/Screen）铺路。父类所有字段/关键方法均为 private，
+ * 无法直接访问，故本类自建定制状态（sendList/returnInv/patternInputs/
+ * unlockEvent/unlockStack/redstoneState/sendDirection/priority/
+ * filteredImport/outputCache/energyInjector），并覆写父类同名方法保留
+ * fork 语义；父类字段（patternInventory/configManager/patterns）经
+ * public 访问器（getPatternInv/getConfigManager/super.updatePatterns）复用。
  * <p>
  * 与 AE2 原版的差异（需求 8 隔离语义）：推送目标经 {@link #resolveMachineHandler()}
  * 解析——单 handler 模式（框架样板供应器）固定为私有维度机器
@@ -113,7 +121,7 @@ import appeng.util.inv.PlayerInternalInventory;
  * 仅支持 processing 样板（S3）：crafting 样板依赖 ICraftingMachine 推送路径（分子装配机），
  * 该路径已在 fork 时删除，crafting 样板无法推送到私有维度机器，也不会被主动抽取。
  */
-public class FramePatternProviderLogic implements InternalInventoryHost, ICraftingProvider {
+public class FramePatternProviderLogic extends PatternProviderLogic {
     private static final Logger LOG = LoggerFactory.getLogger(FramePatternProviderLogic.class);
 
     public static final String NBT_MEMORY_CARD_PATTERNS = "patterns";
@@ -129,32 +137,21 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     private final FramePatternProviderLogicHost host;
     private final IManagedGridNode mainNode;
     private final IActionSource actionSource;
-    private final IConfigManager configManager;
 
+    /**
+     * 推送优先级（R2：父类 priority private 不可达，自建字段并覆写
+     * getPriority/setPriority/getPatternPriority；父类 priority 恒 0 闲置）。
+     */
     private int priority;
 
-    // Pattern storing logic
-    private final AppEngInternalInventory patternInventory;
-    private final List<IPatternDetails> patterns = new ArrayList<>();
-    /**
-     * Keeps track of the inputs of all the patterns. When blocking mode is enabled, if any of these is contained in the
-     * target, the pattern won't be pushed. Always contains keys with the secondary component dropped.
-     */
-    private final Set<AEKey> patternInputs = new HashSet<>();
-    // Pattern sending logic
+    // Pattern sending logic（父类 sendList private 不可达，自建；父类 sendList 恒空闲置）
     private final List<GenericStack> sendList = new ArrayList<>();
     /**
      * 保留仅为旧存档 NBT 兼容（原版字段），新逻辑无方向语义（推送目标固定为私有维度机器）。
      */
     private Direction sendDirection;
-    // Stack returning logic
+    // Stack returning logic（父类 returnInv 无输入过滤，自建带过滤实例；父类 returnInv 恒空闲置）
     private final PatternProviderReturnInventory returnInv;
-    /**
-     * 需求 7：appflux 感应卡灌电注入器（接口隔离——appflux 引用集中在实现类）。
-     * appflux 未加载时为 null，Ticker 跳过灌电。
-     */
-    @Nullable
-    private final FrameEnergyInjector energyInjector;
     /**
      * 需求 6a：输入过滤开关（NBT 持久化，Menu @GuiSync 同步）。
      * 过滤开启时 returnInv 注入网络只放行已配置样板的输出物品（outputCache）。
@@ -167,6 +164,16 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
      * outputCache 等价语义（放行样板输出物品回网络）。
      */
     private final HashSet<AEKey> outputCache = new HashSet<>();
+    /**
+     * blocking 模式输入集合（父类 patternInputs private 不可达，自建；updatePatterns 重建）。
+     */
+    private final Set<AEKey> patternInputs = new HashSet<>();
+    /**
+     * 需求 7：appflux 感应卡灌电注入器（接口隔离——appflux 引用集中在实现类）。
+     * appflux 未加载时为 null，Ticker 跳过灌电。
+     */
+    @Nullable
+    private final FrameEnergyInjector energyInjector;
 
     private YesNo redstoneState = YesNo.UNDECIDED;
 
@@ -182,20 +189,10 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
 
     public FramePatternProviderLogic(IManagedGridNode mainNode, FramePatternProviderLogicHost host,
             int patternInventorySize) {
-        this.patternInventory = new AppEngInternalInventory(this, patternInventorySize);
+        super(mainNode, host, patternInventorySize);
         this.host = host;
-        this.mainNode = mainNode
-                .setFlags(GridFlags.REQUIRE_CHANNEL)
-                .addService(IGridTickable.class, new Ticker())
-                .addService(ICraftingProvider.class, this);
+        this.mainNode = mainNode;
         this.actionSource = new MachineSource(mainNode::getNode);
-
-        configManager = IConfigManager.builder(this::configChanged)
-                .registerSetting(Settings.BLOCKING_MODE, YesNo.NO)
-                .registerSetting(Settings.PATTERN_ACCESS_TERMINAL, YesNo.YES)
-                .registerSetting(Settings.LOCK_CRAFTING_MODE, LockCraftingMode.NONE)
-                .build();
-
         this.returnInv = new PatternProviderReturnInventory(() -> {
             this.mainNode.ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
             this.host.saveChanges();
@@ -209,12 +206,20 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         };
         // 需求 7：appflux 感应卡灌电注入器（未装 appflux 时为 null）
         this.energyInjector = AppFluxEnergyInjectorImpl.create(host, mainNode, actionSource);
+        // R2 硬性要求：覆盖父类构造器注册的 Ticker（ManagedGridNode.addService 为
+        // putInstance 覆盖语义）。父类 Ticker 驱动父类 doWork（sendStacksOut 依赖
+        // sendDirection + 相邻方块适配器，sendDirection 为 null 且 sendList 非空时
+        // 抛 IllegalStateException），本类推送目标为私有维度机器，必须由本类 Ticker
+        // 驱动本类 doWork（灌电 + 机器目标补发）。
+        mainNode.addService(IGridTickable.class, new Ticker());
     }
 
+    @Override
     public int getPriority() {
         return priority;
     }
 
+    @Override
     public void setPriority(int priority) {
         this.priority = priority;
         this.host.saveChanges();
@@ -222,10 +227,17 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         ICraftingProvider.requestUpdate(mainNode);
     }
 
+    @Override
+    public int getPatternPriority() {
+        return this.priority;
+    }
+
+    @Override
     public void writeToNBT(CompoundTag tag, HolderLookup.Provider registries) {
-        this.configManager.writeToNBT(tag, registries);
-        this.patternInventory.writeToNBT(tag, NBT_MEMORY_CARD_PATTERNS, registries);
-        tag.putInt(NBT_PRIORITY, this.priority);
+        // R2 NBT 顺序铁律：super 必须最前（写父类字段：configManager/patternInventory/
+        // priority（恒 0 闲置）/unlockEvent（闲置）/sendList（空）/sendDirection（闲置）/
+        // returnInv（空）），子类字段后写覆盖同名 key（顺序颠倒 = 存档静默丢失）。
+        super.writeToNBT(tag, registries);
         if (unlockEvent == UnlockCraftingEvent.REDSTONE_POWER) {
             tag.putByte(NBT_UNLOCK_EVENT, (byte) 1);
         } else if (unlockEvent == UnlockCraftingEvent.RESULT) {
@@ -250,12 +262,15 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
 
         tag.put(NBT_RETURN_INV, this.returnInv.writeToTag(registries));
         tag.putBoolean(NBT_FILTERED_IMPORT, this.filteredImport);
+        tag.putInt(NBT_PRIORITY, this.priority);
     }
 
+    @Override
     public void readFromNBT(CompoundTag tag, HolderLookup.Provider registries) {
-        this.configManager.readFromNBT(tag, registries);
-        this.patternInventory.readFromNBT(tag, NBT_MEMORY_CARD_PATTERNS, registries);
-        this.priority = tag.getInt(NBT_PRIORITY);
+        // R2 NBT 顺序铁律：super 必须最前（读父类字段：configManager/patternInventory/
+        // priority（恒 0 闲置）/unlockEvent（闲置）/sendList（空）/sendDirection（闲置）/
+        // returnInv（空）），子类字段后读覆盖（顺序颠倒 = 存档静默丢失）。
+        super.readFromNBT(tag, registries);
 
         var unlockEventType = tag.getByte(NBT_UNLOCK_EVENT);
         this.unlockEvent = switch (unlockEventType) {
@@ -290,6 +305,7 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
 
         this.returnInv.readFromTag(tag.getList("returnInv", Tag.TAG_COMPOUND), registries);
         this.filteredImport = tag.getBoolean(NBT_FILTERED_IMPORT);
+        this.priority = tag.getInt(NBT_PRIORITY);
     }
 
     /**
@@ -323,12 +339,12 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
      */
     public void migrateLegacyInventory(CompoundTag tag, HolderLookup.Provider registries) {
         if (tag.contains("patternInventory")) {
-            var legacy = new AppEngInternalInventory(patternInventory.size());
+            var legacy = new AppEngInternalInventory(getPatternInv().size());
             legacy.readFromNBT(tag, "patternInventory", registries);
             for (int i = 0; i < legacy.size(); i++) {
                 var stack = legacy.getStackInSlot(i);
                 if (!stack.isEmpty()) {
-                    patternInventory.setItemDirect(i, stack);
+                    getPatternInv().setItemDirect(i, stack);
                 }
             }
         }
@@ -347,42 +363,19 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         }
     }
 
-    public IConfigManager getConfigManager() {
-        return this.configManager;
-    }
-
-    public void saveChanges() {
-        this.host.saveChanges();
-    }
-
     @Override
-    public void saveChangedInventory(AppEngInternalInventory inv) {
-        this.host.saveChanges();
-    }
-
-    @Override
-    public void onChangeInventory(AppEngInternalInventory inv, int slot) {
-        this.saveChanges();
-        this.updatePatterns();
-    }
-
-    @Override
-    public boolean isClientSide() {
-        Level level = this.host.getBlockEntity().getLevel();
-        return level == null || level.isClientSide();
-    }
-
     public void updatePatterns() {
-        patterns.clear();
+        // R2 patterns 单一数据源：super 先填父类 patterns（getAvailablePatterns 复用父类，
+        // pushPattern 的 contains 校验与 getAvailablePatterns 同源），子类再自建
+        // patternInputs/outputCache（父类 patternInputs private 不可达）。
+        super.updatePatterns();
         patternInputs.clear();
         outputCache.clear();
 
-        for (var stack : this.patternInventory) {
+        for (var stack : getPatternInv()) {
             var details = PatternDetailsHelper.decodePattern(stack, this.host.getBlockEntity().getLevel());
 
             if (details != null) {
-                patterns.add(details);
-
                 // 需求 6a：收集样板输出物品（输入过滤放行集合）
                 for (var output : details.getOutputs()) {
                     outputCache.add(output.what());
@@ -395,23 +388,12 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
                 }
             }
         }
-
-        ICraftingProvider.requestUpdate(mainNode);
-    }
-
-    @Override
-    public List<IPatternDetails> getAvailablePatterns() {
-        return this.patterns;
-    }
-
-    @Override
-    public int getPatternPriority() {
-        return this.priority;
     }
 
     @Override
     public boolean pushPattern(IPatternDetails patternDetails, KeyCounter[] inputHolder) {
-        if (!sendList.isEmpty() || !this.mainNode.isActive() || !this.patterns.contains(patternDetails)) {
+        if (!sendList.isEmpty() || !this.mainNode.isActive()
+                || !getAvailablePatterns().contains(patternDetails)) {
             return false;
         }
 
@@ -556,6 +538,7 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         return true;
     }
 
+    @Override
     public void resetCraftingLock() {
         if (unlockEvent != null) {
             unlockEvent = null;
@@ -567,7 +550,7 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     private void onPushPatternSuccess(IPatternDetails pattern) {
         resetCraftingLock();
 
-        var lockMode = configManager.getSetting(Settings.LOCK_CRAFTING_MODE);
+        var lockMode = getConfigManager().getSetting(Settings.LOCK_CRAFTING_MODE);
         switch (lockMode) {
             case LOCK_UNTIL_PULSE -> {
                 if (getRedstoneState()) {
@@ -593,8 +576,9 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
      *
      * @return null if the lock isn't in effect
      */
+    @Override
     public LockCraftingMode getCraftingLockedReason() {
-        var lockMode = configManager.getSetting(Settings.LOCK_CRAFTING_MODE);
+        var lockMode = getConfigManager().getSetting(Settings.LOCK_CRAFTING_MODE);
         if (lockMode == LockCraftingMode.LOCK_WHILE_LOW && !getRedstoneState()) {
             // Crafting locked by redstone signal
             return LockCraftingMode.LOCK_WHILE_LOW;
@@ -617,13 +601,10 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
     /**
      * @return Null if {@linkplain #getCraftingLockedReason()} is not {@link LockCraftingMode#LOCK_UNTIL_RESULT}.
      */
+    @Override
     @Nullable
     public GenericStack getUnlockStack() {
         return unlockStack;
-    }
-
-    public boolean isBlocking() {
-        return this.configManager.getSetting(Settings.BLOCKING_MODE) == YesNo.YES;
     }
 
     /**
@@ -790,7 +771,7 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
             return false;
         }
         boolean didSomething = false;
-        for (var stack : this.patternInventory) {
+        for (var stack : getPatternInv()) {
             var details = PatternDetailsHelper.decodePattern(stack, this.host.getBlockEntity().getLevel());
             if (details == null || !details.supportsPushInputsToExternalInventory()) {
                 continue;
@@ -881,20 +862,9 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         return didSomething;
     }
 
-    public InternalInventory getPatternInv() {
-        return this.patternInventory;
-    }
-
-    public void onMainNodeStateChanged() {
-        if (this.mainNode.isActive()) {
-            this.mainNode.ifPresent((grid, node) -> {
-                grid.getTickManager().alertDevice(node);
-            });
-        }
-    }
-
+    @Override
     public void addDrops(List<ItemStack> drops) {
-        for (var stack : this.patternInventory) {
+        for (var stack : getPatternInv()) {
             drops.add(stack);
         }
 
@@ -906,104 +876,16 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         this.returnInv.addDrops(drops, this.host.getBlockEntity().getLevel(), this.host.getBlockEntity().getBlockPos());
     }
 
+    @Override
     public void clearContent() {
-        this.patternInventory.clear();
+        getPatternInv().clear();
         this.sendList.clear();
         this.returnInv.clear();
     }
 
+    @Override
     public PatternProviderReturnInventory getReturnInv() {
         return this.returnInv;
-    }
-
-    public void exportSettings(DataComponentMap.Builder builder) {
-        builder.set(AEComponents.EXPORTED_PATTERNS, patternInventory.toItemContainerContents());
-    }
-
-    public void importSettings(DataComponentMap input, @Nullable Player player) {
-        var patterns = input.getOrDefault(AEComponents.EXPORTED_PATTERNS, ItemContainerContents.EMPTY);
-
-        if (player != null && !player.level().isClientSide) {
-            clearPatternInventory(player);
-
-            var desiredPatterns = new AppEngInternalInventory(patternInventory.size());
-            desiredPatterns.fromItemContainerContents(patterns);
-
-            // Restore from blank patterns in the player inv
-            var playerInv = player.getInventory();
-            var blankPatternsAvailable = player.getAbilities().instabuild ? Integer.MAX_VALUE
-                    : playerInv.countItem(AEItems.BLANK_PATTERN.asItem());
-            var blankPatternsUsed = 0;
-            for (int i = 0; i < desiredPatterns.size(); i++) {
-                if (desiredPatterns.getStackInSlot(i).isEmpty()) {
-                    continue;
-                }
-
-                // Don't restore junk
-                var pattern = PatternDetailsHelper.decodePattern(desiredPatterns.getStackInSlot(i),
-                        host.getBlockEntity().getLevel());
-                if (pattern == null) {
-                    continue; // Skip junk / broken recipes
-                }
-
-                // Keep track of how many blank patterns we need
-                ++blankPatternsUsed;
-                if (blankPatternsAvailable >= blankPatternsUsed) {
-                    if (!patternInventory.addItems(pattern.getDefinition().toStack()).isEmpty()) {
-                        AELog.warn("Failed to add pattern to pattern provider");
-                        blankPatternsUsed--;
-                    }
-                }
-            }
-
-            // Deduct the used blank patterns
-            if (blankPatternsUsed > 0 && !player.getAbilities().instabuild) {
-                new PlayerInternalInventory(playerInv)
-                        .removeItems(blankPatternsUsed, AEItems.BLANK_PATTERN.stack(), null);
-            }
-
-            // Warn about not being able to restore all patterns due to lack of blank patterns
-            if (blankPatternsUsed > blankPatternsAvailable) {
-                player.sendSystemMessage(
-                        PlayerMessages.MissingBlankPatterns.text(blankPatternsUsed - blankPatternsAvailable));
-            }
-        }
-    }
-
-    // Converts all patterns in this provider to blank patterns and give them to the player
-    private void clearPatternInventory(Player player) {
-        // Just clear it for creative mode players
-        if (player.getAbilities().instabuild) {
-            for (int i = 0; i < patternInventory.size(); i++) {
-                patternInventory.setItemDirect(i, ItemStack.EMPTY);
-            }
-            return;
-        }
-
-        var playerInv = player.getInventory();
-
-        // Clear out any existing patterns and give them to the player
-        var blankPatternCount = 0;
-        for (int i = 0; i < patternInventory.size(); i++) {
-            var pattern = patternInventory.getStackInSlot(i);
-            // Auto-Clear encoded patterns to allow them to stack
-            if (pattern.is(AEItems.CRAFTING_PATTERN.asItem())
-                    || pattern.is(AEItems.PROCESSING_PATTERN.asItem())
-                    || pattern.is(AEItems.SMITHING_TABLE_PATTERN.asItem())
-                    || pattern.is(AEItems.STONECUTTING_PATTERN.asItem())
-                    || pattern.is(AEItems.BLANK_PATTERN.asItem())) {
-                blankPatternCount += pattern.getCount();
-            } else {
-                // Give back any non-blank-patterns individually
-                playerInv.placeItemBackInInventory(pattern);
-            }
-            patternInventory.setItemDirect(i, ItemStack.EMPTY);
-        }
-
-        // Place back the removed blank patterns all at once
-        if (blankPatternCount > 0) {
-            playerInv.placeItemBackInInventory(AEItems.BLANK_PATTERN.stack(blankPatternCount), false);
-        }
     }
 
     private void onStackReturnedToNetwork(GenericStack genericStack) {
@@ -1054,6 +936,7 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
      * @return Gets the name used to show this pattern provider in the
      *         {@link appeng.menu.implementations.PatternAccessTermMenu}.
      */
+    @Override
     public PatternContainerGroup getTerminalGroup() {
         // 需求 8 改造：机器在私有维度，无相邻机器分组（原版遍历 getActiveSides 的相邻机器），
         // 直接用宿主图标与名称。
@@ -1064,16 +947,7 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
                 List.of());
     }
 
-    public long getSortValue() {
-        final BlockEntity te = this.host.getBlockEntity();
-        return te.getBlockPos().getZ() << 24 ^ te.getBlockPos().getX() << 8 ^ te.getBlockPos().getY();
-    }
-
-    @Nullable
-    public IGrid getGrid() {
-        return mainNode.getGrid();
-    }
-
+    @Override
     public void updateRedstoneState() {
         // If we're waiting for a pulse, update immediately
         if (unlockEvent == UnlockCraftingEvent.REDSTONE_POWER && getRedstoneState()) {
@@ -1086,14 +960,6 @@ public class FramePatternProviderLogic implements InternalInventoryHost, ICrafti
         } else {
             // Otherwise, just reset back to undecided
             redstoneState = YesNo.UNDECIDED;
-        }
-    }
-
-    private void configChanged(IConfigManager manager, Setting<?> setting) {
-        if (setting == Settings.LOCK_CRAFTING_MODE) {
-            resetCraftingLock();
-        } else {
-            saveChanges();
         }
     }
 
