@@ -17,9 +17,9 @@ import appeng.client.gui.widgets.UpgradesPanel;
 import appeng.core.definitions.AEItems;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
-import git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
+import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
 
 /**
  * 定制样板供应器屏幕（阶段 2）。
@@ -120,7 +120,7 @@ public class CustomPatternProviderScreen extends AEBaseScreen<CustomPatternProvi
         int currentPage = this.menu.getPage();
         for (var slot : this.menu.getSlots(SlotSemantics.ENCODED_PATTERN)) {
             if (slot instanceof AppEngSlot appEngSlot) {
-                int slotPage = appEngSlot.getSlotIndex() / CustomPatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE;
+                int slotPage = appEngSlot.getSlotIndex() / CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE;
                 appEngSlot.setActive(slotPage == currentPage);
             }
         }

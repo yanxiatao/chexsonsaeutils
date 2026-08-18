@@ -175,6 +175,8 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     public void clearContent() {
         super.clearContent();
         this.logic.clearContent();
+        // S1 修复：升级库存随内容清空（AE2 UpgradeablePart 惯例——清空内容不应残留升级卡）
+        this.upgrades.clear();
     }
 
     @Override
@@ -187,6 +189,10 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
         super.exportSettings(mode, builder);
         if (mode == SettingsFrom.MEMORY_CARD) {
             this.logic.exportSettings(builder);
+        } else if (mode == SettingsFrom.DISMANTLE_ITEM) {
+            // I1 修复：拆除写回——IPart.addPartDrop 默认实现经本方法生成掉落栈组件，
+            // 把当前 pages 写入 FRAME_PATTERN_PAGES（闭环保留，与放置读回对称）
+            builder.set(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), pages);
         }
     }
 
@@ -195,6 +201,10 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
         super.importSettings(mode, input, player);
         if (mode == SettingsFrom.MEMORY_CARD) {
             this.logic.importSettings(input, player);
+        } else if (mode == SettingsFrom.DISMANTLE_ITEM) {
+            // I1 修复：放置读回——PartPlacement.placePart 以放置物品的组件映射调用本方法，
+            // 把扩容后的 FRAME_PATTERN_PAGES 注入面板（方块版对应 updateCustomBlockEntityTag 读回）
+            initPagesFromStack(input.getOrDefault(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), 1));
         }
     }
 
@@ -277,6 +287,20 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     }
 
     /**
+     * 放置读回注入页数（I1 修复，包内方法，仅放置路径经 importSettings(DISMANTLE_ITEM) 调用）。
+     * <p>
+     * 直接赋值不调 saveChanges：放置流程中本方法在 addPart 完成后调用，此时
+     * updateAfterPartChange 已触发 host 保存，无需重复写盘；且若未来在 addToWorld 前
+     * 调用（getHost() 为 null），saveChanges 会 NPE——直接赋值对两种时机均安全
+     * （生命周期正确性，非兜底）。
+     *
+     * @param pages 放置物品 FRAME_PATTERN_PAGES 组件携带的页数（无组件时为 1）
+     */
+    void initPagesFromStack(int pages) {
+        this.pages = clampPages(pages);
+    }
+
+    /**
      * 页数收敛到 [1, maxFramePatternPages()]；发生截断时输出告警日志（readFromNBT/setPages 共用）。
      *
      * @param rawPages 待收敛的原始页数
@@ -319,8 +343,9 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     /**
      * 无参版物品 handler（兜底，接口约定永不返回 null）。
      * <p>
-     * 逻辑层不调用本方法（getTargets() 恒非空，恒走多方向分支）；外部 ITEM capability
-     * 透传与兜底路径使用——遍历方向取第一个可用 handler，全不可用时返回空实现。
+     * 带方向版忽略 direction 参数、恒查面板朝向（getSide() 邻居）；本无参版遍历
+     * 6 方向实际等价于单次查询（每方向都返回同一朝向的 handler），语义为兜底——
+     * 外部 ITEM capability 透传路径使用，全不可用时返回空实现。
      */
     @Override
     public IItemHandler getMachineItemHandler() {
@@ -363,7 +388,9 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     /**
      * 无参版能量 handler（appflux 灌电目标，接口约定：新方块实现方向逻辑）。
      * <p>
-     * 遍历方向取第一个可用能量 handler，全不可用时返回 null（注入器据此跳过灌电）。
+     * 带方向版忽略 direction 参数、恒查面板朝向（getSide() 邻居）；本无参版遍历
+     * 6 方向实际等价于单次查询（每方向都返回同一朝向的 handler），语义为兜底——
+     * 全不可用时返回 null（注入器据此跳过灌电）。
      */
     @Override
     @Nullable

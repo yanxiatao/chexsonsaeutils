@@ -148,6 +148,8 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     public void clearContent() {
         super.clearContent();
         this.logic.clearContent();
+        // S1 修复：升级库存随内容清空（与面板版对齐，AE2 UpgradeablePart 惯例）
+        this.upgrades.clear();
     }
 
     /**

@@ -6,7 +6,6 @@ import appeng.api.parts.RegisterPartCapabilitiesEvent;
 import appeng.api.upgrades.Upgrades;
 import appeng.blockentity.AEBaseBlockEntity;
 import appeng.core.definitions.AEItems;
-import appeng.items.parts.PartItem;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.cell.CellRegistration;
@@ -49,6 +48,7 @@ import git.chexson.chexsonsaeutils.client.gui.framepatternupgrade.FramePatternUp
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
+import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPartItem;
 import appeng.client.gui.style.StyleManager;
 import com.mojang.serialization.Codec;
 import net.minecraft.core.component.DataComponentType;
@@ -133,8 +133,7 @@ public final class ChexsonsaeutilsContent {
     /** 定制样板供应器面板（阶段 3）：PartItem 工厂创建面板实例，模型经 PartModels 注册。 */
     public static final Supplier<Item> CUSTOM_PATTERN_PROVIDER_PART_ITEM =
             ITEMS.register("custom_pattern_provider_part",
-                    () -> new PartItem<>(new Item.Properties(),
-                            CustomPatternProviderPart.class, CustomPatternProviderPart::new));
+                    () -> new CustomPatternProviderPartItem(new Item.Properties()));
     public static final Supplier<FramePatternItem> FRAME_PATTERN_ITEM =
             ITEMS.register("frame_pattern", FramePatternItem::createItem);
     public static final Supplier<DataComponentType<EncodedFramePattern>> ENCODED_FRAME_PATTERN =
