@@ -49,11 +49,11 @@ public class FramePatternProviderMenu extends UpgradeableMenu<FramePatternProvid
     public boolean configMode = false;
 
     /** 当前样板页（需求 5）：服务端权威，clamp 到 [0, pages-1]，翻页只切换槽位可见性。 */
-    @GuiSync(5)
+    @GuiSync(8)
     public int page = 0;
 
     /** 已解锁样板页数（需求 5）：来自 BE，服务端广播。 */
-    @GuiSync(6)
+    @GuiSync(9)
     public int pages = 1;
 
     /** 输入过滤开关（需求 6a）：服务端权威（Logic NBT 持久化），客户端按钮据此显示。 */
