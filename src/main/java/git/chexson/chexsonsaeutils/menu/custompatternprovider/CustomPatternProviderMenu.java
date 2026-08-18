@@ -15,9 +15,10 @@ import appeng.menu.implementations.UpgradeableMenu;
 import appeng.menu.slot.AppEngSlot;
 import appeng.menu.slot.RestrictedInputSlot;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
+import git.chexson.chexsonsaeutils.helpers.framepatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
+import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
@@ -37,17 +38,19 @@ import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeM
  * （toggle_config_mode，需求 4b）、翻页（set_page，需求 5）、扩容（open_upgrade_gui，
  * 需求 5 阶段 5b）、输入过滤（toggle_filtered_import，需求 6a）。
  * <p>
- * MenuType 说明：MenuTypeBuilder 的 hostClass 用具体 BE 类而非共享接口——泛型 T 的
- * 双边界（FramePatternProviderLogicHost & IUpgradeableObject）使接口字面无法通过
- * 构造器引用推断（javac 实验确认 T := 接口不满足 IUpgradeableObject 边界），
- * 具体类同时满足双边界且 MenuOpener 打开时 host 解析行为等价。
+ * MenuType 说明：MenuTypeBuilder 的 hostClass 用共享接口
+ * {@link CustomPatternProviderHost}（extends FramePatternProviderLogicHost &
+ * IUpgradeableObject）——泛型 T 的双边界使两个接口的交集无法作为 Class 字面量，
+ * 单个接口字面又无法通过构造器引用推断（javac 实验确认 T := 接口不满足
+ * IUpgradeableObject 边界），共享接口同时满足双边界，且 MenuOpener 打开时
+ * 对方块（BlockEntityLocator）与面板（PartLocator）的 host 解析都通过 instanceof 校验。
  */
 public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost & appeng.api.upgrades.IUpgradeableObject>
         extends UpgradeableMenu<T> {
 
     public static final MenuType<CustomPatternProviderMenu<?>> TYPE = MenuTypeBuilder
-            .<CustomPatternProviderMenu<?>, CustomPatternProviderBlockEntity>create(
-                    CustomPatternProviderMenu::new, CustomPatternProviderBlockEntity.class)
+            .<CustomPatternProviderMenu<?>, CustomPatternProviderHost>create(
+                    CustomPatternProviderMenu::new, CustomPatternProviderHost.class)
             .buildUnregistered(Objects.requireNonNull(
                     ResourceLocation.tryParse(Chexsonsaeutils.MODID + ":custom_pattern_provider")
             ));
@@ -162,7 +165,7 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
     private void updateSlotActivity() {
         for (var slot : getSlots(SlotSemantics.ENCODED_PATTERN)) {
             if (slot instanceof AppEngSlot appEngSlot) {
-                int slotPage = appEngSlot.getSlotIndex() / CustomPatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE;
+                int slotPage = appEngSlot.getSlotIndex() / CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE;
                 appEngSlot.setSlotEnabled(slotPage == page);
             }
         }

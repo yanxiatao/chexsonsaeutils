@@ -65,6 +65,7 @@
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off": "输入过滤：关",
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off_hint": "返回库存注入网络时不加过滤（原行为）",
   "block.chexsonsaeutils.custom_pattern_provider": "定制样板供应器",
+  "item.chexsonsaeutils.custom_pattern_provider_part": "定制样板供应器",
   "gui.chexsonsaeutils.custom_pattern_provider": "定制样板供应器",
   "gui.chexsonsaeutils.custom_pattern_provider.pull": "主动抽取",
   "gui.chexsonsaeutils.custom_pattern_provider.pull_hint": "把相邻机器的输出抽取到返回库存",

@@ -65,6 +65,7 @@
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off": "Filtered Import: Off",
   "gui.chexsonsaeutils.frame_pattern_provider.filtered_import_off_hint": "Return inventory injects into the network unfiltered (original behavior)",
   "block.chexsonsaeutils.custom_pattern_provider": "Custom Pattern Provider",
+  "item.chexsonsaeutils.custom_pattern_provider_part": "Custom Pattern Provider",
   "gui.chexsonsaeutils.custom_pattern_provider": "Custom Pattern Provider",
   "gui.chexsonsaeutils.custom_pattern_provider.pull": "Pull from Machine",
   "gui.chexsonsaeutils.custom_pattern_provider.pull_hint": "Pull the adjacent machine's output into the return inventory",

@@ -41,6 +41,9 @@ public final class AppFluxCompat {
             // 定制样板供应器同样支持感应卡（共享 FramePatternProviderLogicHost.getUpgrades() 判定）
             Upgrades.add(AFSingletons.INDUCTION_CARD, ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get(), 1,
                     "block.chexsonsaeutils.custom_pattern_provider");
+            // 定制样板供应器面板同样支持感应卡（阶段 3，面板有升级槽）
+            Upgrades.add(AFSingletons.INDUCTION_CARD, ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get(), 1,
+                    "item.chexsonsaeutils.custom_pattern_provider_part");
         } catch (Throwable e) {
             // appflux 版本 API 变化时降级：感应卡功能不可用，但不阻断本 mod
             LOGGER.warn("Failed to register appflux induction card upgrade for frame pattern provider", e);

@@ -29,7 +29,6 @@ import appeng.api.networking.IGridNodeListener;
 import appeng.api.orientation.BlockOrientation;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.upgrades.IUpgradeInventory;
-import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.block.crafting.PushDirection;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
@@ -39,6 +38,7 @@ import appeng.util.SettingsFrom;
 import git.chexson.chexsonsaeutils.block.custompatternprovider.CustomPatternProviderBlock;
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FrameMachineAccessImpl;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.helpers.framepatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogic;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
@@ -57,7 +57,7 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * （字段初始化先于构造器体，logic 注册的服务不会被本类覆盖）。
  */
 public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
-        implements FramePatternProviderLogicHost, IUpgradeableObject {
+        implements CustomPatternProviderHost {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -135,6 +135,13 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
         super.addAdditionalDrops(level, pos, drops);
         // 样板库存/返回库存/sendList 掉落（挖掘、爆炸均经 onRemove 触发）
         this.logic.addDrops(drops);
+        // 升级库存掉落（S4 补充，与面板版一致）
+        for (int slot = 0; slot < upgrades.size(); slot++) {
+            var stack = upgrades.getStackInSlot(slot);
+            if (!stack.isEmpty()) {
+                drops.add(stack);
+            }
+        }
     }
 
     @Override

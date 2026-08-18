@@ -1,9 +1,12 @@
 package git.chexson.chexsonsaeutils.registration;
 
 import appeng.api.AECapabilities;
+import appeng.api.parts.PartModels;
+import appeng.api.parts.RegisterPartCapabilitiesEvent;
 import appeng.api.upgrades.Upgrades;
 import appeng.blockentity.AEBaseBlockEntity;
 import appeng.core.definitions.AEItems;
+import appeng.items.parts.PartItem;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.cell.CellRegistration;
@@ -45,6 +48,7 @@ import git.chexson.chexsonsaeutils.client.gui.framepatternprovider.FramePatternP
 import git.chexson.chexsonsaeutils.client.gui.framepatternupgrade.FramePatternUpgradeScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
+import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
 import appeng.client.gui.style.StyleManager;
 import com.mojang.serialization.Codec;
 import net.minecraft.core.component.DataComponentType;
@@ -126,6 +130,11 @@ public final class ChexsonsaeutilsContent {
     public static final Supplier<Item> CUSTOM_PATTERN_PROVIDER_ITEM =
             ITEMS.register("custom_pattern_provider",
                     () -> new CustomPatternProviderItem(CUSTOM_PATTERN_PROVIDER_BLOCK.get(), new Item.Properties()));
+    /** 定制样板供应器面板（阶段 3）：PartItem 工厂创建面板实例，模型经 PartModels 注册。 */
+    public static final Supplier<Item> CUSTOM_PATTERN_PROVIDER_PART_ITEM =
+            ITEMS.register("custom_pattern_provider_part",
+                    () -> new PartItem<>(new Item.Properties(),
+                            CustomPatternProviderPart.class, CustomPatternProviderPart::new));
     public static final Supplier<FramePatternItem> FRAME_PATTERN_ITEM =
             ITEMS.register("frame_pattern", FramePatternItem::createItem);
     public static final Supplier<DataComponentType<EncodedFramePattern>> ENCODED_FRAME_PATTERN =
@@ -228,6 +237,7 @@ public final class ChexsonsaeutilsContent {
                         output.accept(FRAME_PATTERN_PROVIDER_ITEM.get());
                         output.accept(FRAME_PATTERN_ITEM.get());
                         output.accept(CUSTOM_PATTERN_PROVIDER_ITEM.get());
+                        output.accept(CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
                         output.accept(INFINITY_CELL_ITEM.get());
                         if (!FMLLoader.isProduction()) {
                             output.accept(AUTO_ITEM_GEN_ITEM.get());
@@ -258,6 +268,15 @@ public final class ChexsonsaeutilsContent {
         registerCustomPatternProviderBootstrap();
         registerMultiLevelEmitterBootstrap();
         CellRegistration.bootstrap(INFINITY_CELL_ITEM);
+        // 面板模型注册（PartModels 冻结发生在客户端模型加载阶段，common setup 注册安全）
+        PartModels.registerModels(CustomPatternProviderPart.MODELS);
+    }
+
+    /**
+     * 面板能力注册（AE2 RegisterPartCapabilitiesEvent，mod 事件总线触发）。
+     */
+    public static void registerPartCapabilities(RegisterPartCapabilitiesEvent event) {
+        CustomPatternProviderPart.registerCapability(event);
     }
 
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {

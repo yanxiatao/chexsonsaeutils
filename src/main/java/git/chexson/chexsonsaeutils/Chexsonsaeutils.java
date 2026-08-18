@@ -113,6 +113,7 @@ public class Chexsonsaeutils {
         modEventBus.addListener(this::onConfigLoad);
         modEventBus.addListener(this::onConfigReload);
         modEventBus.addListener(this::onRegisterCapabilities);
+        modEventBus.addListener(this::onRegisterPartCapabilities);
         modEventBus.addListener(this::onRegisterPayloadHandlers);
         modEventBus.addListener(SlotNumberOverlay::registerKeyMapping);
         modEventBus.addListener(FrameTicketController.instance()::register);
@@ -155,6 +156,10 @@ public class Chexsonsaeutils {
 
     private void onRegisterCapabilities(RegisterCapabilitiesEvent event) {
         ChexsonsaeutilsContent.registerCapabilities(event);
+    }
+
+    private void onRegisterPartCapabilities(appeng.api.parts.RegisterPartCapabilitiesEvent event) {
+        ChexsonsaeutilsContent.registerPartCapabilities(event);
     }
 
     private void onRegisterPayloadHandlers(RegisterPayloadHandlersEvent event) {
