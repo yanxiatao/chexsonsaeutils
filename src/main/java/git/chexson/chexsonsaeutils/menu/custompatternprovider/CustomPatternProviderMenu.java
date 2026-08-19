@@ -74,6 +74,10 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
     @GuiSync(10)
     public boolean filteredImport = false;
 
+    /** 主动抽取开关（需求 8 toggle）：服务端权威（Logic NBT 持久化），客户端按钮据此显示。 */
+    @GuiSync(11)
+    public boolean activeExtract = false;
+
     public CustomPatternProviderMenu(int id, Inventory playerInventory, T host) {
         super(TYPE, id, playerInventory, host);
         this.host = host;
@@ -84,6 +88,8 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
         registerClientAction("open_upgrade_gui", this::openUpgradeGui);
         registerClientAction("toggle_filtered_import",
                 () -> getHost().getLogic().setFilteredImport(!getHost().getLogic().isFilteredImport()));
+        registerClientAction("toggle_active_extract",
+                () -> getHost().getLogic().setActiveExtract(!getHost().getLogic().isActiveExtract()));
         // 父类构造器已建全部样板槽，此处按初始页启用槽位
         updateSlotActivity();
     }
@@ -100,6 +106,7 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
         if (isServerSide()) {
             pages = getHost().getPages();
             filteredImport = getHost().getLogic().isFilteredImport();
+            activeExtract = getHost().getLogic().isActiveExtract();
             if (page >= pages) {
                 // 页数收缩（配置调低/5b 降级）时收敛当前页
                 page = Math.max(0, pages - 1);
@@ -136,6 +143,20 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
      */
     public void toggleFilteredImport() {
         sendClientAction("toggle_filtered_import");
+    }
+
+    /**
+     * @return 主动抽取开关（需求 8 toggle，客户端同步值）
+     */
+    public boolean isActiveExtract() {
+        return activeExtract;
+    }
+
+    /**
+     * 客户端按钮点击入口：发送 toggle_active_extract 动作到服务端切换主动抽取（需求 8）。
+     */
+    public void toggleActiveExtract() {
+        sendClientAction("toggle_active_extract");
     }
 
     /**

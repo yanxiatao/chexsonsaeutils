@@ -133,6 +133,8 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
     public static final String NBT_RETURN_INV = "returnInv";
     /** 需求 6a：输入过滤开关 NBT key。 */
     public static final String NBT_FILTERED_IMPORT = "filteredImport";
+    /** 需求 8 toggle：主动抽取开关 NBT key（开启时 Ticker 周期性调用 pullFromMachine）。 */
+    public static final String NBT_ACTIVE_EXTRACT = "activeExtract";
 
     private final FramePatternProviderLogicHost host;
     private final IManagedGridNode mainNode;
@@ -157,6 +159,17 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
      * 过滤开启时 returnInv 注入网络只放行已配置样板的输出物品（outputCache）。
      */
     private boolean filteredImport;
+    /**
+     * 需求 8 toggle：主动抽取开关（NBT 持久化，Menu @GuiSync 同步）。
+     * 开启时 Ticker 周期性调用 {@link #pullFromMachine()} 把机器输出抽到返回库存。
+     */
+    private boolean activeExtract;
+    /**
+     * 需求 8 toggle：主动抽取节流计数器（运行时状态不持久化）。
+     * pullFromMachine 是全量扫描（样板输出 x 机器槽），每 10 tick 调用一次避免每 tick
+     * 全量扫描；开启时机器空/返回库存满会快速返回 false，tick 频率由网格自适应。
+     */
+    private int extractTickCounter;
     /**
      * 需求 6a：已配置样板的输出物品集合（updatePatterns 时重建）。
      * 适配说明：advancedae 的 trackedCrafts（进行中 crafting 请求）语义不适用——
@@ -262,6 +275,7 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
 
         tag.put(NBT_RETURN_INV, this.returnInv.writeToTag(registries));
         tag.putBoolean(NBT_FILTERED_IMPORT, this.filteredImport);
+        tag.putBoolean(NBT_ACTIVE_EXTRACT, this.activeExtract);
         tag.putInt(NBT_PRIORITY, this.priority);
     }
 
@@ -305,6 +319,7 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
 
         this.returnInv.readFromTag(tag.getList("returnInv", Tag.TAG_COMPOUND), registries);
         this.filteredImport = tag.getBoolean(NBT_FILTERED_IMPORT);
+        this.activeExtract = tag.getBoolean(NBT_ACTIVE_EXTRACT);
         this.priority = tag.getInt(NBT_PRIORITY);
     }
 
@@ -325,6 +340,31 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             return;
         }
         this.filteredImport = filteredImport;
+        this.host.saveChanges();
+    }
+
+    /**
+     * @return 主动抽取开关（需求 8 toggle，服务端权威，Menu @GuiSync 同步）
+     */
+    public boolean isActiveExtract() {
+        return activeExtract;
+    }
+
+    /**
+     * 设置主动抽取开关（需求 8 toggle），服务端权威（Menu client action 调用）。
+     * 开启后 Ticker 每 10 tick 调用一次 {@link #pullFromMachine()}。
+     * <p>
+     * 开启时主动唤醒网格 tick：Ticker 空闲时返回 SLEEP（网格不调用 tickingRequest），
+     * 不唤醒则主动抽取永不生效（照 returnInv 变化唤醒模式）。
+     *
+     * @param activeExtract 新状态
+     */
+    public void setActiveExtract(boolean activeExtract) {
+        if (this.activeExtract == activeExtract) {
+            return;
+        }
+        this.activeExtract = activeExtract;
+        this.mainNode.ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
         this.host.saveChanges();
     }
 
@@ -874,6 +914,12 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
         }
 
         this.returnInv.addDrops(drops, this.host.getBlockEntity().getLevel(), this.host.getBlockEntity().getBlockPos());
+
+        // ExtendedAE_Plus 的 mixin 以 TAIL 注入父类 PatternProviderLogic.addDrops（频道卡库存
+        // compatUpgrades 掉落）；子类覆写后注入不再触发，必须显式调 super 维持注入链。
+        // 安全：父类 PatternProviderLogic 自身无闲置库存（本类全部库存已在上方掉落），
+        // super 调用不会产生重复掉落。
+        super.addDrops(drops);
     }
 
     @Override
@@ -881,6 +927,10 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
         getPatternInv().clear();
         this.sendList.clear();
         this.returnInv.clear();
+
+        // 同上：ExtendedAE_Plus mixin TAIL 注入父类 clearContent（频道卡库存清理），
+        // 显式调 super 维持注入链，否则方块清空时频道卡库存残留。
+        super.clearContent();
     }
 
     @Override
@@ -925,6 +975,13 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             // 维度机器，灌电直接走网格 → 机器，不经过供应器自身能量存储。
             if (energyInjector != null && energyInjector.isInstalled()) {
                 energyInjector.injectEnergy(Integer.MAX_VALUE);
+            }
+            // 需求 8 toggle：主动抽取每 10 tick 一次（pullFromMachine 是全量扫描
+            // 样板输出 x 机器槽；机器空/返回库存满时快速返回 false，tick 频率由网格
+            // 自适应——抽取-注入循环期间 URGENT 每 tick 调用，空闲 SLEEP 不调用）
+            if (activeExtract && ++extractTickCounter >= 10) {
+                extractTickCounter = 0;
+                pullFromMachine();
             }
             boolean couldDoWork = doWork();
             return hasWorkToDo() ? couldDoWork ? TickRateModulation.URGENT : TickRateModulation.SLOWER

@@ -33,6 +33,7 @@ import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProv
  */
 public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPatternProviderMenu<?>> {
 
+    private final ToggleButton extractButton;
     private final ToggleButton configButton;
     private final ToggleButton filterImportButton;
     private final IconButton prevPageButton;
@@ -40,17 +41,17 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
 
     public CustomPatternProviderScreen(CustomPatternProviderMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/custom_pattern_provider.json"));
-        // 主动抽取按钮：一次性动作（非 toggle），点击发送 pull_from_machine 到服务端
-        IconButton pullButton = new IconButton(btn -> this.menu.pullFromMachine()) {
-            @Override
-            protected Icon getIcon() {
-                return Icon.ARROW_UP;
-            }
-        };
-        pullButton.setMessage(Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull")
-                .append("\n")
-                .append(Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_hint")));
-        this.addToLeftToolbar(pullButton);
+        // 主动抽取按钮（需求 8 toggle）：切换持续抽取相邻机器输出到返回库存（服务端
+        // Ticker 每 10 tick 调用 pullFromMachine，状态经 @GuiSync 同步）
+        this.extractButton = new ToggleButton(Icon.AUTO_EXPORT_ON, Icon.AUTO_EXPORT_OFF,
+                btn -> this.menu.toggleActiveExtract());
+        this.extractButton.setTooltipOn(List.of(
+                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_on"),
+                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_on_hint")));
+        this.extractButton.setTooltipOff(List.of(
+                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_off"),
+                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_off_hint")));
+        this.addToLeftToolbar(this.extractButton);
         // 样板配置按钮（需求 4b）：配置模式下点击处理样板槽位打开配置 GUI
         this.configButton = new ToggleButton(Icon.COG, Icon.COG_DISABLED, btn -> this.menu.toggleConfigMode());
         this.configButton.setTooltipOn(List.of(
@@ -103,12 +104,40 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
+        this.extractButton.setState(this.menu.isActiveExtract());
         this.configButton.setState(this.menu.isConfigMode());
         this.filterImportButton.setState(this.menu.isFilteredImport());
         // 需求 5：每帧按当前页刷新样板槽渲染可见性（服务端另有 isSlotEnabled 交互防护）
         this.updatePageSlotActivity();
         this.prevPageButton.setVisibility(this.menu.getPage() > 0);
         this.nextPageButton.setVisibility(this.menu.getPage() < this.menu.getPages() - 1);
+    }
+
+    /**
+     * 槽位背景绘制：generatedBackground（纯色平铺纹理）不含槽位方块，空槽完全隐形。
+     * <p>
+     * 动机：原版 pattern_provider.json 的背景贴图烘焙了槽位方块；AE2 的
+     * {@code renderBg} 只为 IOptionalSlot 画背景（AEBaseScreen.drawOptionalSlotBackground），
+     * 普通槽（AppEngSlot/玩家物品栏 Slot）的背景依赖背景贴图。本项目 json 用
+     * generatedBackground，必须自行补画（照 AE2 官方模式：
+     * {@code Icon.SLOT_BACKGROUND.getBlitter()}）。
+     * <p>
+     * 覆盖范围：返回库存（STORAGE）、玩家物品栏（PLAYER_INVENTORY/PLAYER_HOTBAR）、
+     * 模式槽（ENCODED_PATTERN）。翻页：非当前页模式槽（inactive）不画背景。
+     */
+    @Override
+    public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY,
+            float partialTicks) {
+        super.drawBG(guiGraphics, offsetX, offsetY, mouseX, mouseY, partialTicks);
+        for (var slot : this.menu.slots) {
+            // 翻页：非当前页模式槽（渲染隐藏）不画背景，其余槽（含玩家物品栏）全画
+            if (slot instanceof AppEngSlot appEngSlot && !appEngSlot.isActive()) {
+                continue;
+            }
+            Icon.SLOT_BACKGROUND.getBlitter()
+                    .dest(offsetX + slot.x - 1, offsetY + slot.y - 1)
+                    .blit(guiGraphics);
+        }
     }
 
     /**
