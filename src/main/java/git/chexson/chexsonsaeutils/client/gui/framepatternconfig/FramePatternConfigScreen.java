@@ -57,7 +57,8 @@ public class FramePatternConfigScreen extends AEBaseScreen<FramePatternConfigMen
             entry.setMinValue(-1);
             entry.setMaxValue(80); // 9x9 机器槽位范围 0-80（-1 = 未指定）
             entry.setOnChange(() -> saveSlotMapping(row));
-            entry.setActive(false);
+            // 初始禁用状态由 init 后第一次 updateBeforeRender 的 entry.setActive(visible) 接管
+            // （构造器内 setActive 会在 NumberEntryWidget.buttons 初始化前触发 NPE）
             inputEntries[row] = entry;
         }
 
