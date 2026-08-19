@@ -96,10 +96,10 @@ import appeng.helpers.patternprovider.PatternProviderTarget;
 import appeng.helpers.patternprovider.UnlockCraftingEvent;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
-import com.extendedae_plus.api.bridge.InterfaceWirelessLinkBridge;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FrameProcessingPattern;
 import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
 import git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl;
+import git.chexson.chexsonsaeutils.integration.extendedae_plus.EapWirelessBridgeHelper;
 
 /**
  * 框架样板供应器的样板供应逻辑（继承 AE2 PatternProviderLogic）。
@@ -973,14 +973,15 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             // EAP 的 mixin 只注入父类 PatternProviderLogic$Ticker，本类 Ticker 是新建
             // 内部类（不继承父类 Ticker），频道卡无线链接的延迟初始化必须在此镜像调用。
             // 与 addDrops/clearContent 末尾调 super 维持注入链的模式一致。
-            // 门控顺序：ModLoaded 判断必须在 instanceof 之前——EAP 未加载时接口类
-            // 不存在，直接 instanceof 会 NoClassDefFoundError；instanceof 判断保留
-            // （EAP 加载时 mixin 已把接口实现到父类，外部类实例恒 true，防御性保留）。
-            // 客户端跳过（镜像 EAP 守卫：node 为 null 时按服务端处理）。
+            // 类加载隔离（崩溃修复）：tickingRequest 是每 tick 热路径，不得直接引用
+            // EAP 接口类——JVM JIT 编译该方法时解析常量池类引用，EAP 未加载时接口类
+            // 不存在，ModLoaded 短路只防解释执行，JIT 编译期解析仍抛
+            // NoClassDefFoundError。桥接委托给 EapWirelessBridgeHelper（仅引用本项目
+            // 类，恒存在），辅助类只在 EAP 加载时被加载执行。客户端跳过（镜像 EAP
+            // 守卫：node 为 null 时按服务端处理）。
             if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)
-                    && ModList.get().isLoaded("extendedae_plus")
-                    && FramePatternProviderLogic.this instanceof InterfaceWirelessLinkBridge bridge) {
-                bridge.eap$handleDelayedInit();
+                    && ModList.get().isLoaded("extendedae_plus")) {
+                EapWirelessBridgeHelper.handleDelayedInit(FramePatternProviderLogic.this);
             }
             if (!mainNode.isActive()) {
                 return TickRateModulation.SLEEP;
@@ -1005,12 +1006,12 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             // EAP 桥接 TAIL（镜像 PatternProviderLogicTickerMixin.eap$tickTail）：
             // 更新无线链接状态；有频道卡（eap$shouldKeepTicking）且本 tick 将 SLEEP 时
             // 改 SLOWER 保活——否则设备进入 SLEEP 后网格不再调用 tickingRequest，
-            // 无线状态永不刷新。门控顺序同上（ModLoaded 在 instanceof 之前）。
+            // 无线状态永不刷新。同样经 EapWirelessBridgeHelper 类加载隔离
+            // （见 HEAD 注释：热路径字节码不得引用 EAP 接口类）。
             if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)
-                    && ModList.get().isLoaded("extendedae_plus")
-                    && FramePatternProviderLogic.this instanceof InterfaceWirelessLinkBridge bridge) {
-                bridge.eap$updateWirelessLink();
-                if (bridge.eap$shouldKeepTicking() && result == TickRateModulation.SLEEP) {
+                    && ModList.get().isLoaded("extendedae_plus")) {
+                if (EapWirelessBridgeHelper.updateWirelessLink(FramePatternProviderLogic.this)
+                        && result == TickRateModulation.SLEEP) {
                     result = TickRateModulation.SLOWER;
                 }
             }
