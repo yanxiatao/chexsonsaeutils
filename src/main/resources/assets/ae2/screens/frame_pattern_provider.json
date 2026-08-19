@@ -1,9 +1,9 @@
 {
   "$schema": "schema.json",
-  "includes": ["common/common.json"],
-  "generatedBackground": {
-    "width": 200,
-    "height": 245
+  "includes": ["common/common.json", "common/player_inventory.json"],
+  "background": {
+    "texture": "guis/ex_pattern_provider.png",
+    "srcRect": [0, 0, 176, 245]
   },
   "slots": {
     "ENCODED_PATTERN": {
@@ -15,28 +15,6 @@
       "left": 8,
       "top": 127,
       "grid": "HORIZONTAL"
-    },
-    "PLAYER_INVENTORY": {
-      "left": 8,
-      "top": 155,
-      "grid": "BREAK_AFTER_9COLS"
-    },
-    "PLAYER_HOTBAR": {
-      "left": 8,
-      "top": 213,
-      "grid": "HORIZONTAL"
-    }
-  },
-  "widgets": {
-    "openPriority": {
-      "left": 176,
-      "top": -5,
-      "width": 20,
-      "height": 20
-    },
-    "lockReason": {
-      "left": 5,
-      "top": 15
     }
   },
   "text": {
@@ -49,14 +27,35 @@
         "top": 6
       }
     },
-    "player_inventory_title": {
+    "interface_config": {
       "text": {
-        "translate": "container.inventory"
+        "translate": "gui.ae2.Patterns"
       },
       "position": {
         "left": 8,
-        "top": 141
+        "top": 31
       }
+    },
+    "interface_stored_items": {
+      "text": {
+        "translate": "gui.ae2.ReturnInventory"
+      },
+      "position": {
+        "left": 8,
+        "top": 116
+      }
+    }
+  },
+  "widgets": {
+    "openPriority": {
+      "left": 152,
+      "top": -5,
+      "width": 20,
+      "height": 20
+    },
+    "lockReason": {
+      "left": 5,
+      "top": 15
     }
   }
 }

@@ -26,6 +26,7 @@ public class FramePatternUpgradeScreen extends AEBaseScreen<FramePatternUpgradeM
     /**
      * 提示文本：当前页数/最大页数 + 输入槽扩展物品数量。
      * 位置依据：condenser 风格布局左侧空白区（left 8，标题下方，输入槽 (51,52) 上方）。
+     * 相对坐标：renderLabels 前已有 translate(leftPos, topPos)，drawFG 内不得再加窗口偏移。
      */
     @Override
     public void drawFG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY) {
@@ -35,16 +36,16 @@ public class FramePatternUpgradeScreen extends AEBaseScreen<FramePatternUpgradeM
                 this.font,
                 Component.translatable("gui.chexsonsaeutils.frame_pattern_upgrade.pages",
                         this.menu.getPages(), maxPages),
-                offsetX + 8,
-                offsetY + 16,
+                8,
+                16,
                 0x404040
         );
         int inputCount = this.menu.getInputCount();
         guiGraphics.drawString(
                 this.font,
                 Component.translatable("gui.chexsonsaeutils.frame_pattern_upgrade.input_count", inputCount),
-                offsetX + 8,
-                offsetY + 28,
+                8,
+                28,
                 0x404040
         );
     }

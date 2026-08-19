@@ -114,33 +114,6 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
     }
 
     /**
-     * 槽位背景绘制：generatedBackground（纯色平铺纹理）不含槽位方块，空槽完全隐形。
-     * <p>
-     * 动机：原版 pattern_provider.json 的背景贴图烘焙了槽位方块；AE2 的
-     * {@code renderBg} 只为 IOptionalSlot 画背景（AEBaseScreen.drawOptionalSlotBackground），
-     * 普通槽（AppEngSlot/玩家物品栏 Slot）的背景依赖背景贴图。本项目 json 用
-     * generatedBackground，必须自行补画（照 AE2 官方模式：
-     * {@code Icon.SLOT_BACKGROUND.getBlitter()}）。
-     * <p>
-     * 覆盖范围：返回库存（STORAGE）、玩家物品栏（PLAYER_INVENTORY/PLAYER_HOTBAR）、
-     * 模式槽（ENCODED_PATTERN）。翻页：非当前页模式槽（inactive）不画背景。
-     */
-    @Override
-    public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY,
-            float partialTicks) {
-        super.drawBG(guiGraphics, offsetX, offsetY, mouseX, mouseY, partialTicks);
-        for (var slot : this.menu.slots) {
-            // 翻页：非当前页模式槽（渲染隐藏）不画背景，其余槽（含玩家物品栏）全画
-            if (slot instanceof AppEngSlot appEngSlot && !appEngSlot.isActive()) {
-                continue;
-            }
-            Icon.SLOT_BACKGROUND.getBlitter()
-                    .dest(offsetX + slot.x - 1, offsetY + slot.y - 1)
-                    .blit(guiGraphics);
-        }
-    }
-
-    /**
      * 需求 5：按当前页设置样板槽渲染可见性（每页 36 槽）。
      * <p>
      * AppEngSlot.active 只影响渲染（ContainerScreen.renderSlot 跳过 inactive 槽），
@@ -159,8 +132,9 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
     /**
      * 需求 5：页号绘制在右上角（"当前页/总页数"，1 起）。
      * <p>
-     * 位置依据（S2 修复）：与布局 json 的 dialog_title（left 8, top 6）同一水平线，
-     * 右对齐到背景右缘（imageWidth，布局 generatedBackground.width=200）8px 边距。
+     * 位置依据（S3 修复）：与布局 json 的 dialog_title（left 8, top 6）同一水平线，
+     * 右对齐到背景右缘（imageWidth，extendedae 布局 176 宽）8px 边距。
+     * 相对坐标：renderLabels 前已有 translate(leftPos, topPos)，drawFG 内不得再加窗口偏移。
      */
     @Override
     public void drawFG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY) {
@@ -169,8 +143,8 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
         guiGraphics.drawString(
                 this.font,
                 pageText,
-                offsetX + this.imageWidth - 8 - this.font.width(pageText),
-                offsetY + 6,
+                this.imageWidth - 8 - this.font.width(pageText),
+                6,
                 0x404040
         );
     }

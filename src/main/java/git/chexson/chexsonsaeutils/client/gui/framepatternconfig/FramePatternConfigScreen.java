@@ -158,8 +158,9 @@ public class FramePatternConfigScreen extends AEBaseScreen<FramePatternConfigMen
                 continue;
             }
             int rowY = LIST_ANCHOR_Y + i * ROW_HEIGHT;
-            guiGraphics.renderItem(input.what().wrapForDisplayOrFilter(), offsetX + ROW_X, offsetY + rowY + 2);
-            guiGraphics.drawString(this.font, "x" + input.amount(), offsetX + ROW_X + 2, offsetY + rowY + 22, 0x404040);
+            // 相对坐标：renderLabels 前已有 translate(leftPos, topPos)，drawFG 内不得再加窗口偏移
+            guiGraphics.renderItem(input.what().wrapForDisplayOrFilter(), ROW_X, rowY + 2);
+            guiGraphics.drawString(this.font, "x" + input.amount(), ROW_X + 2, rowY + 22, 0x404040);
         }
     }
 
