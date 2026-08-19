@@ -8,6 +8,7 @@ import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.implementations.PatternProviderMenu;
 import appeng.menu.slot.AppEngSlot;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
@@ -229,17 +230,18 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
     }
 
     /**
-     * 服务端入口：打开扩容 GUI（瞬态宿主 locator，玩家自行放入物品）。
+     * 服务端入口：打开扩容 GUI（locator 携带当前供应器位置，扩容直接作用于本供应器）。
      */
     private void openUpgradeGui() {
         if (!isServerSide()) {
             return;
         }
-        MenuOpener.open(FramePatternUpgradeMenu.TYPE, getPlayer(), new FramePatternUpgradeLocator());
+        MenuOpener.open(FramePatternUpgradeMenu.TYPE, getPlayer(),
+                new FramePatternUpgradeLocator(host.getBlockPos(), getPlayer().level().dimension(), null));
     }
 
     /**
-     * 服务端入口：配置模式下点击某槽位，若槽内是 AE2 处理样板则打开配置 GUI
+     * 服务端入口：配置模式下点击某槽位，若槽内是 AE2 处理样板或框架样板则打开配置 GUI
      * （携带样板副本，见 {@link FramePatternConfigLocator}）。
      */
     private void openConfigForSlot(int slotIndex) {
@@ -256,7 +258,9 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
             return;
         }
         var stack = slot.getItem();
-        if (stack.getItem() != AEItems.PROCESSING_PATTERN.asItem()) {
+        // 框架供应器接受两类样板：AE2 处理样板与框架样板（4b 需求扩展，照定制版写法）
+        if (stack.getItem() != AEItems.PROCESSING_PATTERN.asItem()
+                && !(stack.getItem() instanceof FramePatternItem)) {
             return;
         }
         MenuOpener.open(FramePatternConfigMenu.TYPE, getPlayer(), new FramePatternConfigLocator(stack.copy()));

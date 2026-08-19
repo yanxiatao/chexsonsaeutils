@@ -9,6 +9,7 @@ import appeng.core.definitions.AEItems;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
 import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -125,10 +126,11 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
     }
 
     /**
-     * 需求 5：按当前页设置样板槽渲染可见性（每页 36 槽）。
+     * 需求 5：按当前页设置样板槽渲染可见性与交互启用（每页 36 槽）。
      * <p>
      * AppEngSlot.active 只影响渲染（ContainerScreen.renderSlot 跳过 inactive 槽），
-     * 交互防护由服务端 Menu 的 setSlotEnabled 承担。
+     * setSlotEnabled 控制交互（mayPlace/mayPickup 校验）；服务端 Menu 已有
+     * setSlotEnabled 防护，客户端对齐补设（问题③：翻页后客户端槽位交互状态不更新）。
      */
     private void updatePageSlotActivity() {
         int currentPage = this.menu.getPage();
@@ -136,6 +138,7 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
             if (slot instanceof AppEngSlot appEngSlot) {
                 int slotPage = appEngSlot.getSlotIndex() / FramePatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE;
                 appEngSlot.setActive(slotPage == currentPage);
+                appEngSlot.setSlotEnabled(slotPage == currentPage);
             }
         }
     }
@@ -161,8 +164,8 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
     }
 
     /**
-     * 配置模式下拦截供应器样板槽位的处理样板点击：不执行普通槽位操作，
-     * 改为请求服务端打开配置 GUI（需求 4b）。
+     * 配置模式下拦截供应器样板槽位的样板点击：不执行普通槽位操作，
+     * 改为请求服务端打开配置 GUI（需求 4b，接受处理样板与框架样板两类）。
      * I1 修复：只拦截 ENCODED_PATTERN 语义槽（供应器样板槽），背包槽位
      * 的正常物品移动/样板拿取不被劫持。
      * 需求 5：非当前页样板槽（渲染隐藏）的点击直接忽略，双保险防伪造。
@@ -177,7 +180,8 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
         if (this.menu.isConfigMode()
                 && this.menu.getSlots(SlotSemantics.ENCODED_PATTERN).contains(slot)
                 && !slot.getItem().isEmpty()
-                && slot.getItem().getItem() == AEItems.PROCESSING_PATTERN.asItem()) {
+                && (slot.getItem().getItem() == AEItems.PROCESSING_PATTERN.asItem()
+                        || slot.getItem().getItem() instanceof FramePatternItem)) {
             this.menu.openConfigForSlotClient(slotIndex);
             return;
         }

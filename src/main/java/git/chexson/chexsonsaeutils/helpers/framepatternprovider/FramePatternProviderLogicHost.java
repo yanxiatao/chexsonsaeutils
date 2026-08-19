@@ -84,6 +84,19 @@ public interface FramePatternProviderLogicHost extends PatternProviderLogicHost 
     }
 
     /**
+     * 设置已解锁样板页数（需求 5 扩容 GUI 用，宿主 setPages 持久化）。
+     * <p>
+     * 默认抛异常（Fail Fast）：不覆写的宿主不支持扩容；扩容 GUI 打开时
+     * {@link git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator}
+     * 已校验宿主类型，实际不会走到默认实现。
+     *
+     * @param pages 目标页数（宿主自行 clamp 到 [1, maxFramePatternPages()]）
+     */
+    default void setPages(int pages) {
+        throw new UnsupportedOperationException("宿主不支持扩容：" + getClass().getName());
+    }
+
+    /**
      * @return 机器能量 handler（appflux 灌电目标）。框架语义：永不返回 null（客户端
      *         或机器不可达时返回空实现）；定制样板供应器在 BE 层实现方向逻辑
      *         （多方向模式下返回第一个可用方向的 handler，全不可用时返回 null）

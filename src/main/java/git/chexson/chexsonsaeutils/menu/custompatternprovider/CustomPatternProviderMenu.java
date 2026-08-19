@@ -2,6 +2,7 @@ package git.chexson.chexsonsaeutils.menu.custompatternprovider;
 
 import java.util.Objects;
 
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
@@ -225,13 +226,20 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
     }
 
     /**
-     * 服务端入口：打开扩容 GUI（瞬态宿主 locator，玩家自行放入物品）。
+     * 服务端入口：打开扩容 GUI（locator 携带当前供应器位置，扩容直接作用于本供应器；
+     * 面板宿主附带方向，locator 据此解析面板而非方块实体）。
      */
     private void openUpgradeGui() {
         if (!isServerSide()) {
             return;
         }
-        MenuOpener.open(FramePatternUpgradeMenu.TYPE, getPlayer(), new FramePatternUpgradeLocator());
+        var blockEntity = getHost().getBlockEntity();
+        Direction partSide = null;
+        if (getHost() instanceof CustomPatternProviderPart part) {
+            partSide = part.getSide();
+        }
+        MenuOpener.open(FramePatternUpgradeMenu.TYPE, getPlayer(),
+                new FramePatternUpgradeLocator(blockEntity.getBlockPos(), getPlayer().level().dimension(), partSide));
     }
 
     /**

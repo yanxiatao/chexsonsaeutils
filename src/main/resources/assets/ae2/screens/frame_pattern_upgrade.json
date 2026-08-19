@@ -6,10 +6,6 @@
     "srcRect": [0, 0, 176, 199]
   },
   "slots": {
-    "STORAGE_CELL": {
-      "left": 101,
-      "top": 26
-    },
     "MACHINE_INPUT": {
       "left": 51,
       "top": 52

@@ -4,45 +4,52 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
+import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
-import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternExpandableItem;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu.InventoryChangedHandler;
 
 /**
  * 扩容 GUI 的菜单宿主（MenuHost）。
  * <p>
- * 动机：扩容 GUI 操作的是「物品」（可扩容样板供应器物品 + ExtendedAE 扩展样板供应器），
- * 不依附任何方块，需要瞬态宿主承载会话库存：槽 0 = 存储槽（可扩容样板供应器物品，
- * 仅 1 个）、槽 1 = 输入槽（仅 ExtendedAE 扩展样板供应器物品，过滤器在库存层实现——
- * AppEngSlot.mayPlace 委托 inventory.isItemValid）。宿主由
- * {@link FramePatternUpgradeLocator} 在打开菜单时构造，菜单关闭即丢弃，
- * 无需持久化（saveChangedInventory 为空实现）。
+ * 动机：扩容 GUI 直接作用于打开它的供应器（方块实体或面板），宿主持有
+ * {@link FramePatternProviderLogicHost} 引用（由 {@link FramePatternUpgradeLocator}
+ * 在打开菜单时解析），页数读写直接委托宿主（setPages 持久化）。
+ * 会话库存仅 1 槽：输入槽（仅 ExtendedAE 扩展样板供应器物品，过滤器在库存层实现——
+ * AppEngSlot.mayPlace 委托 inventory.isItemValid）。宿主由 locator 构造，
+ * 菜单关闭即丢弃，无需持久化（saveChangedInventory 为空实现）。
  * <p>
  * 变更转发：库存变更经 onChangeInventory 转发到服务端 Menu 逻辑（重算可扩容状态）。
  */
 public class FramePatternUpgradeHost implements InternalInventoryHost {
 
-    /** 槽 0 = 可扩容样板供应器物品（存储槽），槽 1 = ExtendedAE 扩展样板供应器（输入槽）。 */
-    private final AppEngInternalInventory inventory = new AppEngInternalInventory(this, 2) {
+    /** 槽 0 = ExtendedAE 扩展样板供应器（输入槽）。 */
+    private final AppEngInternalInventory inventory = new AppEngInternalInventory(this, 1) {
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
             // S3 修复：与默认 isItemValid 语义一致（maxStack 为 0 的槽位拒绝一切）
             if (getSlotLimit(slot) == 0) {
                 return false;
             }
-            // S2 修复：存储槽仅接受可扩容样板供应器物品（FramePatternExpandableItem，
-            // 其他 IStorageComponent 不可放入）；输入槽仅接受 ExtendedAE 扩展样板供应器
-            return switch (slot) {
-                case 0 -> stack.getItem() instanceof FramePatternExpandableItem;
-                case 1 -> ExtendedAeCompat.isExPatternProvider(stack);
-                default -> super.isItemValid(slot, stack);
-            };
+            // 输入槽仅接受 ExtendedAE 扩展样板供应器
+            return ExtendedAeCompat.isExPatternProvider(stack);
         }
     };
+    private final FramePatternProviderLogicHost pageHolder;
     private InventoryChangedHandler invChangeHandler;
+
+    public FramePatternUpgradeHost(FramePatternProviderLogicHost pageHolder) {
+        this.pageHolder = pageHolder;
+    }
 
     public AppEngInternalInventory getInventory() {
         return this.inventory;
+    }
+
+    /**
+     * @return 扩容目标宿主（方块实体或面板，页数读写委托对象）
+     */
+    public FramePatternProviderLogicHost getPageHolder() {
+        return this.pageHolder;
     }
 
     public void setInventoryChangedHandler(InventoryChangedHandler handler) {
