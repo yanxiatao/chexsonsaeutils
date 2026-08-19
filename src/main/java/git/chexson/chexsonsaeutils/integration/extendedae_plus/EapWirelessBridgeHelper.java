@@ -1,7 +1,7 @@
 package git.chexson.chexsonsaeutils.integration.extendedae_plus;
 
 import appeng.helpers.patternprovider.PatternProviderLogic;
-import com.extendedae_plus.api.bridge.InterfaceWirelessLinkBridge;
+import com.extendedae_plus.bridge.InterfaceWirelessLinkBridge;
 
 /**
  * EAP 无线链接桥接辅助类（类加载隔离）。
@@ -29,12 +29,22 @@ public final class EapWirelessBridgeHelper {
 
     /**
      * 延迟初始化（服务端，EAP 加载时由调用方门控保证）。
+     * <p>
+     * 防御：EAP 版本漂移容错——ModList.isLoaded 为 true 但接口类可能不存在于该
+     * 版本（用户装的实际版本 1.4.3 是 {@code com.extendedae_plus.bridge} 包，
+     * reference-sources 版本是 {@code com.extendedae_plus.api.bridge} 包，
+     * 均以此处引用的版本为准）；捕获 NoClassDefFoundError 后静默跳过，功能降级
+     * 不崩溃（跨 mod 集成容错，AGENTS.md 例外）。
      *
      * @param logic 样板供应逻辑实例（EAP mixin 已把接口实现到 PatternProviderLogic）
      */
     public static void handleDelayedInit(PatternProviderLogic logic) {
-        if (logic instanceof InterfaceWirelessLinkBridge bridge) {
-            bridge.eap$handleDelayedInit();
+        try {
+            if (logic instanceof InterfaceWirelessLinkBridge bridge) {
+                bridge.eap$handleDelayedInit();
+            }
+        } catch (NoClassDefFoundError e) {
+            // EAP 版本接口类不存在：无线链接功能降级，不阻断本 mod
         }
     }
 
@@ -45,9 +55,13 @@ public final class EapWirelessBridgeHelper {
      * @return true = 有频道卡需要慢速 tick 保活
      */
     public static boolean updateWirelessLink(PatternProviderLogic logic) {
-        if (logic instanceof InterfaceWirelessLinkBridge bridge) {
-            bridge.eap$updateWirelessLink();
-            return bridge.eap$shouldKeepTicking();
+        try {
+            if (logic instanceof InterfaceWirelessLinkBridge bridge) {
+                bridge.eap$updateWirelessLink();
+                return bridge.eap$shouldKeepTicking();
+            }
+        } catch (NoClassDefFoundError e) {
+            // EAP 版本接口类不存在：无线链接功能降级，不阻断本 mod
         }
         return false;
     }
