@@ -107,6 +107,10 @@ dependencies {
     // advancedae/appflux：软依赖（运行时按 ModLoaded 检测，仅编译期引用）
     compileOnly "maven.modrinth:advancedae:1.6.11-1.21.1"
     compileOnly "maven.modrinth:appflux:1.21-2.1.5-neoforge"
+    // ExtendedAE_Plus：软依赖（频道卡注册，运行时按 ModLoaded 检测）。
+    // 无公开 maven 坐标，jar 由 reference-sources/ExtendedAE_Plus/bin/main 编译产物打包
+    // （本仓库参考源码对应版本，仅编译期引用）。
+    compileOnly files('libs/extendedae_plus-1.21.1.jar')
     localRuntime "curse.maven:architectury-api-419699:${architectury_api_file_id}"
     localRuntime "curse.maven:ftb-library-forge-404465:${ftb_library_file_id}"
     localRuntime "org.appliedenergistics:appliedenergistics2:${ae2_version}"

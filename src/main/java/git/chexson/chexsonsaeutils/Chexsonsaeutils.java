@@ -32,6 +32,8 @@ import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
 import git.chexson.chexsonsaeutils.client.SlotNumberOverlay;
+import git.chexson.chexsonsaeutils.integration.appflux.AppFluxCompat;
+import git.chexson.chexsonsaeutils.integration.extendedae_plus.ExtendedAePlusCompat;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
@@ -143,6 +145,10 @@ public class Chexsonsaeutils {
         event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(FramePatternDecoder.INSTANCE));
         event.enqueueWork(FramePatternConfigLocator::register);
         event.enqueueWork(FramePatternUpgradeLocator::register);
+        // 升级卡注册：感应卡（appflux）/频道卡（ExtendedAE_Plus）——内部各自
+        // ModLoaded 门控 + try-catch(Throwable)，未加载时无副作用
+        event.enqueueWork(AppFluxCompat::registerUpgrade);
+        event.enqueueWork(ExtendedAePlusCompat::registerUpgrade);
         if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
         }
