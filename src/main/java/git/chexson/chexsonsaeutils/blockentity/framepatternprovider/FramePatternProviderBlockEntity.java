@@ -31,6 +31,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.items.IItemHandler;
 import org.jetbrains.annotations.Nullable;
@@ -119,7 +120,11 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     @Override
     public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.saveAdditional(data, registries);
-        upgrades.writeToNBT(data, NBT_UPGRADES, registries);
+        // appflux 加载时 "upgrades" 键由 af_upgrades 独占（logic NBT 与 BE NBT 同层平铺，
+        // appflux mixin 在 logic.writeToNBT TAIL 写同键，后写覆盖）——跳过本机库存写盘避免冲突
+        if (!ModList.get().isLoaded("appflux")) {
+            upgrades.writeToNBT(data, NBT_UPGRADES, registries);
+        }
         // 样板库存/返回库存由 logic 写入（key: patterns/returnInv）
         logic.writeToNBT(data, registries);
         if (capturedState != null) {
@@ -138,7 +143,11 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     @Override
     public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
         super.loadTag(data, registries);
-        upgrades.readFromNBT(data, NBT_UPGRADES, registries);
+        // 与 saveAdditional 对称：appflux 加载时跳过本机库存读盘（"upgrades" 键归 af_upgrades），
+        // 本机库存保持空（死库存），避免把 af_upgrades 数据脏读进本机库存导致重复掉落
+        if (!ModList.get().isLoaded("appflux")) {
+            upgrades.readFromNBT(data, NBT_UPGRADES, registries);
+        }
         logic.readFromNBT(data, registries);
         // 阶段 2 旧存档兼容：patternInventory/returnInventory → patterns/returnInv
         logic.migrateLegacyInventory(data, registries);
@@ -552,6 +561,12 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public IUpgradeInventory getUpgrades() {
-        return upgrades;
+        // appflux 加载时 logic 被 MixinPatternProviderLogic 注入为 IUpgradeableObject
+        // （af_upgrades 库存）——委托给 logic 使 Menu 升级槽与 EAP 频道卡查询指向同一库存；
+        // 未加载 appflux 时回落本机 5 槽库存（行为不变）。
+        // 副作用：appflux 加载时本机库存成死库存（旧存档装在本机库存的感应卡不再显示，
+        // 本项目不注册升级卡，仅感应卡受影响，可接受；NBT 读写已跳过，见 saveAdditional/loadTag）。
+        var logic = getLogic();
+        return logic instanceof IUpgradeableObject uo ? uo.getUpgrades() : upgrades;
     }
 }

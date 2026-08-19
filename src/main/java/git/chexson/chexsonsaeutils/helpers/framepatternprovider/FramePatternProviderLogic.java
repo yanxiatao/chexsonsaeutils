@@ -66,6 +66,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.IItemHandlerModifiable;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
@@ -95,6 +96,7 @@ import appeng.helpers.patternprovider.PatternProviderTarget;
 import appeng.helpers.patternprovider.UnlockCraftingEvent;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
+import com.extendedae_plus.api.bridge.InterfaceWirelessLinkBridge;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FrameProcessingPattern;
 import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
 import git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl;
@@ -967,6 +969,19 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
 
         @Override
         public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLastCall) {
+            // EAP 桥接 HEAD（镜像 PatternProviderLogicTickerMixin.eap$tickHead）：
+            // EAP 的 mixin 只注入父类 PatternProviderLogic$Ticker，本类 Ticker 是新建
+            // 内部类（不继承父类 Ticker），频道卡无线链接的延迟初始化必须在此镜像调用。
+            // 与 addDrops/clearContent 末尾调 super 维持注入链的模式一致。
+            // 门控顺序：ModLoaded 判断必须在 instanceof 之前——EAP 未加载时接口类
+            // 不存在，直接 instanceof 会 NoClassDefFoundError；instanceof 判断保留
+            // （EAP 加载时 mixin 已把接口实现到父类，外部类实例恒 true，防御性保留）。
+            // 客户端跳过（镜像 EAP 守卫：node 为 null 时按服务端处理）。
+            if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)
+                    && ModList.get().isLoaded("extendedae_plus")
+                    && FramePatternProviderLogic.this instanceof InterfaceWirelessLinkBridge bridge) {
+                bridge.eap$handleDelayedInit();
+            }
             if (!mainNode.isActive()) {
                 return TickRateModulation.SLEEP;
             }
@@ -984,8 +999,22 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
                 pullFromMachine();
             }
             boolean couldDoWork = doWork();
-            return hasWorkToDo() ? couldDoWork ? TickRateModulation.URGENT : TickRateModulation.SLOWER
+            TickRateModulation result = hasWorkToDo() ? couldDoWork ? TickRateModulation.URGENT
+                    : TickRateModulation.SLOWER
                     : TickRateModulation.SLEEP;
+            // EAP 桥接 TAIL（镜像 PatternProviderLogicTickerMixin.eap$tickTail）：
+            // 更新无线链接状态；有频道卡（eap$shouldKeepTicking）且本 tick 将 SLEEP 时
+            // 改 SLOWER 保活——否则设备进入 SLEEP 后网格不再调用 tickingRequest，
+            // 无线状态永不刷新。门控顺序同上（ModLoaded 在 instanceof 之前）。
+            if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)
+                    && ModList.get().isLoaded("extendedae_plus")
+                    && FramePatternProviderLogic.this instanceof InterfaceWirelessLinkBridge bridge) {
+                bridge.eap$updateWirelessLink();
+                if (bridge.eap$shouldKeepTicking() && result == TickRateModulation.SLEEP) {
+                    result = TickRateModulation.SLOWER;
+                }
+            }
+            return result;
         }
     }
 
