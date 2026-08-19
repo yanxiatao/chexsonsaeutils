@@ -5,11 +5,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
 import appeng.client.gui.AEBaseScreen;
-import appeng.client.gui.Icon;
 import appeng.client.gui.NumberEntryType;
 import appeng.client.gui.style.StyleManager;
 import appeng.client.gui.widgets.AETextField;
-import appeng.client.gui.widgets.IconButton;
 import appeng.client.gui.widgets.NumberEntryWidget;
 import appeng.client.gui.widgets.Scrollbar;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
@@ -18,20 +16,31 @@ import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMen
  * 框架样板配置屏幕。
  * <p>
  * 布局由 {@code assets/ae2/screens/frame_pattern_config.json} 定义：左上为
- * 输入处理样板槽与输出框架样板槽；下方 3 行可见的稀疏输入列表（每行一个
- * NumberEntryWidget 输入机器槽位，-1 = 未指定），右侧滚动条；中部为
- * 抽取槽位文本框（逗号分隔 CSV）；确认按钮用当前映射重新编码输出槽。
+ * 输入处理样板槽与输出框架样板槽；下方 3 行可见的稀疏输入列表（每行 = 输入
+ * 物品图标 + NumberEntryWidget 机器槽位输入，-1 = 未指定），右侧滚动条；中部为
+ * 抽取槽位文本框（逗号分隔 CSV）。
+ * <p>
+ * 交互模式（照 advancedae AdvPatternEncoderScreen）：行列表 + 每行输入控件 +
+ * 实时生效、无保存按钮——槽位修改经 onChange 立即回传服务端并重新编码输出槽，
+ * 不存在"点了保存没反应"的中间态。
  * <p>
  * 数据流：服务端 Menu 推送 {@code FramePatternConfigUpdatePayload} →
  * menu.updateFromServer → 本屏幕在 updateBeforeRender 回显；用户输入经
- * menu.setSlotMapping/setExtractSlots/confirm 客户端动作回传服务端。
+ * menu.setSlotMapping/setExtractSlots 客户端动作回传服务端。
  */
 public class FramePatternConfigScreen extends AEBaseScreen<FramePatternConfigMenu> {
 
-    /** 可见行数与行距（与布局 json 的 widget 位置保持一致）。 */
+    /** 可见行数与行距（行列表模式照 advancedae）。 */
     private static final int VISIBLE_ROWS = 3;
-    private static final int ROW_HEIGHT = 64;
-    private static final int ROW_X = 8;
+    private static final int ROW_SPACING = 2;
+    /**
+     * 行高 = NumberEntryWidget 组件高 62 + 行距 2。advancedae 行高 18 是其自定义
+     * 方向按钮行；NumberEntryWidget 的 +/- 两排按钮布局写死 62px 高（populateScreen），
+     * 无法压入 18px 行，行高按控件物理尺寸适配。
+     */
+    private static final int ROW_HEIGHT = 62 + ROW_SPACING;
+    /** 行列表锚点（照 advancedae：图标列 x=18；Y 因本界面左上槽位区占位而下移至 88）。 */
+    private static final int LIST_ANCHOR_X = 18;
     private static final int LIST_ANCHOR_Y = 88;
 
     private final Scrollbar scrollbar;
@@ -65,15 +74,6 @@ public class FramePatternConfigScreen extends AEBaseScreen<FramePatternConfigMen
         this.extractSlotsField = widgets.addTextField("extract_slots_input");
         this.extractSlotsField.setMaxLength(64);
         this.extractSlotsField.setResponder(this::onExtractSlotsChanged);
-
-        IconButton confirmButton = new IconButton(btn -> this.menu.confirm()) {
-            @Override
-            protected Icon getIcon() {
-                return Icon.ENTER;
-            }
-        };
-        confirmButton.setMessage(Component.translatable("gui.chexsonsaeutils.frame_pattern_config.confirm"));
-        widgets.add("confirm", confirmButton);
     }
 
     /** 行内 NumberEntryWidget 变更：把可见行号换算为稀疏输入序号后回传服务端。 */
@@ -160,8 +160,9 @@ public class FramePatternConfigScreen extends AEBaseScreen<FramePatternConfigMen
             }
             int rowY = LIST_ANCHOR_Y + i * ROW_HEIGHT;
             // 相对坐标：renderLabels 前已有 translate(leftPos, topPos)，drawFG 内不得再加窗口偏移
-            guiGraphics.renderItem(input.what().wrapForDisplayOrFilter(), ROW_X, rowY + 2);
-            guiGraphics.drawString(this.font, "x" + input.amount(), ROW_X + 2, rowY + 22, 0x404040);
+            // 每行结构（照 advancedae）：行首输入物品图标 + 右侧 NumberEntryWidget 槽位输入
+            guiGraphics.renderItem(input.what().wrapForDisplayOrFilter(), LIST_ANCHOR_X, rowY + 2);
+            guiGraphics.drawString(this.font, "x" + input.amount(), LIST_ANCHOR_X + 2, rowY + 22, 0x404040);
         }
     }
 

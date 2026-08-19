@@ -95,7 +95,7 @@
   "gui.chexsonsaeutils.frame_pattern_config.output_slot": "Output Frame Pattern",
   "gui.chexsonsaeutils.frame_pattern_config.slot_hint": "Slot (-1 = unassigned)",
   "gui.chexsonsaeutils.frame_pattern_config.extract_slots": "Extract Slots",
-  "gui.chexsonsaeutils.frame_pattern_config.confirm": "Confirm",
+  
   "gui.chexsonsaeutils.frame_pattern_config.extract_slots_hint": "Comma-separated machine slot list (e.g. 0,1,2); outputs of these slots are pulled when the job finishes",
   "block.chexsonsaeutils.high_capacity_crafting_machine": "§1Abyssal §8Convergence§r",
   "block.chexsonsaeutils.ae_direct_processing_machine": "§bStraight§3away§r",

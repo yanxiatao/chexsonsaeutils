@@ -28,9 +28,10 @@ import git.chexson.chexsonsaeutils.network.framepatternconfig.FramePatternConfig
  * <p>
  * 服务端行为：输入槽变更时重新解码稀疏输入并自动编码输出槽
  * （输入变更即重置槽位映射为全 -1）；客户端动作：
- * set_slot_mapping（"index:value"）、set_extract_slots（逗号分隔 CSV）、
- * confirm（用当前映射重新编码）。变长的稀疏输入/映射数据经
- * {@link FramePatternConfigUpdatePayload} 推送到客户端。
+ * set_slot_mapping（"index:value"）、set_extract_slots（逗号分隔 CSV）。
+ * 交互模式（照 advancedae）：槽位修改实时生效——每次 set_slot_mapping /
+ * set_extract_slots 即重新编码输出槽并回推数据，无确认按钮。变长的稀疏
+ * 输入/映射数据经 {@link FramePatternConfigUpdatePayload} 推送到客户端。
  * <p>
  * 打开方式：FramePatternProviderScreen 在配置模式下点击处理样板槽位 →
  * FramePatternProviderMenu.openConfigForSlot → MenuOpener.open
@@ -86,7 +87,6 @@ public class FramePatternConfigMenu extends AEBaseMenu {
         this.host.setInventoryChangedHandler(this::onHostInventoryChanged);
         registerClientAction("set_slot_mapping", String.class, this::setSlotMappingFromClient);
         registerClientAction("set_extract_slots", String.class, this::setExtractSlotsFromClient);
-        registerClientAction("confirm", this::encodeOutput);
 
         // 初始解码：输入槽已由 locator 放入样板副本（sendUpdate 被 pendingInitialUpdate 挂起）
         decodeInputAndEncode();
@@ -103,7 +103,7 @@ public class FramePatternConfigMenu extends AEBaseMenu {
 
     /**
      * 宿主库存变更：槽 0（输入）变更时重新解码并重置映射；
-     * 槽 1（输出）被取走时不自动重新编码（玩家点击确认按钮再生成）。
+     * 槽 1（输出）被取走时不自动重新编码（映射/抽取槽位变更时实时重新编码）。
      */
     private void onHostInventoryChanged(InternalInventory inv, int slot) {
         if (inv != this.host.getInventory() || slot != 0) {
@@ -259,10 +259,5 @@ public class FramePatternConfigMenu extends AEBaseMenu {
     public void setExtractSlots(int[] slots) {
         sendClientAction("set_extract_slots",
                 Arrays.stream(slots).mapToObj(Integer::toString).reduce((a, b) -> a + "," + b).orElse(""));
-    }
-
-    /** 客户端入口：确认（用当前映射重新编码输出槽）。 */
-    public void confirm() {
-        sendClientAction("confirm");
     }
 }
