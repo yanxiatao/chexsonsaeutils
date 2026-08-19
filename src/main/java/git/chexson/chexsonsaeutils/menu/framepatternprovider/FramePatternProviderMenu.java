@@ -11,7 +11,7 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
+import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu;
 import net.minecraft.resources.ResourceLocation;
@@ -263,7 +263,7 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
                 && !(stack.getItem() instanceof FramePatternItem)) {
             return;
         }
-        MenuOpener.open(FramePatternConfigMenu.TYPE, getPlayer(), new FramePatternConfigLocator(stack.copy()));
+        MenuOpener.open(FramePatternEncoderMenu.TYPE, getPlayer(), new FramePatternConfigLocator(stack.copy()));
     }
 
     /**

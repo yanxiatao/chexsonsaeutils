@@ -37,7 +37,8 @@ import git.chexson.chexsonsaeutils.integration.extendedae_plus.ExtendedAePlusCom
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
-import git.chexson.chexsonsaeutils.network.framepatternconfig.FramePatternConfigUpdatePayload;
+import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternEncoderUpdatePayload;
+import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternSlotChangePacket;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacementDecoder;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.world.inventory.MenuType;
@@ -183,10 +184,15 @@ public class Chexsonsaeutils {
                 DirectProcessingJeiImportPayload.STREAM_CODEC,
                 DirectProcessingJeiImportPayload::handle
         );
+        event.registrar("1").playToServer(
+                FramePatternSlotChangePacket.TYPE,
+                FramePatternSlotChangePacket.STREAM_CODEC,
+                FramePatternSlotChangePacket::handleOnServer
+        );
         event.registrar("1").playToClient(
-                FramePatternConfigUpdatePayload.TYPE,
-                FramePatternConfigUpdatePayload.STREAM_CODEC,
-                FramePatternConfigUpdatePayload::handle
+                FramePatternEncoderUpdatePayload.TYPE,
+                FramePatternEncoderUpdatePayload.STREAM_CODEC,
+                FramePatternEncoderUpdatePayload::handle
         );
     }
 

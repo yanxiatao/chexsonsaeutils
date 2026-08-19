@@ -1,8 +1,9 @@
-package git.chexson.chexsonsaeutils.client.gui.framepatternconfig;
+package git.chexson.chexsonsaeutils.client.gui.framepatternencoder;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.NumberEntryType;
@@ -10,25 +11,26 @@ import appeng.client.gui.style.StyleManager;
 import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.NumberEntryWidget;
 import appeng.client.gui.widgets.Scrollbar;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
+import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderMenu;
+import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternSlotChangePacket;
 
 /**
- * 框架样板配置屏幕。
+ * 框架样板编码屏幕（advancedae AdvPatternEncoderScreen 的移植改造）。
  * <p>
- * 布局由 {@code assets/ae2/screens/frame_pattern_config.json} 定义：左上为
- * 输入处理样板槽与输出框架样板槽；下方 3 行可见的稀疏输入列表（每行 = 输入
+ * 布局由 {@code assets/ae2/screens/frame_pattern_encoder.json} 定义：左上为
+ * 输入样板槽与输出框架样板槽；下方 3 行可见的稀疏输入列表（每行 = 输入
  * 物品图标 + NumberEntryWidget 机器槽位输入，-1 = 未指定），右侧滚动条；中部为
  * 抽取槽位文本框（逗号分隔 CSV）。
  * <p>
- * 交互模式（照 advancedae AdvPatternEncoderScreen）：行列表 + 每行输入控件 +
- * 实时生效、无保存按钮——槽位修改经 onChange 立即回传服务端并重新编码输出槽，
- * 不存在"点了保存没反应"的中间态。
+ * 交互模式（照 advancedae）：行列表 + 每行输入控件 + 实时生效、无保存按钮——
+ * 槽位修改经 onChange 立即发送 {@code FramePatternSlotChangePacket} 回传服务端
+ * 并重新编码输出槽，不存在"点了保存没反应"的中间态。
  * <p>
- * 数据流：服务端 Menu 推送 {@code FramePatternConfigUpdatePayload} →
+ * 数据流：服务端 Menu 推送 {@code FramePatternEncoderUpdatePayload} →
  * menu.updateFromServer → 本屏幕在 updateBeforeRender 回显；用户输入经
- * menu.setSlotMapping/setExtractSlots 客户端动作回传服务端。
+ * FramePatternSlotChangePacket / menu.setExtractSlots 回传服务端。
  */
-public class FramePatternConfigScreen extends AEBaseScreen<FramePatternConfigMenu> {
+public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderMenu> {
 
     /** 可见行数与行距（行列表模式照 advancedae）。 */
     private static final int VISIBLE_ROWS = 3;
@@ -54,8 +56,8 @@ public class FramePatternConfigScreen extends AEBaseScreen<FramePatternConfigMen
     private final int[] lastRenderedMapping = new int[VISIBLE_ROWS];
     private boolean suppressMappingUpdate = false;
 
-    public FramePatternConfigScreen(FramePatternConfigMenu menu, Inventory playerInventory, Component title) {
-        super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/frame_pattern_config.json"));
+    public FramePatternEncoderScreen(FramePatternEncoderMenu menu, Inventory playerInventory, Component title) {
+        super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/frame_pattern_encoder.json"));
         this.scrollbar = widgets.addScrollBar("scrollbar", Scrollbar.SMALL);
         this.scrollbar.setRange(0, 0, VISIBLE_ROWS);
 
@@ -76,16 +78,30 @@ public class FramePatternConfigScreen extends AEBaseScreen<FramePatternConfigMen
         this.extractSlotsField.setResponder(this::onExtractSlotsChanged);
     }
 
-    /** 行内 NumberEntryWidget 变更：把可见行号换算为稀疏输入序号后回传服务端。 */
+    @Override
+    public void init() {
+        super.init();
+        // 包序处理：OpenScreenPacket 已先到达，请求服务端立即同步（pendingInitialUpdate
+        // 标志保证 resize 等重复 init 不会重新解码，避免重置玩家已配置的映射）
+        this.menu.onUpdateRequested();
+    }
+
+    /** 行内 NumberEntryWidget 变更：把可见行号换算为稀疏输入序号后发送槽位变更包。 */
     private void saveSlotMapping(int row) {
         if (this.suppressMappingUpdate) {
             return;
         }
         int index = this.scrollbar.getCurrentScroll() + row;
-        if (index >= this.menu.getSparseInputs().size()) {
+        var sparseInputs = this.menu.getSparseInputs();
+        if (index >= sparseInputs.size()) {
             return;
         }
-        this.inputEntries[row].getIntValue().ifPresent(value -> this.menu.setSlotMapping(index, value));
+        var input = sparseInputs.get(index);
+        if (input == null) {
+            return;
+        }
+        this.inputEntries[row].getIntValue().ifPresent(value ->
+                PacketDistributor.sendToServer(new FramePatternSlotChangePacket(input.what(), value)));
     }
 
     /** 抽取槽位文本框变更：回传服务端（非法输入忽略，服务端解析失败时沿用上次合法值）。 */

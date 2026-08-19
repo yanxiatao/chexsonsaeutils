@@ -19,7 +19,7 @@ import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
+import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu;
 import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
@@ -265,7 +265,7 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
                 && !(stack.getItem() instanceof FramePatternItem)) {
             return;
         }
-        MenuOpener.open(FramePatternConfigMenu.TYPE, getPlayer(), new FramePatternConfigLocator(stack.copy()));
+        MenuOpener.open(FramePatternEncoderMenu.TYPE, getPlayer(), new FramePatternConfigLocator(stack.copy()));
     }
 
     /**

@@ -2,9 +2,9 @@ package git.chexson.chexsonsaeutils.menu.framepatternconfig;
 
 import net.minecraft.world.item.ItemStack;
 
+import appeng.api.inventories.InternalInventory;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu.InventoryChangedHandler;
 
 /**
  * 框架样板配置 GUI 的菜单宿主（MenuHost）。
@@ -16,6 +16,11 @@ import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMen
  * 无需持久化（saveChangedInventory 为空实现）。
  */
 public class FramePatternConfigHost implements InternalInventoryHost {
+
+    /** 宿主库存变更回调（由菜单注册，见 {@link #setInventoryChangedHandler}）。 */
+    public interface InventoryChangedHandler {
+        void handleChange(InternalInventory inv, int slot);
+    }
 
     private final AppEngInternalInventory inOutInventory = new AppEngInternalInventory(this, 2);
     private int[] slotMapping = new int[0];
@@ -40,7 +45,9 @@ public class FramePatternConfigHost implements InternalInventoryHost {
     }
 
     public void setSlotMapping(int[] slotMapping) {
-        this.slotMapping = slotMapping;
+        // clone：防御组件数组引用污染（调用方可能传入样板组件内的数组引用，
+        // 直接存引用会让后续修改意外改动组件数据）
+        this.slotMapping = slotMapping.clone();
     }
 
     public int[] getExtractSlots() {

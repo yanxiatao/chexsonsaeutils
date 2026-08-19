@@ -39,10 +39,10 @@ import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMach
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigMenu;
+import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu;
-import git.chexson.chexsonsaeutils.client.gui.framepatternconfig.FramePatternConfigScreen;
+import git.chexson.chexsonsaeutils.client.gui.framepatternencoder.FramePatternEncoderScreen;
 import git.chexson.chexsonsaeutils.client.gui.framepatternprovider.FramePatternProviderScreen;
 import git.chexson.chexsonsaeutils.client.gui.framepatternupgrade.FramePatternUpgradeScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
@@ -214,8 +214,8 @@ public final class ChexsonsaeutilsContent {
             MENU_TYPES.register("frame_pattern_provider", () -> FramePatternProviderMenu.TYPE);
     public static final Supplier<MenuType<CustomPatternProviderMenu<?>>> CUSTOM_PATTERN_PROVIDER_MENU =
             MENU_TYPES.register("custom_pattern_provider", () -> CustomPatternProviderMenu.TYPE);
-    public static final Supplier<MenuType<FramePatternConfigMenu>> FRAME_PATTERN_CONFIG_MENU =
-            MENU_TYPES.register("frame_pattern_config", () -> FramePatternConfigMenu.TYPE);
+    public static final Supplier<MenuType<FramePatternEncoderMenu>> FRAME_PATTERN_ENCODER_MENU =
+            MENU_TYPES.register("frame_pattern_encoder", () -> FramePatternEncoderMenu.TYPE);
     public static final Supplier<MenuType<FramePatternUpgradeMenu>> FRAME_PATTERN_UPGRADE_MENU =
             MENU_TYPES.register("frame_pattern_upgrade", () -> FramePatternUpgradeMenu.TYPE);
     public static final Supplier<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> MULTI_LEVEL_EMITTER_MENU =
@@ -356,7 +356,7 @@ public final class ChexsonsaeutilsContent {
         );
         event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new);
         event.register(FRAME_PATTERN_PROVIDER_MENU.get(), FramePatternProviderScreen::new);
-        event.register(FRAME_PATTERN_CONFIG_MENU.get(), FramePatternConfigScreen::new);
+        event.register(FRAME_PATTERN_ENCODER_MENU.get(), FramePatternEncoderScreen::new);
         event.register(FRAME_PATTERN_UPGRADE_MENU.get(), FramePatternUpgradeScreen::new);
         event.register(CUSTOM_PATTERN_PROVIDER_MENU.get(), CustomPatternProviderScreen::new);
     }
