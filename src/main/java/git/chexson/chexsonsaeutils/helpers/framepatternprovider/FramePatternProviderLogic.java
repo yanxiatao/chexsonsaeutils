@@ -496,6 +496,8 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
     private boolean pushFramePattern(FrameProcessingPattern pattern, KeyCounter[] inputHolder) {
         IItemHandler handler = resolveMachineHandler();
         if (handler == null) {
+            // 临时诊断：handler 解析失败（无可用方向）
+            LOG.info("pushFramePattern: resolveMachineHandler returned null, targets={}", host.getTargets());
             return false;
         }
         boolean modifiable = handler instanceof IItemHandlerModifiable;
@@ -507,6 +509,10 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
         }
         var sparseInputs = pattern.getSparseInputs();
         var slotMapping = pattern.getSlotMapping();
+        // 临时诊断：推送目标与映射快照
+        LOG.info("pushFramePattern: handler={} slots={} modifiable={} sparseInputs={} slotMapping={}",
+                handler.getClass().getName(), handler.getSlots(), modifiable, sparseInputs,
+                java.util.Arrays.toString(slotMapping));
 
         // blocking 模式：机器内已有样板输入时拒绝（与普通路径 containsPatternInput 等价）
         if (this.isBlocking()) {
@@ -562,8 +568,13 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             int slot = i < slotMapping.length ? slotMapping[i] : -1;
             if (modifiable && slot >= 0 && slot < handler.getSlots()) {
                 var existing = handler.getStackInSlot(slot);
-                var merged = existing.copy();
-                merged.grow((int) amount); // 预检已保证合并后不超 int 上限
+                // 空槽位合并修复：existing.copy() 对空栈产生 AIR 物品栈（item=Items.AIR），
+                // grow 后写入 AIR x N——网络已扣原料、箱子槽位看似为空、任务挂起等输出。
+                // 空槽位必须用 itemKey.toStack 创建真实物品栈；非空槽位才走 copy+grow 合并。
+                ItemStack merged = existing.isEmpty() ? itemKey.toStack((int) amount) : existing.copy();
+                if (!existing.isEmpty()) {
+                    merged.grow((int) amount); // 预检已保证合并后不超 int 上限
+                }
                 ((IItemHandlerModifiable) handler).setStackInSlot(slot, merged);
             } else {
                 var remaining = ItemHandlerHelper.insertItemStacked(handler,
