@@ -132,6 +132,8 @@ public class Chexsonsaeutils {
         });
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListeners);
         NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenRender);
+        NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenKeyPressed);
+        NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenClosing);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(this::onLevelLoad);
         NeoForge.EVENT_BUS.addListener(this::onLevelSave);

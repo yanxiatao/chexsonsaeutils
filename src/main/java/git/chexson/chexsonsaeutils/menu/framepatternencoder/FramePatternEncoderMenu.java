@@ -3,6 +3,9 @@ package git.chexson.chexsonsaeutils.menu.framepatternencoder;
 import java.util.Arrays;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -11,15 +14,11 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import appeng.api.crafting.PatternDetailsHelper;
-import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.implementations.MenuTypeBuilder;
-import appeng.menu.SlotSemantics;
-import appeng.menu.slot.OutputSlot;
-import appeng.menu.slot.RestrictedInputSlot;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FrameProcessingPattern;
 import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigConverter;
@@ -29,28 +28,28 @@ import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternEncod
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
- * 框架样板编码菜单（advancedae AdvPatternEncoderMenu 的移植改造）。
+ * 框架样板编码菜单（原地编辑供应器原样板）。
  * <p>
- * 动机：原 FramePatternConfigMenu 的槽位映射经客户端动作（set_slot_mapping）回传，
- * 交互与 advancedae 的实时编码 UI 不一致；本菜单照 advancedae 改为
- * 「槽位变更 → 服务端 update() → 重新编码输出槽 → 回推最新数据」的实时链路，
- * 并保留抽取槽位（本 mod 强制抽取功能）的客户端动作。
+ * 动机：用户要求修改样板时直接自动修改供应器中的对应样板（不复制样板生成
+ * 框架样板、不手动取出重新放置）。本菜单不再有输入槽/输出槽（无样板副本），
+ * 打开时从供应器样板槽读样板解码显示，修改槽位实时写回供应器原样板——
+ * 处理样板原地转换为框架样板（setItemDirect 替换 + updatePatterns 刷新），
+ * 关闭即生效。
  * <p>
- * 数据流：输入槽（槽 0）放入处理样板或框架样板 → decodeInputAndEncode 解码并
- * 编码输出槽（槽 1）；客户端槽位输入经 {@code FramePatternSlotChangePacket} 到达
- * update()；抽取槽位经 set_extract_slots 客户端动作到达 setExtractSlotsFromClient。
+ * 数据流：客户端槽位输入经 {@code FramePatternSlotChangePacket} 到达 update()，
+ * 抽取槽位经 set_extract_slots 客户端动作到达 setExtractSlotsFromClient；
+ * 两者都写回供应器样板槽并回推 {@code FramePatternEncoderUpdatePayload} 回显。
  */
 public class FramePatternEncoderMenu extends AEBaseMenu {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(FramePatternEncoderMenu.class);
 
     public static final MenuType<FramePatternEncoderMenu> TYPE = MenuTypeBuilder
             .create(FramePatternEncoderMenu::new, FramePatternConfigHost.class)
             .buildUnregistered(ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "frame_pattern_encoder"));
 
-    /** 宿主库存变更回调（由宿主转发，见 {@link FramePatternConfigHost#setInventoryChangedHandler}）。 */
     private final FramePatternConfigHost host;
     private final FramePatternConfigConverter converter = new FramePatternConfigConverterImpl();
-    private final RestrictedInputSlot inputSlot;
-    private final OutputSlot outputSlot;
 
     /** 机器槽位上限（9x9 = 81 槽，编号 0-80，-1 = 未指定）。 */
     private static final int MAX_MACHINE_SLOT = 80;
@@ -64,7 +63,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
      */
     private boolean pendingInitialUpdate = true;
 
-    /** 服务端缓存：当前输入样板的稀疏输入列表（sendUpdate 时直接使用）。 */
+    /** 服务端缓存：当前样板的稀疏输入列表（sendUpdate 时直接使用）。 */
     private List<GenericStack> serverSparseInputs = List.of();
 
     /** 客户端同步字段：稀疏输入列表、槽位映射、抽取槽位（由更新负载填充）。 */
@@ -78,15 +77,9 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
         super(TYPE, id, playerInventory, null);
         this.host = host;
         this.createPlayerInventorySlots(playerInventory);
-        this.addSlot(this.inputSlot = new RestrictedInputSlot(
-                RestrictedInputSlot.PlacableItemType.ENCODED_PATTERN, host.getInventory(), 0
-        ), SlotSemantics.ENCODED_PATTERN);
-        this.addSlot(this.outputSlot = new OutputSlot(host.getInventory(), 1, null), SlotSemantics.MACHINE_OUTPUT);
-
-        this.host.setInventoryChangedHandler(this::onHostInventoryChanged);
         registerClientAction("set_extract_slots", String.class, this::setExtractSlotsFromClient);
 
-        // 初始解码：输入槽已由 locator 放入样板副本。注意此处 decodeInputAndEncode 内的
+        // 初始解码：从供应器样板槽读样板显示。注意此处 decodeInputAndEncode 内的
         // sendUpdate 负载必被客户端丢弃——OpenScreenPacket 尚未入队，负载先到且 containerId
         // 校验失败；由 Screen.init 的 onUpdateRequested 或首个 broadcastChanges 周期兜底重发
         // （此时包序已保证 OpenScreenPacket 先到）。
@@ -115,48 +108,26 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
     }
 
     /**
-     * 宿主库存变更：槽 0（输入）变更时重新解码并重置映射；
-     * 槽 1（输出）被取走时清空输入与映射（照 advancedae onChangeInventory）。
-     */
-    private void onHostInventoryChanged(InternalInventory inv, int slot) {
-        if (inv != this.host.getInventory()) {
-            return;
-        }
-        if (slot == 0) {
-            decodeInputAndEncode();
-        } else if (slot == 1 && !this.outputSlot.hasItem()) {
-            this.host.setSlotMapping(new int[0]);
-            this.host.setExtractSlots(new int[0]);
-            this.inputSlot.set(ItemStack.EMPTY);
-            this.serverSparseInputs = List.of();
-            sendUpdate();
-        }
-    }
-
-    /**
-     * 重新解码输入样板并编码输出槽，推送最新数据到客户端。
-     * 处理样板 → 全 -1 映射 + 转换输出；框架样板 → 输出 = 输入副本 + 组件内映射；
-     * 其他/空 → 清空状态。
+     * 从供应器样板槽读当前样板并解码显示（不写回）。
+     * 处理样板 → 全 -1 映射显示；框架样板 → 显示组件内现有映射/抽取槽位；
+     * 其他/空 → 空配置。
      */
     private void decodeInputAndEncode() {
-        var input = this.inputSlot.getItem();
-        if (input.isEmpty()) {
+        var stack = getProviderPatternStack();
+        if (stack == null || stack.isEmpty()) {
             resetState();
             return;
         }
-        var details = PatternDetailsHelper.decodePattern(input, getPlayer().level());
+        var details = PatternDetailsHelper.decodePattern(stack, getPlayer().level());
         if (details instanceof AEProcessingPattern processingPattern) {
             this.serverSparseInputs = processingPattern.getSparseInputs();
-            // I2 修复：输入样板（内容）变更时旧映射无条件作废——即使新旧样板稀疏输入数
-            // 相同，槽位映射也可能不同（A 的槽 2 对应 B 的槽 0），必须重置为全 -1
+            // 打开时仅显示全 -1（处理样板尚无映射），不写回——首次修改时由 update 转换
             var mapping = new int[this.serverSparseInputs.size()];
             Arrays.fill(mapping, -1);
             this.host.setSlotMapping(mapping);
-            encodeOutput();
             sendUpdate();
         } else if (details instanceof FrameProcessingPattern framePattern) {
-            // 框架样板：输出 = 输入副本，映射/抽取槽位沿用组件内已有配置
-            this.outputSlot.set(input.copy());
+            // 框架样板：显示组件内已有配置（原地编辑的当前状态）
             this.serverSparseInputs = framePattern.getSparseInputs();
             this.host.setSlotMapping(framePattern.getSlotMapping());
             this.host.setExtractSlots(framePattern.getExtractSlots());
@@ -166,49 +137,88 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
         }
     }
 
-    /** 清空映射/抽取槽位/输出槽并推送空状态到客户端。 */
+    /** 清空会话状态并推送空配置到客户端。 */
     private void resetState() {
         this.host.setSlotMapping(new int[0]);
         this.host.setExtractSlots(new int[0]);
-        this.outputSlot.set(ItemStack.EMPTY);
         this.serverSparseInputs = List.of();
         sendUpdate();
     }
 
-    /** 用当前槽位映射与抽取槽位编码输出框架样板；映射非法时清空输出。 */
-    private void encodeOutput() {
-        var input = this.inputSlot.getItem();
-        if (input.isEmpty()) {
-            this.outputSlot.set(ItemStack.EMPTY);
+    /**
+     * 读供应器样板槽中的当前样板。
+     *
+     * @return 样板物品；供应器缺失（方块被拆）或槽位越界时返回 null（Fail Fast）
+     */
+    private ItemStack getProviderPatternStack() {
+        var provider = this.host.getProvider(getPlayer().level());
+        if (provider == null) {
+            // Fail Fast：供应器方块缺失（被拆/卸载），无法继续编辑
+            LOGGER.error("Frame pattern encoder: provider block entity missing at {}",
+                    this.host.getPos());
+            return null;
+        }
+        var inv = provider.getLogic().getPatternInv();
+        if (this.host.getPatternSlotIndex() < 0 || this.host.getPatternSlotIndex() >= inv.size()) {
+            LOGGER.error("Frame pattern encoder: pattern slot index {} out of range (size {})",
+                    this.host.getPatternSlotIndex(), inv.size());
+            return null;
+        }
+        return inv.getStackInSlot(this.host.getPatternSlotIndex());
+    }
+
+    /**
+     * 写回供应器样板槽：处理样板 → 框架样板原地转换（setItemDirect 替换），
+     * 框架样板 → 按当前映射/抽取槽位重编码组件；随后触发供应器刷新
+     * （updatePatterns 重建输出物品集合，让网格感知样板变化）。
+     */
+    private void writeBack() {
+        var provider = this.host.getProvider(getPlayer().level());
+        if (provider == null) {
+            // Fail Fast：供应器方块缺失，无法写回
+            LOGGER.error("Frame pattern encoder: provider block entity missing, cannot write back");
             return;
         }
-        var details = PatternDetailsHelper.decodePattern(input, getPlayer().level());
-        if (details instanceof FrameProcessingPattern framePattern) {
-            // 框架样板输入分支：convertFromProcessingPattern 要求输入带
-            // ENCODED_PROCESSING_PATTERN 组件（FramePatternItem.java:54-57），框架样板只有
-            // ENCODED_FRAME_PATTERN 组件会抛 IllegalArgumentException；照 advancedae update()
-            // 从输出槽读数据重编码的语义，此处从输入组件读稀疏输入/输出与当前映射，
-            // 用 FrameProcessingPattern.encode 重编码输出槽（映射/抽取槽位实时生效）。
-            var stack = new ItemStack(ChexsonsaeutilsContent.FRAME_PATTERN_ITEM.get());
+        var inv = provider.getLogic().getPatternInv();
+        var index = this.host.getPatternSlotIndex();
+        var stack = inv.getStackInSlot(index);
+        if (stack.isEmpty()) {
+            resetState();
+            return;
+        }
+        var details = PatternDetailsHelper.decodePattern(stack, getPlayer().level());
+        ItemStack newStack;
+        if (details instanceof AEProcessingPattern) {
+            // 处理样板 → 框架样板：convertFromProcessingPattern 生成携带
+            // ENCODED_FRAME_PATTERN 组件的 FramePatternItem（原地转换，无副本）
             try {
-                FrameProcessingPattern.encode(stack, framePattern.getSparseInputs(),
+                newStack = this.converter.encodeFramePattern(
+                        stack, this.host.getSlotMapping(), this.host.getExtractSlots());
+            } catch (IllegalArgumentException e) {
+                // 映射长度与稀疏输入不符（理论上不会发生，防御性清理）
+                resetState();
+                return;
+            }
+        } else if (details instanceof FrameProcessingPattern framePattern) {
+            // 框架样板：按当前映射/抽取槽位重编码组件
+            newStack = new ItemStack(ChexsonsaeutilsContent.FRAME_PATTERN_ITEM.get());
+            try {
+                FrameProcessingPattern.encode(newStack, framePattern.getSparseInputs(),
                         framePattern.getSparseOutputs(), this.host.getSlotMapping(),
                         this.host.getExtractSlots());
-                this.outputSlot.set(stack);
             } catch (IllegalArgumentException e) {
                 // 映射长度与稀疏输入不符（组件损坏场景，防御性清理）
-                this.outputSlot.set(ItemStack.EMPTY);
+                resetState();
+                return;
             }
+        } else {
+            resetState();
             return;
         }
-        try {
-            this.outputSlot.set(this.converter.encodeFramePattern(
-                    input, this.host.getSlotMapping(), this.host.getExtractSlots()
-            ));
-        } catch (IllegalArgumentException e) {
-            // 映射长度与稀疏输入不符（理论上不会发生，防御性清理）
-            this.outputSlot.set(ItemStack.EMPTY);
-        }
+        inv.setItemDirect(index, newStack);
+        // 直接改库存不会自动触发供应器刷新，手动重建输出物品集合（服务端线程安全：
+        // 菜单与供应器同在服务端，updatePatterns 由本菜单调用）
+        provider.getLogic().updatePatterns();
     }
 
     /** 推送最新稀疏输入/映射/抽取槽位到客户端。 */
@@ -224,30 +234,35 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
     }
 
     /**
-     * 服务端入口（FramePatternSlotChangePacket 到达）：把某个稀疏输入映射到机器槽位。
-     * 从输出槽框架样板读取当前映射，更新后重新编码输出并回推客户端。
+     * 服务端入口（FramePatternSlotChangePacket 到达）：把某个稀疏输入映射到机器槽位，
+     * 写回供应器原样板并回推客户端。
      */
     public void update(AEKey key, int slot) {
         if (slot < -1 || slot > MAX_MACHINE_SLOT) {
             // I3 修复：拒绝越界机器槽位
             return;
         }
-        if (!this.outputSlot.hasItem()) {
-            encodeOutput();
-        }
-        var output = this.outputSlot.getItem();
-        if (output.isEmpty()) {
+        var stack = getProviderPatternStack();
+        if (stack == null || stack.isEmpty()) {
             return;
         }
-        var details = PatternDetailsHelper.decodePattern(output, getPlayer().level());
-        if (!(details instanceof FrameProcessingPattern framePattern)) {
-            return;
-        }
-        // clone：不直接修改输出槽物品组件内的数组引用
-        var mapping = framePattern.getSlotMapping().clone();
-        var sparse = framePattern.getSparseInputs();
-        // 组件损坏防御：映射长度与稀疏输入数不符时忽略本次修改（否则循环越界 AIOOBE）
-        if (mapping.length != sparse.size()) {
+        var details = PatternDetailsHelper.decodePattern(stack, getPlayer().level());
+        int[] mapping;
+        List<GenericStack> sparse;
+        if (details instanceof AEProcessingPattern processingPattern) {
+            // 首次修改：处理样板尚无映射，从全 -1 起步（本次修改触发原地转换）
+            sparse = processingPattern.getSparseInputs();
+            mapping = new int[sparse.size()];
+            Arrays.fill(mapping, -1);
+        } else if (details instanceof FrameProcessingPattern framePattern) {
+            sparse = framePattern.getSparseInputs();
+            // clone：不直接修改输出槽物品组件内的数组引用
+            mapping = framePattern.getSlotMapping().clone();
+            // 组件损坏防御：映射长度与稀疏输入数不符时忽略本次修改（否则循环越界 AIOOBE）
+            if (mapping.length != sparse.size()) {
+                return;
+            }
+        } else {
             return;
         }
         // key 匹配依赖 AE2 编码时 condense 去重：处理样板稀疏输入无重复 key，
@@ -260,12 +275,12 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
             }
         }
         this.host.setSlotMapping(mapping);
-        encodeOutput();
+        writeBack();
         // B3 修复：回推最新映射与输出到客户端（防止客户端本地字段过期被回显覆盖）
         sendUpdate();
     }
 
-    /** 客户端动作：设置抽取槽位列表（逗号分隔 CSV）。 */
+    /** 客户端动作：设置抽取槽位列表（逗号分隔 CSV），写回供应器原样板。 */
     private void setExtractSlotsFromClient(String csv) {
         try {
             int[] slots;
@@ -288,7 +303,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
                 }
             }
             this.host.setExtractSlots(slots);
-            encodeOutput();
+            writeBack();
             // B3 修复：回推最新抽取槽位与输出到客户端
             sendUpdate();
         } catch (NumberFormatException ignored) {

@@ -1,43 +1,78 @@
 package git.chexson.chexsonsaeutils.menu.framepatternconfig;
 
-import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
-import appeng.api.inventories.InternalInventory;
-import appeng.util.inv.AppEngInternalInventory;
-import appeng.util.inv.InternalInventoryHost;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
+
+import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
 
 /**
- * 框架样板配置 GUI 的菜单宿主（MenuHost）。
+ * 框架样板编码 GUI 的菜单宿主（MenuHost）。
  * <p>
- * 动机：配置 GUI 不依附任何方块或手持物品（从供应器 GUI 的样板槽位打开），
- * 需要一个瞬态宿主承载配置会话状态：2 格库存（槽 0 = 输入处理样板，
- * 槽 1 = 输出框架样板）与槽位映射（slotMapping/extractSlots）。
- * 宿主由 {@link FramePatternConfigLocator} 在打开菜单时构造，菜单关闭即丢弃，
- * 无需持久化（saveChangedInventory 为空实现）。
+ * 动机：编码 GUI 直接编辑供应器样板槽中的原样板（原地转换，无样板副本），
+ * 宿主只需定位到打开它的供应器（BlockPos + 维度 + 样板槽序号）并缓存
+ * 会话状态（槽位映射/抽取槽位）。宿主由 {@link FramePatternConfigLocator}
+ * 在打开菜单时构造，菜单关闭即丢弃，无需持久化。
+ * <p>
+ * 供应器定位：延迟到首次使用时（getProvider），BE 被拆后重新定位；
+ * 定位失败返回 null，由菜单逻辑 Fail Fast（日志 + 清空状态）。
  */
-public class FramePatternConfigHost implements InternalInventoryHost {
+public class FramePatternConfigHost {
 
-    /** 宿主库存变更回调（由菜单注册，见 {@link #setInventoryChangedHandler}）。 */
-    public interface InventoryChangedHandler {
-        void handleChange(InternalInventory inv, int slot);
-    }
+    private final BlockPos pos;
+    private final ResourceKey<Level> dimension;
+    private final int patternSlotIndex;
 
-    private final AppEngInternalInventory inOutInventory = new AppEngInternalInventory(this, 2);
+    /** 缓存的供应器 BE 引用（延迟定位；isRemoved 后重新定位）。 */
+    private FramePatternProviderBlockEntity provider;
+
+    /** 会话状态：槽位映射（与稀疏输入对齐，-1 = 未指定）与抽取槽位列表。 */
     private int[] slotMapping = new int[0];
     private int[] extractSlots = new int[0];
-    private InventoryChangedHandler invChangeHandler;
 
     /**
-     * @param inputPattern 打开配置 GUI 时选中的处理样板（副本放入输入槽）
+     * @param pos              供应器方块位置
+     * @param dimension        供应器所在维度
+     * @param patternSlotIndex 供应器样板槽序号（patternInventory 内索引）
      */
-    public FramePatternConfigHost(ItemStack inputPattern) {
-        if (!inputPattern.isEmpty()) {
-            this.inOutInventory.setItemDirect(0, inputPattern.copy());
-        }
+    public FramePatternConfigHost(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex) {
+        this.pos = pos;
+        this.dimension = dimension;
+        this.patternSlotIndex = patternSlotIndex;
     }
 
-    public AppEngInternalInventory getInventory() {
-        return this.inOutInventory;
+    /**
+     * @return 供应器方块位置（日志/诊断用）
+     */
+    public BlockPos getPos() {
+        return pos;
+    }
+
+    /**
+     * @return 供应器样板槽序号（patternInventory 内索引）
+     */
+    public int getPatternSlotIndex() {
+        return patternSlotIndex;
+    }
+
+    /**
+     * 定位供应器方块实体（延迟定位 + 缓存；BE 移除后重新定位）。
+     *
+     * @param level 定位用世界（服务端/客户端均可，客户端仅用于菜单渲染副本）
+     * @return 供应器 BE；方块缺失或类型不符时返回 null（调用方 Fail Fast）
+     */
+    @Nullable
+    public FramePatternProviderBlockEntity getProvider(Level level) {
+        if (this.provider == null || this.provider.isRemoved()) {
+            if (level.getBlockEntity(this.pos) instanceof FramePatternProviderBlockEntity be) {
+                this.provider = be;
+            } else {
+                this.provider = null;
+            }
+        }
+        return this.provider;
     }
 
     public int[] getSlotMapping() {
@@ -56,31 +91,5 @@ public class FramePatternConfigHost implements InternalInventoryHost {
 
     public void setExtractSlots(int[] extractSlots) {
         this.extractSlots = extractSlots;
-    }
-
-    public void setInventoryChangedHandler(InventoryChangedHandler handler) {
-        this.invChangeHandler = handler;
-    }
-
-    @Override
-    public void saveChangedInventory(AppEngInternalInventory inv) {
-        // 瞬态宿主：菜单关闭即丢弃，无需持久化
-    }
-
-    @Override
-    public void onChangeInventory(AppEngInternalInventory inv, int slot) {
-        if (this.invChangeHandler != null) {
-            this.invChangeHandler.handleChange(inv, slot);
-        }
-    }
-
-    @Override
-    public boolean isClientSide() {
-        // S2 说明：宿主在客户端也会被构造（菜单渲染副本），但固定返回 false 是刻意为之——
-        // AppEngInternalInventory 仅在 isClientSide() 为 false 时走
-        // enableClientEvents/保存通知路径（见 AppEngInternalInventory.isClientSide 用法），
-        // 而本宿主的库存变更只允许由服务端驱动（onChangeInventory 转发到服务端 Menu 逻辑），
-        // 客户端副本的变更不应产生任何服务端行为，因此保持 false 最符合设计意图。
-        return false;
     }
 }

@@ -6,14 +6,6 @@
     "height": 395
   },
   "slots": {
-    "ENCODED_PATTERN": {
-      "left": 8,
-      "top": 16
-    },
-    "MACHINE_OUTPUT": {
-      "left": 46,
-      "top": 16
-    },
     "PLAYER_INVENTORY": {
       "left": 8,
       "top": 310,
@@ -28,43 +20,43 @@
   "widgets": {
     "scrollbar": {
       "left": 190,
-      "top": 88,
+      "top": 8,
       "width": 6,
       "height": 192
     },
     "input_entry_0": {
       "left": 40,
-      "top": 88,
+      "top": 8,
       "width": 138,
       "height": 62
     },
     "input_entry_0_input": {
       "left": 66,
-      "top": 113,
+      "top": 33,
       "width": 61,
       "height": 12
     },
     "input_entry_1": {
       "left": 40,
-      "top": 152,
+      "top": 72,
       "width": 138,
       "height": 62
     },
     "input_entry_1_input": {
       "left": 66,
-      "top": 177,
+      "top": 97,
       "width": 61,
       "height": 12
     },
     "input_entry_2": {
       "left": 40,
-      "top": 216,
+      "top": 136,
       "width": 138,
       "height": 62
     },
     "input_entry_2_input": {
       "left": 66,
-      "top": 241,
+      "top": 161,
       "width": 61,
       "height": 12
     },
@@ -85,31 +77,13 @@
         "top": 6
       }
     },
-    "input_slot_title": {
-      "text": {
-        "translate": "gui.chexsonsaeutils.frame_pattern_encoder.input_slot"
-      },
-      "position": {
-        "left": 8,
-        "top": 34
-      }
-    },
-    "output_slot_title": {
-      "text": {
-        "translate": "gui.chexsonsaeutils.frame_pattern_encoder.output_slot"
-      },
-      "position": {
-        "left": 46,
-        "top": 34
-      }
-    },
     "slot_hint": {
       "text": {
         "translate": "gui.chexsonsaeutils.frame_pattern_encoder.slot_hint"
       },
       "position": {
         "left": 8,
-        "top": 80
+        "top": 210
       }
     },
     "extract_slots_label": {

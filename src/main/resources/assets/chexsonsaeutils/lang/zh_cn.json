@@ -91,8 +91,6 @@
   "key.chexsonsaeutils.category": "Chexson 实用工具",
   "key.chexsonsaeutils.show_slot_numbers": "显示槽位编号（Alt+I）",
   "gui.chexsonsaeutils.frame_pattern_encoder": "框架样板编码",
-  "gui.chexsonsaeutils.frame_pattern_encoder.input_slot": "输入样板",
-  "gui.chexsonsaeutils.frame_pattern_encoder.output_slot": "输出框架样板",
   "gui.chexsonsaeutils.frame_pattern_encoder.slot_hint": "槽位（-1=未指定）",
   "gui.chexsonsaeutils.frame_pattern_encoder.extract_slots": "抽取槽位",
   

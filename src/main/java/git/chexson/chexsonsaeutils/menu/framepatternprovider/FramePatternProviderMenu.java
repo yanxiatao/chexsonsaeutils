@@ -241,8 +241,8 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
     }
 
     /**
-     * 服务端入口：配置模式下点击某槽位，若槽内是 AE2 处理样板或框架样板则打开配置 GUI
-     * （携带样板副本，见 {@link FramePatternConfigLocator}）。
+     * 服务端入口：配置模式下点击某槽位，若槽内是 AE2 处理样板或框架样板则打开编码 GUI
+     * （携带供应器位置 + 样板槽序号，直接编辑原样板，见 {@link FramePatternConfigLocator}）。
      */
     private void openConfigForSlot(int slotIndex) {
         if (!isServerSide() || !configMode) {
@@ -263,7 +263,9 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
                 && !(stack.getItem() instanceof FramePatternItem)) {
             return;
         }
-        MenuOpener.open(FramePatternEncoderMenu.TYPE, getPlayer(), new FramePatternConfigLocator(stack.copy()));
+        MenuOpener.open(FramePatternEncoderMenu.TYPE, getPlayer(),
+                new FramePatternConfigLocator(host.getBlockPos(), getPlayer().level().dimension(),
+                        slot.getSlotIndex()));
     }
 
     /**

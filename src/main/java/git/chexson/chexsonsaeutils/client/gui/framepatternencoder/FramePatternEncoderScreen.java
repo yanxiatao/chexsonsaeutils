@@ -15,16 +15,16 @@ import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderM
 import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternSlotChangePacket;
 
 /**
- * 框架样板编码屏幕（advancedae AdvPatternEncoderScreen 的移植改造）。
+ * 框架样板编码屏幕（原地编辑供应器原样板）。
  * <p>
- * 布局由 {@code assets/ae2/screens/frame_pattern_encoder.json} 定义：左上为
- * 输入样板槽与输出框架样板槽；下方 3 行可见的稀疏输入列表（每行 = 输入
+ * 布局由 {@code assets/ae2/screens/frame_pattern_encoder.json} 定义：无输入/输出槽
+ * （直接编辑供应器样板槽中的原样板）；下方 3 行可见的稀疏输入列表（每行 = 输入
  * 物品图标 + NumberEntryWidget 机器槽位输入，-1 = 未指定），右侧滚动条；中部为
  * 抽取槽位文本框（逗号分隔 CSV）。
  * <p>
  * 交互模式（照 advancedae）：行列表 + 每行输入控件 + 实时生效、无保存按钮——
  * 槽位修改经 onChange 立即发送 {@code FramePatternSlotChangePacket} 回传服务端
- * 并重新编码输出槽，不存在"点了保存没反应"的中间态。
+ * 并写回供应器原样板，不存在"点了保存没反应"的中间态。
  * <p>
  * 数据流：服务端 Menu 推送 {@code FramePatternEncoderUpdatePayload} →
  * menu.updateFromServer → 本屏幕在 updateBeforeRender 回显；用户输入经
@@ -41,9 +41,9 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
      * 无法压入 18px 行，行高按控件物理尺寸适配。
      */
     private static final int ROW_HEIGHT = 62 + ROW_SPACING;
-    /** 行列表锚点（照 advancedae：图标列 x=18；Y 因本界面左上槽位区占位而下移至 88）。 */
+    /** 行列表锚点（照 advancedae：图标列 x=18；Y 上移至原输入槽区域顶部——json 已删输入/输出槽，左上区域空出）。 */
     private static final int LIST_ANCHOR_X = 18;
-    private static final int LIST_ANCHOR_Y = 88;
+    private static final int LIST_ANCHOR_Y = 8;
 
     private final Scrollbar scrollbar;
     private final NumberEntryWidget[] inputEntries = new NumberEntryWidget[VISIBLE_ROWS];
