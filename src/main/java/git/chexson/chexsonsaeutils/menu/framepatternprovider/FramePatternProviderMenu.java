@@ -264,7 +264,7 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
             return;
         }
         MenuOpener.open(FramePatternEncoderMenu.TYPE, getPlayer(),
-                new FramePatternConfigLocator(host.getBlockPos(), getPlayer().level().dimension(),
+                new FramePatternConfigLocator(host.getBlockPos(), host.getLevel().dimension(),
                         slot.getSlotIndex()));
     }
 

@@ -1,6 +1,8 @@
 package git.chexson.chexsonsaeutils.client;
 
 import org.lwjgl.glfw.GLFW;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.mojang.blaze3d.platform.InputConstants;
 
@@ -41,6 +43,8 @@ import appeng.items.tools.NetworkToolItem;
  */
 public final class SlotNumberOverlay {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(SlotNumberOverlay.class);
+
     /**
      * 显示槽位编号组合键：默认 Alt+I（KeyConflictContext.GUI + KeyModifier.ALT，
      * 整个组合键可在游戏设置修改，不再固定 Alt 修饰）。
@@ -77,8 +81,15 @@ public final class SlotNumberOverlay {
      * @param event 按键按下事件（Pre，可取消）
      */
     public static void onScreenKeyPressed(ScreenEvent.KeyPressed.Pre event) {
-        if (SHOW_SLOT_NUMBERS.matches(event.getKeyCode(), event.getScanCode())
-                && SHOW_SLOT_NUMBERS.getKeyModifier().isActive(SHOW_SLOT_NUMBERS.getKeyConflictContext())) {
+        // 临时诊断日志：记录每次按键的匹配结果，定位 Alt+I 无效的环节
+        boolean matches = SHOW_SLOT_NUMBERS.matches(event.getKeyCode(), event.getScanCode());
+        boolean modifierActive = SHOW_SLOT_NUMBERS.getKeyModifier()
+                .isActive(SHOW_SLOT_NUMBERS.getKeyConflictContext());
+        LOGGER.info("SlotNumberOverlay keyPressed: keyCode={}, scanCode={}, modifiers={}, "
+                        + "matches={}, modifierActive={}, showSlotNumbers={}",
+                event.getKeyCode(), event.getScanCode(), event.getModifiers(),
+                matches, modifierActive, showSlotNumbers);
+        if (matches && modifierActive) {
             showSlotNumbers = !showSlotNumbers;
             // 取消事件：防止输入框聚焦时 Alt+I 组合键向文本框输入字符
             event.setCanceled(true);
@@ -109,10 +120,16 @@ public final class SlotNumberOverlay {
         }
         Screen screen = event.getScreen();
         if (!(screen instanceof AbstractContainerScreen<?> containerScreen)) {
+            LOGGER.info("SlotNumberOverlay render: not a container screen: {}",
+                    screen.getClass().getName());
             return;
         }
         var player = Minecraft.getInstance().player;
-        if (player == null || NetworkToolItem.findNetworkToolInv(player) == null) {
+        var toolInv = player == null ? null : NetworkToolItem.findNetworkToolInv(player);
+        // 临时诊断日志：记录渲染条件检查结果
+        LOGGER.info("SlotNumberOverlay render: screen={}, player={}, networkTool={}",
+                screen.getClass().getSimpleName(), player != null, toolInv != null);
+        if (player == null || toolInv == null) {
             return;
         }
         var guiGraphics = event.getGuiGraphics();

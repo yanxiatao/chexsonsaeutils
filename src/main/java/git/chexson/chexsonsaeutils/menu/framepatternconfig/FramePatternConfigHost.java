@@ -8,6 +8,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
 
 /**
  * 框架样板编码 GUI 的菜单宿主（MenuHost）。
@@ -26,8 +27,8 @@ public class FramePatternConfigHost {
     private final ResourceKey<Level> dimension;
     private final int patternSlotIndex;
 
-    /** 缓存的供应器 BE 引用（延迟定位；isRemoved 后重新定位）。 */
-    private FramePatternProviderBlockEntity provider;
+    /** 缓存的供应器宿主引用（延迟定位；isRemoved 后重新定位）。 */
+    private FramePatternProviderLogicHost provider;
 
     /** 会话状态：槽位映射（与稀疏输入对齐，-1 = 未指定）与抽取槽位列表。 */
     private int[] slotMapping = new int[0];
@@ -71,13 +72,14 @@ public class FramePatternConfigHost {
      * @return 供应器 BE；方块缺失或类型不符时返回 null（调用方 Fail Fast）
      */
     @Nullable
-    public FramePatternProviderBlockEntity getProvider(Player player) {
-        if (this.provider == null || this.provider.isRemoved()) {
+    public FramePatternProviderLogicHost getProvider(Player player) {
+        if (this.provider == null || this.provider.getBlockEntity() == null
+                || this.provider.getBlockEntity().isRemoved()) {
             Level level = player.level();
             if (!level.isClientSide() && player.getServer() != null) {
                 level = player.getServer().getLevel(this.dimension);
             }
-            if (level != null && level.getBlockEntity(this.pos) instanceof FramePatternProviderBlockEntity be) {
+            if (level != null && level.getBlockEntity(this.pos) instanceof FramePatternProviderLogicHost be) {
                 this.provider = be;
             } else {
                 this.provider = null;
