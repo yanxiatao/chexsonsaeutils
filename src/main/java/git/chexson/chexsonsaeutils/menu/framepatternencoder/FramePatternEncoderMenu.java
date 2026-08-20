@@ -151,11 +151,18 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
      * @return 样板物品；供应器缺失（方块被拆）或槽位越界时返回 null（Fail Fast）
      */
     private ItemStack getProviderPatternStack() {
-        var provider = this.host.getProvider(getPlayer().level());
+        var provider = this.host.getProvider(getPlayer());
         if (provider == null) {
-            // Fail Fast：供应器方块缺失（被拆/卸载），无法继续编辑
-            LOGGER.error("Frame pattern encoder: provider block entity missing at {}",
-                    this.host.getPos());
+            // Fail Fast：供应器方块缺失（被拆/卸载），无法继续编辑。
+            // 客户端定位失败属预期（跨维度远程打开时客户端只有玩家维度），
+            // 降级为 debug；服务端定位失败才是真实故障，保留 ERROR。
+            if (getPlayer().level().isClientSide()) {
+                LOGGER.debug("Frame pattern encoder: provider block entity missing at {} (client side, expected when opened remotely)",
+                        this.host.getPos());
+            } else {
+                LOGGER.error("Frame pattern encoder: provider block entity missing at {}",
+                        this.host.getPos());
+            }
             return null;
         }
         var inv = provider.getLogic().getPatternInv();
@@ -173,7 +180,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
      * （updatePatterns 重建输出物品集合，让网格感知样板变化）。
      */
     private void writeBack() {
-        var provider = this.host.getProvider(getPlayer().level());
+        var provider = this.host.getProvider(getPlayer());
         if (provider == null) {
             // Fail Fast：供应器方块缺失，无法写回
             LOGGER.error("Frame pattern encoder: provider block entity missing, cannot write back");

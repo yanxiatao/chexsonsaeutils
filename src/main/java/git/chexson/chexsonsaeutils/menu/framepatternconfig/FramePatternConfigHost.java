@@ -4,6 +4,7 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
@@ -59,14 +60,24 @@ public class FramePatternConfigHost {
 
     /**
      * 定位供应器方块实体（延迟定位 + 缓存；BE 移除后重新定位）。
+     * <p>
+     * 维度处理：locator 携带供应器所在维度（dimension），但玩家可能从其他维度
+     * 远程打开本菜单（AE2 终端/无线终端），此时玩家所在维度 ≠ 供应器维度，
+     * 用玩家维度定位必然失败（provider missing → 全灰）。服务端按 dimension
+     * 取 ServerLevel 定位；客户端只有玩家所在维度（菜单渲染副本，数据由负载
+     * 驱动，定位失败无影响）。
      *
-     * @param level 定位用世界（服务端/客户端均可，客户端仅用于菜单渲染副本）
+     * @param player 打开菜单的玩家（服务端/客户端均可）
      * @return 供应器 BE；方块缺失或类型不符时返回 null（调用方 Fail Fast）
      */
     @Nullable
-    public FramePatternProviderBlockEntity getProvider(Level level) {
+    public FramePatternProviderBlockEntity getProvider(Player player) {
         if (this.provider == null || this.provider.isRemoved()) {
-            if (level.getBlockEntity(this.pos) instanceof FramePatternProviderBlockEntity be) {
+            Level level = player.level();
+            if (!level.isClientSide() && player.getServer() != null) {
+                level = player.getServer().getLevel(this.dimension);
+            }
+            if (level != null && level.getBlockEntity(this.pos) instanceof FramePatternProviderBlockEntity be) {
                 this.provider = be;
             } else {
                 this.provider = null;
