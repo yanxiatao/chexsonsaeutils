@@ -44,6 +44,42 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 public interface FramePatternProviderLogicHost extends PatternProviderLogicHost {
 
     /**
+     * 空 ITEM handler：机器缺失或客户端查询时的兜底实现（避免外部管道 NPE）。
+     * 原子化常量上移自已删除的 FrameMachineAccessImpl（子维度架构清理）。
+     */
+    IItemHandler EMPTY_ITEM_HANDLER = new IItemHandler() {
+        @Override
+        public int getSlots() {
+            return 0;
+        }
+
+        @Override
+        public ItemStack getStackInSlot(int slot) {
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            return stack;
+        }
+
+        @Override
+        public ItemStack extractItem(int slot, int amount, boolean simulate) {
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            return 0;
+        }
+
+        @Override
+        public boolean isItemValid(int slot, ItemStack stack) {
+            return false;
+        }
+    };
+
+    /**
      * @return 本框架的样板供应逻辑实例（协变返回：FramePatternProviderLogic extends
      *         PatternProviderLogic，满足父接口签名）
      */

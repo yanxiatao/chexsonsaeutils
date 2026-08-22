@@ -44,9 +44,9 @@ import appeng.parts.AEBasePart;
 import appeng.parts.PartModel;
 import appeng.util.SettingsFrom;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FrameMachineAccessImpl;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.CustomPatternProviderHost;
+import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogic;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
@@ -364,7 +364,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     @Override
     public IItemHandler getMachineItemHandler() {
         if (isClientSide()) {
-            return FrameMachineAccessImpl.EMPTY_ITEM_HANDLER;
+            return FramePatternProviderLogicHost.EMPTY_ITEM_HANDLER;
         }
         for (var direction : Direction.values()) {
             var handler = getMachineItemHandler(direction);
@@ -372,7 +372,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
                 return handler;
             }
         }
-        return FrameMachineAccessImpl.EMPTY_ITEM_HANDLER;
+        return FramePatternProviderLogicHost.EMPTY_ITEM_HANDLER;
     }
 
     /**

@@ -37,7 +37,6 @@ import java.util.List;
 public class FramePatternProviderScreen extends PatternProviderScreen<FramePatternProviderMenu>
         implements MultiPagePatternScreen {
 
-    private final ToggleButton isolatedButton;
     private final ToggleButton extractButton;
     private final ToggleButton configButton;
     private final ToggleButton filterImportButton;
@@ -49,14 +48,6 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
 
     public FramePatternProviderScreen(FramePatternProviderMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/frame_pattern_provider.json"));
-        this.isolatedButton = new ToggleButton(Icon.LOCKED, Icon.UNLOCKED, btn -> this.menu.toggleIsolated());
-        this.isolatedButton.setTooltipOn(List.of(
-                Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.isolated"),
-                Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.isolated_hint")));
-        this.isolatedButton.setTooltipOff(List.of(
-                Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.merged"),
-                Component.translatable("gui.chexsonsaeutils.frame_pattern_provider.merged_hint")));
-        this.addToLeftToolbar(this.isolatedButton);
         // 主动抽取按钮（需求 8 toggle）：切换持续抽取机器输出到返回库存（服务端 Ticker
         // 每 10 tick 调用 pullFromMachine，状态经 @GuiSync 同步）
         this.extractButton = new ToggleButton(Icon.AUTO_EXPORT_ON, Icon.AUTO_EXPORT_OFF,
@@ -120,7 +111,6 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
-        this.isolatedButton.setState(this.menu.isIsolated());
         this.extractButton.setState(this.menu.isActiveExtract());
         this.configButton.setState(this.menu.isConfigMode());
         this.filterImportButton.setState(this.menu.isFilteredImport());

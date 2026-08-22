@@ -13,6 +13,7 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
@@ -22,6 +23,9 @@ import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.common.Tags;
 
 import java.util.List;
@@ -49,6 +53,27 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
      */
     private static final double BORDER_THRESHOLD = 0.375;
 
+    /**
+     * 线框形状：仅 12 条棱（边条粗 2px），原方块本体视觉与交互空间不被框架占据
+     * （需求：套上后原方块保留可见与可交互，框架只出现在边缘）。
+     */
+    private static final VoxelShape FRAME_SHAPE = Shapes.or(
+            // 底面四边
+            Block.box(0, 0, 0, 16, 2, 2),
+            Block.box(0, 0, 14, 16, 2, 16),
+            Block.box(0, 0, 2, 2, 2, 14),
+            Block.box(14, 0, 2, 16, 2, 14),
+            // 顶面四边
+            Block.box(0, 14, 0, 16, 16, 2),
+            Block.box(0, 14, 14, 16, 16, 2),
+            Block.box(0, 14, 2, 2, 16, 14),
+            Block.box(14, 14, 2, 16, 16, 14),
+            // 四根立柱
+            Block.box(0, 2, 0, 2, 14, 2),
+            Block.box(14, 2, 0, 16, 14, 2),
+            Block.box(0, 2, 14, 2, 14, 16),
+            Block.box(14, 2, 14, 16, 14, 16));
+
     public FramePatternProviderBlock() {
         super(metalProps());
     }
@@ -56,7 +81,8 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
     /**
      * 判断目标方块是否可被框架捕获。
      * <p>
-     * 可捕获条件：非空气、非本框架方块、可破坏（destroySpeed &gt;= 0，排除基岩、屏障等）。
+     * 可捕获条件：非空气、非本框架方块、带方块实体（原位包装架构依赖机器 BE 实例代理，
+     * 无 BE 方块无法包装）、可破坏（destroySpeed &gt;= 0，排除基岩、屏障等）。
      *
      * @param level       目标方块所在世界
      * @param pos         目标方块位置
@@ -65,6 +91,10 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
      */
     public static boolean canCapture(Level level, BlockPos pos, BlockState targetState) {
         if (targetState.isAir() || targetState.getBlock() instanceof FramePatternProviderBlock) {
+            return false;
+        }
+        // 原位包装架构要求机器 BE 实例存在（无 BE 方块无法代理运行）
+        if (!targetState.hasBlockEntity()) {
             return false;
         }
         // 基岩、屏障等不可破坏方块 destroySpeed < 0，不允许被框架包裹
@@ -90,7 +120,8 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
 
     /**
      * 邻居方块变化：驱动红石锁定模式（LOCK_UNTIL_PULSE）解锁判定（照 AE2
-     * PatternProviderBlock 先例——logic.updateRedstoneState 的唯一触发点）。
+     * PatternProviderBlock 先例——logic.updateRedstoneState 的唯一触发点）；
+     * 并转发给包装机器的原方块（多方块结构检查/红石感知依赖邻居事件）。
      */
     @Override
     public void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos fromPos,
@@ -98,7 +129,23 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
         var be = this.getBlockEntity(level, pos);
         if (be != null) {
             be.getLogic().updateRedstoneState();
+            var machine = be.getWrappedMachine();
+            if (machine != null) {
+                // 向包装机器位置广播邻居更新（Level 层标准入口；多方块结构检查/红石感知依赖此通知）
+                level.neighborChanged(machine.getBlockPos(), block, fromPos);
+            }
         }
+    }
+
+    @Override
+    protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        return FRAME_SHAPE;
+    }
+
+    @Override
+    protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos,
+            CollisionContext context) {
+        return FRAME_SHAPE;
     }
 
     @Override
@@ -126,7 +173,11 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             openMenu(level, player, blockEntity);
             return ItemInteractionResult.sidedSuccess(level.isClientSide());
         }
-        // 内部区域：打开框架 GUI（ora-2 决策：机器原生 GUI 不做，统一走框架 GUI）
+        // 内部区域：透传给包装机器执行原生右键交互（打开熔炉 GUI 等）；
+        // 机器缺失或交互未消费时回退打开框架 GUI
+        if (tryOriginalBlockUse(blockEntity, player, hand, hitResult)) {
+            return ItemInteractionResult.sidedSuccess(level.isClientSide());
+        }
         openMenu(level, player, blockEntity);
         return ItemInteractionResult.sidedSuccess(level.isClientSide());
     }
@@ -150,9 +201,50 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             openMenu(level, player, blockEntity);
             return InteractionResult.sidedSuccess(level.isClientSide());
         }
-        // 内部区域：打开框架 GUI（ora-2 决策：机器原生 GUI 不做，统一走框架 GUI）
+        // 内部区域：透传给包装机器执行原生右键交互；机器缺失或交互 PASS 时回退打开框架 GUI
+        var originalResult = tryOriginalBlockUse(blockEntity, player, InteractionHand.MAIN_HAND, hitResult);
+        if (originalResult) {
+            return InteractionResult.sidedSuccess(level.isClientSide());
+        }
         openMenu(level, player, blockEntity);
         return InteractionResult.sidedSuccess(level.isClientSide());
+    }
+
+    /**
+     * 把右击透传给包装机器的原方块执行原生交互（内部区域点击路径）。
+     * <p>
+     * 机器 BE 与原方块同维度同位置，直接以其 BlockState 调用 useItemOn/useWithoutItem：
+     * GUI 打开、距离校验（stillValid）均按真实位置工作。
+     *
+     * @return true 表示原方块消费了本次交互
+     */
+    private boolean tryOriginalBlockUse(
+            FramePatternProviderBlockEntity blockEntity,
+            Player player,
+            InteractionHand hand,
+            BlockHitResult hitResult
+    ) {
+        var machine = blockEntity.getWrappedMachine();
+        if (machine == null || !(machine instanceof net.minecraft.world.MenuProvider)) {
+            return false;
+        }
+        var machineState = machine.getBlockState();
+        var machineLevel = machine.getLevel();
+        if (machineLevel == null) {
+            return false;
+        }
+        InteractionResult result;
+        ItemStack held = player.getItemInHand(hand);
+        if (!held.isEmpty()) {
+            // NeoForge：带物品右击返回 ItemInteractionResult（与 InteractionResult 分型）
+            net.minecraft.world.ItemInteractionResult itemResult =
+                    machineState.useItemOn(held, machineLevel, player, hand, hitResult);
+            if (itemResult.consumesAction()) {
+                return true;
+            }
+        }
+        result = machineState.useWithoutItem(machineLevel, player, hitResult);
+        return result.consumesAction();
     }
 
     /**

@@ -27,7 +27,7 @@ import java.util.Objects;
  * （ENCODED_PATTERN，容量 = 配置最大页数 x 36，仅可放入 AE2 样板物品）与 9 格返回库存
  * （STORAGE）。升级卡槽位支持由 appflux 自理（照 extendedae 模式，本项目不注册
  * 升级卡、不显示升级槽）。
- * 左工具栏动作：隔离模式切换（toggle_isolated）、主动抽取（pull_from_machine，需求 8）
+ * 左工具栏动作：主动抽取（pull_from_machine，需求 8）
  * 与样板配置模式切换（toggle_config_mode，需求 4b）。
  * <p>
  * 打开方式：由 {@link git.chexson.chexsonsaeutils.block.framepatternprovider.FramePatternProviderBlock}
@@ -42,10 +42,6 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
             ));
 
     private final FramePatternProviderBlockEntity host;
-
-    /** 隔离模式状态（服务端广播到客户端，客户端按钮据此显示）。 */
-    @GuiSync(1)
-    public boolean isolated = false;
 
     /** 样板配置模式状态（需求 4b）：服务端翻转并同步，配置模式下点击处理样板槽位打开配置 GUI。 */
     @GuiSync(2)
@@ -70,7 +66,6 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
     public FramePatternProviderMenu(int id, Inventory playerInventory, FramePatternProviderBlockEntity host) {
         super(TYPE, id, playerInventory, host);
         this.host = host;
-        registerClientAction("toggle_isolated", () -> getHost().setIsolated(!getHost().isIsolated()));
         registerClientAction("pull_from_machine", () -> getHost().getLogic().pullFromMachine());
         registerClientAction("toggle_config_mode", () -> configMode = !configMode);
         registerClientAction("open_config_for_slot", Integer.class, this::openConfigForSlot);
@@ -103,7 +98,6 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
     @Override
     public void broadcastChanges() {
         if (isServerSide()) {
-            isolated = getHost().isIsolated();
             pages = getHost().getPages();
             filteredImport = getHost().getLogic().isFilteredImport();
             activeExtract = getHost().getLogic().isActiveExtract();
@@ -119,24 +113,10 @@ public class FramePatternProviderMenu extends PatternProviderMenu {
     }
 
     /**
-     * @return 当前隔离模式状态（客户端同步值）
-     */
-    public boolean isIsolated() {
-        return isolated;
-    }
-
-    /**
      * @return 当前样板配置模式状态（客户端同步值）
      */
     public boolean isConfigMode() {
         return configMode;
-    }
-
-    /**
-     * 客户端按钮点击入口：发送 toggle_isolated 动作到服务端切换隔离模式。
-     */
-    public void toggleIsolated() {
-        sendClientAction("toggle_isolated");
     }
 
     /**

@@ -35,7 +35,8 @@ public class FramePatternProviderBlockEntityRenderer implements BlockEntityRende
         if (capturedState == null) {
             return;
         }
-        // 渲染被包裹的原方块（半透明，renderSingleBlock 内部会做 -0.5 居中偏移）
+        // 渲染被包裹的原方块（实心——原位包装架构下机器真实存在于该位置，
+        // renderSingleBlock 内部会做 -0.5 居中偏移）
         Minecraft.getInstance().getBlockRenderer().renderSingleBlock(
                 capturedState,
                 poseStack,
@@ -43,7 +44,7 @@ public class FramePatternProviderBlockEntityRenderer implements BlockEntityRende
                 packedLight,
                 packedOverlay,
                 ModelData.EMPTY,
-                RenderType.translucent()
+                null
         );
         renderFrameBorder(poseStack, bufferSource);
     }

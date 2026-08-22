@@ -38,7 +38,6 @@ import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.util.SettingsFrom;
 import git.chexson.chexsonsaeutils.block.custompatternprovider.CustomPatternProviderBlock;
-import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FrameMachineAccessImpl;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogic;
@@ -229,7 +228,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     @Override
     public IItemHandler getMachineItemHandler() {
         if (level == null || level.isClientSide()) {
-            return FrameMachineAccessImpl.EMPTY_ITEM_HANDLER;
+            return FramePatternProviderLogicHost.EMPTY_ITEM_HANDLER;
         }
         for (var direction : Direction.values()) {
             var handler = getMachineItemHandler(direction);
@@ -237,7 +236,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
                 return handler;
             }
         }
-        return FrameMachineAccessImpl.EMPTY_ITEM_HANDLER;
+        return FramePatternProviderLogicHost.EMPTY_ITEM_HANDLER;
     }
 
     /**

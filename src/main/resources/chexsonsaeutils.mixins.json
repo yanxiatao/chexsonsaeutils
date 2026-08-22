@@ -43,8 +43,7 @@
     "ae2ct.AE2CTRecipeHelperCompatMixin",
     "buildinggadgets2.TemplateManagerHandlerMixin",
     "buildinggadgets2.PacketUpdateTemplateManagerMixin",
-    "ftbultimine.RightClickDispatcherMemoryCardMixin",
-    "minecraft.MinecraftServerMixin"
+    "ftbultimine.RightClickDispatcherMemoryCardMixin"
   ],
   "client": [
     "ae2.client.gui.AbstractTableRendererAccessor",
