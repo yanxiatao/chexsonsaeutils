@@ -4,10 +4,13 @@ import java.util.EnumSet;
 
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.items.IItemHandler;
 
+import appeng.api.inventories.BaseInternalInventory;
+import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.AEItemKey;
 import appeng.helpers.patternprovider.PatternProviderLogicHost;
 import appeng.menu.ISubMenu;
@@ -81,6 +84,84 @@ public interface FramePatternProviderLogicHost extends PatternProviderLogicHost 
      */
     default int getPages() {
         return 1;
+    }
+
+    /**
+     * 覆写动机（问题 1）：父接口默认实现返回 {@code getLogic().getPatternInv()}（全部槽位），
+     * AE 样板管理终端（PatternAccessTerminal）会显示未解锁页的样板槽。
+     * <p>
+     * 本覆写返回按 {@code getPages() * 36} 过滤的包装库存：size() 动态计算
+     * min(真实容量, getPages() * 36)，已解锁槽就是前 pages*36 个，slot 索引直接映射。
+     * 页数变化（扩容/降级）时 size() 每次调用重新计算，无需重建包装。
+     */
+    @Override
+    default InternalInventory getTerminalPatternInventory() {
+        var delegate = getLogic().getPatternInv();
+        if (delegate == null) {
+            // Fail Fast：逻辑库存缺失属于宿主实现错误，直接抛异常暴露而非静默返回空
+            throw new IllegalStateException("getPatternInv() 返回 null：" + getClass().getName());
+        }
+        return new PageLimitedPatternInventory(this, delegate);
+    }
+
+    /**
+     * 按已解锁页数限制可见槽位的包装库存（样板管理终端用）。
+     * <p>
+     * 委托写法参考 {@code appeng.util.inv.FilteredInternalInventory}：除 size() 外全部
+     * 方法直接委托真实库存，slot 索引直接映射（已解锁槽就是前 pages*36 个）。
+     */
+    final class PageLimitedPatternInventory extends BaseInternalInventory {
+
+        /** 每页样板槽数量（与 FramePatternProviderBlockEntity/CustomPatternProviderPart 常量一致）。 */
+        private static final int PATTERN_SLOTS_PER_PAGE = 36;
+
+        private final FramePatternProviderLogicHost host;
+        private final InternalInventory delegate;
+
+        PageLimitedPatternInventory(FramePatternProviderLogicHost host, InternalInventory delegate) {
+            this.host = host;
+            this.delegate = delegate;
+        }
+
+        @Override
+        public int size() {
+            return Math.min(delegate.size(), host.getPages() * PATTERN_SLOTS_PER_PAGE);
+        }
+
+        @Override
+        public void setItemDirect(int slot, ItemStack stack) {
+            delegate.setItemDirect(slot, stack);
+        }
+
+        @Override
+        public ItemStack getStackInSlot(int slot) {
+            return delegate.getStackInSlot(slot);
+        }
+
+        @Override
+        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            return delegate.insertItem(slot, stack, simulate);
+        }
+
+        @Override
+        public ItemStack extractItem(int slot, int amount, boolean simulate) {
+            return delegate.extractItem(slot, amount, simulate);
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            return delegate.getSlotLimit(slot);
+        }
+
+        @Override
+        public boolean isItemValid(int slot, ItemStack stack) {
+            return delegate.isItemValid(slot, stack);
+        }
+
+        @Override
+        public void sendChangeNotification(int slot) {
+            delegate.sendChangeNotification(slot);
+        }
     }
 
     /**

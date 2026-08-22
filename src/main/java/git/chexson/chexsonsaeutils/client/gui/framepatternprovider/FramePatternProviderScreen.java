@@ -9,6 +9,7 @@ import appeng.core.definitions.AEItems;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
 import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.client.gui.MultiPagePatternScreen;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
 import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import net.minecraft.client.gui.GuiGraphics;
@@ -33,7 +34,8 @@ import java.util.List;
  * 配置模式下点击处理样板槽位打开配置 GUI）与翻页按钮（需求 5：上一页/下一页，
  * 每帧按当前页 setActive 隐藏其他页样板槽，页号绘制在标题右侧）。
  */
-public class FramePatternProviderScreen extends PatternProviderScreen<FramePatternProviderMenu> {
+public class FramePatternProviderScreen extends PatternProviderScreen<FramePatternProviderMenu>
+        implements MultiPagePatternScreen {
 
     private final ToggleButton isolatedButton;
     private final ToggleButton extractButton;
@@ -41,6 +43,9 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
     private final ToggleButton filterImportButton;
     private final IconButton prevPageButton;
     private final IconButton nextPageButton;
+
+    /** 上一次渲染的页号：检测翻页以清除悬停槽位残留（照 ExtendedAE_Plus GuiExPatternProviderMixin）。 */
+    private int lastRenderedPage = -1;
 
     public FramePatternProviderScreen(FramePatternProviderMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/frame_pattern_provider.json"));
@@ -119,6 +124,13 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
         this.extractButton.setState(this.menu.isActiveExtract());
         this.configButton.setState(this.menu.isConfigMode());
         this.filterImportButton.setState(this.menu.isFilteredImport());
+        // 翻页时重摆样板槽使布局函数按新页号重算，并清除悬停残留（照 ExtendedAE_Plus）
+        if (this.lastRenderedPage != this.menu.getPage()) {
+            this.lastRenderedPage = this.menu.getPage();
+            this.repositionSlots(SlotSemantics.ENCODED_PATTERN);
+            this.repositionSlots(SlotSemantics.STORAGE);
+            this.hoveredSlot = null;
+        }
         // 需求 5：每帧按当前页刷新样板槽渲染可见性（服务端另有 isSlotEnabled 交互防护）
         this.updatePageSlotActivity();
         this.prevPageButton.setVisibility(this.menu.getPage() > 0);
@@ -126,19 +138,31 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
     }
 
     /**
-     * 需求 5：按当前页设置样板槽渲染可见性与交互启用（每页 36 槽）。
+     * 需求 5：按当前页设置样板槽渲染可见性（每页 36 槽）。
      * <p>
-     * AppEngSlot.active 只影响渲染（ContainerScreen.renderSlot 跳过 inactive 槽），
-     * setSlotEnabled 控制交互（mayPlace/mayPickup 校验）；服务端 Menu 已有
-     * setSlotEnabled 防护，客户端对齐补设（问题③：翻页后客户端槽位交互状态不更新）。
+     * 动机（遍历计数器）：AppEngSlot 未覆写 getSlotIndex()（继承 Slot.getSlotIndex() →
+     * this.index），AbstractContainerMenu.addSlot 会覆盖 slot.index = slots.size()
+     * （菜单槽位序号）——父类构造器先建 36 个玩家槽（index 0-35），样板槽从菜单
+     * index 36 起，getSlotIndex() = 36 + 库存索引，页号计算偏移错乱。
+     * 故改为遍历 ENCODED_PATTERN 槽位列表用计数器 0..N-1 算页号（照 ExtendedAE_Plus
+     * 客户端实现）。
+     * <p>
+     * 只 setActive 不 setSlotEnabled：客户端 setSlotEnabled(false) 会让
+     * AppEngSlot.getItem() 返回 EMPTY 干扰渲染；交互防护由服务端 Menu 的
+     * setSlotEnabled 承担。
      */
     private void updatePageSlotActivity() {
         int currentPage = this.menu.getPage();
-        for (var slot : this.menu.getSlots(SlotSemantics.ENCODED_PATTERN)) {
+        var slots = this.menu.getSlots(SlotSemantics.ENCODED_PATTERN);
+        int unlockedSlots = Math.min(slots.size(),
+                this.menu.getPages() * FramePatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE);
+        int slotId = 0;
+        for (var slot : slots) {
             if (slot instanceof AppEngSlot appEngSlot) {
-                int slotPage = appEngSlot.getSlotIndex() / FramePatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE;
-                appEngSlot.setActive(slotPage == currentPage);
-                appEngSlot.setSlotEnabled(slotPage == currentPage);
+                int slotPage = slotId / FramePatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE;
+                boolean unlocked = slotId < unlockedSlots;
+                appEngSlot.setActive(unlocked && slotPage == currentPage);
+                ++slotId;
             }
         }
     }
@@ -158,9 +182,19 @@ public class FramePatternProviderScreen extends PatternProviderScreen<FramePatte
                 this.font,
                 pageText,
                 this.imageWidth - 8 - this.font.width(pageText),
-                6,
+                // y=22 避让右上角 openPriority 按钮（json: top -5, 高 20，底缘 15）
+                22,
                 0x404040
         );
+    }
+
+    /**
+     * 多页摆位接口实现（照 ExtendedAE_Plus IExPatternPage）：页号由菜单 @GuiSync
+     * 服务端权威同步，网格布局 mixin 经本方法读取当前页。
+     */
+    @Override
+    public int chexsonsaeutils$getCurrentPage() {
+        return this.menu.getPage();
     }
 
     /**
