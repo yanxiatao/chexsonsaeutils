@@ -1,8 +1,6 @@
 package git.chexson.chexsonsaeutils.client;
 
 import org.lwjgl.glfw.GLFW;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.mojang.blaze3d.platform.InputConstants;
 
@@ -39,11 +37,12 @@ import appeng.items.tools.NetworkToolItem;
  * 触发机制说明：1.21.1 KeyboardHandler.keyPress 在 screen != null 时走 GUI 分支，
  * KeyMapping.set 只在无 GUI 分支调用 → GUI 打开期间 KeyMapping.isDown() 恒 false，
  * 因此改用 ScreenEvent.KeyPressed.Pre 直接匹配组合键（matches 只查键码，修饰键
- * 由 getKeyModifier().isActive 检查，漏配则任意修饰键都会触发）。
+ * 改用事件 getModifiers() 位检测）。动机：GLFW 的 glfwGetKey 在 Windows 上读取
+ * Alt 键状态不可靠（实测键码 342 状态 false、修饰掩码 4 与 8 混乱），改用
+ * ScreenEvent.KeyPressed 事件的修饰键掩码检测（SHIFT=1、CTRL=2、ALT=4），
+ * 掩码按 getKeyModifier() 动态映射以保持组合键整体可配置。
  */
 public final class SlotNumberOverlay {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(SlotNumberOverlay.class);
 
     /**
      * 显示槽位编号组合键：默认 Alt+I（KeyConflictContext.GUI + KeyModifier.ALT，
@@ -75,21 +74,28 @@ public final class SlotNumberOverlay {
     /**
      * 组合键按下切换显示（游戏总线 ScreenEvent.KeyPressed.Pre）。
      * <p>
-     * matches(int, int) 只匹配键码不含修饰键，必须配合
-     * getKeyModifier().isActive 检查修饰键（否则任意修饰键组合都会触发）。
+     * matches(int, int) 只匹配键码不含修饰键，必须配合事件修饰键掩码检测
+     * （SHIFT=1、CTRL=2、ALT=4），否则任意修饰键组合都会触发。
+     * <p>
+     * 修饰键掩码按 {@link #SHOW_SLOT_NUMBERS#getKeyModifier()} 动态映射
+     * （NONE→0、SHIFT→1、CONTROL→2、ALT→4），保持组合键整体可配置：
+     * 用户在游戏设置改修饰键后无需改代码。NONE 时要求 SHIFT/CTRL/ALT
+     * 三个位都未按下（掩码 0 与任何值按位与恒为 0，不能直接判等）。
      *
      * @param event 按键按下事件（Pre，可取消）
      */
     public static void onScreenKeyPressed(ScreenEvent.KeyPressed.Pre event) {
-        // 临时诊断日志：记录每次按键的匹配结果，定位 Alt+I 无效的环节
         boolean matches = SHOW_SLOT_NUMBERS.matches(event.getKeyCode(), event.getScanCode());
-        boolean modifierActive = SHOW_SLOT_NUMBERS.getKeyModifier()
-                .isActive(SHOW_SLOT_NUMBERS.getKeyConflictContext());
-        LOGGER.info("SlotNumberOverlay keyPressed: keyCode={}, scanCode={}, modifiers={}, "
-                        + "matches={}, modifierActive={}, showSlotNumbers={}",
-                event.getKeyCode(), event.getScanCode(), event.getModifiers(),
-                matches, modifierActive, showSlotNumbers);
-        if (matches && modifierActive) {
+        int modifierMask = switch (SHOW_SLOT_NUMBERS.getKeyModifier()) {
+            case NONE -> 0;
+            case SHIFT -> 1;
+            case CONTROL -> 2;
+            case ALT -> 4;
+        };
+        boolean modifierPressed = modifierMask == 0
+                ? (event.getModifiers() & (1 | 2 | 4)) == 0
+                : (event.getModifiers() & modifierMask) == modifierMask;
+        if (matches && modifierPressed) {
             showSlotNumbers = !showSlotNumbers;
             // 取消事件：防止输入框聚焦时 Alt+I 组合键向文本框输入字符
             event.setCanceled(true);
@@ -120,15 +126,10 @@ public final class SlotNumberOverlay {
         }
         Screen screen = event.getScreen();
         if (!(screen instanceof AbstractContainerScreen<?> containerScreen)) {
-            LOGGER.info("SlotNumberOverlay render: not a container screen: {}",
-                    screen.getClass().getName());
             return;
         }
         var player = Minecraft.getInstance().player;
         var toolInv = player == null ? null : NetworkToolItem.findNetworkToolInv(player);
-        // 临时诊断日志：记录渲染条件检查结果
-        LOGGER.info("SlotNumberOverlay render: screen={}, player={}, networkTool={}",
-                screen.getClass().getSimpleName(), player != null, toolInv != null);
         if (player == null || toolInv == null) {
             return;
         }
