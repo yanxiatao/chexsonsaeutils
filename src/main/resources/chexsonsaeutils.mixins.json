@@ -38,6 +38,7 @@
     "ae2.crafting.ExecutingCraftingJobTaskProgressAccessor",
     "ae2.menu.CraftingCPUMenuAccessor",
     "ae2.menu.CraftingCPUMenuContinuationMixin",
+    "ae2.parts.encoding.PatternEncodingLogicMixin",
     "ae2ct.AE2CraftingPlanSummaryCompatMixin",
     "ae2ct.AE2CTRecipeHelperCompatMixin",
     "buildinggadgets2.TemplateManagerHandlerMixin",
@@ -58,6 +59,7 @@
     "ae2.client.gui.CraftingStatusTableRendererContinuationMixin",
     "ae2.client.gui.CraftingStatusTableRendererEnhancedStatusMixin",
     "ae2.client.gui.CraftConfirmTableRendererEnhancedStatusMixin",
+    "ae2.client.gui.SlotGridLayoutMultiPageMixin",
     "minecraft.world.inventory.SlotAccessor"
   ],
   "minVersion": "0.8",
