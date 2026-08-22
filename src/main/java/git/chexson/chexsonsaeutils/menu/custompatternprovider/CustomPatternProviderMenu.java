@@ -92,7 +92,16 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
         registerClientAction("toggle_active_extract",
                 () -> getHost().getLogic().setActiveExtract(!getHost().getLogic().isActiveExtract()));
         // 父类构造器已建全部样板槽，此处按初始页启用槽位
-        updateSlotActivity();
+        // 注意：构造器内 pages 字段默认 1，必须先读宿主真实页数再刷新槽位
+        // （否则扩容后打开菜单，第二页槽位从未被 setSlotEnabled(true)）
+        this.pages = getHost().getPages();
+        // 仅服务端执行：客户端 BE 的 pages 无网络同步（恒为默认 1），此处执行会用
+        // pages=1 把扩容后槽位 setSlotEnabled(false) 污染状态且无人恢复（Screen 只
+        // setActive）→ 客户端 isActive()=false → slotClicked 拦截 → 第二页放不了。
+        // 客户端槽位状态由 Screen 每帧 updatePageSlotActivity 管理，交互防护服务端承担。
+        if (isServerSide()) {
+            updateSlotActivity();
+        }
     }
 
     /**
@@ -111,8 +120,10 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
             if (page >= pages) {
                 // 页数收缩（配置调低/5b 降级）时收敛当前页
                 page = Math.max(0, pages - 1);
-                updateSlotActivity();
             }
+            // 页数可能变化（扩容/降级），每次广播都按最新页数刷新槽位启用状态
+            // （旧实现只在 page >= pages 时刷新，扩容后第二页槽位从未被 setSlotEnabled(true)）
+            updateSlotActivity();
         }
         super.broadcastChanges();
     }
@@ -194,12 +205,28 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
 
     /**
      * 服务端按当前页启用/禁用样板槽（每页 36 槽）。
+     * <p>
+     * 动机（遍历计数器）：AppEngSlot 未覆写 getSlotIndex()（继承 Slot.getSlotIndex() →
+     * this.index），而 AbstractContainerMenu.addSlot 会覆盖 slot.index = slots.size()
+     * （菜单槽位序号）——父类构造器先建 36 个玩家槽（index 0-35），样板槽从菜单
+     * index 36 起，getSlotIndex() = 36 + 库存索引，页号计算偏移错乱。
+     * 故改为遍历 ENCODED_PATTERN 槽位列表用计数器 0..N-1 算页号（照 ExtendedAE_Plus
+     * ContainerExPatternProviderMixin.eap$showPage 写法）。
+     * <p>
+     * 未解锁槽位（slotId >= unlockedSlots）setSlotEnabled(false) 禁用交互；
+     * 已解锁非当前页仅 setActive(false) 隐藏渲染（交互防护由 isSlotEnabled 承担）。
      */
     private void updateSlotActivity() {
-        for (var slot : getSlots(SlotSemantics.ENCODED_PATTERN)) {
+        var slots = getSlots(SlotSemantics.ENCODED_PATTERN);
+        int unlockedSlots = Math.min(slots.size(), this.pages * CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE);
+        int slotId = 0;
+        for (var slot : slots) {
             if (slot instanceof AppEngSlot appEngSlot) {
-                int slotPage = appEngSlot.getSlotIndex() / CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE;
-                appEngSlot.setSlotEnabled(slotPage == page);
+                int slotPage = slotId / CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE;
+                boolean unlocked = slotId < unlockedSlots;
+                appEngSlot.setSlotEnabled(unlocked);
+                appEngSlot.setActive(unlocked && slotPage == this.page);
+                ++slotId;
             }
         }
     }
@@ -267,7 +294,7 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
         }
         MenuOpener.open(FramePatternEncoderMenu.TYPE, getPlayer(),
                 new FramePatternConfigLocator(getHost().getBlockEntity().getBlockPos(),
-                        getHost().getBlockEntity().getLevel().dimension(), slot.getSlotIndex()));
+                        getHost().getBlockEntity().getLevel().dimension(), slot.getSlotIndex(), true));
     }
 
     /**
