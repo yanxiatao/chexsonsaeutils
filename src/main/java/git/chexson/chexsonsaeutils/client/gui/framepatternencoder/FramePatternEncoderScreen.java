@@ -80,6 +80,16 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
         this.extractSlotsField = widgets.addTextField("extract_slots_input");
         this.extractSlotsField.setMaxLength(64);
         this.extractSlotsField.setResponder(this::onExtractSlotsChanged);
+
+        // 返回按钮（需求：配置完成后返回来源供应器界面），置于左侧工具栏首位
+        var backButton = new appeng.client.gui.widgets.IconButton(btn -> this.menu.backToProviderClient()) {
+            @Override
+            protected appeng.client.gui.Icon getIcon() {
+                return appeng.client.gui.Icon.BACK;
+            }
+        };
+        backButton.setMessage(Component.translatable("gui.chexsonsaeutils.frame_pattern_encoder.back"));
+        this.addToLeftToolbar(backButton);
     }
 
     @Override

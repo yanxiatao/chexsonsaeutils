@@ -99,6 +99,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
         this.createPlayerInventorySlots(playerInventory);
         registerClientAction("set_extract_slots", String.class, this::setExtractSlotsFromClient);
         registerClientAction("set_overflow_stacks", Boolean.class, this::setOverflowStacksFromClient);
+        registerClientAction("back_to_provider", this::backToProvider);
 
         // 输入展示槽：只读虚拟槽（mayPlace/mayPickup 均为 false），渲染走原生链路
         // （图标 + 数量 + 悬停 tooltip）。坐标手动指定（x=18 图标列，y=43 起行距 64
@@ -280,6 +281,38 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
                     this.host.getOverflowStacks()
             ));
         }
+    }
+
+    /**
+     * 服务端入口：返回来源供应器界面。
+     * <p>
+     * 按来源供应器类型分别用对应菜单 TYPE 与定位器重新打开供应器 GUI：
+     * 框架版（方块实体）用 forBlockEntity，定制版（面板）用 forPart。
+     */
+    private void backToProvider() {
+        if (!isServerSide()) {
+            return;
+        }
+        var provider = this.host.getProvider(getPlayer());
+        if (provider == null) {
+            // 供应器缺失（被拆/卸载）：无法返回，仅关闭当前界面
+            return;
+        }
+        if (provider instanceof git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity be) {
+            appeng.menu.MenuOpener.open(Chexsonsaeutils.FRAME_PATTERN_PROVIDER_MENU.get(), getPlayer(),
+                    appeng.menu.locator.MenuLocators.forBlockEntity(be));
+        } else if (provider instanceof git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart part) {
+            appeng.menu.MenuOpener.open(
+                    git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu.TYPE,
+                    getPlayer(), appeng.menu.locator.MenuLocators.forPart(part));
+        }
+    }
+
+    /**
+     * 客户端按钮点击入口：发送 back_to_provider 动作到服务端。
+     */
+    public void backToProviderClient() {
+        sendClientAction("back_to_provider");
     }
 
     /**

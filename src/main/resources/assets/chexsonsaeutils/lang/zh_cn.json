@@ -97,6 +97,7 @@
   "gui.chexsonsaeutils.frame_pattern_encoder.extract_slots_hint": "逗号分隔的机器槽位列表（如 0,1,2），这些槽位的输出会在任务完成后被拉取",
   "gui.chexsonsaeutils.frame_pattern_encoder.overflow_stacks": "突破堆叠上限",
   "gui.chexsonsaeutils.frame_pattern.tooltip.active_extract": "主动抽取槽位",
+  "gui.chexsonsaeutils.frame_pattern_encoder.back": "返回供应器",
   "block.chexsonsaeutils.high_capacity_crafting_machine": "§1归§8墟§r",
   "block.chexsonsaeutils.ae_direct_processing_machine": "§b径§3行§r",
   "gui.chexsonsaeutils.ae_direct_processing_machine": "§b径§3行§r",

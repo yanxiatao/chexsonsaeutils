@@ -97,6 +97,7 @@
   "gui.chexsonsaeutils.frame_pattern_encoder.extract_slots_hint": "Comma-separated machine slot list (e.g. 0,1,2); outputs of these slots are pulled when the job finishes",
   "gui.chexsonsaeutils.frame_pattern_encoder.overflow_stacks": "Overflow stack limit",
   "gui.chexsonsaeutils.frame_pattern.tooltip.active_extract": "Active Extract Slots",
+  "gui.chexsonsaeutils.frame_pattern_encoder.back": "Back to Provider",
   "block.chexsonsaeutils.high_capacity_crafting_machine": "§1Abyssal §8Convergence§r",
   "block.chexsonsaeutils.ae_direct_processing_machine": "§bStraight§3away§r",
   "gui.chexsonsaeutils.ae_direct_processing_machine": "§bStraight§3away§r",
