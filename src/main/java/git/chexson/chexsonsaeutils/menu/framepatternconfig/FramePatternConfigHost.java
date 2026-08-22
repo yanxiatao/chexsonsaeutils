@@ -27,6 +27,12 @@ public class FramePatternConfigHost {
     private final ResourceKey<Level> dimension;
     private final int patternSlotIndex;
 
+    /**
+     * 来源供应器类型：true = 定制样板供应器（面板），false = 框架样板供应器（方块）。
+     * 动机：编码 GUI 标题需按来源供应器显示，Screen 据此选择布局 json。
+     */
+    private final boolean fromCustomProvider;
+
     /** 缓存的供应器宿主引用（延迟定位；isRemoved 后重新定位）。 */
     private FramePatternProviderLogicHost provider;
 
@@ -35,14 +41,30 @@ public class FramePatternConfigHost {
     private int[] extractSlots = new int[0];
 
     /**
+     * 会话状态：编码会话的「突破堆叠上限」开关，随样板写回组件
+     * （true：指定槽位推送不受容器槽容量限制，超出部分排队等待写入）。
+     */
+    private boolean overflowStacks = false;
+
+    /**
      * @param pos              供应器方块位置
      * @param dimension        供应器所在维度
      * @param patternSlotIndex 供应器样板槽序号（patternInventory 内索引）
+     * @param fromCustomProvider 来源供应器类型（true = 定制样板供应器）
      */
-    public FramePatternConfigHost(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex) {
+    public FramePatternConfigHost(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex,
+            boolean fromCustomProvider) {
         this.pos = pos;
         this.dimension = dimension;
         this.patternSlotIndex = patternSlotIndex;
+        this.fromCustomProvider = fromCustomProvider;
+    }
+
+    /**
+     * @return 来源供应器类型（true = 定制样板供应器，标题/布局据此区分）
+     */
+    public boolean isFromCustomProvider() {
+        return fromCustomProvider;
     }
 
     /**
@@ -104,5 +126,19 @@ public class FramePatternConfigHost {
 
     public void setExtractSlots(int[] extractSlots) {
         this.extractSlots = extractSlots;
+    }
+
+    /**
+     * @return 编码会话的「突破堆叠上限」开关（随样板写回组件）
+     */
+    public boolean getOverflowStacks() {
+        return overflowStacks;
+    }
+
+    /**
+     * @param overflowStacks 编码会话的「突破堆叠上限」开关（随样板写回组件）
+     */
+    public void setOverflowStacks(boolean overflowStacks) {
+        this.overflowStacks = overflowStacks;
     }
 }

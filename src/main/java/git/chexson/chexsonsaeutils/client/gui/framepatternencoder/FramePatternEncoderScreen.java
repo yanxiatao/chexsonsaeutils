@@ -1,13 +1,17 @@
 package git.chexson.chexsonsaeutils.client.gui.framepatternencoder;
 
+import java.util.List;
+
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import appeng.api.stacks.GenericStack;
 import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.NumberEntryType;
 import appeng.client.gui.style.StyleManager;
+import appeng.client.gui.widgets.AECheckbox;
 import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.NumberEntryWidget;
 import appeng.client.gui.widgets.Scrollbar;
@@ -32,22 +36,14 @@ import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternSlotC
  */
 public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderMenu> {
 
-    /** 可见行数与行距（行列表模式照 advancedae）。 */
-    private static final int VISIBLE_ROWS = 3;
-    private static final int ROW_SPACING = 2;
-    /**
-     * 行高 = NumberEntryWidget 组件高 62 + 行距 2。advancedae 行高 18 是其自定义
-     * 方向按钮行；NumberEntryWidget 的 +/- 两排按钮布局写死 62px 高（populateScreen），
-     * 无法压入 18px 行，行高按控件物理尺寸适配。
-     */
-    private static final int ROW_HEIGHT = 62 + ROW_SPACING;
-    /** 行列表锚点（照 advancedae：图标列 x=18；Y 上移至原输入槽区域顶部——json 已删输入/输出槽，左上区域空出）。 */
-    private static final int LIST_ANCHOR_X = 18;
-    private static final int LIST_ANCHOR_Y = 8;
+    /** 可见行数与行距（行列表模式照 advancedae；2 行避免与下方抽取槽位区拥挤）。 */
+    private static final int VISIBLE_ROWS = 2;
 
     private final Scrollbar scrollbar;
     private final NumberEntryWidget[] inputEntries = new NumberEntryWidget[VISIBLE_ROWS];
     private final AETextField extractSlotsField;
+    /** 「突破堆叠上限」勾选框（init 创建：位置依赖 leftPos/topPos，resize 后重建）。 */
+    private AECheckbox overflowStacksCheckbox;
 
     /** 上次回显的抽取槽位 CSV（服务端数据变化时才刷新文本框，避免输入循环）。 */
     private String lastSyncedExtractSlots = "";
@@ -56,8 +52,16 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
     private final int[] lastRenderedMapping = new int[VISIBLE_ROWS];
     private boolean suppressMappingUpdate = false;
 
+    /** 上次刷新展示槽时的滚动偏移与稀疏输入快照（变化才回填，避免每帧写库存）。 */
+    private int lastRefreshedScroll = -1;
+    private List<GenericStack> lastRefreshedInputs = List.of();
+
     public FramePatternEncoderScreen(FramePatternEncoderMenu menu, Inventory playerInventory, Component title) {
-        super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/frame_pattern_encoder.json"));
+        // 布局 json 按来源供应器选择：dialog_title 键不同（框架="框架样板编码"，
+        // 定制="定制样板供应器"），其余布局两版一致。
+        super(menu, playerInventory, title, StyleManager.loadStyleDoc(menu.isFromCustomProvider()
+                ? "/screens/custom_pattern_encoder.json"
+                : "/screens/frame_pattern_encoder.json"));
         this.scrollbar = widgets.addScrollBar("scrollbar", Scrollbar.SMALL);
         this.scrollbar.setRange(0, 0, VISIBLE_ROWS);
 
@@ -84,6 +88,16 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
         // 包序处理：OpenScreenPacket 已先到达，请求服务端立即同步（pendingInitialUpdate
         // 标志保证 resize 等重复 init 不会重新解码，避免重置玩家已配置的映射）
         this.menu.onUpdateRequested();
+
+        // 「突破堆叠上限」勾选框：slot_hint 行右侧空白区（面板宽 200，x=96 起右侧留白）。
+        // y=152 与 json 的 slot_hint（top 156）同行对齐；宽度按标签文本动态计算
+        // （照 AE2 KeyTypeSelectionScreen 先例），高度用控件标准 SIZE。
+        var label = Component.translatable("gui.chexsonsaeutils.frame_pattern_encoder.overflow_stacks");
+        this.overflowStacksCheckbox = new AECheckbox(this.leftPos + 96, this.topPos + 152,
+                24 + this.font.width(label), AECheckbox.SIZE, getStyle(), label);
+        this.overflowStacksCheckbox.setChangeListener(() ->
+                this.menu.setOverflowStacks(this.overflowStacksCheckbox.isSelected()));
+        addRenderableWidget(this.overflowStacksCheckbox);
     }
 
     /** 行内 NumberEntryWidget 变更：把可见行号换算为稀疏输入序号后发送槽位变更包。 */
@@ -126,7 +140,17 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
         var sparseInputs = this.menu.getSparseInputs();
         var mapping = this.menu.getSlotMapping();
 
-        int maxScroll = Math.max(0, sparseInputs.size() - VISIBLE_ROWS);
+        // 有效原料行数：稀疏输入列表含 null 占位（长度 = 编码格数，尾部大量 null），
+        // 空占位不构成列表行——取最后一个非 null 原料的索引+1，滚动范围与行可见性
+        // 均按此值计算，否则原料之后会显示大量空行。
+        int effectiveSize = 0;
+        for (int i = 0; i < sparseInputs.size(); i++) {
+            if (sparseInputs.get(i) != null) {
+                effectiveSize = i + 1;
+            }
+        }
+
+        int maxScroll = Math.max(0, effectiveSize - VISIBLE_ROWS);
         this.scrollbar.setRange(0, maxScroll, 2);
         if (this.scrollbar.getCurrentScroll() > maxScroll) {
             this.scrollbar.setCurrentScroll(maxScroll);
@@ -135,7 +159,7 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int index = scroll + i;
             var entry = this.inputEntries[i];
-            boolean visible = index < sparseInputs.size();
+            boolean visible = index < effectiveSize;
             entry.setActive(visible);
             // B3 修复：仅当回显值变化时 setLongValue，且回显期间抑制 onChange，
             // 否则 setLongValue → textField responder → onChange → 每帧发包循环
@@ -158,27 +182,44 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
             this.extractSlotsField.setValue(extractCsv);
             this.suppressExtractSlotsUpdate = false;
         }
+
+        // 突破开关回显：仅与服务端状态不同才 setSelected（防回显循环；
+        // setSelected 不触发 changeListener，不会反向发包）
+        if (this.overflowStacksCheckbox != null
+                && this.overflowStacksCheckbox.isSelected() != this.menu.isOverflowStacks()) {
+            this.overflowStacksCheckbox.setSelected(this.menu.isOverflowStacks());
+        }
+
+        // 输入展示槽刷新：滚动偏移或稀疏输入数据变化时回填虚拟只读槽
+        // （图标/数量/悬停 tooltip 均由原生槽位渲染链处理）
+        if (scroll != this.lastRefreshedScroll || !sparseInputs.equals(this.lastRefreshedInputs)) {
+            this.lastRefreshedScroll = scroll;
+            this.lastRefreshedInputs = sparseInputs;
+            this.menu.refreshDisplaySlots(scroll);
+        }
     }
 
+    /**
+     * 补画玩家物品栏槽位格子背景。
+     * <p>
+     * 动机：本界面布局使用 generatedBackground（BackgroundGenerator 只平铺底板
+     * 纹理，不含槽位格子——原版格子在整张 background 贴图里），导致玩家背包/
+     * 快捷栏只有物品没有格子。此处按容器类型筛选玩家背包容器的槽位，手绘
+     * 原版风格 18x18 格子：中灰内芯 + 暗（左/上）亮（右/下）边。
+     */
     @Override
-    public void drawFG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY) {
-        super.drawFG(guiGraphics, offsetX, offsetY, mouseX, mouseY);
-        var sparseInputs = this.menu.getSparseInputs();
-        int scroll = this.scrollbar.getCurrentScroll();
-        for (int i = 0; i < VISIBLE_ROWS; i++) {
-            int index = scroll + i;
-            if (index >= sparseInputs.size()) {
-                break;
-            }
-            var input = sparseInputs.get(index);
-            if (input == null) {
+    public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY,
+            float partialTicks) {
+        super.drawBG(guiGraphics, offsetX, offsetY, mouseX, mouseY, partialTicks);
+        for (var slot : this.menu.slots) {
+            if (!(slot.container instanceof net.minecraft.world.entity.player.Inventory)) {
                 continue;
             }
-            int rowY = LIST_ANCHOR_Y + i * ROW_HEIGHT;
-            // 相对坐标：renderLabels 前已有 translate(leftPos, topPos)，drawFG 内不得再加窗口偏移
-            // 每行结构（照 advancedae）：行首输入物品图标 + 右侧 NumberEntryWidget 槽位输入
-            guiGraphics.renderItem(input.what().wrapForDisplayOrFilter(), LIST_ANCHOR_X, rowY + 2);
-            guiGraphics.drawString(this.font, "x" + input.amount(), LIST_ANCHOR_X + 2, rowY + 22, 0x404040);
+            int x = offsetX + slot.x;
+            int y = offsetY + slot.y;
+            guiGraphics.fill(x - 1, y - 1, x + 17, y + 17, 0xFFFFFFFF); // 右/下亮边底色
+            guiGraphics.fill(x - 1, y - 1, x + 16, y + 16, 0xFF373737); // 左/上暗边
+            guiGraphics.fill(x, y, x + 16, y + 16, 0xFF8B8B8B);         // 中灰内芯
         }
     }
 

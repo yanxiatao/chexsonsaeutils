@@ -29,14 +29,24 @@ public class FramePatternConfigLocator implements MenuHostLocator {
     private final int patternSlotIndex;
 
     /**
-     * @param pos             供应器方块位置
-     * @param dimension       供应器所在维度
-     * @param patternSlotIndex 供应器样板槽序号（patternInventory 内索引）
+     * 来源供应器类型：true = 定制样板供应器（面板），false = 框架样板供应器（方块）。
+     * 动机：编码 GUI 标题需按来源供应器显示（"定制样板供应器"/"框架样板编码"），
+     * Screen 据此选择布局 json（dialog_title 键不同）。
      */
-    public FramePatternConfigLocator(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex) {
+    private final boolean fromCustomProvider;
+
+    /**
+     * @param pos              供应器方块位置
+     * @param dimension        供应器所在维度
+     * @param patternSlotIndex 供应器样板槽序号（patternInventory 内索引）
+     * @param fromCustomProvider 来源供应器类型（true = 定制样板供应器）
+     */
+    public FramePatternConfigLocator(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex,
+            boolean fromCustomProvider) {
         this.pos = pos;
         this.dimension = dimension;
         this.patternSlotIndex = patternSlotIndex;
+        this.fromCustomProvider = fromCustomProvider;
     }
 
     @Override
@@ -46,20 +56,23 @@ public class FramePatternConfigLocator implements MenuHostLocator {
         }
         // 宿主缺失（方块被拆）时由 Host 内部延迟定位处理（getProvider 返回 null，
         // 菜单逻辑 Fail Fast），locate 本身只负责构造宿主
-        return hostInterface.cast(new FramePatternConfigHost(this.pos, this.dimension, this.patternSlotIndex));
+        return hostInterface.cast(new FramePatternConfigHost(this.pos, this.dimension, this.patternSlotIndex,
+                this.fromCustomProvider));
     }
 
     public static void writeToPacket(FramePatternConfigLocator locator, FriendlyByteBuf buf) {
         buf.writeBlockPos(locator.pos);
         buf.writeResourceKey(locator.dimension);
         buf.writeInt(locator.patternSlotIndex);
+        buf.writeBoolean(locator.fromCustomProvider);
     }
 
     public static FramePatternConfigLocator readFromPacket(FriendlyByteBuf buf) {
         return new FramePatternConfigLocator(
                 buf.readBlockPos(),
                 buf.readResourceKey(Registries.DIMENSION),
-                buf.readInt());
+                buf.readInt(),
+                buf.readBoolean());
     }
 
     /**

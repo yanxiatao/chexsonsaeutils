@@ -58,7 +58,7 @@
   "text": {
     "dialog_title": {
       "text": {
-        "translate": "gui.chexsonsaeutils.frame_pattern_encoder"
+        "translate": "gui.chexsonsaeutils.custom_pattern_provider"
       },
       "position": {
         "left": 8,
