@@ -29,7 +29,8 @@ public class FramePatternConfigConverterImpl implements FramePatternConfigConver
     }
 
     @Override
-    public ItemStack encodeFramePattern(ItemStack input, int[] slotMapping, int[] extractSlots) {
-        return FramePatternItem.convertFromProcessingPattern(input, slotMapping, extractSlots);
+    public ItemStack encodeFramePattern(ItemStack input, int[] slotMapping, int[] extractSlots,
+            boolean overflowStacks) {
+        return FramePatternItem.convertFromProcessingPattern(input, slotMapping, extractSlots, overflowStacks);
     }
 }

@@ -27,7 +27,8 @@ public record FramePatternEncoderUpdatePayload(
         int containerId,
         List<GenericStack> sparseInputs,
         int[] slotMapping,
-        int[] extractSlots
+        int[] extractSlots,
+        boolean overflowStacks
 ) implements CustomPacketPayload {
 
     public static final Type<FramePatternEncoderUpdatePayload> TYPE = new Type<>(
@@ -55,6 +56,8 @@ public record FramePatternEncoderUpdatePayload(
                     FramePatternEncoderUpdatePayload::slotMapping,
                     INT_ARRAY_STREAM_CODEC,
                     FramePatternEncoderUpdatePayload::extractSlots,
+                    ByteBufCodecs.BOOL,
+                    FramePatternEncoderUpdatePayload::overflowStacks,
                     FramePatternEncoderUpdatePayload::new
             );
 
@@ -63,7 +66,8 @@ public record FramePatternEncoderUpdatePayload(
             var mc = Minecraft.getInstance();
             if (mc.player != null && mc.player.containerMenu instanceof FramePatternEncoderMenu menu
                     && menu.containerId == payload.containerId()) {
-                menu.updateFromServer(payload.sparseInputs(), payload.slotMapping(), payload.extractSlots());
+                menu.updateFromServer(payload.sparseInputs(), payload.slotMapping(), payload.extractSlots(),
+                        payload.overflowStacks());
             }
         });
     }

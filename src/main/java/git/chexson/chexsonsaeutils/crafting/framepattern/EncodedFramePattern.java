@@ -29,12 +29,15 @@ import appeng.core.definitions.AEItems;
  * @param sparseOutputs 稀疏输出列表（与处理样板一致，可含 null 占位）
  * @param slotMapping   与 sparseInputs 对齐的槽位映射，-1 表示未指定（走普通插入路径）
  * @param extractSlots  强制抽取槽位列表，空数组表示未配置（走普通输出匹配路径）
+ * @param overflowStacks 是否允许指定槽位推送突破堆叠上限（默认 false：严格容量校验；
+ *                       true：写入后读回实际存量、差额退回排队重试，均不吞料）
  */
 public record EncodedFramePattern(
         List<GenericStack> sparseInputs,
         List<GenericStack> sparseOutputs,
         int[] slotMapping,
-        int[] extractSlots) {
+        int[] extractSlots,
+        boolean overflowStacks) {
     public EncodedFramePattern {
         sparseInputs = Collections.unmodifiableList(sparseInputs);
         sparseOutputs = Collections.unmodifiableList(sparseOutputs);
@@ -73,7 +76,9 @@ public record EncodedFramePattern(
             GenericStack.FAULT_TOLERANT_NULLABLE_LIST_CODEC.fieldOf("sparseOutputs")
                     .forGetter(EncodedFramePattern::sparseOutputs),
             INT_ARRAY_CODEC.fieldOf("slotMapping").forGetter(EncodedFramePattern::slotMapping),
-            INT_ARRAY_CODEC.fieldOf("extractSlots").forGetter(EncodedFramePattern::extractSlots))
+            INT_ARRAY_CODEC.fieldOf("extractSlots").forGetter(EncodedFramePattern::extractSlots),
+            // 旧存档样板无此键时默认 false，兼容不迁移
+            Codec.BOOL.optionalFieldOf("overflowStacks", false).forGetter(EncodedFramePattern::overflowStacks))
             .apply(builder, EncodedFramePattern::new));
 
     private static final StreamCodec<ByteBuf, int[]> INT_ARRAY_STREAM_CODEC = ByteBufCodecs.INT
@@ -91,5 +96,7 @@ public record EncodedFramePattern(
                     EncodedFramePattern::slotMapping,
                     INT_ARRAY_STREAM_CODEC,
                     EncodedFramePattern::extractSlots,
+                    ByteBufCodecs.BOOL,
+                    EncodedFramePattern::overflowStacks,
                     EncodedFramePattern::new);
 }

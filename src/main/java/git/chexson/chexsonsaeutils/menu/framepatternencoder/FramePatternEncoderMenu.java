@@ -48,6 +48,17 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
             .create(FramePatternEncoderMenu::new, FramePatternConfigHost.class)
             .buildUnregistered(ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "frame_pattern_encoder"));
 
+    /**
+     * 输入展示槽语义组：虚拟只读槽（InaccessibleSlot）用于在编码界面左侧渲染当前
+     * 滚动页的稀疏输入物品（图标 + 数量 + 原生 tooltip）。不写入布局 json——
+     * AE2 positionSlots 只摆位 json 中定义的语义组，本组坐标由构造器手动指定。
+     */
+    public static final appeng.menu.SlotSemantic INPUT_DISPLAY_SEMANTIC =
+            appeng.menu.SlotSemantics.register("INPUT_DISPLAY", false);
+
+    /** 输入展示槽数量（与 Screen 的 VISIBLE_ROWS 一致：可见 2 行 + 滚动翻页）。 */
+    public static final int DISPLAY_SLOT_COUNT = 2;
+
     private final FramePatternConfigHost host;
     private final FramePatternConfigConverter converter = new FramePatternConfigConverterImpl();
 
@@ -66,10 +77,19 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
     /** 服务端缓存：当前样板的稀疏输入列表（sendUpdate 时直接使用）。 */
     private List<GenericStack> serverSparseInputs = List.of();
 
-    /** 客户端同步字段：稀疏输入列表、槽位映射、抽取槽位（由更新负载填充）。 */
+    /** 客户端同步字段：稀疏输入列表、槽位映射、抽取槽位、突破开关（由更新负载填充）。 */
     private List<GenericStack> sparseInputs = List.of();
     private int[] slotMapping = new int[0];
     private int[] extractSlots = new int[0];
+    private boolean overflowStacks = false;
+
+    /**
+     * 输入展示槽的虚拟库存（纯数据壳）：InaccessibleSlot 绑定此库存渲染当前滚动页
+     * 的稀疏输入物品。无 host——setItemDirect 的内容变更通知无副作用；两端各持
+     * 一份，服务端随数据更新回填并经容器同步推送，客户端随滚动本地刷新（纯显示）。
+     */
+    private final appeng.util.inv.AppEngInternalInventory displayInv =
+            new appeng.util.inv.AppEngInternalInventory(DISPLAY_SLOT_COUNT);
 
     public FramePatternEncoderMenu(int id, Inventory playerInventory, FramePatternConfigHost host) {
         // AEBaseMenu 要求宿主为 BlockEntity/IPart/ItemMenuHost，此菜单宿主为瞬态对象，
@@ -78,6 +98,19 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
         this.host = host;
         this.createPlayerInventorySlots(playerInventory);
         registerClientAction("set_extract_slots", String.class, this::setExtractSlotsFromClient);
+        registerClientAction("set_overflow_stacks", Boolean.class, this::setOverflowStacksFromClient);
+
+        // 输入展示槽：只读虚拟槽（mayPlace/mayPickup 均为 false），渲染走原生链路
+        // （图标 + 数量 + 悬停 tooltip）。坐标手动指定（x=18 图标列，y=43 起行距 64
+        // 对齐 NumberEntryWidget 行），不写入布局 json——positionSlots 只摆位 json
+        // 中定义的语义组，本组坐标不会被覆盖。
+        for (int i = 0; i < DISPLAY_SLOT_COUNT; i++) {
+            var slot = this.addSlot(
+                    new appeng.menu.slot.InaccessibleSlot(this.displayInv, i), INPUT_DISPLAY_SEMANTIC);
+            var mutable = (git.chexson.chexsonsaeutils.mixin.minecraft.world.inventory.SlotAccessor) slot;
+            mutable.chexsonsaeutils$setX(18);
+            mutable.chexsonsaeutils$setY(43 + i * 64);
+        }
 
         // 初始解码：从供应器样板槽读样板显示。注意此处 decodeInputAndEncode 内的
         // sendUpdate 负载必被客户端丢弃——OpenScreenPacket 尚未入队，负载先到且 containerId
@@ -125,12 +158,15 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
             var mapping = new int[this.serverSparseInputs.size()];
             Arrays.fill(mapping, -1);
             this.host.setSlotMapping(mapping);
+            // 处理样板尚无突破开关配置，重置为默认关闭
+            this.host.setOverflowStacks(false);
             sendUpdate();
         } else if (details instanceof FrameProcessingPattern framePattern) {
             // 框架样板：显示组件内已有配置（原地编辑的当前状态）
             this.serverSparseInputs = framePattern.getSparseInputs();
             this.host.setSlotMapping(framePattern.getSlotMapping());
             this.host.setExtractSlots(framePattern.getExtractSlots());
+            this.host.setOverflowStacks(framePattern.isOverflowStacksAllowed());
             sendUpdate();
         } else {
             resetState();
@@ -141,6 +177,8 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
     private void resetState() {
         this.host.setSlotMapping(new int[0]);
         this.host.setExtractSlots(new int[0]);
+        // 会话重置时突破开关一并回到默认关闭
+        this.host.setOverflowStacks(false);
         this.serverSparseInputs = List.of();
         sendUpdate();
     }
@@ -200,7 +238,8 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
             // ENCODED_FRAME_PATTERN 组件的 FramePatternItem（原地转换，无副本）
             try {
                 newStack = this.converter.encodeFramePattern(
-                        stack, this.host.getSlotMapping(), this.host.getExtractSlots());
+                        stack, this.host.getSlotMapping(), this.host.getExtractSlots(),
+                        this.host.getOverflowStacks());
             } catch (IllegalArgumentException e) {
                 // 映射长度与稀疏输入不符（理论上不会发生，防御性清理）
                 resetState();
@@ -212,7 +251,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
             try {
                 FrameProcessingPattern.encode(newStack, framePattern.getSparseInputs(),
                         framePattern.getSparseOutputs(), this.host.getSlotMapping(),
-                        this.host.getExtractSlots());
+                        this.host.getExtractSlots(), this.host.getOverflowStacks());
             } catch (IllegalArgumentException e) {
                 // 映射长度与稀疏输入不符（组件损坏场景，防御性清理）
                 resetState();
@@ -228,14 +267,17 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
         provider.getLogic().updatePatterns();
     }
 
-    /** 推送最新稀疏输入/映射/抽取槽位到客户端。 */
+    /** 推送最新稀疏输入/映射/抽取槽位/突破开关到客户端。 */
     private void sendUpdate() {
         if (getPlayer() instanceof ServerPlayer serverPlayer) {
+            // 服务端展示槽随数据更新回填（scroll=0 初始页），经容器同步推送到客户端
+            refreshDisplaySlots(0);
             PacketDistributor.sendToPlayer(serverPlayer, new FramePatternEncoderUpdatePayload(
                     containerId,
                     this.serverSparseInputs,
                     this.host.getSlotMapping(),
-                    this.host.getExtractSlots()
+                    this.host.getExtractSlots(),
+                    this.host.getOverflowStacks()
             ));
         }
     }
@@ -319,12 +361,47 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
     }
 
     /**
+     * @return 来源供应器类型（true = 定制样板供应器；Screen 据此选择布局 json 与标题）
+     */
+    public boolean isFromCustomProvider() {
+        return this.host.isFromCustomProvider();
+    }
+
+    /**
+     * 刷新输入展示槽内容（虚拟只读槽，见 {@link #INPUT_DISPLAY_SEMANTIC}）。
+     * <p>
+     * 按滚动偏移从稀疏输入取当前可见页的原料写入展示库存；matches 比对避免
+     * 无变化的重复写入。服务端在数据更新后以 scroll=0 调用（经容器同步推送），
+     * 客户端在滚动/数据变化时本地调用（纯显示，不回传）。
+     *
+     * @param scroll 当前列表滚动偏移
+     */
+    public void refreshDisplaySlots(int scroll) {
+        var source = isClientSide() ? this.sparseInputs : this.serverSparseInputs;
+        for (int i = 0; i < DISPLAY_SLOT_COUNT; i++) {
+            int index = scroll + i;
+            var stack = index >= 0 && index < source.size() ? source.get(index) : null;
+            // toStack 携带真实数量：走原生槽位渲染链显示数量角标（需求确认保留数量）；
+            // 非物品输入（流体等）无图标可展示，留空
+            var display = ItemStack.EMPTY;
+            if (stack != null && stack.what() instanceof appeng.api.stacks.AEItemKey itemKey) {
+                display = itemKey.toStack((int) Math.min(stack.amount(), Integer.MAX_VALUE));
+            }
+            if (!ItemStack.matches(this.displayInv.getStackInSlot(i), display)) {
+                this.displayInv.setItemDirect(i, display);
+            }
+        }
+    }
+
+    /**
      * 客户端数据入口：更新负载到达时写入同步字段（Screen 在 updateBeforeRender 读取）。
      */
-    public void updateFromServer(List<GenericStack> sparseInputs, int[] slotMapping, int[] extractSlots) {
+    public void updateFromServer(List<GenericStack> sparseInputs, int[] slotMapping, int[] extractSlots,
+            boolean overflowStacks) {
         this.sparseInputs = sparseInputs != null ? sparseInputs : List.of();
         this.slotMapping = slotMapping != null ? slotMapping : new int[0];
         this.extractSlots = extractSlots != null ? extractSlots : new int[0];
+        this.overflowStacks = overflowStacks;
     }
 
     public List<GenericStack> getSparseInputs() {
@@ -339,9 +416,36 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
         return extractSlots;
     }
 
+    /**
+     * @return 客户端同步的「突破堆叠上限」开关（Screen 回显勾选框用）
+     */
+    public boolean isOverflowStacks() {
+        return overflowStacks;
+    }
+
     /** 客户端入口：设置抽取槽位列表。 */
     public void setExtractSlots(int[] slots) {
         sendClientAction("set_extract_slots",
                 Arrays.stream(slots).mapToObj(Integer::toString).reduce((a, b) -> a + "," + b).orElse(""));
+    }
+
+    /** 客户端入口：设置「突破堆叠上限」开关。 */
+    public void setOverflowStacks(boolean value) {
+        sendClientAction("set_overflow_stacks", value);
+    }
+
+    /**
+     * 服务端动作：设置「突破堆叠上限」开关，写回供应器原样板并回推客户端
+     * （boolean 无越界风险，无需复杂校验）。
+     */
+    private void setOverflowStacksFromClient(Boolean value) {
+        if (value == null) {
+            // I3 修复：拒绝空载荷（客户端伪造）
+            return;
+        }
+        this.host.setOverflowStacks(value);
+        writeBack();
+        // B3 修复：回推最新突破开关到客户端（防止客户端本地字段过期被回显覆盖）
+        sendUpdate();
     }
 }

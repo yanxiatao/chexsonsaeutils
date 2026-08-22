@@ -12,11 +12,13 @@ import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
 
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.crafting.PatternDetailsTooltip;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
+import appeng.crafting.pattern.AEProcessingPattern;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
@@ -38,6 +40,7 @@ public class FrameProcessingPattern implements IPatternDetails {
     private final List<GenericStack> sparseInputs, sparseOutputs;
     private final int[] slotMapping;
     private final int[] extractSlots;
+    private final boolean overflowStacks;
     private final Input[] inputs;
     private final List<GenericStack> condensedOutputs;
 
@@ -56,6 +59,7 @@ public class FrameProcessingPattern implements IPatternDetails {
         this.sparseOutputs = encodedPattern.sparseOutputs();
         this.slotMapping = encodedPattern.slotMapping();
         this.extractSlots = encodedPattern.extractSlots();
+        this.overflowStacks = encodedPattern.overflowStacks();
         var condensedInputs = condenseStacks(sparseInputs);
         this.inputs = new Input[condensedInputs.size()];
         for (int i = 0; i < inputs.length; ++i) {
@@ -74,9 +78,10 @@ public class FrameProcessingPattern implements IPatternDetails {
      * @param sparseOutputs 稀疏输出列表（第一个必须非 null）
      * @param slotMapping  与 sparseInputs 对齐的槽位映射，-1 表示未指定
      * @param extractSlots 强制抽取槽位列表，空数组表示未配置
+     * @param overflowStacks 是否允许指定槽位推送突破堆叠上限（无上下文的调用场景传 false）
      */
     public static void encode(ItemStack stack, List<GenericStack> sparseInputs, List<GenericStack> sparseOutputs,
-            int[] slotMapping, int[] extractSlots) {
+            int[] slotMapping, int[] extractSlots, boolean overflowStacks) {
         if (sparseInputs.stream().noneMatch(Objects::nonNull)) {
             throw new IllegalArgumentException("At least one input must be non-null.");
         }
@@ -90,7 +95,7 @@ public class FrameProcessingPattern implements IPatternDetails {
         }
 
         stack.set(ChexsonsaeutilsContent.ENCODED_FRAME_PATTERN.get(), new EncodedFramePattern(
-                sparseInputs, sparseOutputs, slotMapping, extractSlots));
+                sparseInputs, sparseOutputs, slotMapping, extractSlots, overflowStacks));
     }
 
     @Override
@@ -139,6 +144,34 @@ public class FrameProcessingPattern implements IPatternDetails {
      */
     public int[] getExtractSlots() {
         return extractSlots;
+    }
+
+    /**
+     * 转换为等价的 AE2 原生处理样板详情（照 advancedae AdvProcessingPattern.getAEProcessingPattern）。
+     * <p>
+     * 动机：AE2 原生编码终端的样板回填逻辑（PatternEncodingLogic.loadEncodedPattern）
+     * 纯 instanceof 四分支只认 AE 原生四类样板，框架样板放入不会被解析。配套 mixin
+     * 拦截后经本方法得到等价 AEProcessingPattern，再调用原生 loadProcessingPattern
+     * 完成输入/输出格回填。
+     *
+     * @param level 客户端/服务端关卡（解码用）
+     * @return 等价的原生处理样板详情；稀疏输入/输出无效时返回 null
+     */
+    @Nullable
+    public AEProcessingPattern getAEProcessingPattern(Level level) {
+        var stack = PatternDetailsHelper.encodeProcessingPattern(this.getSparseInputs(), this.getSparseOutputs());
+        if (stack == null) {
+            return null;
+        }
+        var pattern = PatternDetailsHelper.decodePattern(stack, level);
+        return pattern instanceof AEProcessingPattern aePattern ? aePattern : null;
+    }
+
+    /**
+     * @return 是否允许指定槽位推送突破堆叠上限（true：写入后读回实际存量、差额退回排队重试）
+     */
+    public boolean isOverflowStacksAllowed() {
+        return overflowStacks;
     }
 
     @Override

@@ -27,11 +27,12 @@ public interface FramePatternConfigConverter {
     /**
      * 按槽位映射与抽取槽位生成框架样板。
      *
-     * @param input        输入处理样板
-     * @param slotMapping  每个稀疏输入对应的机器槽位（-1 = 未指定）
-     * @param extractSlots 抽取槽位列表
+     * @param input          输入处理样板
+     * @param slotMapping    每个稀疏输入对应的机器槽位（-1 = 未指定）
+     * @param extractSlots   抽取槽位列表
+     * @param overflowStacks 是否允许指定槽位推送突破堆叠上限（随样板写入组件）
      * @return 框架样板物品
      * @throws IllegalArgumentException slotMapping 长度与稀疏输入数不符时
      */
-    ItemStack encodeFramePattern(ItemStack input, int[] slotMapping, int[] extractSlots);
+    ItemStack encodeFramePattern(ItemStack input, int[] slotMapping, int[] extractSlots, boolean overflowStacks);
 }

@@ -486,9 +486,17 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
      * 需求 4a：框架样板的强制槽位推送。
      * <p>
      * 与普通路径（adapterAcceptsAll + pushInputsToExternalInventory）不同：
-     * 每个稀疏输入按 slotMapping 强制写入机器指定槽位（setStackInSlot 合并，
-     * 突破堆叠上限），未指定槽位（-1 或越界）走 insertItemStacked 普通插入。
-     * 预检失败（输入不足量、指定槽位被异物占用）时整体拒绝，不产生部分写入。
+     * 每个稀疏输入按 slotMapping 强制写入机器指定槽位（setStackInSlot 合并），
+     * 未指定槽位（-1 或越界）走 insertItemStacked 普通插入。两种容量模式：
+     * <ul>
+     * <li>严格模式（overflowStacks=false，默认）：受槽有效容量上限约束
+     * min(getSlotLimit, maxStackSize)，超限整体拒绝以避免 vanilla 容器 setItem
+     * limitSize 截断吞料；预检失败整体拒绝，不产生部分写入。</li>
+     * <li>突破模式（overflowStacks=true）：跳过槽容量预检，写入后读回实际存量，
+     * 差额退回 sendList 排队重试——支持超限的机器真突破；vanilla 容器填满为止
+     * +剩余排队重试。两种模式均不吞料。</li>
+     * </ul>
+     * 异物占用与 int 溢出校验在两种模式下都保留。
      * blocking 模式语义与普通路径一致：机器内已有样板输入时拒绝。
      *
      * @return true 表示推送成功
@@ -496,8 +504,6 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
     private boolean pushFramePattern(FrameProcessingPattern pattern, KeyCounter[] inputHolder) {
         IItemHandler handler = resolveMachineHandler();
         if (handler == null) {
-            // 临时诊断：handler 解析失败（无可用方向）
-            LOG.info("pushFramePattern: resolveMachineHandler returned null, targets={}", host.getTargets());
             return false;
         }
         boolean modifiable = handler instanceof IItemHandlerModifiable;
@@ -509,10 +515,6 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
         }
         var sparseInputs = pattern.getSparseInputs();
         var slotMapping = pattern.getSlotMapping();
-        // 临时诊断：推送目标与映射快照
-        LOG.info("pushFramePattern: handler={} slots={} modifiable={} sparseInputs={} slotMapping={}",
-                handler.getClass().getName(), handler.getSlots(), modifiable, sparseInputs,
-                java.util.Arrays.toString(slotMapping));
 
         // blocking 模式：机器内已有样板输入时拒绝（与普通路径 containsPatternInput 等价）
         if (this.isBlocking()) {
@@ -554,6 +556,24 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
                 if ((long) existing.getCount() + sparseInput.amount() > Integer.MAX_VALUE) {
                     return false;
                 }
+                // S4 修复（严格模式）：槽容量上限校验——vanilla 容器（箱子等 Container 方块）的
+                // setItem 会对超限栈执行 limitSize 截断，强制合并超出槽上限的部分会被静默吞掉
+                // （网络已扣料、任务已推进 → 材料凭空消失）。此处按 NeoForge 插入约定取
+                // min(getSlotLimit, maxStackSize) 为有效上限，不足量整体拒绝推送，
+                // 由 AE2 阻塞等待机器腾出空间（正确流控，而非部分写入）。
+                // 突破模式跳过此校验：写入后读回实际存量、差额退回排队重试，同样不吞料。
+                // 空槽也要校验（probeStack 用 toStack 构造只为读 maxStackSize）；
+                // 若 existing 本身已是历史超限栈（count > limit），校验必然拒绝 → 推送永久阻塞，
+                // 这是可接受的 Fail Fast（暴露异常状态优于静默吞料）。
+                if (!pattern.isOverflowStacksAllowed()) {
+                    var probeStack = existing.isEmpty()
+                            ? itemKey.toStack((int) Math.min(sparseInput.amount(), Integer.MAX_VALUE))
+                            : existing;
+                    int effectiveLimit = Math.min(handler.getSlotLimit(slot), probeStack.getMaxStackSize());
+                    if ((long) existing.getCount() + sparseInput.amount() > effectiveLimit) {
+                        return false;
+                    }
+                }
             }
         }
 
@@ -568,6 +588,7 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             int slot = i < slotMapping.length ? slotMapping[i] : -1;
             if (modifiable && slot >= 0 && slot < handler.getSlots()) {
                 var existing = handler.getStackInSlot(slot);
+                long before = existing.getCount();
                 // 空槽位合并修复：existing.copy() 对空栈产生 AIR 物品栈（item=Items.AIR），
                 // grow 后写入 AIR x N——网络已扣原料、箱子槽位看似为空、任务挂起等输出。
                 // 空槽位必须用 itemKey.toStack 创建真实物品栈；非空槽位才走 copy+grow 合并。
@@ -576,6 +597,14 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
                     merged.grow((int) amount); // 预检已保证合并后不超 int 上限
                 }
                 ((IItemHandlerModifiable) handler).setStackInSlot(slot, merged);
+                // 突破模式：读回实际存量计算真实写入量，差额退回 sendList 排队重试
+                // （vanilla 容器 setItem 会 limitSize 截断超限部分；支持超限的机器则全量写入）
+                if (pattern.isOverflowStacksAllowed()) {
+                    long written = handler.getStackInSlot(slot).getCount() - before;
+                    if (written < amount) {
+                        this.addToSendList(itemKey, amount - written);
+                    }
+                }
             } else {
                 var remaining = ItemHandlerHelper.insertItemStacked(handler,
                         itemKey.toStack((int) Math.min(amount, Integer.MAX_VALUE)), false);
@@ -1005,15 +1034,26 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             }
             // 需求 8 toggle：主动抽取每 10 tick 一次（pullFromMachine 是全量扫描
             // 样板输出 x 机器槽；机器空/返回库存满时快速返回 false，tick 频率由网格
-            // 自适应——抽取-注入循环期间 URGENT 每 tick 调用，空闲 SLEEP 不调用）
+            // 自适应——抽取-注入循环期间 URGENT 每 tick 调用，空闲 SLEEP 不调用）。
+            // 空闲时由下方结果计算返回 SLOWER 保活（而非 SLEEP）：alertDevice 只唤醒
+            // 单次 tick，若本方法返回 SLEEP 网格不再调用 tickingRequest，
+            // extractTickCounter 永远无法推进到 10，主动抽取在设备空闲时永不执行。
             if (activeExtract && ++extractTickCounter >= 10) {
                 extractTickCounter = 0;
                 pullFromMachine();
             }
             boolean couldDoWork = doWork();
-            TickRateModulation result = hasWorkToDo() ? couldDoWork ? TickRateModulation.URGENT
-                    : TickRateModulation.SLOWER
-                    : TickRateModulation.SLEEP;
+            TickRateModulation result;
+            if (hasWorkToDo()) {
+                result = couldDoWork ? TickRateModulation.URGENT : TickRateModulation.SLOWER;
+            } else if (activeExtract) {
+                // 需求 8 修复：主动抽取开启时保持唤醒（SLOWER 为 AE2 自适应降频）。
+                // alertDevice 只唤醒单次 tick：若此处返回 SLEEP，网格不再调用 tickingRequest，
+                // 抽取周期计数器永远无法推进，主动抽取在设备空闲时永不执行。
+                result = TickRateModulation.SLOWER;
+            } else {
+                result = TickRateModulation.SLEEP;
+            }
             // EAP 桥接 TAIL（镜像 PatternProviderLogicTickerMixin.eap$tickTail）：
             // 更新无线链接状态；有频道卡（eap$shouldKeepTicking）且本 tick 将 SLEEP 时
             // 改 SLOWER 保活——否则设备进入 SLEEP 后网格不再调用 tickingRequest，
