@@ -65,7 +65,7 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             Block.box(14, 0, 2, 16, 2, 14),
             // 顶面四边
             Block.box(0, 14, 0, 16, 16, 2),
-            Block.box(0, 14, 14, 16, 16, 2),
+            Block.box(0, 14, 14, 16, 16, 16),
             Block.box(0, 14, 2, 2, 16, 14),
             Block.box(14, 14, 2, 16, 16, 14),
             // 四根立柱
