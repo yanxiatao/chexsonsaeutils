@@ -1,6 +1,6 @@
 {
-  "parent": "minecraft:block/cube_all",
+  "parent": "minecraft:block/block",
   "textures": {
-    "all": "ae2:block/pattern_provider"
+    "particle": "ae2:block/pattern_provider"
   }
 }
