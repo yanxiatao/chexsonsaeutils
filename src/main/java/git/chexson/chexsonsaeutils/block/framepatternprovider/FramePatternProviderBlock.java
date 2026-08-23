@@ -182,6 +182,19 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
      *
      * @return true 表示原方块消费了本次交互
      */
+    /**
+     * 打开包装机器的原生 GUI（内部区域点击路径）。
+     * <p>
+     * 实现说明：机器 BE 自身实现 MenuProvider（如箱子/熔炉），服务端直接
+     * {@code openMenu} 打开其原生界面。不能走原方块 useWithoutItem 透传——
+     * 其内部经 level.getBlockEntity(pos) 取自身时会拿到框架 BE（chunk 注册表
+     * 一格一 BE），导致 GUI 打不开。
+     * <p>
+     * 已知限制：绕过原方块 Block 层的自定义交互逻辑（如带物品右击的特殊行为），
+     * 统一直接打开机器 GUI；GUI 存活校验按机器真实位置（同维度同位置）天然通过。
+     *
+     * @return true 表示机器可提供 GUI（客户端据此发 C2S、服务端执行打开）
+     */
     private boolean tryOriginalBlockUse(
             FramePatternProviderBlockEntity blockEntity,
             Player player,
@@ -189,26 +202,13 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
             BlockHitResult hitResult
     ) {
         var machine = blockEntity.getWrappedMachine();
-        if (machine == null || !(machine instanceof net.minecraft.world.MenuProvider)) {
+        if (!(machine instanceof net.minecraft.world.MenuProvider menuProvider)) {
             return false;
         }
-        var machineState = machine.getBlockState();
-        var machineLevel = machine.getLevel();
-        if (machineLevel == null) {
-            return false;
+        if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+            serverPlayer.openMenu(menuProvider);
         }
-        InteractionResult result;
-        ItemStack held = player.getItemInHand(hand);
-        if (!held.isEmpty()) {
-            // NeoForge：带物品右击返回 ItemInteractionResult（与 InteractionResult 分型）
-            net.minecraft.world.ItemInteractionResult itemResult =
-                    machineState.useItemOn(held, machineLevel, player, hand, hitResult);
-            if (itemResult.consumesAction()) {
-                return true;
-            }
-        }
-        result = machineState.useWithoutItem(machineLevel, player, hitResult);
-        return result.consumesAction();
+        return true;
     }
 
     /**
@@ -316,12 +316,18 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
     }
 
     /**
-     * 判断命中点是否落在边框区域（相对方块中心偏移超过阈值）。
+     * 判断命中点是否落在边框区域（点在边条投影区内）。
+     * <p>
+     * 判定规则：命中点恒在方块表面（命中面法线轴偏移恒为 ±0.5），法线轴不参与判定；
+     * 只检查命中点在面内两轴的偏移是否超过阈值——面中心区域为内部（透传机器交互），
+     * 面边缘（边条投影区）为边框（打开框架 GUI）。
      */
     private static boolean isOnBorder(BlockHitResult hitResult, BlockPos pos) {
         Vec3 relative = hitResult.getLocation().subtract(Vec3.atCenterOf(pos));
-        return Math.abs(relative.x) > BORDER_THRESHOLD
-                || Math.abs(relative.y) > BORDER_THRESHOLD
-                || Math.abs(relative.z) > BORDER_THRESHOLD;
+        return switch (hitResult.getDirection().getAxis()) {
+            case X -> Math.abs(relative.y) > BORDER_THRESHOLD || Math.abs(relative.z) > BORDER_THRESHOLD;
+            case Y -> Math.abs(relative.x) > BORDER_THRESHOLD || Math.abs(relative.z) > BORDER_THRESHOLD;
+            case Z -> Math.abs(relative.x) > BORDER_THRESHOLD || Math.abs(relative.y) > BORDER_THRESHOLD;
+        };
     }
 }
