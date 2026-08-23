@@ -16,6 +16,7 @@ import appeng.client.gui.widgets.ToggleButton;
 import appeng.core.definitions.AEItems;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
+import git.chexson.chexsonsaeutils.client.gui.MultiPagePatternScreen;
 import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
@@ -31,7 +32,8 @@ import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProv
  * 与 lockReason 指示器（json 必须定义 lockReason/openPriority widget，否则构造抛异常）。
  * 左工具栏（照框架版去隔离模式按钮）：主动抽取、样板配置、输入过滤、翻页、扩容。
  */
-public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPatternProviderMenu<?>> {
+public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPatternProviderMenu<?>>
+        implements MultiPagePatternScreen {
 
     private final ToggleButton extractButton;
     private final ToggleButton configButton;
@@ -172,6 +174,15 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
                 22,
                 0x404040
         );
+    }
+
+    /**
+     * 多页摆位接口实现（照 ExtendedAE_Plus IExPatternPage）：页号由菜单 @GuiSync
+     * 服务端权威同步，网格布局 mixin 经本方法读取当前页。
+     */
+    @Override
+    public int chexsonsaeutils$getCurrentPage() {
+        return this.menu.getPage();
     }
 
     /**
