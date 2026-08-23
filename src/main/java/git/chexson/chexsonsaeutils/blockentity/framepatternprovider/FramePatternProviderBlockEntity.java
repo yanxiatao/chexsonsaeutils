@@ -157,6 +157,29 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
+     * 客户端同步：推送被包裹的原方块状态（BER 渲染箱子模型 + 线框的数据源）。
+     * <p>
+     * 交互透传无需客户端数据——客户端 tryOriginalBlockUse 因 wrappedMachine 缺失
+     * 返回 false 后由 openMenu 兜底发送 C2S，服务端持有实例完成真实透传。
+     */
+    @Override
+    protected void writeToStream(net.minecraft.network.RegistryFriendlyByteBuf data) {
+        super.writeToStream(data);
+        data.writeVarInt(capturedState == null ? -1 : Block.getId(capturedState));
+    }
+
+    @Override
+    protected boolean readFromStream(net.minecraft.network.RegistryFriendlyByteBuf data) {
+        var id = data.readVarInt();
+        var newState = id < 0 ? null : Block.stateById(id);
+        if (java.util.Objects.equals(newState, capturedState)) {
+            return false;
+        }
+        capturedState = newState;
+        return true;
+    }
+
+    /**
      * 捕获目标方块（原位包装）：机器 BE 实例由框架持有并代理运行，主世界该位置替换为框架方块。
      * <p>
      * 协议：saveWithId 备份（崩溃恢复兜底）→ removeBlockEntity 摘除机器 BE（B1 修复：防
@@ -207,6 +230,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
         }
         frameBlockEntity.setPages(pages);
         frameBlockEntity.saveChanges();
+        // 推送客户端同步（capturedState 经 writeToStream 下发，驱动 BER 渲染包裹方块）
+        frameBlockEntity.markForUpdate();
     }
 
     /**
@@ -261,6 +286,8 @@ public class FramePatternProviderBlockEntity extends AENetworkedBlockEntity
             wrappedMachine = null;
             machineTicker = null;
             saveChanges();
+            // 推送客户端同步（capturedState 清空，BER 停止渲染包裹方块）
+            markForUpdate();
         } finally {
             restoring = false;
         }
