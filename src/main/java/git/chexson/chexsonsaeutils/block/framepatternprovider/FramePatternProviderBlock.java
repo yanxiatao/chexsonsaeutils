@@ -13,7 +13,6 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
@@ -23,9 +22,6 @@ import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.CollisionContext;
-import net.minecraft.world.phys.shapes.Shapes;
-import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.common.Tags;
 
 import java.util.List;
@@ -52,27 +48,6 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
      * 边框判定阈值：命中点相对方块中心偏移超过该值（x/z 边缘或 y 接近 0/1）视为边框区域。
      */
     private static final double BORDER_THRESHOLD = 0.375;
-
-    /**
-     * 线框形状：仅 12 条棱（边条粗 2px），原方块本体视觉与交互空间不被框架占据
-     * （需求：套上后原方块保留可见与可交互，框架只出现在边缘）。
-     */
-    private static final VoxelShape FRAME_SHAPE = Shapes.or(
-            // 底面四边
-            Block.box(0, 0, 0, 16, 2, 2),
-            Block.box(0, 0, 14, 16, 2, 16),
-            Block.box(0, 0, 2, 2, 2, 14),
-            Block.box(14, 0, 2, 16, 2, 14),
-            // 顶面四边
-            Block.box(0, 14, 0, 16, 16, 2),
-            Block.box(0, 14, 14, 16, 16, 16),
-            Block.box(0, 14, 2, 2, 16, 14),
-            Block.box(14, 14, 2, 16, 16, 14),
-            // 四根立柱
-            Block.box(0, 2, 0, 2, 14, 2),
-            Block.box(14, 2, 0, 16, 14, 2),
-            Block.box(0, 2, 14, 2, 14, 16),
-            Block.box(14, 2, 14, 16, 14, 16));
 
     public FramePatternProviderBlock() {
         super(metalProps());
@@ -135,17 +110,6 @@ public class FramePatternProviderBlock extends AEBaseEntityBlock<FramePatternPro
                 level.neighborChanged(machine.getBlockPos(), block, fromPos);
             }
         }
-    }
-
-    @Override
-    protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        return FRAME_SHAPE;
-    }
-
-    @Override
-    protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos,
-            CollisionContext context) {
-        return FRAME_SHAPE;
     }
 
     @Override
