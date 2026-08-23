@@ -8,7 +8,7 @@
 - License: LGPL-3.0
 
 This project forks `appeng/helpers/patternprovider/PatternProviderLogic.java` into
-`src/main/java/git/chexson/chexsonsaeutils/helpers/framepatternprovider/FramePatternProviderLogic.java`
+`src/main/java/git/chexson/chexsonsaeutils/helpers/custompatternprovider/CustomPatternProviderLogic.java`
 (adapted for the frame pattern provider's private-dimension machine target).
 The LGPL-3.0 license header is preserved in the forked file.
 

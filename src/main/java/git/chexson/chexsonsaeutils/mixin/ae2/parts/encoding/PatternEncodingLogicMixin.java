@@ -41,8 +41,8 @@ public abstract class PatternEncodingLogicMixin {
             return;
         }
         var details = PatternDetailsHelper.decodePattern(pattern, this.host.getLevel());
-        if (details instanceof CustomProcessingPattern framePattern) {
-            var aePattern = framePattern.getAEProcessingPattern(this.host.getLevel());
+        if (details instanceof CustomProcessingPattern customPattern) {
+            var aePattern = customPattern.getAEProcessingPattern(this.host.getLevel());
             if (aePattern != null) {
                 this.loadProcessingPattern(aePattern);
             }

@@ -32,7 +32,7 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
  * 子接口直接继承，不再重复声明。
  * <p>
  * 与 AE2 接口的差异：openMenu/returnToMainMenu 覆写为本项目菜单
- * （FramePatternProviderMenu，替代 AE2 默认的 PatternProviderMenu，避免继承后
+ * （CustomPatternProviderMenu，替代 AE2 默认的 PatternProviderMenu，避免继承后
  * 悄悄打开 AE2 菜单）；额外提供 {@link #getMachineItemHandler()}，供逻辑层解析
  * 私有维度机器的物品 handler（需求 8 的推送/抽取目标）。
  * <p>
@@ -148,7 +148,7 @@ public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost
      */
     final class PageLimitedPatternInventory extends BaseInternalInventory {
 
-        /** 每页样板槽数量（与 FramePatternProviderBlockEntity/CustomPatternProviderPart 常量一致）。 */
+        /** 每页样板槽数量（与 CustomPatternProviderBlockEntity/CustomPatternProviderPart 常量一致）。 */
         private static final int PATTERN_SLOTS_PER_PAGE = 36;
 
         private final CustomPatternProviderLogicHost host;
@@ -250,7 +250,7 @@ public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost
      * 打开本项目框架样板供应器菜单（替代 AE2 默认的 PatternProviderMenu）。
      * <p>
      * 动机：父接口默认实现打开 PatternProviderMenu.TYPE，本项目菜单为自定义
-     * FramePatternProviderMenu，继承后必须覆写，避免调用方打开错误菜单。
+     * CustomPatternProviderMenu，继承后必须覆写，避免调用方打开错误菜单。
      */
     @Override
     default void openMenu(Player player, MenuHostLocator locator) {

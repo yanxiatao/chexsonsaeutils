@@ -444,8 +444,8 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
         }
 
         // 需求 4a：框架样板走强制槽位写入路径（不经过 target 的普通插入模拟）
-        if (patternDetails instanceof CustomProcessingPattern framePattern) {
-            return pushFramePattern(framePattern, inputHolder);
+        if (patternDetails instanceof CustomProcessingPattern customPattern) {
+            return pushCustomPattern(customPattern, inputHolder);
         }
 
         // 阶段 1 泛化：机器目标解析见 getMachineTarget()——单 handler 模式（框架语义）
@@ -501,7 +501,7 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
      *
      * @return true 表示推送成功
      */
-    private boolean pushFramePattern(CustomProcessingPattern pattern, KeyCounter[] inputHolder) {
+    private boolean pushCustomPattern(CustomProcessingPattern pattern, KeyCounter[] inputHolder) {
         IItemHandler handler = resolveMachineHandler();
         if (handler == null) {
             return false;
@@ -859,8 +859,8 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
                 continue;
             }
             // 需求 4a：框架样板按配置槽位强制抽取（配置了 extractSlots 则跳过普通输出匹配路径）
-            if (details instanceof CustomProcessingPattern framePattern && framePattern.getExtractSlots().length > 0) {
-                for (int slot : framePattern.getExtractSlots()) {
+            if (details instanceof CustomProcessingPattern customPattern && customPattern.getExtractSlots().length > 0) {
+                for (int slot : customPattern.getExtractSlots()) {
                     if (slot < 0 || slot >= handler.getSlots()) {
                         continue;
                     }

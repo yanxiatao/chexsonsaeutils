@@ -162,12 +162,12 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
             // 处理样板尚无突破开关配置，重置为默认关闭
             this.host.setOverflowStacks(false);
             sendUpdate();
-        } else if (details instanceof CustomProcessingPattern framePattern) {
+        } else if (details instanceof CustomProcessingPattern customPattern) {
             // 框架样板：显示组件内已有配置（原地编辑的当前状态）
-            this.serverSparseInputs = framePattern.getSparseInputs();
-            this.host.setSlotMapping(framePattern.getSlotMapping());
-            this.host.setExtractSlots(framePattern.getExtractSlots());
-            this.host.setOverflowStacks(framePattern.isOverflowStacksAllowed());
+            this.serverSparseInputs = customPattern.getSparseInputs();
+            this.host.setSlotMapping(customPattern.getSlotMapping());
+            this.host.setExtractSlots(customPattern.getExtractSlots());
+            this.host.setOverflowStacks(customPattern.isOverflowStacksAllowed());
             sendUpdate();
         } else {
             resetState();
@@ -238,7 +238,7 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
             // 处理样板 → 框架样板：convertFromProcessingPattern 生成携带
             // ENCODED_CUSTOM_PATTERN 组件的 CustomPatternItem（原地转换，无副本）
             try {
-                newStack = this.converter.encodeFramePattern(
+                newStack = this.converter.encodeCustomPattern(
                         stack, this.host.getSlotMapping(), this.host.getExtractSlots(),
                         this.host.getOverflowStacks());
             } catch (IllegalArgumentException e) {
@@ -246,12 +246,12 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
                 resetState();
                 return;
             }
-        } else if (details instanceof CustomProcessingPattern framePattern) {
+        } else if (details instanceof CustomProcessingPattern customPattern) {
             // 框架样板：按当前映射/抽取槽位重编码组件
             newStack = new ItemStack(ChexsonsaeutilsContent.CUSTOM_PATTERN_ITEM.get());
             try {
-                CustomProcessingPattern.encode(newStack, framePattern.getSparseInputs(),
-                        framePattern.getSparseOutputs(), this.host.getSlotMapping(),
+                CustomProcessingPattern.encode(newStack, customPattern.getSparseInputs(),
+                        customPattern.getSparseOutputs(), this.host.getSlotMapping(),
                         this.host.getExtractSlots(), this.host.getOverflowStacks());
             } catch (IllegalArgumentException e) {
                 // 映射长度与稀疏输入不符（组件损坏场景，防御性清理）
@@ -337,10 +337,10 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
             sparse = processingPattern.getSparseInputs();
             mapping = new int[sparse.size()];
             Arrays.fill(mapping, -1);
-        } else if (details instanceof CustomProcessingPattern framePattern) {
-            sparse = framePattern.getSparseInputs();
+        } else if (details instanceof CustomProcessingPattern customPattern) {
+            sparse = customPattern.getSparseInputs();
             // clone：不直接修改输出槽物品组件内的数组引用
-            mapping = framePattern.getSlotMapping().clone();
+            mapping = customPattern.getSlotMapping().clone();
             // 组件损坏防御：映射长度与稀疏输入数不符时忽略本次修改（否则循环越界 AIOOBE）
             if (mapping.length != sparse.size()) {
                 return;

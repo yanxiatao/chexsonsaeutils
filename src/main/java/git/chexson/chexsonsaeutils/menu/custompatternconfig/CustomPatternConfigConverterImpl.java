@@ -29,7 +29,7 @@ public class CustomPatternConfigConverterImpl implements CustomPatternConfigConv
     }
 
     @Override
-    public ItemStack encodeFramePattern(ItemStack input, int[] slotMapping, int[] extractSlots,
+    public ItemStack encodeCustomPattern(ItemStack input, int[] slotMapping, int[] extractSlots,
             boolean overflowStacks) {
         return CustomPatternItem.convertFromProcessingPattern(input, slotMapping, extractSlots, overflowStacks);
     }

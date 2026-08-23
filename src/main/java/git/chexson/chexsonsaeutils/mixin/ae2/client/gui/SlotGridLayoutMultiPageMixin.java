@@ -25,7 +25,7 @@ import net.minecraft.client.Minecraft;
 @Mixin(value = SlotGridLayout.class, remap = false)
 public abstract class SlotGridLayoutMultiPageMixin {
 
-    /** 每页样板槽数量（与 FramePatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE 一致）。 */
+    /** 每页样板槽数量（与 CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE 一致）。 */
     @Unique
     private static final int SLOTS_PER_PAGE = 36;
 

@@ -5,7 +5,7 @@ package git.chexson.chexsonsaeutils.item.custompatternprovider;
  * <p>
  * 动机：扩容 GUI（{@link git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeMenu}）
  * 与物质聚合器扩容 mixin（CondenserBlockEntityCondenseItemHandlerMixin）原硬编码
- * instanceof FramePatternProviderItem；定制样板供应器（阶段 2 新方块）物品同样支持
+ * instanceof CustomPatternItem；定制样板供应器（阶段 2 新方块）物品同样支持
  * 扩容（CUSTOM_PATTERN_PAGES 组件语义），故抽象为标记接口，实现类即视为可扩容对象。
  * <p>
  * 泛化方案选择：相比「实现 IStorageComponent 且携带 CUSTOM_PATTERN_PAGES 组件」的

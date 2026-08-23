@@ -34,5 +34,5 @@ public interface CustomPatternConfigConverter {
      * @return 框架样板物品
      * @throws IllegalArgumentException slotMapping 长度与稀疏输入数不符时
      */
-    ItemStack encodeFramePattern(ItemStack input, int[] slotMapping, int[] extractSlots, boolean overflowStacks);
+    ItemStack encodeCustomPattern(ItemStack input, int[] slotMapping, int[] extractSlots, boolean overflowStacks);
 }

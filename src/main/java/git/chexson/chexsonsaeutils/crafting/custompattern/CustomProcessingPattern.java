@@ -27,7 +27,7 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * 动机：框架样板供应器需要把稀疏输入按 slotMapping 强制写入私有维度机器的指定槽位，
  * 并在完成后按 extractSlots 强制抽取输出。本类在 AEProcessingPattern 的稀疏输入/输出
  * 语义之上，额外暴露槽位映射与抽取槽位，供 CustomPatternProviderLogic 的
- * pushFramePattern / pullFromMachine 使用。
+ * pushCustomPattern / pullFromMachine 使用。
  * <p>
  * 注意：AE2 的 AEPatternHelper 是 package-private，无法直接复用其 condenseStacks，
  * 此处自实现等价逻辑（LinkedHashMap 保序合并）。

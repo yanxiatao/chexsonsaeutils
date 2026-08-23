@@ -27,7 +27,7 @@ import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProv
 /**
  * 定制样板供应器菜单（阶段 3：继承 AE2 原版 PatternProviderMenu）。
  * <p>
- * 泛型动机：框架版菜单直接绑定 {@link FramePatternProviderBlockEntity}，本类改为绑定
+ * 泛型动机：框架版菜单直接绑定 CustomPatternProviderBlockEntity（已移除），本类改为绑定
  * {@link CustomPatternProviderLogicHost} + {@link appeng.api.upgrades.IUpgradeableObject}
  * 双边界——框架与定制两个 BE 都满足，菜单逻辑（槽位/翻页/配置/扩容）完全共享，
  * 未来第三种宿主无需再复制菜单。
