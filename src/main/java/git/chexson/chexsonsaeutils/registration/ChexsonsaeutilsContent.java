@@ -125,7 +125,7 @@ public final class ChexsonsaeutilsContent {
             ITEMS.register("custom_pattern_provider_part",
                     () -> new CustomPatternProviderPartItem(new Item.Properties()));
     public static final Supplier<CustomPatternItem> CUSTOM_PATTERN_ITEM =
-            ITEMS.register("frame_pattern", CustomPatternItem::createItem);
+            ITEMS.register("custom_pattern", CustomPatternItem::createItem);
     public static final Supplier<DataComponentType<EncodedCustomPattern>> ENCODED_CUSTOM_PATTERN =
             DATA_COMPONENT_TYPES.register("encoded_custom_pattern",
                     () -> DataComponentType.<EncodedCustomPattern>builder()

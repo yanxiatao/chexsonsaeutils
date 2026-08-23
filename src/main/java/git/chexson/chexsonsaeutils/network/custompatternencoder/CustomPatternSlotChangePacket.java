@@ -24,7 +24,7 @@ public record CustomPatternSlotChangePacket(AEKey key, int slot) implements Serv
             StreamCodec.ofMember(CustomPatternSlotChangePacket::write, CustomPatternSlotChangePacket::decode);
 
     public static final Type<CustomPatternSlotChangePacket> TYPE =
-            CustomAppEngPayload.createType("frame_pattern_slot_change");
+            CustomAppEngPayload.createType("custom_pattern_slot_change");
 
     @Override
     public Type<? extends CustomPacketPayload> type() {
