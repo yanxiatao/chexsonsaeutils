@@ -254,14 +254,14 @@ public interface FramePatternProviderLogicHost extends PatternProviderLogicHost 
      */
     @Override
     default void openMenu(Player player, MenuHostLocator locator) {
-        MenuOpener.open(Chexsonsaeutils.FRAME_PATTERN_PROVIDER_MENU.get(), player, locator);
+        MenuOpener.open(Chexsonsaeutils.CUSTOM_PATTERN_PROVIDER_MENU.get(), player, locator);
     }
 
     /**
-     * 子菜单返回主菜单：打开本项目框架样板供应器菜单（替代 AE2 默认的 PatternProviderMenu）。
+     * 子菜单返回主菜单：打开本项目定制样板供应器菜单（替代 AE2 默认的 PatternProviderMenu）。
      */
     @Override
     default void returnToMainMenu(Player player, ISubMenu subMenu) {
-        MenuOpener.returnTo(Chexsonsaeutils.FRAME_PATTERN_PROVIDER_MENU.get(), player, subMenu.getLocator());
+        MenuOpener.returnTo(Chexsonsaeutils.CUSTOM_PATTERN_PROVIDER_MENU.get(), player, subMenu.getLocator());
     }
 }

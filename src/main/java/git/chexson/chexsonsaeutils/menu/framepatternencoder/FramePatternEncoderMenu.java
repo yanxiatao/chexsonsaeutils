@@ -286,8 +286,8 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
     /**
      * 服务端入口：返回来源供应器界面。
      * <p>
-     * 按来源供应器类型分别用对应菜单 TYPE 与定位器重新打开供应器 GUI：
-     * 框架版（方块实体）用 forBlockEntity，定制版（面板）用 forPart。
+     * 按来源供应器形态分别用对应定位器重新打开定制供应器 GUI：
+     * 方块实体用 forBlockEntity，面板用 forPart。
      */
     private void backToProvider() {
         if (!isServerSide()) {
@@ -298,9 +298,10 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
             // 供应器缺失（被拆/卸载）：无法返回，仅关闭当前界面
             return;
         }
-        if (provider instanceof git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity be) {
-            appeng.menu.MenuOpener.open(Chexsonsaeutils.FRAME_PATTERN_PROVIDER_MENU.get(), getPlayer(),
-                    appeng.menu.locator.MenuLocators.forBlockEntity(be));
+        if (provider instanceof git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity be) {
+            appeng.menu.MenuOpener.open(
+                    git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu.TYPE,
+                    getPlayer(), appeng.menu.locator.MenuLocators.forBlockEntity(be));
         } else if (provider instanceof git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart part) {
             appeng.menu.MenuOpener.open(
                     git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu.TYPE,

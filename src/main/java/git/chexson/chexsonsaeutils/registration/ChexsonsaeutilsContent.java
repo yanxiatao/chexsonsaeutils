@@ -15,15 +15,12 @@ import git.chexson.chexsonsaeutils.block.crafting.AE2ParallelCpuToolBlock;
 import git.chexson.chexsonsaeutils.block.crafting.HighCapacityCraftingMachineBlock;
 import git.chexson.chexsonsaeutils.block.debug.AutoItemGenBlock;
 import git.chexson.chexsonsaeutils.block.custompatternprovider.CustomPatternProviderBlock;
-import git.chexson.chexsonsaeutils.block.framepatternprovider.FramePatternProviderBlock;
 import git.chexson.chexsonsaeutils.blockentity.debug.AutoItemGenBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
-import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.item.custompatternprovider.CustomPatternProviderItem;
-import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternProviderItem;
 import git.chexson.chexsonsaeutils.client.gui.custompatternprovider.CustomPatternProviderScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.AEDirectProcessingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.HighCapacityCraftingMachineScreen;
@@ -40,10 +37,8 @@ import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderMenu;
-import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu;
 import git.chexson.chexsonsaeutils.client.gui.framepatternencoder.FramePatternEncoderScreen;
-import git.chexson.chexsonsaeutils.client.gui.framepatternprovider.FramePatternProviderScreen;
 import git.chexson.chexsonsaeutils.client.gui.framepatternupgrade.FramePatternUpgradeScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
@@ -120,11 +115,6 @@ public final class ChexsonsaeutilsContent {
             registerBlockWithItem("auto_item_gen", AutoItemGenBlock::new);
     public static final Supplier<AutoItemGenBlock> AUTO_ITEM_GEN_BLOCK = AUTO_ITEM_GEN.block();
     public static final Supplier<Item> AUTO_ITEM_GEN_ITEM = AUTO_ITEM_GEN.item();
-    public static final Supplier<FramePatternProviderBlock> FRAME_PATTERN_PROVIDER_BLOCK =
-            BLOCKS.register("frame_pattern_provider", FramePatternProviderBlock::new);
-    public static final Supplier<Item> FRAME_PATTERN_PROVIDER_ITEM =
-            ITEMS.register("frame_pattern_provider",
-                    () -> new FramePatternProviderItem(FRAME_PATTERN_PROVIDER_BLOCK.get(), new Item.Properties()));
     public static final Supplier<CustomPatternProviderBlock> CUSTOM_PATTERN_PROVIDER_BLOCK =
             BLOCKS.register("custom_pattern_provider", CustomPatternProviderBlock::new);
     public static final Supplier<Item> CUSTOM_PATTERN_PROVIDER_ITEM =
@@ -186,15 +176,7 @@ public final class ChexsonsaeutilsContent {
                             AE2ParallelCpuToolBlockEntity::new,
                             AE2_PARALLEL_CPU_TOOL_BLOCK.get()
                     ).build(null)
-            );
-    public static final Supplier<BlockEntityType<FramePatternProviderBlockEntity>>
-            FRAME_PATTERN_PROVIDER_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
-                    "frame_pattern_provider",
-                    () -> BlockEntityType.Builder.of(
-                            FramePatternProviderBlockEntity::new,
-                            FRAME_PATTERN_PROVIDER_BLOCK.get()
-                    ).build(null)
-            );
+             );
     public static final Supplier<BlockEntityType<CustomPatternProviderBlockEntity>>
             CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
                     "custom_pattern_provider",
@@ -210,8 +192,6 @@ public final class ChexsonsaeutilsContent {
             MENU_TYPES.register("ae_direct_processing_machine", () -> AEDirectProcessingMachineMenu.TYPE);
     public static final Supplier<MenuType<ParallelCraftingCPUMenu>> AE2_PARALLEL_CPU_TOOL_CPU_MENU =
             MENU_TYPES.register("ae2_parallel_cpu_tool_cpu", () -> ParallelCraftingCPUMenu.TYPE);
-    public static final Supplier<MenuType<FramePatternProviderMenu>> FRAME_PATTERN_PROVIDER_MENU =
-            MENU_TYPES.register("frame_pattern_provider", () -> FramePatternProviderMenu.TYPE);
     public static final Supplier<MenuType<CustomPatternProviderMenu<?>>> CUSTOM_PATTERN_PROVIDER_MENU =
             MENU_TYPES.register("custom_pattern_provider", () -> CustomPatternProviderMenu.TYPE);
     public static final Supplier<MenuType<FramePatternEncoderMenu>> FRAME_PATTERN_ENCODER_MENU =
@@ -233,7 +213,6 @@ public final class ChexsonsaeutilsContent {
                         output.accept(HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get());
                         output.accept(AE_DIRECT_PROCESSING_MACHINE_ITEM.get());
                         output.accept(AE2_PARALLEL_CPU_TOOL_ITEM.get());
-                        output.accept(FRAME_PATTERN_PROVIDER_ITEM.get());
                         output.accept(FRAME_PATTERN_ITEM.get());
                         output.accept(CUSTOM_PATTERN_PROVIDER_ITEM.get());
                         output.accept(CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
@@ -263,7 +242,6 @@ public final class ChexsonsaeutilsContent {
         registerAEDirectProcessingMachineBootstrap();
         registerAE2ParallelCpuToolBootstrap();
         registerAutoItemGenBootstrap();
-        registerFramePatternProviderBootstrap();
         registerCustomPatternProviderBootstrap();
         registerMultiLevelEmitterBootstrap();
         CellRegistration.bootstrap(INFINITY_CELL_ITEM);
@@ -304,17 +282,6 @@ public final class ChexsonsaeutilsContent {
                 AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY.get(),
                 (blockEntity, side) -> blockEntity.getAutomationItemHandler()
         );
-        // 框架样板供应器：ITEM/ENERGY capability 跨维度透传到私有维度机器
-        event.registerBlockEntity(
-                Capabilities.ItemHandler.BLOCK,
-                FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
-                (blockEntity, side) -> blockEntity.getMachineItemHandler()
-        );
-        event.registerBlockEntity(
-                Capabilities.EnergyStorage.BLOCK,
-                FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
-                (blockEntity, side) -> blockEntity.getMachineEnergyHandler()
-        );
         // 定制样板供应器：ITEM/ENERGY capability 透传到首个可用方向的相邻机器（无参版兜底）
         event.registerBlockEntity(
                 Capabilities.ItemHandler.BLOCK,
@@ -328,11 +295,6 @@ public final class ChexsonsaeutilsContent {
         );
         // B1 修复：AE2 InitCapabilityProviders 只自动注册 AE2 自己的 BE，本项目 BE 需手动注册
         // 网格节点能力——未注册则线缆无法发现 BE、节点永不入网（pushPattern 恒失败）
-        event.registerBlockEntity(
-                AECapabilities.IN_WORLD_GRID_NODE_HOST,
-                FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
-                (blockEntity, context) -> blockEntity
-        );
         event.registerBlockEntity(
                 AECapabilities.IN_WORLD_GRID_NODE_HOST,
                 CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
@@ -355,7 +317,6 @@ public final class ChexsonsaeutilsContent {
                 )
         );
         event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new);
-        event.register(FRAME_PATTERN_PROVIDER_MENU.get(), FramePatternProviderScreen::new);
         event.register(FRAME_PATTERN_ENCODER_MENU.get(), FramePatternEncoderScreen::new);
         event.register(FRAME_PATTERN_UPGRADE_MENU.get(), FramePatternUpgradeScreen::new);
         event.register(CUSTOM_PATTERN_PROVIDER_MENU.get(), CustomPatternProviderScreen::new);
@@ -439,20 +400,6 @@ public final class ChexsonsaeutilsContent {
         AEBaseBlockEntity.registerBlockEntityItem(
                 AUTO_ITEM_GEN_BLOCK_ENTITY.get(),
                 AUTO_ITEM_GEN_ITEM.get()
-        );
-    }
-
-    private static void registerFramePatternProviderBootstrap() {
-        FramePatternProviderBlock block = FRAME_PATTERN_PROVIDER_BLOCK.get();
-        block.setBlockEntity(
-                FramePatternProviderBlockEntity.class,
-                FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
-                null,
-                null
-        );
-        AEBaseBlockEntity.registerBlockEntityItem(
-                FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
-                FRAME_PATTERN_PROVIDER_ITEM.get()
         );
     }
 

@@ -36,8 +36,6 @@ public final class ExtendedAePlusCompat {
         }
         try {
             String patternProviderGroup = "group.pattern_provider.name";
-            Upgrades.add(ModItems.CHANNEL_CARD.get(), ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_ITEM.get(), 1,
-                    patternProviderGroup);
             Upgrades.add(ModItems.CHANNEL_CARD.get(), ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get(), 1,
                     patternProviderGroup);
             Upgrades.add(ModItems.CHANNEL_CARD.get(), ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get(), 1,

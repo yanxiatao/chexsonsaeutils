@@ -9,7 +9,6 @@ import net.minecraft.world.level.Level;
 
 import appeng.menu.locator.MenuHostLocator;
 import appeng.menu.locator.MenuLocators;
-import git.chexson.chexsonsaeutils.blockentity.framepatternprovider.FramePatternProviderBlockEntity;
 
 /**
  * 框架样板编码 GUI 的菜单定位器（MenuHostLocator 实现）。

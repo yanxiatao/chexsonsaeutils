@@ -20,12 +20,11 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfig
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeUserConfigStore;
 import git.chexson.chexsonsaeutils.client.ae2.PatternItemColorRegistration;
 import git.chexson.chexsonsaeutils.client.ae2.DyeablePatternPackRegistration;
-import git.chexson.chexsonsaeutils.client.renderer.framepatternprovider.FramePatternProviderBlockEntityRenderer;
+import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
-import git.chexson.chexsonsaeutils.menu.framepatternprovider.FramePatternProviderMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
 import git.chexson.chexsonsaeutils.client.SlotNumberOverlay;
 import git.chexson.chexsonsaeutils.integration.appflux.AppFluxCompat;
@@ -105,8 +104,8 @@ public class Chexsonsaeutils {
                     ChexsonsaeutilsContent.AE2_PARALLEL_CPU_TOOL_BLOCK_ENTITY;
     public static final Supplier<MenuType<ParallelCraftingCPUMenu>> AE2_PARALLEL_CPU_TOOL_CPU_MENU =
             ChexsonsaeutilsContent.AE2_PARALLEL_CPU_TOOL_CPU_MENU;
-    public static final Supplier<MenuType<FramePatternProviderMenu>> FRAME_PATTERN_PROVIDER_MENU =
-            ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_MENU;
+    public static final Supplier<MenuType<CustomPatternProviderMenu<?>>> CUSTOM_PATTERN_PROVIDER_MENU =
+            ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_MENU;
 
     public Chexsonsaeutils(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, ChexsonsaeutilsCompatibilityConfig.SPEC);
@@ -239,14 +238,6 @@ public class Chexsonsaeutils {
         @SubscribeEvent
         public static void onRegisterItemColors(net.neoforged.neoforge.client.event.RegisterColorHandlersEvent.Item event) {
             PatternItemColorRegistration.register(event);
-        }
-
-        @SubscribeEvent
-        public static void onRegisterRenderers(net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers event) {
-            event.registerBlockEntityRenderer(
-                    ChexsonsaeutilsContent.FRAME_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
-                    context -> new FramePatternProviderBlockEntityRenderer()
-            );
         }
 
         @SubscribeEvent
