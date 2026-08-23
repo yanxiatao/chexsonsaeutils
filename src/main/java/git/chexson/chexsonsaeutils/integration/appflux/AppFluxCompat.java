@@ -37,7 +37,7 @@ public final class AppFluxCompat {
             return;
         }
         try {
-            // 定制样板供应器同样支持感应卡（共用 FramePatternProviderLogicHost.getUpgrades() 判定）
+            // 定制样板供应器同样支持感应卡（共用 CustomPatternProviderLogicHost.getUpgrades() 判定）
             Upgrades.add(AFSingletons.INDUCTION_CARD, ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get(), 1,
                     "block.chexsonsaeutils.custom_pattern_provider");
             // 定制样板供应器面板同样支持感应卡（面板有升级槽）

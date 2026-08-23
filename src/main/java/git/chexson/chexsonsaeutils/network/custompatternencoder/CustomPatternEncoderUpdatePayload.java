@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.network.framepatternencoder;
+package git.chexson.chexsonsaeutils.network.custompatternencoder;
 
 import java.util.List;
 
@@ -14,7 +14,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import appeng.api.stacks.GenericStack;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderMenu;
+import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
 
 /**
  * 框架样板编码 GUI 的「服务端 → 客户端」数据同步负载。
@@ -23,7 +23,7 @@ import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderM
  * 而 AE2 的 @GuiSync 注解只支持定长字段，因此用自定义负载推送。
  * 客户端按 containerId 校验后写入菜单字段（updateFromServer）。
  */
-public record FramePatternEncoderUpdatePayload(
+public record CustomPatternEncoderUpdatePayload(
         int containerId,
         List<GenericStack> sparseInputs,
         int[] slotMapping,
@@ -31,8 +31,8 @@ public record FramePatternEncoderUpdatePayload(
         boolean overflowStacks
 ) implements CustomPacketPayload {
 
-    public static final Type<FramePatternEncoderUpdatePayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "frame_pattern_encoder_update")
+    public static final Type<CustomPatternEncoderUpdatePayload> TYPE = new Type<>(
+            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "custom_pattern_encoder_update")
     );
 
     private static final StreamCodec<ByteBuf, int[]> INT_ARRAY_STREAM_CODEC = ByteBufCodecs.INT
@@ -46,25 +46,25 @@ public record FramePatternEncoderUpdatePayload(
                         return list;
                     });
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, FramePatternEncoderUpdatePayload> STREAM_CODEC =
+    public static final StreamCodec<RegistryFriendlyByteBuf, CustomPatternEncoderUpdatePayload> STREAM_CODEC =
             StreamCodec.composite(
                     ByteBufCodecs.VAR_INT,
-                    FramePatternEncoderUpdatePayload::containerId,
+                    CustomPatternEncoderUpdatePayload::containerId,
                     GenericStack.STREAM_CODEC.apply(ByteBufCodecs.list()),
-                    FramePatternEncoderUpdatePayload::sparseInputs,
+                    CustomPatternEncoderUpdatePayload::sparseInputs,
                     INT_ARRAY_STREAM_CODEC,
-                    FramePatternEncoderUpdatePayload::slotMapping,
+                    CustomPatternEncoderUpdatePayload::slotMapping,
                     INT_ARRAY_STREAM_CODEC,
-                    FramePatternEncoderUpdatePayload::extractSlots,
+                    CustomPatternEncoderUpdatePayload::extractSlots,
                     ByteBufCodecs.BOOL,
-                    FramePatternEncoderUpdatePayload::overflowStacks,
-                    FramePatternEncoderUpdatePayload::new
+                    CustomPatternEncoderUpdatePayload::overflowStacks,
+                    CustomPatternEncoderUpdatePayload::new
             );
 
-    public static void handle(FramePatternEncoderUpdatePayload payload, IPayloadContext context) {
+    public static void handle(CustomPatternEncoderUpdatePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             var mc = Minecraft.getInstance();
-            if (mc.player != null && mc.player.containerMenu instanceof FramePatternEncoderMenu menu
+            if (mc.player != null && mc.player.containerMenu instanceof CustomPatternEncoderMenu menu
                     && menu.containerId == payload.containerId()) {
                 menu.updateFromServer(payload.sparseInputs(), payload.slotMapping(), payload.extractSlots(),
                         payload.overflowStacks());

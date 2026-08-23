@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.helpers.framepatternprovider;
+package git.chexson.chexsonsaeutils.helpers.custompatternprovider;
 
 import java.util.EnumSet;
 
@@ -22,10 +22,10 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
  * 框架样板供应器逻辑宿主接口。
  * <p>
  * 动机：AE2 的 {@code PatternProviderLogicHost} 的 {@code getLogic()} 返回 AE2 的
- * {@code PatternProviderLogic}，而本项目 fork 了 {@link FramePatternProviderLogic}（target 解析改为
+ * {@code PatternProviderLogic}，而本项目 fork 了 {@link CustomPatternProviderLogic}（target 解析改为
  * 私有维度机器），返回类型不同，无法直接实现 AE2 接口，故平行定义本接口。
  * 阶段 2 继承改造（R2 评审确认）：本接口改为 extends AE2 {@link PatternProviderLogicHost}，
- * {@link #getLogic()} 协变返回 {@link FramePatternProviderLogic}（其 extends
+ * {@link #getLogic()} 协变返回 {@link CustomPatternProviderLogic}（其 extends
  * PatternProviderLogic），使宿主类型与 AE2 接口兼容（阶段 3 GUI 复用铺路）。
  * 父接口的默认方法（getConfigManager/getPriority/setPriority/getGrid/isVisibleInTerminal/
  * getTerminalPatternInventory/getTerminalSortOrder/getTerminalGroup）均委托 getLogic()，
@@ -41,7 +41,7 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
  * 逻辑层委托无参 getMachineItemHandler/getMachineEnergyHandler）；非空 = 多方向
  * 模式（新方块语义，逻辑层遍历方向取第一个可用 handler）。
  */
-public interface FramePatternProviderLogicHost extends PatternProviderLogicHost {
+public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost {
 
     /**
      * 空 ITEM handler：机器缺失或客户端查询时的兜底实现（避免外部管道 NPE）。
@@ -80,11 +80,11 @@ public interface FramePatternProviderLogicHost extends PatternProviderLogicHost 
     };
 
     /**
-     * @return 本框架的样板供应逻辑实例（协变返回：FramePatternProviderLogic extends
+     * @return 本框架的样板供应逻辑实例（协变返回：CustomPatternProviderLogic extends
      *         PatternProviderLogic，满足父接口签名）
      */
     @Override
-    FramePatternProviderLogic getLogic();
+    CustomPatternProviderLogic getLogic();
 
     /**
      * @return 世界中的宿主方块实体
@@ -151,10 +151,10 @@ public interface FramePatternProviderLogicHost extends PatternProviderLogicHost 
         /** 每页样板槽数量（与 FramePatternProviderBlockEntity/CustomPatternProviderPart 常量一致）。 */
         private static final int PATTERN_SLOTS_PER_PAGE = 36;
 
-        private final FramePatternProviderLogicHost host;
+        private final CustomPatternProviderLogicHost host;
         private final InternalInventory delegate;
 
-        PageLimitedPatternInventory(FramePatternProviderLogicHost host, InternalInventory delegate) {
+        PageLimitedPatternInventory(CustomPatternProviderLogicHost host, InternalInventory delegate) {
             this.host = host;
             this.delegate = delegate;
         }
@@ -204,7 +204,7 @@ public interface FramePatternProviderLogicHost extends PatternProviderLogicHost 
      * 设置已解锁样板页数（需求 5 扩容 GUI 用，宿主 setPages 持久化）。
      * <p>
      * 默认抛异常（Fail Fast）：不覆写的宿主不支持扩容；扩容 GUI 打开时
-     * {@link git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator}
+     * {@link git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeLocator}
      * 已校验宿主类型，实际不会走到默认实现。
      *
      * @param pages 目标页数（宿主自行 clamp 到 [1, maxFramePatternPages()]）

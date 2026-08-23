@@ -168,7 +168,7 @@ public class CustomPatternProviderBlock extends AEBaseEntityBlock<CustomPatternP
             if (drop.getItem() instanceof BlockItem blockItem && blockItem.getBlock() == this) {
                 if (params.getOptionalParameter(LootContextParams.BLOCK_ENTITY)
                         instanceof CustomPatternProviderBlockEntity blockEntity) {
-                    drop.set(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), blockEntity.getPages());
+                    drop.set(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), blockEntity.getPages());
                 }
                 break;
             }

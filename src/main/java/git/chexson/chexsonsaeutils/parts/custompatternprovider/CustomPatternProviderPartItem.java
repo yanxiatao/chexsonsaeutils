@@ -5,16 +5,16 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.api.implementations.items.IStorageComponent;
 import appeng.items.parts.PartItem;
-import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternExpandableItem;
+import git.chexson.chexsonsaeutils.item.custompatternprovider.CustomPatternExpandableItem;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
  * 定制样板供应器面板物品（阶段 3 I1 修复）。
  * <p>
- * 泛型 PartItem 不实现 {@link FramePatternExpandableItem}，扩容 GUI 存储槽
- * （{@link git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeHost}
+ * 泛型 PartItem 不实现 {@link CustomPatternExpandableItem}，扩容 GUI 存储槽
+ * （{@link git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeHost}
  * 槽 0 的 instanceof 过滤）拒绝放入，面板页数恒 1、翻页按钮恒隐藏。本类实现
- * {@link IStorageComponent} 与 {@link FramePatternExpandableItem} 标记接口
+ * {@link IStorageComponent} 与 {@link CustomPatternExpandableItem} 标记接口
  * （与方块版
  * {@link git.chexson.chexsonsaeutils.item.custompatternprovider.CustomPatternProviderItem}
  * 同一套共享扩容逻辑），使面板物品可放入扩容 GUI 存储槽并参与扩容。
@@ -27,7 +27,7 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * importSettings/exportSettings DISMANTLE_ITEM 分支完成（见该类的 initPagesFromStack）。
  */
 public class CustomPatternProviderPartItem extends PartItem<CustomPatternProviderPart>
-        implements IStorageComponent, FramePatternExpandableItem {
+        implements IStorageComponent, CustomPatternExpandableItem {
 
     /** 每页样板容量对应的字节数（"容量表示页数"语义，与方块版 BYTES_PER_PAGE 一致）。 */
     private static final int BYTES_PER_PAGE = 1024;
@@ -51,7 +51,7 @@ public class CustomPatternProviderPartItem extends PartItem<CustomPatternProvide
      */
     @Override
     public int getBytes(ItemStack stack) {
-        int pages = Math.max(1, stack.getOrDefault(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), 1));
+        int pages = Math.max(1, stack.getOrDefault(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), 1));
         return pages * BYTES_PER_PAGE;
     }
 }

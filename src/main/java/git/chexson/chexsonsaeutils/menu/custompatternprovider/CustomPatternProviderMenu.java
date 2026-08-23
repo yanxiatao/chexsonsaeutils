@@ -15,20 +15,20 @@ import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.implementations.PatternProviderMenu;
 import appeng.menu.slot.AppEngSlot;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.CustomPatternProviderHost;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
-import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderMenu;
-import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
-import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternItem;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
+import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigLocator;
+import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
+import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeLocator;
+import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeMenu;
 import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
 
 /**
  * 定制样板供应器菜单（阶段 3：继承 AE2 原版 PatternProviderMenu）。
  * <p>
  * 泛型动机：框架版菜单直接绑定 {@link FramePatternProviderBlockEntity}，本类改为绑定
- * {@link FramePatternProviderLogicHost} + {@link appeng.api.upgrades.IUpgradeableObject}
+ * {@link CustomPatternProviderLogicHost} + {@link appeng.api.upgrades.IUpgradeableObject}
  * 双边界——框架与定制两个 BE 都满足，菜单逻辑（槽位/翻页/配置/扩容）完全共享，
  * 未来第三种宿主无需再复制菜单。
  * <p>
@@ -41,13 +41,13 @@ import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProv
  * 需求 5 阶段 5b）、输入过滤（toggle_filtered_import，需求 6a）。
  * <p>
  * MenuType 说明：MenuTypeBuilder 的 hostClass 用共享接口
- * {@link CustomPatternProviderHost}（extends FramePatternProviderLogicHost &
+ * {@link CustomPatternProviderHost}（extends CustomPatternProviderLogicHost &
  * IUpgradeableObject）——泛型 T 的双边界使两个接口的交集无法作为 Class 字面量，
  * 单个接口字面又无法通过构造器引用推断（javac 实验确认 T := 接口不满足
  * IUpgradeableObject 边界），共享接口同时满足双边界，且 MenuOpener 打开时
  * 对方块（BlockEntityLocator）与面板（PartLocator）的 host 解析都通过 instanceof 校验。
  */
-public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost & appeng.api.upgrades.IUpgradeableObject>
+public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost & appeng.api.upgrades.IUpgradeableObject>
         extends PatternProviderMenu {
 
     public static final MenuType<CustomPatternProviderMenu<?>> TYPE = MenuTypeBuilder
@@ -265,13 +265,13 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
         if (getHost() instanceof CustomPatternProviderPart part) {
             partSide = part.getSide();
         }
-        MenuOpener.open(FramePatternUpgradeMenu.TYPE, getPlayer(),
-                new FramePatternUpgradeLocator(blockEntity.getBlockPos(), getPlayer().level().dimension(), partSide));
+        MenuOpener.open(CustomPatternUpgradeMenu.TYPE, getPlayer(),
+                new CustomPatternUpgradeLocator(blockEntity.getBlockPos(), getPlayer().level().dimension(), partSide));
     }
 
     /**
      * 服务端入口：配置模式下点击某槽位，若槽内是 AE2 处理样板或框架样板则打开编码 GUI
-     * （携带供应器位置 + 样板槽序号，直接编辑原样板，见 {@link FramePatternConfigLocator}）。
+     * （携带供应器位置 + 样板槽序号，直接编辑原样板，见 {@link CustomPatternConfigLocator}）。
      */
     private void openConfigForSlot(int slotIndex) {
         if (!isServerSide() || !configMode) {
@@ -289,11 +289,11 @@ public class CustomPatternProviderMenu<T extends FramePatternProviderLogicHost &
         var stack = slot.getItem();
         // 定制供应器接受两类样板：AE2 处理样板与框架样板（4b 需求扩展）
         if (stack.getItem() != AEItems.PROCESSING_PATTERN.asItem()
-                && !(stack.getItem() instanceof FramePatternItem)) {
+                && !(stack.getItem() instanceof CustomPatternItem)) {
             return;
         }
-        MenuOpener.open(FramePatternEncoderMenu.TYPE, getPlayer(),
-                new FramePatternConfigLocator(getHost().getBlockEntity().getBlockPos(),
+        MenuOpener.open(CustomPatternEncoderMenu.TYPE, getPlayer(),
+                new CustomPatternConfigLocator(getHost().getBlockEntity().getBlockPos(),
                         getHost().getBlockEntity().getLevel().dimension(), slot.getSlotIndex(), true));
     }
 

@@ -15,7 +15,7 @@ import com.glodblock.github.appflux.common.me.key.FluxKey;
 import com.glodblock.github.appflux.common.me.key.type.EnergyType;
 import com.glodblock.github.appflux.config.AFConfig;
 import com.glodblock.github.appflux.util.AFUtil;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
 
 /**
@@ -37,11 +37,11 @@ import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
  */
 public class AppFluxEnergyInjectorImpl implements FrameEnergyInjector {
 
-    private final FramePatternProviderLogicHost host;
+    private final CustomPatternProviderLogicHost host;
     private final IManagedGridNode mainNode;
     private final IActionSource actionSource;
 
-    private AppFluxEnergyInjectorImpl(FramePatternProviderLogicHost host, IManagedGridNode mainNode,
+    private AppFluxEnergyInjectorImpl(CustomPatternProviderLogicHost host, IManagedGridNode mainNode,
             IActionSource actionSource) {
         this.host = host;
         this.mainNode = mainNode;
@@ -57,7 +57,7 @@ public class AppFluxEnergyInjectorImpl implements FrameEnergyInjector {
      * @return 注入器实例；appflux 未加载时返回 null
      */
     @Nullable
-    public static FrameEnergyInjector create(FramePatternProviderLogicHost host, IManagedGridNode mainNode,
+    public static FrameEnergyInjector create(CustomPatternProviderLogicHost host, IManagedGridNode mainNode,
             IActionSource actionSource) {
         if (!ModList.get().isLoaded("appflux")) {
             return null;
@@ -67,7 +67,7 @@ public class AppFluxEnergyInjectorImpl implements FrameEnergyInjector {
 
     @Override
     public boolean isInstalled() {
-        // 升级库存经 IUpgradeableObject 访问：FramePatternProviderLogicHost 不声明
+        // 升级库存经 IUpgradeableObject 访问：CustomPatternProviderLogicHost 不声明
         // getUpgrades()（泛型菜单双边界 T extends Host & IUpgradeableObject 要求两接口
         // 无同签名方法冲突），所有宿主均实现 IUpgradeableObject，cast 运行时安全
         return ((IUpgradeableObject) host).getUpgrades().isInstalled(AFSingletons.INDUCTION_CARD);

@@ -1,18 +1,18 @@
-package git.chexson.chexsonsaeutils.menu.framepatternupgrade;
+package git.chexson.chexsonsaeutils.menu.custompatternupgrade;
 
 import net.minecraft.world.item.ItemStack;
 
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
-import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu.InventoryChangedHandler;
+import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeMenu.InventoryChangedHandler;
 
 /**
  * 扩容 GUI 的菜单宿主（MenuHost）。
  * <p>
  * 动机：扩容 GUI 直接作用于打开它的供应器（方块实体或面板），宿主持有
- * {@link FramePatternProviderLogicHost} 引用（由 {@link FramePatternUpgradeLocator}
+ * {@link CustomPatternProviderLogicHost} 引用（由 {@link CustomPatternUpgradeLocator}
  * 在打开菜单时解析），页数读写直接委托宿主（setPages 持久化）。
  * 会话库存仅 1 槽：输入槽（仅 ExtendedAE 扩展样板供应器物品，过滤器在库存层实现——
  * AppEngSlot.mayPlace 委托 inventory.isItemValid）。宿主由 locator 构造，
@@ -20,7 +20,7 @@ import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeM
  * <p>
  * 变更转发：库存变更经 onChangeInventory 转发到服务端 Menu 逻辑（重算可扩容状态）。
  */
-public class FramePatternUpgradeHost implements InternalInventoryHost {
+public class CustomPatternUpgradeHost implements InternalInventoryHost {
 
     /** 槽 0 = ExtendedAE 扩展样板供应器（输入槽）。 */
     private final AppEngInternalInventory inventory = new AppEngInternalInventory(this, 1) {
@@ -34,10 +34,10 @@ public class FramePatternUpgradeHost implements InternalInventoryHost {
             return ExtendedAeCompat.isExPatternProvider(stack);
         }
     };
-    private final FramePatternProviderLogicHost pageHolder;
+    private final CustomPatternProviderLogicHost pageHolder;
     private InventoryChangedHandler invChangeHandler;
 
-    public FramePatternUpgradeHost(FramePatternProviderLogicHost pageHolder) {
+    public CustomPatternUpgradeHost(CustomPatternProviderLogicHost pageHolder) {
         this.pageHolder = pageHolder;
     }
 
@@ -48,7 +48,7 @@ public class FramePatternUpgradeHost implements InternalInventoryHost {
     /**
      * @return 扩容目标宿主（方块实体或面板，页数读写委托对象）
      */
-    public FramePatternProviderLogicHost getPageHolder() {
+    public CustomPatternProviderLogicHost getPageHolder() {
         return this.pageHolder;
     }
 
@@ -70,7 +70,7 @@ public class FramePatternUpgradeHost implements InternalInventoryHost {
 
     @Override
     public boolean isClientSide() {
-        // 与 FramePatternConfigHost 同设计：客户端副本的库存变更不允许产生服务端行为，
+        // 与 CustomPatternConfigHost 同设计：客户端副本的库存变更不允许产生服务端行为，
         // AppEngInternalInventory 仅在 false 时走保存/通知路径，保持 false 最符合设计意图。
         return false;
     }

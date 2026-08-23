@@ -10,7 +10,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue CRAFTING_CONTINUATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED;
     public static final ModConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
-    public static final ModConfigSpec.IntValue MAX_FRAME_PATTERN_PAGES;
+    public static final ModConfigSpec.IntValue MAX_CUSTOM_PATTERN_PAGES;
     public static final ModConfigSpec.BooleanValue DYEABLE_PATTERNS_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT;
     public static final ModConfigSpec.BooleanValue ENHANCED_CRAFTING_STATUS_ENABLED;
@@ -53,7 +53,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.processingPatternReplacementEnabled")
                 .define("processingPatternReplacementEnabled", true);
-        MAX_FRAME_PATTERN_PAGES = builder
+        MAX_CUSTOM_PATTERN_PAGES = builder
                 .comment("Maximum pattern pages of the frame pattern provider.",
                         "Each page holds 36 pattern slots; the pattern inventory capacity is pages * 36.",
                         "Extending pages is unlocked by consuming items (phase 5b), and expanded pages are",
@@ -203,6 +203,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
      *         方法移至此处，框架样板供应器与定制样板供应器共用
      */
     public static int maxFramePatternPages() {
-        return MAX_FRAME_PATTERN_PAGES.get();
+        return MAX_CUSTOM_PATTERN_PAGES.get();
     }
 }

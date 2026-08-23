@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.menu.framepatternconfig;
+package git.chexson.chexsonsaeutils.menu.custompatternconfig;
 
 import java.util.List;
 
@@ -11,9 +11,9 @@ import appeng.api.stacks.GenericStack;
  * 框架样板配置转换器（接口）。
  * <p>
  * 动机：配置 GUI 的核心行为是「处理样板 → 框架样板」的转换，该逻辑与
- * 菜单/屏幕解耦，便于独立测试与复用。实现见 {@link FramePatternConfigConverterImpl}。
+ * 菜单/屏幕解耦，便于独立测试与复用。实现见 {@link CustomPatternConfigConverterImpl}。
  */
-public interface FramePatternConfigConverter {
+public interface CustomPatternConfigConverter {
 
     /**
      * 解码输入处理样板的稀疏输入列表。

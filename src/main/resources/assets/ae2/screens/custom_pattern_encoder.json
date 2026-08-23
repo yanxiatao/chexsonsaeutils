@@ -67,7 +67,7 @@
     },
     "slot_hint": {
       "text": {
-        "translate": "gui.chexsonsaeutils.frame_pattern_encoder.slot_hint"
+        "translate": "gui.chexsonsaeutils.custom_pattern_encoder.slot_hint"
       },
       "position": {
         "left": 8,
@@ -76,7 +76,7 @@
     },
     "extract_slots_label": {
       "text": {
-        "translate": "gui.chexsonsaeutils.frame_pattern_encoder.extract_slots"
+        "translate": "gui.chexsonsaeutils.custom_pattern_encoder.extract_slots"
       },
       "position": {
         "left": 8,

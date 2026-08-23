@@ -28,18 +28,18 @@ import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterR
 import git.chexson.chexsonsaeutils.client.gui.implementations.ParallelCraftingCPUScreen;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMockRecipe;
-import git.chexson.chexsonsaeutils.crafting.framepattern.EncodedFramePattern;
-import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
+import git.chexson.chexsonsaeutils.crafting.custompattern.EncodedCustomPattern;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternItem;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
-import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderMenu;
-import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeMenu;
-import git.chexson.chexsonsaeutils.client.gui.framepatternencoder.FramePatternEncoderScreen;
-import git.chexson.chexsonsaeutils.client.gui.framepatternupgrade.FramePatternUpgradeScreen;
+import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
+import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeMenu;
+import git.chexson.chexsonsaeutils.client.gui.custompatternencoder.CustomPatternEncoderScreen;
+import git.chexson.chexsonsaeutils.client.gui.custompatternupgrade.CustomPatternUpgradeScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
@@ -124,17 +124,17 @@ public final class ChexsonsaeutilsContent {
     public static final Supplier<Item> CUSTOM_PATTERN_PROVIDER_PART_ITEM =
             ITEMS.register("custom_pattern_provider_part",
                     () -> new CustomPatternProviderPartItem(new Item.Properties()));
-    public static final Supplier<FramePatternItem> FRAME_PATTERN_ITEM =
-            ITEMS.register("frame_pattern", FramePatternItem::createItem);
-    public static final Supplier<DataComponentType<EncodedFramePattern>> ENCODED_FRAME_PATTERN =
-            DATA_COMPONENT_TYPES.register("encoded_frame_pattern",
-                    () -> DataComponentType.<EncodedFramePattern>builder()
-                            .persistent(EncodedFramePattern.CODEC)
-                            .networkSynchronized(EncodedFramePattern.STREAM_CODEC)
+    public static final Supplier<CustomPatternItem> CUSTOM_PATTERN_ITEM =
+            ITEMS.register("frame_pattern", CustomPatternItem::createItem);
+    public static final Supplier<DataComponentType<EncodedCustomPattern>> ENCODED_CUSTOM_PATTERN =
+            DATA_COMPONENT_TYPES.register("encoded_custom_pattern",
+                    () -> DataComponentType.<EncodedCustomPattern>builder()
+                            .persistent(EncodedCustomPattern.CODEC)
+                            .networkSynchronized(EncodedCustomPattern.STREAM_CODEC)
                             .build());
     /** 框架样板供应器的已扩展样板页数（拆除保留闭环：BE NBT → 掉落物品组件 → 放置/捕获读回）。 */
-    public static final Supplier<DataComponentType<Integer>> FRAME_PATTERN_PAGES =
-            DATA_COMPONENT_TYPES.register("frame_pattern_pages",
+    public static final Supplier<DataComponentType<Integer>> CUSTOM_PATTERN_PAGES =
+            DATA_COMPONENT_TYPES.register("custom_pattern_pages",
                     () -> DataComponentType.<Integer>builder()
                             .persistent(Codec.INT)
                             .networkSynchronized(ByteBufCodecs.VAR_INT)
@@ -194,10 +194,10 @@ public final class ChexsonsaeutilsContent {
             MENU_TYPES.register("ae2_parallel_cpu_tool_cpu", () -> ParallelCraftingCPUMenu.TYPE);
     public static final Supplier<MenuType<CustomPatternProviderMenu<?>>> CUSTOM_PATTERN_PROVIDER_MENU =
             MENU_TYPES.register("custom_pattern_provider", () -> CustomPatternProviderMenu.TYPE);
-    public static final Supplier<MenuType<FramePatternEncoderMenu>> FRAME_PATTERN_ENCODER_MENU =
-            MENU_TYPES.register("frame_pattern_encoder", () -> FramePatternEncoderMenu.TYPE);
-    public static final Supplier<MenuType<FramePatternUpgradeMenu>> FRAME_PATTERN_UPGRADE_MENU =
-            MENU_TYPES.register("frame_pattern_upgrade", () -> FramePatternUpgradeMenu.TYPE);
+    public static final Supplier<MenuType<CustomPatternEncoderMenu>> CUSTOM_PATTERN_ENCODER_MENU =
+            MENU_TYPES.register("custom_pattern_encoder", () -> CustomPatternEncoderMenu.TYPE);
+    public static final Supplier<MenuType<CustomPatternUpgradeMenu>> CUSTOM_PATTERN_UPGRADE_MENU =
+            MENU_TYPES.register("custom_pattern_upgrade", () -> CustomPatternUpgradeMenu.TYPE);
     public static final Supplier<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> MULTI_LEVEL_EMITTER_MENU =
             MENU_TYPES.register(
                     MultiLevelEmitterMenu.registrationKey(),
@@ -213,7 +213,7 @@ public final class ChexsonsaeutilsContent {
                         output.accept(HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get());
                         output.accept(AE_DIRECT_PROCESSING_MACHINE_ITEM.get());
                         output.accept(AE2_PARALLEL_CPU_TOOL_ITEM.get());
-                        output.accept(FRAME_PATTERN_ITEM.get());
+                        output.accept(CUSTOM_PATTERN_ITEM.get());
                         output.accept(CUSTOM_PATTERN_PROVIDER_ITEM.get());
                         output.accept(CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
                         output.accept(INFINITY_CELL_ITEM.get());
@@ -317,8 +317,8 @@ public final class ChexsonsaeutilsContent {
                 )
         );
         event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new);
-        event.register(FRAME_PATTERN_ENCODER_MENU.get(), FramePatternEncoderScreen::new);
-        event.register(FRAME_PATTERN_UPGRADE_MENU.get(), FramePatternUpgradeScreen::new);
+        event.register(CUSTOM_PATTERN_ENCODER_MENU.get(), CustomPatternEncoderScreen::new);
+        event.register(CUSTOM_PATTERN_UPGRADE_MENU.get(), CustomPatternUpgradeScreen::new);
         event.register(CUSTOM_PATTERN_PROVIDER_MENU.get(), CustomPatternProviderScreen::new);
     }
 

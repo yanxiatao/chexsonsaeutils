@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.menu.framepatternconfig;
+package git.chexson.chexsonsaeutils.menu.custompatternconfig;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -18,10 +18,10 @@ import appeng.menu.locator.MenuLocators;
  * 样板槽序号（patternSlotIndex）。网络序列化通过
  * {@link MenuLocators#register} 注册（类名 + 读写器），位置用
  * FriendlyByteBuf 的 writeBlockPos/writeResourceKey 读写（与
- * {@link git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator}
+ * {@link git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeLocator}
  * 一致）。注册时机：Chexsonsaeutils 主类构造器。
  */
-public class FramePatternConfigLocator implements MenuHostLocator {
+public class CustomPatternConfigLocator implements MenuHostLocator {
 
     private final BlockPos pos;
     private final ResourceKey<Level> dimension;
@@ -40,7 +40,7 @@ public class FramePatternConfigLocator implements MenuHostLocator {
      * @param patternSlotIndex 供应器样板槽序号（patternInventory 内索引）
      * @param fromCustomProvider 来源供应器类型（true = 定制样板供应器）
      */
-    public FramePatternConfigLocator(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex,
+    public CustomPatternConfigLocator(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex,
             boolean fromCustomProvider) {
         this.pos = pos;
         this.dimension = dimension;
@@ -50,24 +50,24 @@ public class FramePatternConfigLocator implements MenuHostLocator {
 
     @Override
     public <T> T locate(Player player, Class<T> hostInterface) {
-        if (hostInterface != FramePatternConfigHost.class) {
+        if (hostInterface != CustomPatternConfigHost.class) {
             return null;
         }
         // 宿主缺失（方块被拆）时由 Host 内部延迟定位处理（getProvider 返回 null，
         // 菜单逻辑 Fail Fast），locate 本身只负责构造宿主
-        return hostInterface.cast(new FramePatternConfigHost(this.pos, this.dimension, this.patternSlotIndex,
+        return hostInterface.cast(new CustomPatternConfigHost(this.pos, this.dimension, this.patternSlotIndex,
                 this.fromCustomProvider));
     }
 
-    public static void writeToPacket(FramePatternConfigLocator locator, FriendlyByteBuf buf) {
+    public static void writeToPacket(CustomPatternConfigLocator locator, FriendlyByteBuf buf) {
         buf.writeBlockPos(locator.pos);
         buf.writeResourceKey(locator.dimension);
         buf.writeInt(locator.patternSlotIndex);
         buf.writeBoolean(locator.fromCustomProvider);
     }
 
-    public static FramePatternConfigLocator readFromPacket(FriendlyByteBuf buf) {
-        return new FramePatternConfigLocator(
+    public static CustomPatternConfigLocator readFromPacket(FriendlyByteBuf buf) {
+        return new CustomPatternConfigLocator(
                 buf.readBlockPos(),
                 buf.readResourceKey(Registries.DIMENSION),
                 buf.readInt(),
@@ -79,14 +79,14 @@ public class FramePatternConfigLocator implements MenuHostLocator {
      */
     public static void register() {
         MenuLocators.register(
-                FramePatternConfigLocator.class,
-                FramePatternConfigLocator::writeToPacket,
-                FramePatternConfigLocator::readFromPacket);
+                CustomPatternConfigLocator.class,
+                CustomPatternConfigLocator::writeToPacket,
+                CustomPatternConfigLocator::readFromPacket);
     }
 
     @Override
     public String toString() {
-        return "FramePatternConfigLocator[" + this.dimension + " " + this.pos
+        return "CustomPatternConfigLocator[" + this.dimension + " " + this.pos
                 + " slot=" + this.patternSlotIndex + "]";
     }
 }

@@ -6,7 +6,7 @@ import com.extendedae_plus.bridge.InterfaceWirelessLinkBridge;
 /**
  * EAP 无线链接桥接辅助类（类加载隔离）。
  * <p>
- * 动机（崩溃修复）：{@code FramePatternProviderLogic$Ticker.tickingRequest} 是每 tick
+ * 动机（崩溃修复）：{@code CustomPatternProviderLogic$Ticker.tickingRequest} 是每 tick
  * 调用的热路径。若该方法字节码直接引用 EAP 接口类
  * （{@code instanceof InterfaceWirelessLinkBridge}），JVM JIT 编译该方法时解析常量池
  * 类引用——EAP 未加载时接口类不存在，即使 ModLoaded 门控短路（只防解释执行），

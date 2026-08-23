@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.menu.framepatternencoder;
+package git.chexson.chexsonsaeutils.menu.custompatternencoder;
 
 import java.util.Arrays;
 import java.util.List;
@@ -20,11 +20,11 @@ import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.implementations.MenuTypeBuilder;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.crafting.framepattern.FrameProcessingPattern;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigConverter;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigConverterImpl;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigHost;
-import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternEncoderUpdatePayload;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
+import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigConverter;
+import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigConverterImpl;
+import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigHost;
+import git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternEncoderUpdatePayload;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
@@ -36,17 +36,17 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * 处理样板原地转换为框架样板（setItemDirect 替换 + updatePatterns 刷新），
  * 关闭即生效。
  * <p>
- * 数据流：客户端槽位输入经 {@code FramePatternSlotChangePacket} 到达 update()，
+ * 数据流：客户端槽位输入经 {@code CustomPatternSlotChangePacket} 到达 update()，
  * 抽取槽位经 set_extract_slots 客户端动作到达 setExtractSlotsFromClient；
- * 两者都写回供应器样板槽并回推 {@code FramePatternEncoderUpdatePayload} 回显。
+ * 两者都写回供应器样板槽并回推 {@code CustomPatternEncoderUpdatePayload} 回显。
  */
-public class FramePatternEncoderMenu extends AEBaseMenu {
+public class CustomPatternEncoderMenu extends AEBaseMenu {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(FramePatternEncoderMenu.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(CustomPatternEncoderMenu.class);
 
-    public static final MenuType<FramePatternEncoderMenu> TYPE = MenuTypeBuilder
-            .create(FramePatternEncoderMenu::new, FramePatternConfigHost.class)
-            .buildUnregistered(ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "frame_pattern_encoder"));
+    public static final MenuType<CustomPatternEncoderMenu> TYPE = MenuTypeBuilder
+            .create(CustomPatternEncoderMenu::new, CustomPatternConfigHost.class)
+            .buildUnregistered(ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "custom_pattern_encoder"));
 
     /**
      * 输入展示槽语义组：虚拟只读槽（InaccessibleSlot）用于在编码界面左侧渲染当前
@@ -59,8 +59,8 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
     /** 输入展示槽数量（与 Screen 的 VISIBLE_ROWS 一致：可见 2 行 + 滚动翻页）。 */
     public static final int DISPLAY_SLOT_COUNT = 2;
 
-    private final FramePatternConfigHost host;
-    private final FramePatternConfigConverter converter = new FramePatternConfigConverterImpl();
+    private final CustomPatternConfigHost host;
+    private final CustomPatternConfigConverter converter = new CustomPatternConfigConverterImpl();
 
     /** 机器槽位上限（9x9 = 81 槽，编号 0-80，-1 = 未指定）。 */
     private static final int MAX_MACHINE_SLOT = 80;
@@ -91,7 +91,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
     private final appeng.util.inv.AppEngInternalInventory displayInv =
             new appeng.util.inv.AppEngInternalInventory(DISPLAY_SLOT_COUNT);
 
-    public FramePatternEncoderMenu(int id, Inventory playerInventory, FramePatternConfigHost host) {
+    public CustomPatternEncoderMenu(int id, Inventory playerInventory, CustomPatternConfigHost host) {
         // AEBaseMenu 要求宿主为 BlockEntity/IPart/ItemMenuHost，此菜单宿主为瞬态对象，
         // 传 null 绕过校验（本菜单不使用 IActionHost 功能）。
         super(TYPE, id, playerInventory, null);
@@ -162,7 +162,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
             // 处理样板尚无突破开关配置，重置为默认关闭
             this.host.setOverflowStacks(false);
             sendUpdate();
-        } else if (details instanceof FrameProcessingPattern framePattern) {
+        } else if (details instanceof CustomProcessingPattern framePattern) {
             // 框架样板：显示组件内已有配置（原地编辑的当前状态）
             this.serverSparseInputs = framePattern.getSparseInputs();
             this.host.setSlotMapping(framePattern.getSlotMapping());
@@ -236,7 +236,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
         ItemStack newStack;
         if (details instanceof AEProcessingPattern) {
             // 处理样板 → 框架样板：convertFromProcessingPattern 生成携带
-            // ENCODED_FRAME_PATTERN 组件的 FramePatternItem（原地转换，无副本）
+            // ENCODED_CUSTOM_PATTERN 组件的 CustomPatternItem（原地转换，无副本）
             try {
                 newStack = this.converter.encodeFramePattern(
                         stack, this.host.getSlotMapping(), this.host.getExtractSlots(),
@@ -246,11 +246,11 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
                 resetState();
                 return;
             }
-        } else if (details instanceof FrameProcessingPattern framePattern) {
+        } else if (details instanceof CustomProcessingPattern framePattern) {
             // 框架样板：按当前映射/抽取槽位重编码组件
-            newStack = new ItemStack(ChexsonsaeutilsContent.FRAME_PATTERN_ITEM.get());
+            newStack = new ItemStack(ChexsonsaeutilsContent.CUSTOM_PATTERN_ITEM.get());
             try {
-                FrameProcessingPattern.encode(newStack, framePattern.getSparseInputs(),
+                CustomProcessingPattern.encode(newStack, framePattern.getSparseInputs(),
                         framePattern.getSparseOutputs(), this.host.getSlotMapping(),
                         this.host.getExtractSlots(), this.host.getOverflowStacks());
             } catch (IllegalArgumentException e) {
@@ -273,7 +273,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
         if (getPlayer() instanceof ServerPlayer serverPlayer) {
             // 服务端展示槽随数据更新回填（scroll=0 初始页），经容器同步推送到客户端
             refreshDisplaySlots(0);
-            PacketDistributor.sendToPlayer(serverPlayer, new FramePatternEncoderUpdatePayload(
+            PacketDistributor.sendToPlayer(serverPlayer, new CustomPatternEncoderUpdatePayload(
                     containerId,
                     this.serverSparseInputs,
                     this.host.getSlotMapping(),
@@ -317,7 +317,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
     }
 
     /**
-     * 服务端入口（FramePatternSlotChangePacket 到达）：把某个稀疏输入映射到机器槽位，
+     * 服务端入口（CustomPatternSlotChangePacket 到达）：把某个稀疏输入映射到机器槽位，
      * 写回供应器原样板并回推客户端。
      */
     public void update(AEKey key, int slot) {
@@ -337,7 +337,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
             sparse = processingPattern.getSparseInputs();
             mapping = new int[sparse.size()];
             Arrays.fill(mapping, -1);
-        } else if (details instanceof FrameProcessingPattern framePattern) {
+        } else if (details instanceof CustomProcessingPattern framePattern) {
             sparse = framePattern.getSparseInputs();
             // clone：不直接修改输出槽物品组件内的数组引用
             mapping = framePattern.getSlotMapping().clone();
@@ -349,7 +349,7 @@ public class FramePatternEncoderMenu extends AEBaseMenu {
             return;
         }
         // key 匹配依赖 AE2 编码时 condense 去重：处理样板稀疏输入无重复 key，
-        // 首个匹配即唯一对应（FrameProcessingPattern 的稀疏输入继承自处理样板）
+        // 首个匹配即唯一对应（CustomProcessingPattern 的稀疏输入继承自处理样板）
         for (int i = 0; i < sparse.size(); i++) {
             var input = sparse.get(i);
             if (input != null && input.what().equals(key)) {

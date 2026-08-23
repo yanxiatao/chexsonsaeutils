@@ -14,7 +14,7 @@
   "text": {
     "dialog_title": {
       "text": {
-        "translate": "gui.chexsonsaeutils.frame_pattern_upgrade"
+        "translate": "gui.chexsonsaeutils.custom_pattern_upgrade"
       },
       "position": {
         "left": 8,

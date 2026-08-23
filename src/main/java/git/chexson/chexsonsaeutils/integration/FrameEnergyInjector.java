@@ -5,7 +5,7 @@ package git.chexson.chexsonsaeutils.integration;
  * <p>
  * 动机：appflux 是 compileOnly 依赖，运行时可能缺失——直接引用 appflux 类会导致
  * NoClassDefFoundError。本接口把「感应卡检测 + 灌电」抽象为独立行为，逻辑层
- * （FramePatternProviderLogic）只依赖本接口，appflux 引用全部集中在实现类中。
+ * （CustomPatternProviderLogic）只依赖本接口，appflux 引用全部集中在实现类中。
  * <p>
  * 成员作用：
  * <ul>

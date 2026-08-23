@@ -39,9 +39,9 @@ import appeng.menu.MenuOpener;
 import appeng.util.SettingsFrom;
 import git.chexson.chexsonsaeutils.block.custompatternprovider.CustomPatternProviderBlock;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.CustomPatternProviderHost;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogic;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogic;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
@@ -50,9 +50,9 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * <p>
  * 与框架样板供应器的差异：不包裹机器（无私有维度/隔离/搬移），机器即周围相邻方块——
  * 多方向模式由方块 PUSH_DIRECTION 属性决定推送方向集合（getTargets），逻辑层
- * {@link FramePatternProviderLogic#resolveMachineHandler()} 遍历方向取第一个可用机器。
+ * {@link CustomPatternProviderLogic#resolveMachineHandler()} 遍历方向取第一个可用机器。
  * 共享功能（定制样板/翻页/扩容/输入过滤/appflux 灌电/样板配置）全部继承自
- * {@link FramePatternProviderLogic} 与 {@link FramePatternProviderLogicHost}。
+ * {@link CustomPatternProviderLogic} 与 {@link CustomPatternProviderLogicHost}。
  * <p>
  * 网格节点：REQUIRE_CHANNEL；ICraftingProvider 与 IGridTickable 服务由 logic 构造时注册
  * （字段初始化先于构造器体，logic 注册的服务不会被本类覆盖）。
@@ -75,7 +75,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
      * 字段初始化创建（与 AE2 PatternProviderBlockEntity 一致）——网格节点在 onReady
      * 时才创建，logic 的 addService 必须在节点创建前生效。
      */
-    private final FramePatternProviderLogic logic = createLogic();
+    private final CustomPatternProviderLogic logic = createLogic();
 
     /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxFramePatternPages()]。 */
     private int pages = 1;
@@ -96,8 +96,8 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     /**
      * 创建样板供应逻辑：容量 = 配置的最大页数 x 每页 36 槽（固定，翻页只切换可见性）。
      */
-    protected FramePatternProviderLogic createLogic() {
-        return new FramePatternProviderLogic(this.getMainNode(), this,
+    protected CustomPatternProviderLogic createLogic() {
+        return new CustomPatternProviderLogic(this.getMainNode(), this,
                 ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages() * PATTERN_SLOTS_PER_PAGE);
     }
 
@@ -228,7 +228,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     @Override
     public IItemHandler getMachineItemHandler() {
         if (level == null || level.isClientSide()) {
-            return FramePatternProviderLogicHost.EMPTY_ITEM_HANDLER;
+            return CustomPatternProviderLogicHost.EMPTY_ITEM_HANDLER;
         }
         for (var direction : Direction.values()) {
             var handler = getMachineItemHandler(direction);
@@ -236,7 +236,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
                 return handler;
             }
         }
-        return FramePatternProviderLogicHost.EMPTY_ITEM_HANDLER;
+        return CustomPatternProviderLogicHost.EMPTY_ITEM_HANDLER;
     }
 
     /**
@@ -296,7 +296,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     @Override
-    public FramePatternProviderLogic getLogic() {
+    public CustomPatternProviderLogic getLogic() {
         return logic;
     }
 

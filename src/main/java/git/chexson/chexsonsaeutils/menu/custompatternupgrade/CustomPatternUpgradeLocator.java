@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.menu.framepatternupgrade;
+package git.chexson.chexsonsaeutils.menu.custompatternupgrade;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -11,7 +11,7 @@ import net.minecraft.world.level.Level;
 import appeng.api.parts.IPartHost;
 import appeng.menu.locator.MenuHostLocator;
 import appeng.menu.locator.MenuLocators;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
 
 /**
  * 扩容 GUI 的菜单定位器（MenuHostLocator 实现）。
@@ -21,16 +21,16 @@ import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProv
  * 面板方向（partSide）非空表示宿主是附着于线缆的
  * {@link git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart}
  * （经 IPartHost 解析），为空表示宿主是方块实体。
- * 注册时机：Chexsonsaeutils 主类构造器（与 {@link git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator}
+ * 注册时机：Chexsonsaeutils 主类构造器（与 {@link git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigLocator}
  * 一致）。
  */
-public class FramePatternUpgradeLocator implements MenuHostLocator {
+public class CustomPatternUpgradeLocator implements MenuHostLocator {
 
     private final BlockPos pos;
     private final ResourceKey<Level> dimension;
     private final Direction partSide;
 
-    public FramePatternUpgradeLocator(BlockPos pos, ResourceKey<Level> dimension, Direction partSide) {
+    public CustomPatternUpgradeLocator(BlockPos pos, ResourceKey<Level> dimension, Direction partSide) {
         this.pos = pos;
         this.dimension = dimension;
         this.partSide = partSide;
@@ -38,34 +38,34 @@ public class FramePatternUpgradeLocator implements MenuHostLocator {
 
     @Override
     public <T> T locate(Player player, Class<T> hostInterface) {
-        if (hostInterface != FramePatternUpgradeHost.class) {
+        if (hostInterface != CustomPatternUpgradeHost.class) {
             return null;
         }
         var blockEntity = player.level().getBlockEntity(this.pos);
-        FramePatternProviderLogicHost holder = null;
+        CustomPatternProviderLogicHost holder = null;
         if (this.partSide != null && blockEntity instanceof IPartHost partHost) {
             var part = partHost.getPart(this.partSide);
-            if (part instanceof FramePatternProviderLogicHost logicHost) {
+            if (part instanceof CustomPatternProviderLogicHost logicHost) {
                 holder = logicHost;
             }
-        } else if (blockEntity instanceof FramePatternProviderLogicHost logicHost) {
+        } else if (blockEntity instanceof CustomPatternProviderLogicHost logicHost) {
             holder = logicHost;
         }
         if (holder == null) {
             // 宿主缺失（方块被拆/面板被移除）：菜单无法打开，Fail Fast
             return null;
         }
-        return hostInterface.cast(new FramePatternUpgradeHost(holder));
+        return hostInterface.cast(new CustomPatternUpgradeHost(holder));
     }
 
-    public static void writeToPacket(FramePatternUpgradeLocator locator, FriendlyByteBuf buf) {
+    public static void writeToPacket(CustomPatternUpgradeLocator locator, FriendlyByteBuf buf) {
         buf.writeBlockPos(locator.pos);
         buf.writeResourceKey(locator.dimension);
         buf.writeNullable(locator.partSide, FriendlyByteBuf::writeEnum);
     }
 
-    public static FramePatternUpgradeLocator readFromPacket(FriendlyByteBuf buf) {
-        return new FramePatternUpgradeLocator(
+    public static CustomPatternUpgradeLocator readFromPacket(FriendlyByteBuf buf) {
+        return new CustomPatternUpgradeLocator(
                 buf.readBlockPos(),
                 buf.readResourceKey(Registries.DIMENSION),
                 buf.readNullable(b -> b.readEnum(Direction.class)));
@@ -76,14 +76,14 @@ public class FramePatternUpgradeLocator implements MenuHostLocator {
      */
     public static void register() {
         MenuLocators.register(
-                FramePatternUpgradeLocator.class,
-                FramePatternUpgradeLocator::writeToPacket,
-                FramePatternUpgradeLocator::readFromPacket);
+                CustomPatternUpgradeLocator.class,
+                CustomPatternUpgradeLocator::writeToPacket,
+                CustomPatternUpgradeLocator::readFromPacket);
     }
 
     @Override
     public String toString() {
-        return "FramePatternUpgradeLocator[" + this.dimension + " " + this.pos
+        return "CustomPatternUpgradeLocator[" + this.dimension + " " + this.pos
                 + (this.partSide != null ? " side=" + this.partSide : "") + "]";
     }
 }

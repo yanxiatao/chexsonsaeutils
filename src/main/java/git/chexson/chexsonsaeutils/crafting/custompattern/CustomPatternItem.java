@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.crafting.framepattern;
+package git.chexson.chexsonsaeutils.crafting.custompattern;
 
 import java.util.List;
 
@@ -23,26 +23,26 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * 框架样板物品（EncodedPatternItem 子类）。
  * <p>
  * 动机：AE2 的 EncodedPatternItem 提供样板解码、tooltip、shift 清除等通用行为，
- * 本类只需接入 FrameProcessingPattern 的 decoder 与无效样板 tooltip 策略。
+ * 本类只需接入 CustomProcessingPattern 的 decoder 与无效样板 tooltip 策略。
  * 转换 API（convertFromProcessingPattern）供 4b 阶段的 GUI 调用：把处理样板
  * 转换为携带槽位映射的框架样板。
  */
-public class FramePatternItem extends EncodedPatternItem<FrameProcessingPattern> {
+public class CustomPatternItem extends EncodedPatternItem<CustomProcessingPattern> {
 
-    public FramePatternItem(Properties properties) {
-        super(properties, new EncodedPatternDecoder<FrameProcessingPattern>() {
+    public CustomPatternItem(Properties properties) {
+        super(properties, new EncodedPatternDecoder<CustomProcessingPattern>() {
             @Override
-            public FrameProcessingPattern decode(AEItemKey what, Level level) {
-                return new FrameProcessingPattern(what);
+            public CustomProcessingPattern decode(AEItemKey what, Level level) {
+                return new CustomProcessingPattern(what);
             }
-        }, FrameProcessingPattern::getInvalidPatternTooltip);
+        }, CustomProcessingPattern::getInvalidPatternTooltip);
     }
 
     /**
      * 物品注册工厂（stacksTo(1)：样板不可堆叠，与 AE2 样板一致）。
      */
-    public static FramePatternItem createItem() {
-        return new FramePatternItem(new Item.Properties().stacksTo(1));
+    public static CustomPatternItem createItem() {
+        return new CustomPatternItem(new Item.Properties().stacksTo(1));
     }
 
     /**
@@ -72,8 +72,8 @@ public class FramePatternItem extends EncodedPatternItem<FrameProcessingPattern>
                     "slotMapping length %d does not match sparseInputs size %d"
                             .formatted(slotMapping.length, encoded.sparseInputs().size()));
         }
-        var stack = new ItemStack(ChexsonsaeutilsContent.FRAME_PATTERN_ITEM.get());
-        FrameProcessingPattern.encode(stack, encoded.sparseInputs(), encoded.sparseOutputs(), slotMapping,
+        var stack = new ItemStack(ChexsonsaeutilsContent.CUSTOM_PATTERN_ITEM.get());
+        CustomProcessingPattern.encode(stack, encoded.sparseInputs(), encoded.sparseOutputs(), slotMapping,
                 extractSlots, overflowStacks);
         return stack;
     }
@@ -95,7 +95,7 @@ public class FramePatternItem extends EncodedPatternItem<FrameProcessingPattern>
         }
         try {
             var details = PatternDetailsHelper.decodePattern(stack, clientLevel);
-            if (!(details instanceof FrameProcessingPattern framePattern)) {
+            if (!(details instanceof CustomProcessingPattern customPattern)) {
                 super.appendHoverText(stack, context, lines, flags);
                 return;
             }
@@ -125,18 +125,18 @@ public class FramePatternItem extends EncodedPatternItem<FrameProcessingPattern>
                 lines.add(Component.empty()
                         .append(first ? with : and)
                         .append(getTooltipEntryLine(input))
-                        .append(buildSlotSuffix(framePattern, input.what())));
+                        .append(buildSlotSuffix(customPattern, input.what())));
                 first = false;
             }
 
             // 主动抽取槽位配置行：仅在样板配置了抽取槽位时显示
-            if (framePattern.getExtractSlots().length > 0) {
+            if (customPattern.getExtractSlots().length > 0) {
                 lines.add(Component.empty()
                         .append(Component.translatable(
-                                "gui.chexsonsaeutils.frame_pattern.tooltip.active_extract")
+                                "gui.chexsonsaeutils.custom_pattern.tooltip.active_extract")
                                 .withStyle(ChatFormatting.GRAY))
                         .append(Component.literal(": ").withStyle(ChatFormatting.GRAY))
-                        .append(Component.literal(joinSlots(framePattern.getExtractSlots()))));
+                        .append(Component.literal(joinSlots(customPattern.getExtractSlots()))));
             }
         } catch (Exception e) {
             // 解码失败（引用缺失内容/组件损坏）：回退父类原逻辑展示基础信息
@@ -150,7 +150,7 @@ public class FramePatternItem extends EncodedPatternItem<FrameProcessingPattern>
      *
      * @return 形如 " (0)" / " (0,3)" 的后缀组件；无指定槽位时返回空组件
      */
-    private static Component buildSlotSuffix(FrameProcessingPattern pattern, AEKey key) {
+    private static Component buildSlotSuffix(CustomProcessingPattern pattern, AEKey key) {
         var sparseInputs = pattern.getSparseInputs();
         var slotMapping = pattern.getSlotMapping();
         StringBuilder sb = new StringBuilder();

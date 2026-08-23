@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.crafting.framepattern;
+package git.chexson.chexsonsaeutils.crafting.custompattern;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,13 +26,13 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * <p>
  * 动机：框架样板供应器需要把稀疏输入按 slotMapping 强制写入私有维度机器的指定槽位，
  * 并在完成后按 extractSlots 强制抽取输出。本类在 AEProcessingPattern 的稀疏输入/输出
- * 语义之上，额外暴露槽位映射与抽取槽位，供 FramePatternProviderLogic 的
+ * 语义之上，额外暴露槽位映射与抽取槽位，供 CustomPatternProviderLogic 的
  * pushFramePattern / pullFromMachine 使用。
  * <p>
  * 注意：AE2 的 AEPatternHelper 是 package-private，无法直接复用其 condenseStacks，
  * 此处自实现等价逻辑（LinkedHashMap 保序合并）。
  */
-public class FrameProcessingPattern implements IPatternDetails {
+public class CustomProcessingPattern implements IPatternDetails {
     public static final int MAX_INPUT_SLOTS = 9 * 9;
     public static final int MAX_OUTPUT_SLOTS = 3 * 9;
 
@@ -44,10 +44,10 @@ public class FrameProcessingPattern implements IPatternDetails {
     private final Input[] inputs;
     private final List<GenericStack> condensedOutputs;
 
-    public FrameProcessingPattern(AEItemKey definition) {
+    public CustomProcessingPattern(AEItemKey definition) {
         this.definition = definition;
 
-        var encodedPattern = definition.get(ChexsonsaeutilsContent.ENCODED_FRAME_PATTERN.get());
+        var encodedPattern = definition.get(ChexsonsaeutilsContent.ENCODED_CUSTOM_PATTERN.get());
         if (encodedPattern == null) {
             throw new IllegalArgumentException("Given item does not encode a frame pattern: " + definition);
         } else if (encodedPattern.containsMissingContent()) {
@@ -71,9 +71,9 @@ public class FrameProcessingPattern implements IPatternDetails {
     }
 
     /**
-     * 把框架样板数据写入物品的 ENCODED_FRAME_PATTERN 组件。
+     * 把框架样板数据写入物品的 ENCODED_CUSTOM_PATTERN 组件。
      *
-     * @param stack        目标物品（必须是 FramePatternItem）
+     * @param stack        目标物品（必须是 CustomPatternItem）
      * @param sparseInputs 稀疏输入列表（至少一个非 null）
      * @param sparseOutputs 稀疏输出列表（第一个必须非 null）
      * @param slotMapping  与 sparseInputs 对齐的槽位映射，-1 表示未指定
@@ -94,7 +94,7 @@ public class FrameProcessingPattern implements IPatternDetails {
                             .formatted(slotMapping.length, sparseInputs.size()));
         }
 
-        stack.set(ChexsonsaeutilsContent.ENCODED_FRAME_PATTERN.get(), new EncodedFramePattern(
+        stack.set(ChexsonsaeutilsContent.ENCODED_CUSTOM_PATTERN.get(), new EncodedCustomPattern(
                 sparseInputs, sparseOutputs, slotMapping, extractSlots, overflowStacks));
     }
 
@@ -106,7 +106,7 @@ public class FrameProcessingPattern implements IPatternDetails {
     @Override
     public boolean equals(Object obj) {
         return obj != null && obj.getClass() == getClass()
-                && ((FrameProcessingPattern) obj).definition.equals(definition);
+                && ((CustomProcessingPattern) obj).definition.equals(definition);
     }
 
     @Override
@@ -211,7 +211,7 @@ public class FrameProcessingPattern implements IPatternDetails {
             @Nullable Exception cause, TooltipFlag flags) {
         var tooltip = new PatternDetailsTooltip(PatternDetailsTooltip.OUTPUT_TEXT_PRODUCES);
 
-        var encodedPattern = stack.get(ChexsonsaeutilsContent.ENCODED_FRAME_PATTERN.get());
+        var encodedPattern = stack.get(ChexsonsaeutilsContent.ENCODED_CUSTOM_PATTERN.get());
         if (encodedPattern != null) {
             encodedPattern.sparseInputs().stream().filter(Objects::nonNull).forEach(tooltip::addInput);
             encodedPattern.sparseOutputs().stream().filter(Objects::nonNull).forEach(tooltip::addOutput);

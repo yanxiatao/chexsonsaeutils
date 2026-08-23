@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.crafting.framepattern;
+package git.chexson.chexsonsaeutils.crafting.custompattern;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,13 +32,13 @@ import appeng.core.definitions.AEItems;
  * @param overflowStacks 是否允许指定槽位推送突破堆叠上限（默认 false：严格容量校验；
  *                       true：写入后读回实际存量、差额退回排队重试，均不吞料）
  */
-public record EncodedFramePattern(
+public record EncodedCustomPattern(
         List<GenericStack> sparseInputs,
         List<GenericStack> sparseOutputs,
         int[] slotMapping,
         int[] extractSlots,
         boolean overflowStacks) {
-    public EncodedFramePattern {
+    public EncodedCustomPattern {
         sparseInputs = Collections.unmodifiableList(sparseInputs);
         sparseOutputs = Collections.unmodifiableList(sparseOutputs);
         // S1 修复：int[] 防御性拷贝，防止外部修改破坏组件数据
@@ -70,33 +70,33 @@ public record EncodedFramePattern(
             .xmap(list -> list.stream().mapToInt(Integer::intValue).toArray(),
                     array -> Arrays.stream(array).boxed().toList());
 
-    public static final Codec<EncodedFramePattern> CODEC = RecordCodecBuilder.create(builder -> builder.group(
+    public static final Codec<EncodedCustomPattern> CODEC = RecordCodecBuilder.create(builder -> builder.group(
             GenericStack.FAULT_TOLERANT_NULLABLE_LIST_CODEC.fieldOf("sparseInputs")
-                    .forGetter(EncodedFramePattern::sparseInputs),
+                    .forGetter(EncodedCustomPattern::sparseInputs),
             GenericStack.FAULT_TOLERANT_NULLABLE_LIST_CODEC.fieldOf("sparseOutputs")
-                    .forGetter(EncodedFramePattern::sparseOutputs),
-            INT_ARRAY_CODEC.fieldOf("slotMapping").forGetter(EncodedFramePattern::slotMapping),
-            INT_ARRAY_CODEC.fieldOf("extractSlots").forGetter(EncodedFramePattern::extractSlots),
+                    .forGetter(EncodedCustomPattern::sparseOutputs),
+            INT_ARRAY_CODEC.fieldOf("slotMapping").forGetter(EncodedCustomPattern::slotMapping),
+            INT_ARRAY_CODEC.fieldOf("extractSlots").forGetter(EncodedCustomPattern::extractSlots),
             // 旧存档样板无此键时默认 false，兼容不迁移
-            Codec.BOOL.optionalFieldOf("overflowStacks", false).forGetter(EncodedFramePattern::overflowStacks))
-            .apply(builder, EncodedFramePattern::new));
+            Codec.BOOL.optionalFieldOf("overflowStacks", false).forGetter(EncodedCustomPattern::overflowStacks))
+            .apply(builder, EncodedCustomPattern::new));
 
     private static final StreamCodec<ByteBuf, int[]> INT_ARRAY_STREAM_CODEC = ByteBufCodecs.INT
             .apply(ByteBufCodecs.<ByteBuf, Integer>list())
             .map(list -> list.stream().mapToInt(Integer::intValue).toArray(),
                     array -> Arrays.stream(array).boxed().toList());
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, EncodedFramePattern> STREAM_CODEC = StreamCodec
+    public static final StreamCodec<RegistryFriendlyByteBuf, EncodedCustomPattern> STREAM_CODEC = StreamCodec
             .composite(
                     GenericStack.STREAM_CODEC.apply(ByteBufCodecs.list()),
-                    EncodedFramePattern::sparseInputs,
+                    EncodedCustomPattern::sparseInputs,
                     GenericStack.STREAM_CODEC.apply(ByteBufCodecs.list()),
-                    EncodedFramePattern::sparseOutputs,
+                    EncodedCustomPattern::sparseOutputs,
                     INT_ARRAY_STREAM_CODEC,
-                    EncodedFramePattern::slotMapping,
+                    EncodedCustomPattern::slotMapping,
                     INT_ARRAY_STREAM_CODEC,
-                    EncodedFramePattern::extractSlots,
+                    EncodedCustomPattern::extractSlots,
                     ByteBufCodecs.BOOL,
-                    EncodedFramePattern::overflowStacks,
-                    EncodedFramePattern::new);
+                    EncodedCustomPattern::overflowStacks,
+                    EncodedCustomPattern::new);
 }

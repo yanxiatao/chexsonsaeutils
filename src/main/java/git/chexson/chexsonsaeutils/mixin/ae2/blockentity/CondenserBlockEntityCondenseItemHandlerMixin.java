@@ -15,16 +15,16 @@ import appeng.api.implementations.items.IStorageComponent;
 import appeng.blockentity.misc.CondenserBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
-import git.chexson.chexsonsaeutils.item.framepatternprovider.FramePatternExpandableItem;
+import git.chexson.chexsonsaeutils.item.custompatternprovider.CustomPatternExpandableItem;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
  * 物质聚合器扩容 mixin（需求 5 阶段 5b，方式 B）。
  * <p>
  * 动机：玩家在真物质聚合器中扩容可扩容样板供应器物品——存储元件槽放可扩容样板
- * 供应器物品（FramePatternExpandableItem + IStorageComponent，容量 = 页数 x 1024 字节），
+ * 供应器物品（CustomPatternExpandableItem + IStorageComponent，容量 = 页数 x 1024 字节），
  * 输入槽（TRASH/void 槽）放 ExtendedAE 扩展样板供应器物品（extendedae:ex_pattern_provider）
- * → 消耗 1 个 → 物品 FRAME_PATTERN_PAGES 组件 +1。
+ * → 消耗 1 个 → 物品 CUSTOM_PATTERN_PAGES 组件 +1。
  * <p>
  * 注入点：CondenseItemHandler（CondenserBlockEntity 私有内部类，void 槽）的
  * insertItem（管道/漏斗/ME 输出路径）与 setItemDirect（玩家 GUI 拖放路径，
@@ -107,17 +107,17 @@ public abstract class CondenserBlockEntityCondenseItemHandlerMixin {
         // R1-S2 防御：存储槽物品必须同时是存储组件（IStorageComponent）与可扩容供应器，
         // 防止未来某个实现只满足标记接口而破坏物质聚合器存储元件语义
         if (!(storageStack.getItem() instanceof IStorageComponent)
-                || !(storageStack.getItem() instanceof FramePatternExpandableItem)) {
+                || !(storageStack.getItem() instanceof CustomPatternExpandableItem)) {
             return ExpandResult.NONE;
         }
         if (!ExtendedAeCompat.isExPatternProvider(stack)) {
             return ExpandResult.NONE;
         }
-        int pages = Math.max(1, storageStack.getOrDefault(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), 1));
+        int pages = Math.max(1, storageStack.getOrDefault(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), 1));
         if (pages >= ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages()) {
             return ExpandResult.REJECTED;
         }
-        storageStack.set(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), pages + 1);
+        storageStack.set(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), pages + 1);
         condenser.saveChanges();
         return ExpandResult.CONSUMED;
     }

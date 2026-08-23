@@ -17,7 +17,7 @@ import appeng.core.definitions.AEItems;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
 import git.chexson.chexsonsaeutils.client.gui.MultiPagePatternScreen;
-import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternItem;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternItem;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
 
@@ -203,7 +203,7 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
                 && this.menu.getSlots(SlotSemantics.ENCODED_PATTERN).contains(slot)
                 && !slot.getItem().isEmpty()
                 && (slot.getItem().getItem() == AEItems.PROCESSING_PATTERN.asItem()
-                        || slot.getItem().getItem() instanceof FramePatternItem)) {
+                        || slot.getItem().getItem() instanceof CustomPatternItem)) {
             this.menu.openConfigForSlotClient(slotIndex);
             return;
         }

@@ -14,7 +14,7 @@ import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.cell.CellCommand;
 import git.chexson.chexsonsaeutils.cell.CellRegistration;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
-import git.chexson.chexsonsaeutils.crafting.framepattern.FramePatternDecoder;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingReloadListener;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeUserConfigStore;
@@ -29,11 +29,11 @@ import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccess
 import git.chexson.chexsonsaeutils.client.SlotNumberOverlay;
 import git.chexson.chexsonsaeutils.integration.appflux.AppFluxCompat;
 import git.chexson.chexsonsaeutils.integration.extendedae_plus.ExtendedAePlusCompat;
-import git.chexson.chexsonsaeutils.menu.framepatternconfig.FramePatternConfigLocator;
-import git.chexson.chexsonsaeutils.menu.framepatternupgrade.FramePatternUpgradeLocator;
+import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigLocator;
+import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeLocator;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
-import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternEncoderUpdatePayload;
-import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternSlotChangePacket;
+import git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternEncoderUpdatePayload;
+import git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternSlotChangePacket;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacementDecoder;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.world.inventory.MenuType;
@@ -132,9 +132,9 @@ public class Chexsonsaeutils {
     private void onCommonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(ChexsonsaeutilsContent::registerCommonContent);
         event.enqueueWork(Chexsonsaeutils::applyDirectProcessingMachineRecipeMappings);
-        event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(FramePatternDecoder.INSTANCE));
-        event.enqueueWork(FramePatternConfigLocator::register);
-        event.enqueueWork(FramePatternUpgradeLocator::register);
+        event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(CustomPatternDecoder.INSTANCE));
+        event.enqueueWork(CustomPatternConfigLocator::register);
+        event.enqueueWork(CustomPatternUpgradeLocator::register);
         // 升级卡注册：感应卡（appflux）/频道卡（ExtendedAE_Plus）——内部各自
         // ModLoaded 门控 + try-catch(Throwable)，未加载时无副作用
         event.enqueueWork(AppFluxCompat::registerUpgrade);
@@ -174,14 +174,14 @@ public class Chexsonsaeutils {
                 DirectProcessingJeiImportPayload::handle
         );
         event.registrar("1").playToServer(
-                FramePatternSlotChangePacket.TYPE,
-                FramePatternSlotChangePacket.STREAM_CODEC,
-                FramePatternSlotChangePacket::handleOnServer
+                CustomPatternSlotChangePacket.TYPE,
+                CustomPatternSlotChangePacket.STREAM_CODEC,
+                CustomPatternSlotChangePacket::handleOnServer
         );
         event.registrar("1").playToClient(
-                FramePatternEncoderUpdatePayload.TYPE,
-                FramePatternEncoderUpdatePayload.STREAM_CODEC,
-                FramePatternEncoderUpdatePayload::handle
+                CustomPatternEncoderUpdatePayload.TYPE,
+                CustomPatternEncoderUpdatePayload.STREAM_CODEC,
+                CustomPatternEncoderUpdatePayload::handle
         );
     }
 

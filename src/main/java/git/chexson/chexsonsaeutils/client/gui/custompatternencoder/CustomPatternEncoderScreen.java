@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.client.gui.framepatternencoder;
+package git.chexson.chexsonsaeutils.client.gui.custompatternencoder;
 
 import java.util.List;
 
@@ -15,26 +15,26 @@ import appeng.client.gui.widgets.AECheckbox;
 import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.NumberEntryWidget;
 import appeng.client.gui.widgets.Scrollbar;
-import git.chexson.chexsonsaeutils.menu.framepatternencoder.FramePatternEncoderMenu;
-import git.chexson.chexsonsaeutils.network.framepatternencoder.FramePatternSlotChangePacket;
+import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
+import git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternSlotChangePacket;
 
 /**
  * 框架样板编码屏幕（原地编辑供应器原样板）。
  * <p>
- * 布局由 {@code assets/ae2/screens/frame_pattern_encoder.json} 定义：无输入/输出槽
+ * 布局由 {@code assets/ae2/screens/custom_pattern_encoder.json} 定义：无输入/输出槽
  * （直接编辑供应器样板槽中的原样板）；下方 3 行可见的稀疏输入列表（每行 = 输入
  * 物品图标 + NumberEntryWidget 机器槽位输入，-1 = 未指定），右侧滚动条；中部为
  * 抽取槽位文本框（逗号分隔 CSV）。
  * <p>
  * 交互模式（照 advancedae）：行列表 + 每行输入控件 + 实时生效、无保存按钮——
- * 槽位修改经 onChange 立即发送 {@code FramePatternSlotChangePacket} 回传服务端
+ * 槽位修改经 onChange 立即发送 {@code CustomPatternSlotChangePacket} 回传服务端
  * 并写回供应器原样板，不存在"点了保存没反应"的中间态。
  * <p>
- * 数据流：服务端 Menu 推送 {@code FramePatternEncoderUpdatePayload} →
+ * 数据流：服务端 Menu 推送 {@code CustomPatternEncoderUpdatePayload} →
  * menu.updateFromServer → 本屏幕在 updateBeforeRender 回显；用户输入经
- * FramePatternSlotChangePacket / menu.setExtractSlots 回传服务端。
+ * CustomPatternSlotChangePacket / menu.setExtractSlots 回传服务端。
  */
-public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderMenu> {
+public class CustomPatternEncoderScreen extends AEBaseScreen<CustomPatternEncoderMenu> {
 
     /** 可见行数与行距（行列表模式照 advancedae；2 行避免与下方抽取槽位区拥挤）。 */
     private static final int VISIBLE_ROWS = 2;
@@ -56,12 +56,8 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
     private int lastRefreshedScroll = -1;
     private List<GenericStack> lastRefreshedInputs = List.of();
 
-    public FramePatternEncoderScreen(FramePatternEncoderMenu menu, Inventory playerInventory, Component title) {
-        // 布局 json 按来源供应器选择：dialog_title 键不同（框架="框架样板编码"，
-        // 定制="定制样板供应器"），其余布局两版一致。
-        super(menu, playerInventory, title, StyleManager.loadStyleDoc(menu.isFromCustomProvider()
-                ? "/screens/custom_pattern_encoder.json"
-                : "/screens/frame_pattern_encoder.json"));
+    public CustomPatternEncoderScreen(CustomPatternEncoderMenu menu, Inventory playerInventory, Component title) {
+        super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/custom_pattern_encoder.json"));
         this.scrollbar = widgets.addScrollBar("scrollbar", Scrollbar.SMALL);
         this.scrollbar.setRange(0, 0, VISIBLE_ROWS);
 
@@ -88,7 +84,7 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
                 return appeng.client.gui.Icon.BACK;
             }
         };
-        backButton.setMessage(Component.translatable("gui.chexsonsaeutils.frame_pattern_encoder.back"));
+        backButton.setMessage(Component.translatable("gui.chexsonsaeutils.custom_pattern_encoder.back"));
         this.addToLeftToolbar(backButton);
     }
 
@@ -102,7 +98,7 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
         // 「突破堆叠上限」勾选框：slot_hint 行右侧空白区（面板宽 200，x=96 起右侧留白）。
         // y=152 与 json 的 slot_hint（top 156）同行对齐；宽度按标签文本动态计算
         // （照 AE2 KeyTypeSelectionScreen 先例），高度用控件标准 SIZE。
-        var label = Component.translatable("gui.chexsonsaeutils.frame_pattern_encoder.overflow_stacks");
+        var label = Component.translatable("gui.chexsonsaeutils.custom_pattern_encoder.overflow_stacks");
         this.overflowStacksCheckbox = new AECheckbox(this.leftPos + 96, this.topPos + 152,
                 24 + this.font.width(label), AECheckbox.SIZE, getStyle(), label);
         this.overflowStacksCheckbox.setChangeListener(() ->
@@ -125,7 +121,7 @@ public class FramePatternEncoderScreen extends AEBaseScreen<FramePatternEncoderM
             return;
         }
         this.inputEntries[row].getIntValue().ifPresent(value ->
-                PacketDistributor.sendToServer(new FramePatternSlotChangePacket(input.what(), value)));
+                PacketDistributor.sendToServer(new CustomPatternSlotChangePacket(input.what(), value)));
     }
 
     /** 抽取槽位文本框变更：回传服务端（非法输入忽略，服务端解析失败时沿用上次合法值）。 */

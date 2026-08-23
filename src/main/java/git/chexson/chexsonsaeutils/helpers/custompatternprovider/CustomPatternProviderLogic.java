@@ -27,7 +27,7 @@
  * 父类字段（patternInventory/configManager/patterns）经 public 访问器
  * （getPatternInv/getConfigManager/super.updatePatterns）复用。
  * 改动点（均以注释标注）：
- * 1. 包名与宿主类型改为本项目（FramePatternProviderLogicHost）。
+ * 1. 包名与宿主类型改为本项目（CustomPatternProviderLogicHost）。
  * 2. target 解析：删除相邻方块缓存（PatternProviderTargetCache/findAdapter/getActiveSides），
  *    改为私有维度机器（FrameMachineAccess.getMachineItemHandler()，无 side 语义）。
  * 3. pushPattern/sendStacksOut：推送目标固定为私有维度机器，不向周围方块发/收（需求 8）。
@@ -49,7 +49,7 @@
  *    unlockEvent/unlockStack/redstoneState/priority 恒空/恒 0 闲置。
  */
 
-package git.chexson.chexsonsaeutils.helpers.framepatternprovider;
+package git.chexson.chexsonsaeutils.helpers.custompatternprovider;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -96,7 +96,7 @@ import appeng.helpers.patternprovider.PatternProviderTarget;
 import appeng.helpers.patternprovider.UnlockCraftingEvent;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
-import git.chexson.chexsonsaeutils.crafting.framepattern.FrameProcessingPattern;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
 import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
 import git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl;
 import git.chexson.chexsonsaeutils.integration.extendedae_plus.EapWirelessBridgeHelper;
@@ -115,7 +115,7 @@ import git.chexson.chexsonsaeutils.integration.extendedae_plus.EapWirelessBridge
  * <p>
  * 与 AE2 原版的差异（需求 8 隔离语义）：推送目标经 {@link #resolveMachineHandler()}
  * 解析——单 handler 模式（框架样板供应器）固定为私有维度机器
- * （{@link FramePatternProviderLogicHost#getMachineItemHandler()}），不向周围方块发/收；
+ * （{@link CustomPatternProviderLogicHost#getMachineItemHandler()}），不向周围方块发/收；
  * 多方向模式（定制样板供应器）遍历 getTargets() 方向取第一个可用机器。
  * 返回库存只收机器输出；额外提供 {@link #pullFromMachine()} 主动抽取机器输出到返回库存。
  * 其余行为（样板解码、阻塞模式、锁定模式、sendList 补发、终端展示）与 AE2 一致。
@@ -123,8 +123,8 @@ import git.chexson.chexsonsaeutils.integration.extendedae_plus.EapWirelessBridge
  * 仅支持 processing 样板（S3）：crafting 样板依赖 ICraftingMachine 推送路径（分子装配机），
  * 该路径已在 fork 时删除，crafting 样板无法推送到私有维度机器，也不会被主动抽取。
  */
-public class FramePatternProviderLogic extends PatternProviderLogic {
-    private static final Logger LOG = LoggerFactory.getLogger(FramePatternProviderLogic.class);
+public class CustomPatternProviderLogic extends PatternProviderLogic {
+    private static final Logger LOG = LoggerFactory.getLogger(CustomPatternProviderLogic.class);
 
     public static final String NBT_MEMORY_CARD_PATTERNS = "patterns";
     public static final String NBT_UNLOCK_EVENT = "unlockEvent";
@@ -138,7 +138,7 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
     /** 需求 8 toggle：主动抽取开关 NBT key（开启时 Ticker 周期性调用 pullFromMachine）。 */
     public static final String NBT_ACTIVE_EXTRACT = "activeExtract";
 
-    private final FramePatternProviderLogicHost host;
+    private final CustomPatternProviderLogicHost host;
     private final IManagedGridNode mainNode;
     private final IActionSource actionSource;
 
@@ -198,11 +198,11 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
     private GenericStack unlockStack;
 
     @Nullable
-    public FramePatternProviderLogic(IManagedGridNode mainNode, FramePatternProviderLogicHost host) {
+    public CustomPatternProviderLogic(IManagedGridNode mainNode, CustomPatternProviderLogicHost host) {
         this(mainNode, host, 9);
     }
 
-    public FramePatternProviderLogic(IManagedGridNode mainNode, FramePatternProviderLogicHost host,
+    public CustomPatternProviderLogic(IManagedGridNode mainNode, CustomPatternProviderLogicHost host,
             int patternInventorySize) {
         super(mainNode, host, patternInventorySize);
         this.host = host;
@@ -215,8 +215,8 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             {
                 // 需求 6a：输入过滤——过滤开启时只放行已配置样板的输出物品（仿 advancedae
                 // AdvPatternProviderReturnInventory，适配本项目无 trackedCrafts 的结构）
-                this.setFilter((slot, what) -> !FramePatternProviderLogic.this.filteredImport
-                        || FramePatternProviderLogic.this.outputCache.contains(what));
+                this.setFilter((slot, what) -> !CustomPatternProviderLogic.this.filteredImport
+                        || CustomPatternProviderLogic.this.outputCache.contains(what));
             }
         };
         // 需求 7：appflux 感应卡灌电注入器（未装 appflux 时为 null）
@@ -444,7 +444,7 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
         }
 
         // 需求 4a：框架样板走强制槽位写入路径（不经过 target 的普通插入模拟）
-        if (patternDetails instanceof FrameProcessingPattern framePattern) {
+        if (patternDetails instanceof CustomProcessingPattern framePattern) {
             return pushFramePattern(framePattern, inputHolder);
         }
 
@@ -501,7 +501,7 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
      *
      * @return true 表示推送成功
      */
-    private boolean pushFramePattern(FrameProcessingPattern pattern, KeyCounter[] inputHolder) {
+    private boolean pushFramePattern(CustomProcessingPattern pattern, KeyCounter[] inputHolder) {
         IItemHandler handler = resolveMachineHandler();
         if (handler == null) {
             return false;
@@ -693,10 +693,10 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
      * 解析机器物品 handler（阶段 1 共享层泛化：单 handler 模式 / 多方向模式）。
      * <p>
      * getTargets() 空集 = 单 handler 模式（框架样板供应器语义）：委托无参
-     * {@link FramePatternProviderLogicHost#getMachineItemHandler()}，宿主保证永不
+     * {@link CustomPatternProviderLogicHost#getMachineItemHandler()}，宿主保证永不
      * 返回 null（空实现兜底），行为与改造前完全一致。
      * 非空 = 多方向模式（定制样板供应器语义）：遍历方向调用
-     * {@link FramePatternProviderLogicHost#getMachineItemHandler(Direction)}，
+     * {@link CustomPatternProviderLogicHost#getMachineItemHandler(Direction)}，
      * 取第一个可用 handler（null 跳过）；全部为 null 时返回 null（调用方拒绝推送）。
      *
      * @return 机器物品 handler；多方向模式下无可用方向时返回 null
@@ -859,7 +859,7 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
                 continue;
             }
             // 需求 4a：框架样板按配置槽位强制抽取（配置了 extractSlots 则跳过普通输出匹配路径）
-            if (details instanceof FrameProcessingPattern framePattern && framePattern.getExtractSlots().length > 0) {
+            if (details instanceof CustomProcessingPattern framePattern && framePattern.getExtractSlots().length > 0) {
                 for (int slot : framePattern.getExtractSlots()) {
                     if (slot < 0 || slot >= handler.getSlots()) {
                         continue;
@@ -1021,7 +1021,7 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             // 守卫：node 为 null 时按服务端处理）。
             if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)
                     && ModList.get().isLoaded("extendedae_plus")) {
-                EapWirelessBridgeHelper.handleDelayedInit(FramePatternProviderLogic.this);
+                EapWirelessBridgeHelper.handleDelayedInit(CustomPatternProviderLogic.this);
             }
             if (!mainNode.isActive()) {
                 return TickRateModulation.SLEEP;
@@ -1061,7 +1061,7 @@ public class FramePatternProviderLogic extends PatternProviderLogic {
             // （见 HEAD 注释：热路径字节码不得引用 EAP 接口类）。
             if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)
                     && ModList.get().isLoaded("extendedae_plus")) {
-                if (EapWirelessBridgeHelper.updateWirelessLink(FramePatternProviderLogic.this)
+                if (EapWirelessBridgeHelper.updateWirelessLink(CustomPatternProviderLogic.this)
                         && result == TickRateModulation.SLEEP) {
                     result = TickRateModulation.SLOWER;
                 }

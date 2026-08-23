@@ -30,7 +30,7 @@ item_ids:
 - 完整 AE2 样板供应器功能：每页 `36` 个样板槽、返回库存、`5` 个升级卡槽，需 `1` 频道。
 - 定制样板：样板的每个格子材料按配置强制写入机器指定槽位，可突破单格堆叠上限；
   机器输出按配置槽位强制抽取。
-- 分页管理样板：GUI 右上方翻页按钮，页数上限由配置 `MAX_FRAME_PATTERN_PAGES` 控制（默认 `8`）。
+- 分页管理样板：GUI 右上方翻页按钮，页数上限由配置 `MAX_CUSTOM_PATTERN_PAGES` 控制（默认 `8`）。
 - 扩容：消耗 ExtendedAE 扩展样板供应器物品增加页数，两种方式（见下）。
 - 输入过滤：开启后返回库存注入网络只放行已配置样板的输出物品。
 - 样板配置：为处理样板指定每个格子材料输入机器的指定槽位；高级样板（advancedae）
@@ -49,7 +49,7 @@ item_ids:
 ### 样板分页
 
 样板槽按页显示，每页 `36` 个。GUI 右上方按钮翻页；
-页数上限在 `config/chexsonsaeutils-common.toml` 的 `MAX_FRAME_PATTERN_PAGES` 配置
+页数上限在 `config/chexsonsaeutils-common.toml` 的 `MAX_CUSTOM_PATTERN_PAGES` 配置
 （范围 `1-8`，默认 `8`）。
 
 ### 扩容

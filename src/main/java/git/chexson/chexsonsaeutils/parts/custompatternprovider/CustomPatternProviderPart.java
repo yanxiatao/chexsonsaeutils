@@ -45,9 +45,9 @@ import appeng.parts.PartModel;
 import appeng.util.SettingsFrom;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.CustomPatternProviderHost;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogicHost;
-import git.chexson.chexsonsaeutils.helpers.framepatternprovider.FramePatternProviderLogic;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogic;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
@@ -58,12 +58,12 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * 的差异：附着于线缆（AEBasePart 生命周期），机器即面板朝向（{@link #getSide()}）
  * 的相邻方块——getTargets() 恒为单方向集合，逻辑层多方向分支只遍历该方向。
  * 共享功能（定制样板/翻页/扩容/输入过滤/appflux 灌电/样板配置）全部继承自
- * {@link FramePatternProviderLogic} 与 {@link FramePatternProviderLogicHost}。
+ * {@link CustomPatternProviderLogic} 与 {@link CustomPatternProviderLogicHost}。
  * <p>
  * 升级槽：方块版与面板版均实现 {@link IUpgradeableObject}（appflux 感应卡是升级卡，
  * 与 extendedae 面板无升级槽的差异点），5 槽库存 NBT 持久化并随拆除掉落。
  * <p>
- * 网格节点：REQUIRE_CHANNEL 由 {@link FramePatternProviderLogic} 构造器设置
+ * 网格节点：REQUIRE_CHANNEL 由 {@link CustomPatternProviderLogic} 构造器设置
  * （字段初始化先于构造器体），面板构造器不重复设置。
  */
 public class CustomPatternProviderPart extends AEBasePart implements CustomPatternProviderHost {
@@ -98,7 +98,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
      * 字段初始化创建——网格节点在 addToWorld 时才创建，logic 的 addService
      * 必须在节点创建前生效。
      */
-    private final FramePatternProviderLogic logic = createLogic();
+    private final CustomPatternProviderLogic logic = createLogic();
 
     /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxFramePatternPages()]。 */
     private int pages = 1;
@@ -116,8 +116,8 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     /**
      * 创建样板供应逻辑：容量 = 配置的最大页数 x 每页 36 槽（与方块版一致）。
      */
-    protected FramePatternProviderLogic createLogic() {
-        return new FramePatternProviderLogic(this.getMainNode(), this,
+    protected CustomPatternProviderLogic createLogic() {
+        return new CustomPatternProviderLogic(this.getMainNode(), this,
                 ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages() * PATTERN_SLOTS_PER_PAGE);
     }
 
@@ -199,8 +199,8 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
             this.logic.exportSettings(builder);
         } else if (mode == SettingsFrom.DISMANTLE_ITEM) {
             // I1 修复：拆除写回——IPart.addPartDrop 默认实现经本方法生成掉落栈组件，
-            // 把当前 pages 写入 FRAME_PATTERN_PAGES（闭环保留，与放置读回对称）
-            builder.set(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), pages);
+            // 把当前 pages 写入 CUSTOM_PATTERN_PAGES（闭环保留，与放置读回对称）
+            builder.set(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), pages);
         }
     }
 
@@ -211,8 +211,8 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
             this.logic.importSettings(input, player);
         } else if (mode == SettingsFrom.DISMANTLE_ITEM) {
             // I1 修复：放置读回——PartPlacement.placePart 以放置物品的组件映射调用本方法，
-            // 把扩容后的 FRAME_PATTERN_PAGES 注入面板（方块版对应 updateCustomBlockEntityTag 读回）
-            initPagesFromStack(input.getOrDefault(ChexsonsaeutilsContent.FRAME_PATTERN_PAGES.get(), 1));
+            // 把扩容后的 CUSTOM_PATTERN_PAGES 注入面板（方块版对应 updateCustomBlockEntityTag 读回）
+            initPagesFromStack(input.getOrDefault(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), 1));
         }
     }
 
@@ -235,7 +235,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     }
 
     @Override
-    public FramePatternProviderLogic getLogic() {
+    public CustomPatternProviderLogic getLogic() {
         return logic;
     }
 
@@ -308,7 +308,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
      * 调用（getHost() 为 null），saveChanges 会 NPE——直接赋值对两种时机均安全
      * （生命周期正确性，非兜底）。
      *
-     * @param pages 放置物品 FRAME_PATTERN_PAGES 组件携带的页数（无组件时为 1）
+     * @param pages 放置物品 CUSTOM_PATTERN_PAGES 组件携带的页数（无组件时为 1）
      */
     void initPagesFromStack(int pages) {
         this.pages = clampPages(pages);
@@ -364,7 +364,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     @Override
     public IItemHandler getMachineItemHandler() {
         if (isClientSide()) {
-            return FramePatternProviderLogicHost.EMPTY_ITEM_HANDLER;
+            return CustomPatternProviderLogicHost.EMPTY_ITEM_HANDLER;
         }
         for (var direction : Direction.values()) {
             var handler = getMachineItemHandler(direction);
@@ -372,7 +372,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
                 return handler;
             }
         }
-        return FramePatternProviderLogicHost.EMPTY_ITEM_HANDLER;
+        return CustomPatternProviderLogicHost.EMPTY_ITEM_HANDLER;
     }
 
     /**

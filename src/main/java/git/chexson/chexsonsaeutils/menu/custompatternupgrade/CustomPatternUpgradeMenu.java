@@ -1,4 +1,4 @@
-package git.chexson.chexsonsaeutils.menu.framepatternupgrade;
+package git.chexson.chexsonsaeutils.menu.custompatternupgrade;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Container;
@@ -23,7 +23,7 @@ import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
  * 见 {@link ExtendedAeCompat}）+ 玩家背包槽位。
  * <p>
  * 扩容目标：打开本菜单的供应器（方块实体或面板，经
- * {@link FramePatternUpgradeLocator} 解析绑定，见 {@link FramePatternUpgradeHost#getPageHolder()}）。
+ * {@link CustomPatternUpgradeLocator} 解析绑定，见 {@link CustomPatternUpgradeHost#getPageHolder()}）。
  * 服务端行为（仿物质聚合器自动消耗）：槽位变化（玩家拖放经 slotsChanged、
  * 外部插入经宿主库存回调）时自动检测——输入槽有扩展物品 + 页数未达上限 →
  * 循环消耗输入槽扩展物品，宿主页数逐次 +1（宿主 setPages 持久化），直到页数达上限
@@ -31,33 +31,33 @@ import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
  * 同步到客户端（提示文本显示）。
  * <p>
  * 打开方式：FramePatternProviderScreen / CustomPatternProviderScreen 左工具栏扩展按钮
- * → MenuOpener.open（locator 为 {@link FramePatternUpgradeLocator}）。
+ * → MenuOpener.open（locator 为 {@link CustomPatternUpgradeLocator}）。
  */
-public class FramePatternUpgradeMenu extends AEBaseMenu {
+public class CustomPatternUpgradeMenu extends AEBaseMenu {
 
-    public static final MenuType<FramePatternUpgradeMenu> TYPE = MenuTypeBuilder
-            .create(FramePatternUpgradeMenu::new, FramePatternUpgradeHost.class)
-            .buildUnregistered(ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "frame_pattern_upgrade"));
+    public static final MenuType<CustomPatternUpgradeMenu> TYPE = MenuTypeBuilder
+            .create(CustomPatternUpgradeMenu::new, CustomPatternUpgradeHost.class)
+            .buildUnregistered(ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "custom_pattern_upgrade"));
 
-    /** 宿主库存变更回调（由宿主转发，见 {@link FramePatternUpgradeHost#setInventoryChangedHandler}）。 */
+    /** 宿主库存变更回调（由宿主转发，见 {@link CustomPatternUpgradeHost#setInventoryChangedHandler}）。 */
     public interface InventoryChangedHandler {
         void handleChange(InternalInventory inv, int slot);
     }
 
-    private final FramePatternUpgradeHost host;
+    private final CustomPatternUpgradeHost host;
     private final net.minecraft.world.inventory.Slot inputSlot;
 
     /** 当前供应器页数（客户端同步显示，来自宿主）。 */
     @GuiSync(1)
     public int pages = 1;
 
-    public FramePatternUpgradeMenu(int id, Inventory playerInventory, FramePatternUpgradeHost host) {
+    public CustomPatternUpgradeMenu(int id, Inventory playerInventory, CustomPatternUpgradeHost host) {
         // AEBaseMenu 要求宿主为 BlockEntity/IPart/ItemMenuHost，本菜单宿主为瞬态对象，
         // 传 null 绕过校验（本菜单不使用 IActionHost 功能）。
         super(TYPE, id, playerInventory, null);
         this.host = host;
         this.createPlayerInventorySlots(playerInventory);
-        // 输入槽过滤器在宿主库存层实现（仅 ExtendedAE 扩展样板供应器，见 FramePatternUpgradeHost）
+        // 输入槽过滤器在宿主库存层实现（仅 ExtendedAE 扩展样板供应器，见 CustomPatternUpgradeHost）
         this.addSlot(this.inputSlot = new AppEngSlot(host.getInventory(), 0), SlotSemantics.MACHINE_INPUT);
 
         this.host.setInventoryChangedHandler(this::onHostInventoryChanged);
