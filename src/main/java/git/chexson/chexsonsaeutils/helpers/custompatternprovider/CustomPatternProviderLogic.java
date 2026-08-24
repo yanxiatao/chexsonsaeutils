@@ -346,6 +346,19 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
     }
 
     /**
+     * 外部输入过滤判定（需求 6a 扩展）：过滤开启时只放行已配置样板的输出物品。
+     * <p>
+     * 供宿主对外部 capability 访问（管道/漏斗等主动 IO）做插入过滤；
+     * Logic 自身的推送/抽取走内部路径，不经此判定。
+     *
+     * @param key 待判定物品
+     * @return true 表示允许插入（过滤关闭，或物品为样板输出）
+     */
+    public boolean passesOutputFilter(AEKey key) {
+        return !this.filteredImport || this.outputCache.contains(key);
+    }
+
+    /**
      * @return 主动抽取开关（需求 8 toggle，服务端权威，Menu @GuiSync 同步）
      */
     public boolean isActiveExtract() {
@@ -900,38 +913,48 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
                 }
                 continue;
             }
-            for (var output : details.getOutputs()) {
-                if (!(output.what() instanceof AEItemKey outputKey)) {
+            // 输入过滤开关控制抽取范围（用户确认语义）：开启=只抽样板输出；关闭=抽取机器内所有物品。
+            // extractSlots 分支不受开关影响（显式槽位配置语义优先，无条件抽取指定槽位）。
+            boolean filterToOutputs = this.filteredImport;
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                ItemStack machineStack = handler.getStackInSlot(slot);
+                if (machineStack.isEmpty()) {
                     continue;
                 }
-                for (int slot = 0; slot < handler.getSlots(); slot++) {
-                    ItemStack machineStack = handler.getStackInSlot(slot);
-                    if (machineStack.isEmpty() || !outputKey.matches(machineStack)) {
+                if (filterToOutputs) {
+                    boolean matchesOutput = false;
+                    for (var output : details.getOutputs()) {
+                        if (output.what() instanceof AEItemKey outputKey && outputKey.matches(machineStack)) {
+                            matchesOutput = true;
+                            break;
+                        }
+                    }
+                    if (!matchesOutput) {
                         continue;
                     }
-                    // I2 修复：先实际抽取，再按返回量插入 returnInv（同 extractSlots 分支）
-                    ItemStack extracted = handler.extractItem(slot, machineStack.getCount(), false);
-                    if (extracted.isEmpty()) {
-                        continue;
-                    }
-                    var key = AEItemKey.of(extracted);
-                    if (key == null) {
-                        handler.insertItem(slot, extracted, false);
-                        continue;
-                    }
-                    long inserted = returnInv.insert(key, extracted.getCount(), Actionable.MODULATE, actionSource);
-                    if (inserted > 0) {
-                        didSomething = true;
-                    }
-                    if (inserted < extracted.getCount()) {
-                        var remainder = extracted.copy();
-                        remainder.shrink((int) inserted);
-                        var notInserted = handler.insertItem(slot, remainder, false);
-                        if (!notInserted.isEmpty()) {
-                            var notInsertedKey = AEItemKey.of(notInserted);
-                            if (notInsertedKey != null) {
-                                this.addToSendList(notInsertedKey, notInserted.getCount());
-                            }
+                }
+                // I2 修复：先实际抽取，再按返回量插入 returnInv（同 extractSlots 分支）
+                ItemStack extracted = handler.extractItem(slot, machineStack.getCount(), false);
+                if (extracted.isEmpty()) {
+                    continue;
+                }
+                var key = AEItemKey.of(extracted);
+                if (key == null) {
+                    handler.insertItem(slot, extracted, false);
+                    continue;
+                }
+                long inserted = returnInv.insert(key, extracted.getCount(), Actionable.MODULATE, actionSource);
+                if (inserted > 0) {
+                    didSomething = true;
+                }
+                if (inserted < extracted.getCount()) {
+                    var remainder = extracted.copy();
+                    remainder.shrink((int) inserted);
+                    var notInserted = handler.insertItem(slot, remainder, false);
+                    if (!notInserted.isEmpty()) {
+                        var notInsertedKey = AEItemKey.of(notInserted);
+                        if (notInsertedKey != null) {
+                            this.addToSendList(notInsertedKey, notInserted.getCount());
                         }
                     }
                 }

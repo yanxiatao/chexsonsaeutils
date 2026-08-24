@@ -286,7 +286,7 @@ public final class ChexsonsaeutilsContent {
         event.registerBlockEntity(
                 Capabilities.ItemHandler.BLOCK,
                 CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
-                (blockEntity, side) -> blockEntity.getMachineItemHandler()
+                (blockEntity, side) -> blockEntity.getFilteredExternalItemHandler()
         );
         event.registerBlockEntity(
                 Capabilities.EnergyStorage.BLOCK,

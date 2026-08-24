@@ -240,6 +240,56 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
+     * 外部 ITEM capability 专用入口（需求 6a 扩展）：输入过滤开启时对插入做白名单过滤，
+     * 只放行已配置样板的输出物品；抽取与查询直通。过滤关闭时返回原始 handler（零开销）。
+     * <p>
+     * 与 {@link #getMachineItemHandler()} 分离的动机：逻辑层推送/抽取走内部路径必须直通，
+     * 不能被输入过滤拦截；仅外部主动 IO（管道/漏斗经 BLOCK capability）走本入口。
+     */
+    public IItemHandler getFilteredExternalItemHandler() {
+        var raw = getMachineItemHandler();
+        if (level == null || level.isClientSide() || !getLogic().isFilteredImport()) {
+            return raw;
+        }
+        return new IItemHandler() {
+            @Override
+            public int getSlots() {
+                return raw.getSlots();
+            }
+
+            @Override
+            public ItemStack getStackInSlot(int slot) {
+                return raw.getStackInSlot(slot);
+            }
+
+            @Override
+            public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+                var key = stack.isEmpty() ? null : AEItemKey.of(stack);
+                if (key == null || !getLogic().passesOutputFilter(key)) {
+                    return stack; // 不符合白名单：拒绝插入
+                }
+                return raw.insertItem(slot, stack, simulate);
+            }
+
+            @Override
+            public ItemStack extractItem(int slot, int amount, boolean simulate) {
+                return raw.extractItem(slot, amount, simulate);
+            }
+
+            @Override
+            public int getSlotLimit(int slot) {
+                return raw.getSlotLimit(slot);
+            }
+
+            @Override
+            public boolean isItemValid(int slot, ItemStack stack) {
+                var key = stack.isEmpty() ? null : AEItemKey.of(stack);
+                return key != null && getLogic().passesOutputFilter(key) && raw.isItemValid(slot, stack);
+            }
+        };
+    }
+
+    /**
      * 按方向解析相邻机器的能量 handler（appflux 灌电目标）。
      * <p>
      * 服务端查询该方向相邻方块的 ENERGY capability（能力方向 = 供应器所在侧的反向），
