@@ -1120,7 +1120,7 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             // 空闲时由下方结果计算返回 SLOWER 保活（而非 SLEEP）：alertDevice 只唤醒
             // 单次 tick，若本方法返回 SLEEP 网格不再调用 tickingRequest，
             // extractTickCounter 永远无法推进到 10，主动抽取在设备空闲时永不执行。
-            if (activeExtract && ++extractTickCounter >= 10) {
+            if (activeExtract && ++extractTickCounter >= 5) {
                 extractTickCounter = 0;
                 pullFromMachine();
             }
@@ -1129,10 +1129,11 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             if (hasWorkToDo()) {
                 result = couldDoWork ? TickRateModulation.URGENT : TickRateModulation.SLOWER;
             } else if (activeExtract) {
-                // 需求 8 修复：主动抽取开启时保持唤醒（SLOWER 为 AE2 自适应降频）。
+                // 需求 8 修复：主动抽取开启时保持唤醒且不降频（SAME 保持当前间隔）。
                 // alertDevice 只唤醒单次 tick：若此处返回 SLEEP，网格不再调用 tickingRequest，
-                // 抽取周期计数器永远无法推进，主动抽取在设备空闲时永不执行。
-                result = TickRateModulation.SLOWER;
+                // 抽取周期计数器永远无法推进，主动抽取在设备空闲时永不执行；
+                // SLOWER 会持续拉长间隔导致抽取变慢，改 SAME 维持响应速度。
+                result = TickRateModulation.SAME;
             } else {
                 result = TickRateModulation.SLEEP;
             }
