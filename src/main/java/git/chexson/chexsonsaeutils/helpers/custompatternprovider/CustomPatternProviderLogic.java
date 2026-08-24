@@ -169,12 +169,6 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
      */
     private boolean activeExtract;
     /**
-     * 需求 8 toggle：主动抽取节流计数器（运行时状态不持久化）。
-     * pullFromMachine 是全量扫描（样板输出 x 机器槽），每 10 tick 调用一次避免每 tick
-     * 全量扫描；开启时机器空/返回库存满会快速返回 false，tick 频率由网格自适应。
-     */
-    private int extractTickCounter;
-    /**
      * 需求 6a：已配置样板的输出物品集合（updatePatterns 时重建）。
      * 适配说明：advancedae 的 trackedCrafts（进行中 crafting 请求）语义不适用——
      * 本项目 fork 仅支持 processing 样板（crafting 请求路径已删除），故只保留
@@ -1114,26 +1108,22 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             if (energyInjector != null && energyInjector.isInstalled()) {
                 energyInjector.injectEnergy(Integer.MAX_VALUE);
             }
-            // 需求 8 toggle：主动抽取每 10 tick 一次（pullFromMachine 是全量扫描
-            // 样板输出 x 机器槽；机器空/返回库存满时快速返回 false，tick 频率由网格
-            // 自适应——抽取-注入循环期间 URGENT 每 tick 调用，空闲 SLEEP 不调用）。
-            // 空闲时由下方结果计算返回 SLOWER 保活（而非 SLEEP）：alertDevice 只唤醒
-            // 单次 tick，若本方法返回 SLEEP 网格不再调用 tickingRequest，
-            // extractTickCounter 永远无法推进到 10，主动抽取在设备空闲时永不执行。
-            if (activeExtract && ++extractTickCounter >= 5) {
-                extractTickCounter = 0;
-                pullFromMachine();
-            }
+            // 需求 8 toggle：主动抽取——每次被调用立即执行（最快每 tick 一次）。
+            // 频率策略：抽到物品（didSomething）时 pullFromMachine 内部已 alertDevice 且
+            // 下方返回 URGENT，维持每 tick 最快抽取；机器无产出时返回 SLOWER 休眠降频
+            // （AE2 TickManager 间隔翻倍封顶约 128 tick≈6.4 秒，即休眠间隔上限），
+            // 休眠期间每次被调用仍会尝试抽取，一旦抽到立即回到每 tick 节奏。
+            var pulled = activeExtract && pullFromMachine();
             boolean couldDoWork = doWork();
             TickRateModulation result;
             if (hasWorkToDo()) {
                 result = couldDoWork ? TickRateModulation.URGENT : TickRateModulation.SLOWER;
+            } else if (pulled) {
+                // 刚抽到物品：维持每 tick 最快抽取节奏
+                result = TickRateModulation.URGENT;
             } else if (activeExtract) {
-                // 需求 8 修复：主动抽取开启时保持唤醒且不降频（SAME 保持当前间隔）。
-                // alertDevice 只唤醒单次 tick：若此处返回 SLEEP，网格不再调用 tickingRequest，
-                // 抽取周期计数器永远无法推进，主动抽取在设备空闲时永不执行；
-                // SLOWER 会持续拉长间隔导致抽取变慢，改 SAME 维持响应速度。
-                result = TickRateModulation.SAME;
+                // 主动抽取开启但机器无产出：允许休眠降频（间隔由 AE2 封顶，不会无限拉长）
+                result = TickRateModulation.SLOWER;
             } else {
                 result = TickRateModulation.SLEEP;
             }
