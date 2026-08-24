@@ -265,7 +265,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
             @Override
             public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
                 var key = stack.isEmpty() ? null : AEItemKey.of(stack);
-                if (key == null || !getLogic().passesOutputFilter(key)) {
+                if (key == null || !getLogic().passesInputFilter(key)) {
                     return stack; // 不符合白名单：拒绝插入
                 }
                 return raw.insertItem(slot, stack, simulate);
@@ -284,7 +284,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
             @Override
             public boolean isItemValid(int slot, ItemStack stack) {
                 var key = stack.isEmpty() ? null : AEItemKey.of(stack);
-                return key != null && getLogic().passesOutputFilter(key) && raw.isItemValid(slot, stack);
+                return key != null && getLogic().passesInputFilter(key) && raw.isItemValid(slot, stack);
             }
         };
     }

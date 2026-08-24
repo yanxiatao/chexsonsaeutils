@@ -80,7 +80,9 @@ import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IManagedGridNode;
+import appeng.api.networking.IStackWatcher;
 import appeng.api.networking.crafting.ICraftingProvider;
+import appeng.api.networking.crafting.ICraftingWatcherNode;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.ticking.IGridTickable;
 import appeng.api.networking.ticking.TickRateModulation;
@@ -184,6 +186,16 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
      */
     private final Set<AEKey> patternInputs = new HashSet<>();
     /**
+     * 活跃合成追踪（照 advancedae AdvPatternProviderLogic）：经 AE2 官方
+     * ICraftingWatcherNode 监听网络合成请求——网络中正在请求合成的样板输出集合。
+     * 输入过滤白名单优先级：trackedCrafts 非空时以其为准，空时兜底 outputCache。
+     * 不持久化（watcher 随网格重建，请求状态由 AE2 重新回调）。
+     */
+    private final Set<AEKey> trackedCrafts = new HashSet<>();
+    /** 合成监视器句柄（updateWatcher 时由 AE2 注入；updatePatterns 重设关注集合用）。 */
+    @Nullable
+    private IStackWatcher craftingWatcher;
+    /**
      * 需求 7：appflux 感应卡灌电注入器（接口隔离——appflux 引用集中在实现类）。
      * appflux 未加载时为 null，Ticker 跳过灌电。
      */
@@ -213,10 +225,18 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             this.host.saveChanges();
         }) {
             {
-                // 需求 6a：输入过滤——过滤开启时只放行已配置样板的输出物品（仿 advancedae
-                // AdvPatternProviderReturnInventory，适配本项目无 trackedCrafts 的结构）
-                this.setFilter((slot, what) -> !CustomPatternProviderLogic.this.filteredImport
-                        || CustomPatternProviderLogic.this.outputCache.contains(what));
+                // 需求 6a：输入过滤（照 advancedae AdvPatternProviderReturnInventory 三级逻辑）——
+                // 过滤关闭放行；开启时优先 trackedCrafts（网络正在请求合成的产物）为白名单，
+                // trackedCrafts 空时兜底放行样板输出（outputCache）
+                this.setFilter((slot, what) -> {
+                    if (!CustomPatternProviderLogic.this.filteredImport) {
+                        return true;
+                    }
+                    if (!CustomPatternProviderLogic.this.trackedCrafts.isEmpty()) {
+                        return CustomPatternProviderLogic.this.trackedCrafts.contains(what);
+                    }
+                    return CustomPatternProviderLogic.this.outputCache.contains(what);
+                });
             }
         };
         // 需求 7：appflux 感应卡灌电注入器（未装 appflux 时为 null）
@@ -227,6 +247,28 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
         // 抛 IllegalStateException），本类推送目标为私有维度机器，必须由本类 Ticker
         // 驱动本类 doWork（灌电 + 机器目标补发）。
         mainNode.addService(IGridTickable.class, new Ticker());
+        // 活跃合成追踪（照 advancedae）：注册 AE2 合成监视器节点服务，
+        // 网络合成请求变化时回调 onRequestChange 维护 trackedCrafts
+        mainNode.addService(ICraftingWatcherNode.class, new ICraftingWatcherNode() {
+            @Override
+            public void updateWatcher(IStackWatcher newWatcher) {
+                craftingWatcher = newWatcher;
+                updatePatterns();
+            }
+
+            @Override
+            public void onRequestChange(AEKey what) {
+                if (trackedCrafts.contains(what)) {
+                    trackedCrafts.remove(what);
+                } else {
+                    trackedCrafts.add(what);
+                }
+            }
+
+            @Override
+            public void onCraftableChange(AEKey what) {
+            }
+        });
     }
 
     @Override
@@ -346,16 +388,25 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
     }
 
     /**
-     * 外部输入过滤判定（需求 6a 扩展）：过滤开启时只放行已配置样板的输出物品。
+     * 外部输入过滤判定（照 advancedae AdvPatternProviderReturnInventory 三级逻辑）：
+     * 过滤关闭放行任意输入；开启时优先以 trackedCrafts（网络正在请求合成的样板输出，
+     * 即"活跃样板"的动态集合）为白名单，trackedCrafts 为空（无进行中合成）时兜底
+     * 放行样板输出（outputCache）。
      * <p>
      * 供宿主对外部 capability 访问（管道/漏斗等主动 IO）做插入过滤；
      * Logic 自身的推送/抽取走内部路径，不经此判定。
      *
      * @param key 待判定物品
-     * @return true 表示允许插入（过滤关闭，或物品为样板输出）
+     * @return true 表示允许插入
      */
-    public boolean passesOutputFilter(AEKey key) {
-        return !this.filteredImport || this.outputCache.contains(key);
+    public boolean passesInputFilter(AEKey key) {
+        if (!this.filteredImport) {
+            return true;
+        }
+        if (!this.trackedCrafts.isEmpty()) {
+            return this.trackedCrafts.contains(key);
+        }
+        return this.outputCache.contains(key);
     }
 
     /**
@@ -426,6 +477,11 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
         super.updatePatterns();
         patternInputs.clear();
         outputCache.clear();
+        // 活跃合成追踪（照 advancedae）：样板集变化时重设关注集合——关注所有样板输出，
+        // 网络合成请求变化经 onRequestChange 维护 trackedCrafts
+        if (craftingWatcher != null) {
+            craftingWatcher.reset();
+        }
 
         for (var stack : getPatternInv()) {
             var details = PatternDetailsHelper.decodePattern(stack, this.host.getBlockEntity().getLevel());
@@ -433,6 +489,9 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             if (details != null) {
                 // 需求 6a：收集样板输出物品（输入过滤放行集合）
                 for (var output : details.getOutputs()) {
+                    if (craftingWatcher != null) {
+                        craftingWatcher.add(output.what());
+                    }
                     outputCache.add(output.what());
                 }
 
