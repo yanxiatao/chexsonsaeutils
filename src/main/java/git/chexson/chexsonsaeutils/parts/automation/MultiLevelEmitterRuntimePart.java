@@ -13,6 +13,7 @@ import appeng.api.stacks.KeyCounter;
 import appeng.core.definitions.AEItems;
 import appeng.parts.automation.StorageLevelEmitterPart;
 import appeng.util.ConfigInventory;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompileResult;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
@@ -260,6 +261,11 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     protected boolean isLevelEmitterOn() {
         if (isClientSide()) {
             return super.isLevelEmitterOn();
+        }
+
+        if (!ChexsonsaeutilsCompatibilityConfig.boolValue(
+                ChexsonsaeutilsCompatibilityConfig.MULTI_LEVEL_EMITTER_ENABLED)) {
+            return false;
         }
 
         if (!getMainNode().isActive()) {

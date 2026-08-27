@@ -98,6 +98,7 @@ import appeng.helpers.patternprovider.PatternProviderTarget;
 import appeng.helpers.patternprovider.UnlockCraftingEvent;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
 import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
 import git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl;
@@ -412,7 +413,8 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
 
     /**
      * 设置主动抽取开关（需求 8 toggle），服务端权威（Menu client action 调用）。
-     * 开启后 Ticker 每 10 tick 调用一次 {@link #pullFromMachine()}。
+     * 开启后 Ticker 最快每 tick 调用一次 {@link #pullFromMachine()}（URGENT 维持，
+     * 机器无产出时 SLOWER 休眠降频，间隔由 AE2 封顶）。
      * <p>
      * 开启时主动唤醒网格 tick：Ticker 空闲时返回 SLEEP（网格不调用 tickingRequest），
      * 不唤醒则主动抽取永不生效（照 returnInv 变化唤醒模式）。
@@ -1105,7 +1107,9 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             // 需求 7：appflux 感应卡灌电——每 tick 检测感应卡并灌电（上限由 AFConfig 控制）。
             // "不对其它面供电"已天然满足：capability 透传让外部访问任何面都等于访问私有
             // 维度机器，灌电直接走网格 → 机器，不经过供应器自身能量存储。
-            if (energyInjector != null && energyInjector.isInstalled()) {
+            if (energyInjector != null && energyInjector.isInstalled()
+                    && ChexsonsaeutilsCompatibilityConfig.boolValue(
+                    ChexsonsaeutilsCompatibilityConfig.CUSTOM_PATTERN_PROVIDER_ENABLED)) {
                 energyInjector.injectEnergy(Integer.MAX_VALUE);
             }
             // 需求 8 toggle：主动抽取——每次被调用立即执行（最快每 tick 一次）。
@@ -1113,8 +1117,10 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             // 下方返回 URGENT，维持每 tick 最快抽取；机器无产出时返回 SLOWER 休眠降频
             // （AE2 TickManager 间隔翻倍封顶约 128 tick≈6.4 秒，即休眠间隔上限），
             // 休眠期间每次被调用仍会尝试抽取，一旦抽到立即回到每 tick 节奏。
-            var pulled = activeExtract && pullFromMachine();
-            boolean couldDoWork = doWork();
+            boolean featureEnabled = ChexsonsaeutilsCompatibilityConfig.boolValue(
+                    ChexsonsaeutilsCompatibilityConfig.CUSTOM_PATTERN_PROVIDER_ENABLED);
+            var pulled = featureEnabled && activeExtract && pullFromMachine();
+            boolean couldDoWork = featureEnabled && doWork();
             TickRateModulation result;
             if (hasWorkToDo()) {
                 result = couldDoWork ? TickRateModulation.URGENT : TickRateModulation.SLOWER;

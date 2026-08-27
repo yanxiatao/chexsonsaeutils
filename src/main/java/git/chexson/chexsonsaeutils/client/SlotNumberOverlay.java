@@ -15,6 +15,7 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 
 import appeng.items.tools.NetworkToolItem;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 
 /**
  * 槽位编号显示（需求 4）：背包有网络工具时，任意 GUI 中按 Alt+I 切换显示当前 GUI
@@ -122,6 +123,10 @@ public final class SlotNumberOverlay {
      */
     public static void onScreenRender(ScreenEvent.Render.Post event) {
         if (!showSlotNumbers) {
+            return;
+        }
+        if (!ChexsonsaeutilsCompatibilityConfig.boolValue(
+                ChexsonsaeutilsCompatibilityConfig.SLOT_NUMBER_OVERLAY_ENABLED)) {
             return;
         }
         Screen screen = event.getScreen();

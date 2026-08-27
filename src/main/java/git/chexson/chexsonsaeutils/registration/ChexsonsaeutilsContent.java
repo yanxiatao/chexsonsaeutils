@@ -26,6 +26,7 @@ import git.chexson.chexsonsaeutils.client.gui.implementations.AEDirectProcessing
 import git.chexson.chexsonsaeutils.client.gui.implementations.HighCapacityCraftingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.ParallelCraftingCPUScreen;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMockRecipe;
 import git.chexson.chexsonsaeutils.crafting.custompattern.EncodedCustomPattern;
@@ -244,7 +245,10 @@ public final class ChexsonsaeutilsContent {
         registerAutoItemGenBootstrap();
         registerCustomPatternProviderBootstrap();
         registerMultiLevelEmitterBootstrap();
-        CellRegistration.bootstrap(INFINITY_CELL_ITEM);
+        if (ChexsonsaeutilsCompatibilityConfig.boolValue(
+                ChexsonsaeutilsCompatibilityConfig.INFINITY_CELL_ENABLED)) {
+            CellRegistration.bootstrap(INFINITY_CELL_ITEM);
+        }
         // 面板模型注册（PartModels 冻结发生在客户端模型加载阶段，common setup 注册安全）
         PartModels.registerModels(CustomPatternProviderPart.MODELS);
     }

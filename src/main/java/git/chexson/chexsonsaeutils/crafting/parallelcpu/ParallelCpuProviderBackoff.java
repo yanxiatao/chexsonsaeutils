@@ -7,16 +7,9 @@ import java.util.Map;
 
 public final class ParallelCpuProviderBackoff {
 
-    public static final int DEFAULT_BASE_BACKOFF_TICKS = 2;
-    public static final int DEFAULT_MAX_BACKOFF_TICKS = 40;
-
     private final Map<ICraftingProvider, ProviderState> providerStates = new IdentityHashMap<>();
     private final int baseBackoffTicks;
     private final int maxBackoffTicks;
-
-    public ParallelCpuProviderBackoff() {
-        this(DEFAULT_BASE_BACKOFF_TICKS, DEFAULT_MAX_BACKOFF_TICKS);
-    }
 
     public ParallelCpuProviderBackoff(int baseBackoffTicks, int maxBackoffTicks) {
         this.baseBackoffTicks = Math.max(1, baseBackoffTicks);

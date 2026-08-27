@@ -29,6 +29,7 @@ import appeng.menu.AutoCraftingMenu;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.NativeSourceCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.ParallelActiveCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
@@ -188,28 +189,59 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private static final String NBT_SEARCH_RESULT_COUNT = "searchResultCount";
     private static final String NBT_HIGHLIGHTED_GLOBAL_SLOT = "highlightedGlobalSlot";
     private static final String NBT_HIGHLIGHTED_PAGE_SLOT_MASK = "highlightedPageSlotMask";
-    protected static final int TOTAL_PATTERN_SLOTS = 16_384;
     protected static final int PAGE_SIZE = 27;
     private static final int UPGRADE_SLOTS = 5;
-    private static final int DEFAULT_BASE_TICKS = 20;
-    private static final int COMPLETION_PROGRESS_SAVE_INTERVAL = 32;
-    private static final int QUEUE_PROGRESS_SAVE_INTERVAL = 128;
-    private static final int LOCAL_EXECUTION_QUEUE_CAPACITY = 1_024;
-    private static final int FAST_BATCH_BACKPRESSURE_TASK_LIMIT = LOCAL_EXECUTION_QUEUE_CAPACITY;
-    private static final long TICK_SOFT_BUDGET_NANOS = 4_000_000L;
-    private static final long TICK_HARD_BUDGET_NANOS = 5_000_000L;
-    private static final long TICK_ABSOLUTE_BUDGET_NANOS = 6_000_000L;
+
+    private static int configTotalPatternSlots() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.HIGH_CAPACITY_TOTAL_PATTERN_SLOTS);
+    }
+
+    private static int configDefaultBaseTicks() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.HIGH_CAPACITY_DEFAULT_BASE_TICKS);
+    }
+
+    private static int configLocalExecutionQueueCapacity() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.HIGH_CAPACITY_LOCAL_EXECUTION_QUEUE_CAPACITY);
+    }
+
+    private static long configTickSoftBudgetNanos() {
+        return ChexsonsaeutilsCompatibilityConfig.longValue(
+                ChexsonsaeutilsCompatibilityConfig.HIGH_CAPACITY_TICK_SOFT_BUDGET_NANOS);
+    }
+
+    private static long configTickHardBudgetNanos() {
+        return ChexsonsaeutilsCompatibilityConfig.longValue(
+                ChexsonsaeutilsCompatibilityConfig.HIGH_CAPACITY_TICK_HARD_BUDGET_NANOS);
+    }
+
+    private static long configTickAbsoluteBudgetNanos() {
+        return ChexsonsaeutilsCompatibilityConfig.longValue(
+                ChexsonsaeutilsCompatibilityConfig.HIGH_CAPACITY_TICK_ABSOLUTE_BUDGET_NANOS);
+    }
+
+    private static int configCompletionProgressSaveInterval() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.HIGH_CAPACITY_COMPLETION_PROGRESS_SAVE_INTERVAL);
+    }
+
+    private static int configQueueProgressSaveInterval() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.HIGH_CAPACITY_QUEUE_PROGRESS_SAVE_INTERVAL);
+    }
 
     protected final MachineSource actionSource = new MachineSource(this);
     protected final DirtySlotPatternRefreshScheduler refreshScheduler =
-            new DirtySlotPatternRefreshScheduler(TOTAL_PATTERN_SLOTS);
+            new DirtySlotPatternRefreshScheduler(configTotalPatternSlots());
     protected final DecodedPatternEntryCache decodedPatternEntryCache =
-            new DecodedPatternEntryCache(TOTAL_PATTERN_SLOTS);
+            new DecodedPatternEntryCache(configTotalPatternSlots());
     protected final PagedPatternInventory pagedPatternInventory =
-            new PagedPatternInventory(this, refreshScheduler, TOTAL_PATTERN_SLOTS, PAGE_SIZE);
+            new PagedPatternInventory(this, refreshScheduler, configTotalPatternSlots(), PAGE_SIZE);
     protected final LocalPatternProviderFacade localPatternProviderFacade =
             new LocalPatternProviderFacade(this, pagedPatternInventory, refreshScheduler, decodedPatternEntryCache);
-    protected final LocalExecutionQueue localExecutionQueue = new LocalExecutionQueue(LOCAL_EXECUTION_QUEUE_CAPACITY);
+    protected final LocalExecutionQueue localExecutionQueue = new LocalExecutionQueue(configLocalExecutionQueueCapacity());
     private final Supplier<ItemStack> representativeItemSupplier;
     private final IUpgradeInventory upgrades;
     private final TransientCraftingContainer craftingContainer =
@@ -219,7 +251,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private final VirtualPatternItemHandler automationItemHandler = new VirtualPatternItemHandler(automationContainer);
     private final String pageStatusTranslationKey;
 
-    private int baseOperationTicks = DEFAULT_BASE_TICKS;
+    private int baseOperationTicks = configDefaultBaseTicks();
     private boolean localOptimizationEnabled = true;
     private long jobsSubmitted;
     private long jobsCompleted;
@@ -249,9 +281,9 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private int unsavedQueueMutationCount;
     private FormalMachineTickBudgetSnapshot lastTickBudgetSnapshot =
             new FormalMachineTickBudgetSnapshot(
-                    TICK_SOFT_BUDGET_NANOS,
-                    TICK_HARD_BUDGET_NANOS,
-                    TICK_ABSOLUTE_BUDGET_NANOS,
+                    configTickSoftBudgetNanos(),
+                    configTickHardBudgetNanos(),
+                    configTickAbsoluteBudgetNanos(),
                     0L,
                     false
             );
@@ -345,7 +377,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
         super.loadTag(data, registries);
         upgrades.readFromNBT(data, NBT_UPGRADES, registries);
         localExecutionQueue.readFromTag(data, NBT_EXECUTION_QUEUE, registries);
-        baseOperationTicks = data.contains(NBT_BASE_TICKS) ? Math.max(1, data.getInt(NBT_BASE_TICKS)) : DEFAULT_BASE_TICKS;
+        baseOperationTicks = data.contains(NBT_BASE_TICKS) ? Math.max(1, data.getInt(NBT_BASE_TICKS)) : configDefaultBaseTicks();
         batchExecutionMode = data.contains(NBT_BATCH_MODE)
                 ? BatchExecutionMode.valueOf(data.getString(NBT_BATCH_MODE))
                 : BatchExecutionMode.OFF;
@@ -1226,7 +1258,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             return true;
         }
 
-        if (pendingCompletionWork.unsavedSliceCounter() >= COMPLETION_PROGRESS_SAVE_INTERVAL) {
+        if (pendingCompletionWork.unsavedSliceCounter() >= configCompletionProgressSaveInterval()) {
             pendingCompletionWork.resetUnsavedSliceCounter();
             saveChanges();
         }
@@ -1966,8 +1998,12 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     }
 
     protected void serverTick() {
+        if (!ChexsonsaeutilsCompatibilityConfig.boolValue(
+                ChexsonsaeutilsCompatibilityConfig.HIGH_CAPACITY_CRAFTING_MACHINE_ENABLED)) {
+            return;
+        }
         long tickStartedAt = System.nanoTime();
-        long hardDeadlineNanos = safeAdd(tickStartedAt, TICK_HARD_BUDGET_NANOS);
+        long hardDeadlineNanos = safeAdd(tickStartedAt, configTickHardBudgetNanos());
         loadExternalPatternsIfNeeded();
         localPatternProviderFacade.refreshDirtyPatterns();
         requestProviderUpdateIfLocalPatternsChanged();
@@ -1992,13 +2028,13 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     private boolean isTickBudgetHardStopped(long tickStartedAt) {
         long elapsed = Math.max(0L, System.nanoTime() - tickStartedAt);
-        if (elapsed < TICK_HARD_BUDGET_NANOS) {
+        if (elapsed < configTickHardBudgetNanos()) {
             return false;
         }
         lastTickBudgetSnapshot = new FormalMachineTickBudgetSnapshot(
-                TICK_SOFT_BUDGET_NANOS,
-                TICK_HARD_BUDGET_NANOS,
-                TICK_ABSOLUTE_BUDGET_NANOS,
+                configTickSoftBudgetNanos(),
+                configTickHardBudgetNanos(),
+                configTickAbsoluteBudgetNanos(),
                 elapsed,
                 true
         );
@@ -2007,11 +2043,11 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
 
     private void finishTickBudget(long tickStartedAt) {
         long elapsed = Math.max(0L, System.nanoTime() - tickStartedAt);
-        boolean hardStop = elapsed >= TICK_HARD_BUDGET_NANOS;
+        boolean hardStop = elapsed >= configTickHardBudgetNanos();
         lastTickBudgetSnapshot = new FormalMachineTickBudgetSnapshot(
-                TICK_SOFT_BUDGET_NANOS,
-                TICK_HARD_BUDGET_NANOS,
-                TICK_ABSOLUTE_BUDGET_NANOS,
+                configTickSoftBudgetNanos(),
+                configTickHardBudgetNanos(),
+                configTickAbsoluteBudgetNanos(),
                 elapsed,
                 hardStop
         );
@@ -2093,7 +2129,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
     private static boolean isDeadlinePastAbsoluteBudget(long hardDeadlineNanos) {
         long absoluteDeadlineNanos = safeAdd(
                 hardDeadlineNanos,
-                Math.max(0L, TICK_ABSOLUTE_BUDGET_NANOS - TICK_HARD_BUDGET_NANOS)
+                Math.max(0L, configTickAbsoluteBudgetNanos() - configTickHardBudgetNanos())
         );
         return System.nanoTime() - absoluteDeadlineNanos >= 0L;
     }
@@ -2131,7 +2167,7 @@ public abstract class AbstractHighCapacityCraftingHostBlockEntity extends AENetw
             flushQueuedMutationsToDisk();
             return;
         }
-        if (unsavedQueueMutationCount >= QUEUE_PROGRESS_SAVE_INTERVAL) {
+        if (unsavedQueueMutationCount >= configQueueProgressSaveInterval()) {
             flushQueuedMutationsToDisk();
         }
     }

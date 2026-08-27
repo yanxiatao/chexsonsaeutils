@@ -28,6 +28,31 @@ public final class ChexsonsaeutilsCompatibilityConfig {
             AE_DIRECT_PROCESSING_MACHINE_RECIPE_MAPPINGS;
     public static final ModConfigSpec.ConfigValue<String> AE_DIRECT_PROCESSING_MACHINE_BUDGET_PROFILE;
     public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_GENERIC_DISCOVERY_ENABLED;
+    public static final ModConfigSpec.BooleanValue HIGH_CAPACITY_CRAFTING_MACHINE_ENABLED;
+    public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_ENABLED;
+    public static final ModConfigSpec.BooleanValue CUSTOM_PATTERN_PROVIDER_ENABLED;
+    public static final ModConfigSpec.BooleanValue MULTI_LEVEL_EMITTER_ENABLED;
+    public static final ModConfigSpec.BooleanValue AUTO_ITEM_GEN_ENABLED;
+    public static final ModConfigSpec.BooleanValue INFINITY_CELL_ENABLED;
+    public static final ModConfigSpec.BooleanValue SLOT_NUMBER_OVERLAY_ENABLED;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_TOTAL_PATTERN_SLOTS;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_DEFAULT_OPERATION_TICKS;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_QUEUE_TASKS;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_BATCHES;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK;
+    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_TOTAL_PATTERN_SLOTS;
+    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_DEFAULT_BASE_TICKS;
+    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_LOCAL_EXECUTION_QUEUE_CAPACITY;
+    public static final ModConfigSpec.ConfigValue<Long> HIGH_CAPACITY_TICK_SOFT_BUDGET_NANOS;
+    public static final ModConfigSpec.ConfigValue<Long> HIGH_CAPACITY_TICK_HARD_BUDGET_NANOS;
+    public static final ModConfigSpec.ConfigValue<Long> HIGH_CAPACITY_TICK_ABSOLUTE_BUDGET_NANOS;
+    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_COMPLETION_PROGRESS_SAVE_INTERVAL;
+    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_QUEUE_PROGRESS_SAVE_INTERVAL;
+    public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_BASE_TICKS;
+    public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_MAX_TICKS;
+    public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID;
+    public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_REINJECT_PATTERN_INPUTS_PER_TICK_PER_GRID;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -60,6 +85,46 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "kept when the frame is dismantled. Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.maxFramePatternPages")
                 .defineInRange("maxFramePatternPages", 8, 1, 8);
+        HIGH_CAPACITY_CRAFTING_MACHINE_ENABLED = builder
+                .comment("Enable the high-capacity crafting machine behavior.",
+                        "Registered blocks/items stay available for world compatibility;",
+                        "when disabled, placed machines stop processing. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.highCapacityCraftingMachineEnabled")
+                .define("highCapacityCraftingMachineEnabled", true);
+        AE_DIRECT_PROCESSING_MACHINE_ENABLED = builder
+                .comment("Enable the AE direct processing machine behavior.",
+                        "Registered blocks/items stay available for world compatibility;",
+                        "when disabled, placed machines stop processing. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.aeDirectProcessingMachineEnabled")
+                .define("aeDirectProcessingMachineEnabled", true);
+        CUSTOM_PATTERN_PROVIDER_ENABLED = builder
+                .comment("Enable the custom pattern provider active behavior.",
+                        "Registered blocks/items stay available for world compatibility;",
+                        "when disabled, providers stop active extraction and pushing.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.customPatternProviderEnabled")
+                .define("customPatternProviderEnabled", true);
+        MULTI_LEVEL_EMITTER_ENABLED = builder
+                .comment("Enable the multi-level emitter output logic.",
+                        "Registered parts stay available for world compatibility;",
+                        "when disabled, emitters always read as off. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.multiLevelEmitterEnabled")
+                .define("multiLevelEmitterEnabled", true);
+        AUTO_ITEM_GEN_ENABLED = builder
+                .comment("Enable the auto item generator (debug) block behavior.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.autoItemGenEnabled")
+                .define("autoItemGenEnabled", true);
+        INFINITY_CELL_ENABLED = builder
+                .comment("Enable the infinity storage cell registration.",
+                        "Has no effect after restart.")
+                .translation("configuration.chexsonsaeutils.infinityCellEnabled")
+                .define("infinityCellEnabled", true);
+        SLOT_NUMBER_OVERLAY_ENABLED = builder
+                .comment("Enable the client-side slot number overlay.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.slotNumberOverlayEnabled")
+                .define("slotNumberOverlayEnabled", true);
         builder.pop();
 
         builder.comment("AEA Feature Migration")
@@ -156,6 +221,26 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuLaneShardCount")
                 .defineInRange("parallelCraftingCpuLaneShardCount",
                         4_096, 1, Integer.MAX_VALUE);
+        PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_BASE_TICKS = builder
+                .comment("Base exponential backoff delay in ticks for busy pattern providers.")
+                .translation("configuration.chexsonsaeutils.parallelCraftingCpuProviderBackoffBaseTicks")
+                .defineInRange("parallelCraftingCpuProviderBackoffBaseTicks",
+                        2, 1, Integer.MAX_VALUE);
+        PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_MAX_TICKS = builder
+                .comment("Maximum backoff delay in ticks for busy pattern providers.")
+                .translation("configuration.chexsonsaeutils.parallelCraftingCpuProviderBackoffMaxTicks")
+                .defineInRange("parallelCraftingCpuProviderBackoffMaxTicks",
+                        40, 1, Integer.MAX_VALUE);
+        PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID = builder
+                .comment("Maximum pattern input extractions budgeted per grid tick.")
+                .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxExtractPatternInputsPerTickPerGrid")
+                .defineInRange("parallelCraftingCpuMaxExtractPatternInputsPerTickPerGrid",
+                        1_048_576L, 1L, Long.MAX_VALUE / 4L);
+        PARALLEL_CRAFTING_CPU_MAX_REINJECT_PATTERN_INPUTS_PER_TICK_PER_GRID = builder
+                .comment("Maximum pattern input reinjections budgeted per grid tick.")
+                .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxReinjectPatternInputsPerTickPerGrid")
+                .defineInRange("parallelCraftingCpuMaxReinjectPatternInputsPerTickPerGrid",
+                        1_048_576L, 1L, Long.MAX_VALUE / 4L);
         builder.pop();
 
         builder.comment("AE Direct Processing Machine")
@@ -190,6 +275,70 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 )
                 .translation("configuration.chexsonsaeutils.genericDiscoveryEnabled")
                 .define("genericDiscoveryEnabled", true);
+        AE_DIRECT_PROCESSING_MACHINE_TOTAL_PATTERN_SLOTS = builder
+                .comment("Total pattern slot capacity of the AE direct processing machine.",
+                        "Shrinking this below a machine's used slots may affect existing saves.")
+                .translation("configuration.chexsonsaeutils.totalPatternSlots")
+                .defineInRange("totalPatternSlots", 16_384, 1, 65_536);
+        AE_DIRECT_PROCESSING_MACHINE_DEFAULT_OPERATION_TICKS = builder
+                .comment("Base processing duration in ticks before speed card reduction.")
+                .translation("configuration.chexsonsaeutils.defaultOperationTicks")
+                .defineInRange("defaultOperationTicks", 20, 1, Integer.MAX_VALUE);
+        AE_DIRECT_PROCESSING_MACHINE_MAX_QUEUE_TASKS = builder
+                .comment("Maximum tasks kept in the execution queue per machine.")
+                .translation("configuration.chexsonsaeutils.maxQueueTasks")
+                .defineInRange("maxQueueTasks", 256, 1, Integer.MAX_VALUE);
+        AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_BATCHES = builder
+                .comment("Maximum output batches buffered before backpressure rejects new work.")
+                .translation("configuration.chexsonsaeutils.maxPendingOutputBatches")
+                .defineInRange("maxPendingOutputBatches", 1_024, 1, Integer.MAX_VALUE);
+        AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS = builder
+                .comment("Cap for the exponential retry delay when output return to the network fails.")
+                .translation("configuration.chexsonsaeutils.maxPendingOutputRetryDelayTicks")
+                .defineInRange("maxPendingOutputRetryDelayTicks", 20, 1, Integer.MAX_VALUE);
+        AE_DIRECT_PROCESSING_MACHINE_DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK = builder
+                .comment("Dirty pattern slot refreshes budgeted per tick per machine.")
+                .translation("configuration.chexsonsaeutils.dirtyPatternRefreshBudgetPerTick")
+                .defineInRange("dirtyPatternRefreshBudgetPerTick", 64, 1, Integer.MAX_VALUE);
+        builder.pop();
+
+        builder.comment("High Capacity Crafting Machine")
+                .translation("configuration.chexsonsaeutils.section.highCapacityCraftingMachine")
+                .push("highCapacityCraftingMachine");
+        HIGH_CAPACITY_TOTAL_PATTERN_SLOTS = builder
+                .comment("Total pattern slot capacity of high-capacity crafting hosts.",
+                        "Shrinking this below a host's used slots may affect existing saves.")
+                .translation("configuration.chexsonsaeutils.totalPatternSlots")
+                .defineInRange("totalPatternSlots", 16_384, 1, 65_536);
+        HIGH_CAPACITY_DEFAULT_BASE_TICKS = builder
+                .comment("Base crafting duration in ticks before speed card reduction.")
+                .translation("configuration.chexsonsaeutils.defaultBaseTicks")
+                .defineInRange("defaultBaseTicks", 20, 1, Integer.MAX_VALUE);
+        HIGH_CAPACITY_LOCAL_EXECUTION_QUEUE_CAPACITY = builder
+                .comment("Maximum tasks kept in each host's local execution queue.")
+                .translation("configuration.chexsonsaeutils.localExecutionQueueCapacity")
+                .defineInRange("localExecutionQueueCapacity", 1_024, 1, Integer.MAX_VALUE);
+        HIGH_CAPACITY_TICK_SOFT_BUDGET_NANOS = builder
+                .comment("Soft wall-clock budget per host tick in nanos.")
+                .translation("configuration.chexsonsaeutils.tickSoftBudgetNanos")
+                .defineInRange("tickSoftBudgetNanos", 4_000_000L, 1L, 45_000_000L);
+        HIGH_CAPACITY_TICK_HARD_BUDGET_NANOS = builder
+                .comment("Hard wall-clock budget per host tick in nanos.")
+                .translation("configuration.chexsonsaeutils.tickHardBudgetNanos")
+                .defineInRange("tickHardBudgetNanos", 5_000_000L, 1L, 45_000_000L);
+        HIGH_CAPACITY_TICK_ABSOLUTE_BUDGET_NANOS = builder
+                .comment("Absolute wall-clock budget per host tick in nanos.",
+                        "Must stay above the hard budget to remain effective.")
+                .translation("configuration.chexsonsaeutils.tickAbsoluteBudgetNanos")
+                .defineInRange("tickAbsoluteBudgetNanos", 6_000_000L, 1L, 45_000_000L);
+        HIGH_CAPACITY_COMPLETION_PROGRESS_SAVE_INTERVAL = builder
+                .comment("Completion slices processed before forcing a progress save.")
+                .translation("configuration.chexsonsaeutils.completionProgressSaveInterval")
+                .defineInRange("completionProgressSaveInterval", 32, 1, Integer.MAX_VALUE);
+        HIGH_CAPACITY_QUEUE_PROGRESS_SAVE_INTERVAL = builder
+                .comment("Queue mutations processed before forcing a progress save.")
+                .translation("configuration.chexsonsaeutils.queueProgressSaveInterval")
+                .defineInRange("queueProgressSaveInterval", 128, 1, Integer.MAX_VALUE);
         builder.pop();
         SPEC = builder.build();
     }
@@ -204,5 +353,17 @@ public final class ChexsonsaeutilsCompatibilityConfig {
      */
     public static int maxFramePatternPages() {
         return MAX_CUSTOM_PATTERN_PAGES.get();
+    }
+
+    public static int intValue(ModConfigSpec.ConfigValue<Integer> value) {
+        return SPEC.isLoaded() ? value.get() : value.getDefault();
+    }
+
+    public static long longValue(ModConfigSpec.ConfigValue<Long> value) {
+        return SPEC.isLoaded() ? value.get() : value.getDefault();
+    }
+
+    public static boolean boolValue(ModConfigSpec.BooleanValue value) {
+        return SPEC.isLoaded() ? value.get() : value.getDefault();
     }
 }
