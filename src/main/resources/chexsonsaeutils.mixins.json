@@ -12,6 +12,7 @@
     "ae2.crafting.CraftingServiceContinuationMixin",
     "ae2.crafting.CraftingStatusEnhancedStatusMixin",
     "ae2.crafting.CraftingServiceParallelCpuMixin",
+    "ae2.crafting.CraftingCalculationFastPausingMixin",
     "ae2.menu.CraftingCPUMenuParallelCpuMixin",
     "ae2.menu.CraftingStatusMenuParallelCpuMixin",
     "ae2.menu.CraftingStatusEntryEnhancedStatusMixin",

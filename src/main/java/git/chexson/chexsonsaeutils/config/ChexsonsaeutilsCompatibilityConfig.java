@@ -17,6 +17,8 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue BUILDING_GADGETS2_INTEGRATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FTB_ULTIMINE_MEMORY_CARD_ENABLED;
     public static final ModConfigSpec.BooleanValue PARALLEL_CRAFTING_CPU_ENABLED;
+    public static final ModConfigSpec.BooleanValue PARALLEL_CPU_FAST_PLANNING_ENABLED;
+    public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CPU_FAST_PLANNING_BUDGET_MILLIS;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_SUBMISSIONS_PER_TICK_PER_GRID;
@@ -185,6 +187,20 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuEnabled")
                 .define("parallelCraftingCpuEnabled", true);
+        PARALLEL_CPU_FAST_PLANNING_ENABLED = builder
+                .comment("Enable the parallel CPU fast crafting-plan calculation path.",
+                        "When the AE network hosts this mod's parallel CPU, crafting plans are",
+                        "computed on a dedicated fast path without AE2's per-tick time slicing,",
+                        "which is much faster for large jobs. On any failure the calculation",
+                        "automatically falls back to the native AE2 path. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningEnabled")
+                .define("parallelCpuFastPlanningEnabled", true);
+        PARALLEL_CPU_FAST_PLANNING_BUDGET_MILLIS = builder
+                .comment("Wall-clock budget in milliseconds for a single fast planning run.",
+                        "If the fast path exceeds it, the calculation falls back to the throttled",
+                        "native AE2 path. 0 disables the budget (run to completion).")
+                .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningBudgetMillis")
+                .defineInRange("parallelCpuFastPlanningBudgetMillis", 10_000, 0, Integer.MAX_VALUE);
         PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK = builder
                 .comment("Maximum internal crafting lanes per tool block.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxInternalLanesPerBlock")
