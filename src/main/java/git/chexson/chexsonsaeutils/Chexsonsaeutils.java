@@ -54,6 +54,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
@@ -117,16 +118,20 @@ public class Chexsonsaeutils {
         modEventBus.addListener(this::onRegisterCapabilities);
         modEventBus.addListener(this::onRegisterPartCapabilities);
         modEventBus.addListener(this::onRegisterPayloadHandlers);
-        modEventBus.addListener(SlotNumberOverlay::registerKeyMapping);
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListeners);
-        NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenRender);
-        NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenKeyPressed);
-        NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenClosing);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(this::onLevelLoad);
         NeoForge.EVENT_BUS.addListener(this::onLevelSave);
         NeoForge.EVENT_BUS.addListener(this::onLevelUnload);
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
+        // 槽位编号叠加为纯客户端功能：仅客户端注册，避免专用服务端构造期经方法引用
+        // 加载 SlotNumberOverlay（引用 Minecraft/LocalPlayer）触发 dist 校验失败。
+        if (FMLEnvironment.dist.isClient()) {
+            modEventBus.addListener(SlotNumberOverlay::registerKeyMapping);
+            NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenRender);
+            NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenKeyPressed);
+            NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenClosing);
+        }
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
