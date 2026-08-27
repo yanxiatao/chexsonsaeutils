@@ -9,7 +9,6 @@
     "ae2.menu.CraftConfirmMenuContinuationMixin",
     "ae2.menu.PatternEncodingTermMenuRuleMixin",
     "ae2.crafting.PatternDetailsHelperAccessor",
-    "ae2.blockentity.CondenserBlockEntityCondenseItemHandlerMixin",
     "ae2.crafting.CraftingServiceContinuationMixin",
     "ae2.crafting.CraftingStatusEnhancedStatusMixin",
     "ae2.crafting.CraftingServiceParallelCpuMixin",

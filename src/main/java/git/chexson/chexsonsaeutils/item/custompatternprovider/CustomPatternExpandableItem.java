@@ -4,8 +4,7 @@ package git.chexson.chexsonsaeutils.item.custompatternprovider;
  * 可扩容样板供应器物品标记接口（阶段 1 共享层泛化）。
  * <p>
  * 动机：扩容 GUI（{@link git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeMenu}）
- * 与物质聚合器扩容 mixin（CondenserBlockEntityCondenseItemHandlerMixin）原硬编码
- * instanceof CustomPatternItem；定制样板供应器（阶段 2 新方块）物品同样支持
+ * 原硬编码 instanceof CustomPatternItem；定制样板供应器（阶段 2 新方块）物品同样支持
  * 扩容（CUSTOM_PATTERN_PAGES 组件语义），故抽象为标记接口，实现类即视为可扩容对象。
  * <p>
  * 泛化方案选择：相比「实现 IStorageComponent 且携带 CUSTOM_PATTERN_PAGES 组件」的
@@ -14,7 +13,7 @@ package git.chexson.chexsonsaeutils.item.custompatternprovider;
  * 行为完全不变（实现本接口即保持原可扩容性）。
  * <p>
  * 实现要求：实现类应同时实现 {@link appeng.api.implementations.items.IStorageComponent}
- * （可放入扩容 GUI 存储槽与物质聚合器存储元件位），并携带 CUSTOM_PATTERN_PAGES
+ * （可放入扩容 GUI 存储槽），并携带 CUSTOM_PATTERN_PAGES
  * 组件语义（getOrDefault 读取、set 写入，见
  * {@link git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent#CUSTOM_PATTERN_PAGES}）。
  */

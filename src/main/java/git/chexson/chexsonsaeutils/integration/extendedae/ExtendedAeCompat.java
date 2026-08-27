@@ -13,8 +13,7 @@ import net.minecraft.world.item.ItemStack;
  * reference-sources/extendedae EAESingletons.java:301）。本类提供运行时物品匹配，
  * 不编译期依赖 ExtendedAE（未安装时返回 AIR，匹配恒 false）。
  * <p>
- * 使用方：扩容 GUI 输入槽过滤器（CustomPatternUpgradeMenu）与物质聚合器扩容 mixin
- * （CondenserBlockEntityCondenseItemHandlerMixin）。
+ * 使用方：扩容 GUI 输入槽过滤器（CustomPatternUpgradeMenu）。
  */
 public final class ExtendedAeCompat {
 
