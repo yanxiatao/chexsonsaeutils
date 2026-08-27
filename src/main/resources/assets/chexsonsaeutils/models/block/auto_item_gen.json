@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:block/cube_all",
   "textures": {
-    "all": "chexsonsaeutils:block/ae_direct_processing_machine"
+    "all": "chexsonsaeutils:block/auto_item_gen"
   }
 }

@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "chexsonsaeutils:block/auto_item_gen"
+    }
+  }
+}
