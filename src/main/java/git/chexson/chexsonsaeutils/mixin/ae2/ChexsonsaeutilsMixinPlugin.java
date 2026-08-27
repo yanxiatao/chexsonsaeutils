@@ -66,6 +66,8 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCalculationFastPausingMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeInvoker",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessFastAccessor",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeFastBatchMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.DyeablePatternCraftingCalculationFastPausingMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingStatusMenuParallelCpuMixin",

@@ -14,6 +14,8 @@
     "ae2.crafting.CraftingServiceParallelCpuMixin",
     "ae2.crafting.CraftingCalculationFastPausingMixin",
     "ae2.crafting.CraftingTreeNodeInvoker",
+    "ae2.crafting.CraftingTreeProcessFastAccessor",
+    "ae2.crafting.CraftingTreeNodeFastBatchMixin",
     "ae2.crafting.DyeablePatternCraftingCalculationFastPausingMixin",
     "ae2.menu.CraftingCPUMenuParallelCpuMixin",
     "ae2.menu.CraftingStatusMenuParallelCpuMixin",
