@@ -65,6 +65,8 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> PARALLEL_CPU_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCalculationFastPausingMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeInvoker",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.DyeablePatternCraftingCalculationFastPausingMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingStatusMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CPUSelectionListParallelCpuMixin",

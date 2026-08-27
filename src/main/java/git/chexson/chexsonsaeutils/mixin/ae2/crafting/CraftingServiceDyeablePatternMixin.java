@@ -12,6 +12,7 @@ import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingCalculation;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternCraftingProviders;
 import git.chexson.chexsonsaeutils.crafting.fastplan.FastCraftingCalculation;
+import git.chexson.chexsonsaeutils.crafting.fastplan.FastDyeablePatternCraftingCalculation;
 import git.chexson.chexsonsaeutils.crafting.fastplan.ParallelCpuFastPlanning;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
@@ -50,18 +51,20 @@ public abstract class CraftingServiceDyeablePatternMixin {
     ) {
         boolean dyeableEnabled = FeatureGates.isEnabled(
                 ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled");
-        // Dyeable ring-replacement must keep its dedicated planning for colored outputs.
-        if (dyeableEnabled && DyeablePatternCraftingCalculation.isDyeableRequest(output)) {
-            return new DyeablePatternCraftingCalculation(level, grid, simRequester, output, strategy);
-        }
-        // Parallel CPU fast path: full-speed native-identical planning with fallback.
-        if (ParallelCpuFastPlanning.shouldUseFastPlanning(grid)) {
-            return new FastCraftingCalculation(
-                    level, grid, simRequester, output, strategy, ParallelCpuFastPlanning.budgetMillis());
-        }
+        boolean fastPlanning = ParallelCpuFastPlanning.shouldUseFastPlanning(grid);
+        long budgetMillis = ParallelCpuFastPlanning.budgetMillis();
+        // Dyeable ring-replacement (recursive) planning keeps its dedicated logic; the
+        // parallel CPU fast path accelerates it without changing its behavior.
         if (dyeableEnabled) {
-            return new DyeablePatternCraftingCalculation(level, grid, simRequester, output, strategy);
+            return fastPlanning
+                    ? new FastDyeablePatternCraftingCalculation(
+                            level, grid, simRequester, output, strategy, budgetMillis)
+                    : new DyeablePatternCraftingCalculation(level, grid, simRequester, output, strategy);
         }
-        return new CraftingCalculation(level, grid, simRequester, output, strategy);
+        // Non-dyeable: parallel CPU fast path runs the native-identical algorithm
+        // full-speed with fallback; otherwise the vanilla AE2 calculation.
+        return fastPlanning
+                ? new FastCraftingCalculation(level, grid, simRequester, output, strategy, budgetMillis)
+                : new CraftingCalculation(level, grid, simRequester, output, strategy);
     }
 }
