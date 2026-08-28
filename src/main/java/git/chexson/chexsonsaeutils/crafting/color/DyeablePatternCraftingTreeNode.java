@@ -13,6 +13,7 @@ import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.ChildCraftingSimulationState;
 import appeng.crafting.inv.CraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
+import git.chexson.chexsonsaeutils.crafting.fastplan.FastSimStatePool;
 import git.chexson.chexsonsaeutils.pattern.replacement.PlanningReplacementSelector;
 import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
 import org.jetbrains.annotations.Nullable;
@@ -261,8 +262,8 @@ final class DyeablePatternCraftingTreeNode {
         long totalProduced = 0L;
         while (neededAmount > 0L) {
             long producedInAttempt = 0L;
+            ChildCraftingSimulationState attemptInventory = FastSimStatePool.acquire(inventory);
             try {
-                ChildCraftingSimulationState attemptInventory = new ChildCraftingSimulationState(inventory);
                 long craftedPerPattern = process.getOutputCount(this.what);
                 if (craftedPerPattern <= 0L) {
                     break;
@@ -281,6 +282,8 @@ final class DyeablePatternCraftingTreeNode {
                 }
             } catch (CraftBranchFailure failure) {
                 break;
+            } finally {
+                FastSimStatePool.release(attemptInventory);
             }
 
             if (producedInAttempt == 0L) {
