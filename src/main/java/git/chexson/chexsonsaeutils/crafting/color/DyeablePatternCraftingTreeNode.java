@@ -260,6 +260,21 @@ final class DyeablePatternCraftingTreeNode {
             long neededAmount
     ) throws InterruptedException {
         long totalProduced = 0L;
+
+        // limitQty（容器/耐久/不消耗）专用批量：仅在未触发 ring 替换的干净场景提交，
+        // 否则自动回退下方逐件循环，保证递归（环）记账不变。
+        if (process.limitsQuantity() && neededAmount > 0L
+                && tryBatchLimitQty(inventory, process, neededAmount)) {
+            long produced = inventory.extract(this.what, neededAmount, Actionable.MODULATE);
+            if (produced > 0L) {
+                neededAmount -= produced;
+                totalProduced += produced;
+                if (neededAmount <= 0L) {
+                    return totalProduced;
+                }
+            }
+        }
+
         while (neededAmount > 0L) {
             long producedInAttempt = 0L;
             ChildCraftingSimulationState attemptInventory = FastSimStatePool.acquire(inventory);
@@ -291,6 +306,147 @@ final class DyeablePatternCraftingTreeNode {
             }
         }
         return totalProduced;
+    }
+
+    /**
+     * limitQty 专用批量（染色路径）。记账方式与原生 {@code FastLimitQtyBatcher} 完全一致：
+     * 纯回流容器只按单次用量提取并记一次回流、消耗输入按 {@code times} 倍、缺失字节补齐。
+     *
+     * <p>与原生路径的关键差异：染色节点的 {@code request} 可能触发 ring 替换并改写 job 级
+     * 状态（{@code ringExtractions} 等），且按件与批量的环取整可能不同。因此本方法先快照
+     * 全部相关 job 状态，仅当批量过程未触发任何 ring 替换时才提交；一旦触发或出现任何异常，
+     * 都还原快照并返回 {@code false}，交由逐件循环处理，递归计划保持逐位一致。
+     */
+    private boolean tryBatchLimitQty(
+            CraftingSimulationState inventory,
+            DyeablePatternCraftingTreeProcess process,
+            long neededAmount
+    ) throws InterruptedException {
+        long craftedPerPattern = process.getOutputCount(this.what);
+        if (craftedPerPattern <= 0L || neededAmount <= 0L) {
+            return false;
+        }
+        long times = (neededAmount + craftedPerPattern - 1L) / craftedPerPattern;
+        if (times <= 1L) {
+            return false;
+        }
+        if (!process.hasContainerItems()) {
+            return false;
+        }
+        Map<DyeablePatternCraftingTreeNode, Long> inputNodes = process.nodesView();
+        if (inputNodes.isEmpty()) {
+            return false;
+        }
+
+        // 预校验：每个输入必须是“纯消耗”或“纯回流容器”，无模糊替换/可发射/耐久变形。
+        for (Map.Entry<DyeablePatternCraftingTreeNode, Long> entry : inputNodes.entrySet()) {
+            DyeablePatternCraftingTreeNode inputNode = entry.getKey();
+            if (inputNode.canEmit) {
+                return false;
+            }
+            IPatternDetails.IInput parentInput = inputNode.parentInput;
+            if (parentInput == null) {
+                return false;
+            }
+            GenericStack[] possibleInputs = parentInput.getPossibleInputs();
+            if (possibleInputs == null || possibleInputs.length != 1) {
+                return false;
+            }
+            AEKey nodeWhat = inputNode.what;
+            if (nodeWhat == null || !nodeWhat.equals(possibleInputs[0].what())) {
+                return false; // 发生了替换/模糊匹配（含 ReplacementAware），回退
+            }
+            AEKey remaining = parentInput.getRemainingKey(nodeWhat);
+            if (remaining != null && !remaining.equals(nodeWhat)) {
+                return false; // 耐久变形：回退
+            }
+            long mult = entry.getValue();
+            if (mult > 0L && times > Long.MAX_VALUE / mult) {
+                return false;
+            }
+        }
+
+        // 快照 job 级状态，便于失败/触发 ring 时还原。
+        KeyCounter ringSnapshot = this.job.copyRingExtractions();
+        KeyCounter internalSnapshot = this.job.copyRecursiveInternalItems();
+        Map<Integer, Set<AEKey>> failedSnapshot = this.job.copyFailedRingReplacements();
+        KeyCounter missingSnapshot = this.job.copyMissingItems();
+        Map<AEItemKey, Map<AEKey, Long>> selectedSnapshot = this.job.copySelectedPatternInputs();
+        long ringUsageBefore = sumCounter(ringSnapshot);
+        long internalBefore = sumCounter(internalSnapshot);
+        long missingBefore = sumCounter(missingSnapshot);
+        long failedBefore = countFailedRingEntries(failedSnapshot);
+        boolean committed = false;
+
+        ChildCraftingSimulationState sandbox = FastSimStatePool.acquire(inventory);
+        try {
+            KeyCounter containerItems = new KeyCounter();
+            for (Map.Entry<DyeablePatternCraftingTreeNode, Long> entry : inputNodes.entrySet()) {
+                DyeablePatternCraftingTreeNode inputNode = entry.getKey();
+                long mult = entry.getValue();
+                AEKey nodeWhat = inputNode.what;
+                AEKey remaining = inputNode.parentInput.getRemainingKey(nodeWhat);
+                if (remaining == null) {
+                    inputNode.request(sandbox, mult * times, containerItems);
+                } else {
+                    inputNode.request(sandbox, mult, containerItems);
+                    sandbox.addStackBytes(nodeWhat, inputNode.amount, mult * (times - 1));
+                }
+            }
+
+            // 守卫：批量过程触发了 ring/递归/缺失记账则回退，交由逐件路径保证语义。
+            if (sumCounter(this.job.copyRingExtractions()) != ringUsageBefore
+                    || sumCounter(this.job.copyRecursiveInternalItems()) != internalBefore
+                    || sumCounter(this.job.copyMissingItems()) != missingBefore
+                    || countFailedRingEntries(this.job.copyFailedRingReplacements()) != failedBefore) {
+                return false;
+            }
+
+            for (var containerEntry : containerItems) {
+                AEKey key = containerEntry.getKey();
+                long val = containerEntry.getLongValue();
+                sandbox.insert(key, val, Actionable.MODULATE);
+                sandbox.addStackBytes(key, val, times);
+            }
+            for (var output : process.details.getOutputs()) {
+                sandbox.insert(output.what(), output.amount() * times, Actionable.MODULATE);
+            }
+            sandbox.addCrafting(process.details, times);
+            sandbox.addBytes(times);
+
+            sandbox.applyDiff(inventory);
+            committed = true;
+            return true;
+        } catch (CraftBranchFailure failure) {
+            return false;
+        } catch (RuntimeException failure) {
+            return false;
+        } finally {
+            FastSimStatePool.release(sandbox);
+            if (!committed) {
+                this.job.restoreRingExtractions(ringSnapshot);
+                this.job.restoreRecursiveInternalItems(internalSnapshot);
+                this.job.restoreFailedRingReplacements(failedSnapshot);
+                this.job.restoreMissingItems(missingSnapshot);
+                this.job.restoreSelectedPatternInputs(selectedSnapshot);
+            }
+        }
+    }
+
+    private static long sumCounter(KeyCounter counter) {
+        long total = 0L;
+        for (var entry : counter) {
+            total += entry.getLongValue();
+        }
+        return total;
+    }
+
+    private static long countFailedRingEntries(Map<Integer, Set<AEKey>> failedRingReplacements) {
+        long total = 0L;
+        for (Set<AEKey> entries : failedRingReplacements.values()) {
+            total += entries.size();
+        }
+        return total;
     }
 
     private long tryProcessRingReplacement(
