@@ -57,6 +57,12 @@ public final class FastSimStatePool {
             return;
         }
         try {
+            // 归还前置空 parent，避免池化实例在共享合成线程上跨计算持有旧网格/存储引用。
+            ((FastSimStateParentAccess) (Object) state).chexsonsaeutils$setFastParent(null);
+        } catch (RuntimeException ignored) {
+            // 置空失败不影响后续复用：acquire 总会重新指定 parent。
+        }
+        try {
             ArrayDeque<ChildCraftingSimulationState> stack = POOL.get();
             if (stack.size() < MAX_PER_THREAD) {
                 stack.addFirst(state);
