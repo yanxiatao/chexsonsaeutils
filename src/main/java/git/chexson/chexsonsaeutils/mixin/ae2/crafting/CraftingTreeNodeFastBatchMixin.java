@@ -13,6 +13,7 @@ import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.CraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
 import git.chexson.chexsonsaeutils.crafting.fastplan.FastCraftingCalculation;
+import git.chexson.chexsonsaeutils.crafting.fastplan.FastLimitQtyBatcher;
 import git.chexson.chexsonsaeutils.crafting.fastplan.FastSimStatePool;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -98,12 +99,29 @@ public abstract class CraftingTreeNodeFastBatchMixin {
         if (this.nodes.size() == 1) {
             // 单分支：与原生一致（本身已批量）
             final CraftingTreeProcess pro = this.nodes.get(0);
-            var craftedPerPattern = ((CraftingTreeProcessFastAccessor) pro).chexsonsaeutils$getOutputCount(this.what);
-            while (((CraftingTreeProcessFastAccessor) pro).chexsonsaeutils$isPossible() && totalRequestedItems > 0) {
-                long times = ((CraftingTreeProcessFastAccessor) pro).chexsonsaeutils$limitsQuantity()
+            var processAccessor = (CraftingTreeProcessFastAccessor) pro;
+            var craftedPerPattern = processAccessor.chexsonsaeutils$getOutputCount(this.what);
+
+            // limitQty（容器/耐久/不消耗）专用批量：干净场景一次性完成，把逐件 O(n) 降为 O(子树)。
+            // 失败或不满足干净条件时返回 false，落到下方逐件循环，结果保持不变。
+            if (processAccessor.chexsonsaeutils$limitsQuantity()
+                    && processAccessor.chexsonsaeutils$isPossible()
+                    && totalRequestedItems > 0
+                    && FastLimitQtyBatcher.tryBatch(inv, pro, this.what, totalRequestedItems, craftedPerPattern)) {
+                var available = inv.extract(this.what, totalRequestedItems, Actionable.MODULATE);
+                if (available != 0) {
+                    totalRequestedItems -= available;
+                    if (totalRequestedItems <= 0) {
+                        return;
+                    }
+                }
+            }
+
+            while (processAccessor.chexsonsaeutils$isPossible() && totalRequestedItems > 0) {
+                long times = processAccessor.chexsonsaeutils$limitsQuantity()
                         ? 1
                         : (totalRequestedItems + craftedPerPattern - 1) / craftedPerPattern;
-                ((CraftingTreeProcessFastAccessor) pro).chexsonsaeutils$request(inv, times);
+                processAccessor.chexsonsaeutils$request(inv, times);
                 var available = inv.extract(this.what, totalRequestedItems, Actionable.MODULATE);
                 if (available != 0) {
                     totalRequestedItems -= available;

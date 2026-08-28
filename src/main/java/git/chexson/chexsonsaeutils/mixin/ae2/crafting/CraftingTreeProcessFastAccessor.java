@@ -2,11 +2,14 @@ package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 
 import appeng.api.stacks.AEKey;
 import appeng.crafting.CraftBranchFailure;
+import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.CraftingTreeProcess;
 import appeng.crafting.inv.CraftingSimulationState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
+
+import java.util.Map;
 
 /**
  * 暴露 {@link CraftingTreeProcess} 的包私有成员，供快速计算的批量多分支探测使用。
@@ -19,6 +22,12 @@ public interface CraftingTreeProcessFastAccessor {
 
     @Accessor(value = "possible", remap = false)
     void chexsonsaeutils$setPossible(boolean possible);
+
+    @Accessor(value = "containerItems", remap = false)
+    boolean chexsonsaeutils$hasContainerItems();
+
+    @Accessor(value = "nodes", remap = false)
+    Map<CraftingTreeNode, Long> chexsonsaeutils$getNodes();
 
     @Invoker(value = "request", remap = false)
     void chexsonsaeutils$request(CraftingSimulationState inv, long times)

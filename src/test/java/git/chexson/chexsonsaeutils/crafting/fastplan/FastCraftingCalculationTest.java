@@ -73,6 +73,35 @@ final class FastCraftingCalculationTest {
         return calc.run();
     }
 
+    private static ICraftingPlan runFast(FakeGrid grid, AEKey output, long amount,
+            CalculationStrategy strategy, boolean forcePerItem) {
+        FastLimitQtyBatcher.forcePerItemForTesting = forcePerItem;
+        try {
+            return runFast(grid, output, amount, strategy);
+        } finally {
+            FastLimitQtyBatcher.forcePerItemForTesting = false;
+        }
+    }
+
+    private static void assertPlansEqual(ICraftingPlan reference, ICraftingPlan actual) {
+        assertNotNull(actual);
+        assertEquals(reference.finalOutput(), actual.finalOutput(), "finalOutput");
+        assertEquals(reference.simulation(), actual.simulation(), "simulation");
+        assertEquals(reference.bytes(), actual.bytes(), "bytes");
+        assertEquals(toPlain(reference.usedItems()), toPlain(actual.usedItems()), "usedItems");
+        assertEquals(toPlain(reference.missingItems()), toPlain(actual.missingItems()), "missingItems");
+        assertEquals(toPlain(reference.emittedItems()), toPlain(actual.emittedItems()), "emittedItems");
+        assertEquals(reference.patternTimes(), actual.patternTimes(), "patternTimes");
+    }
+
+    private static Map<AEKey, Long> toPlain(KeyCounter counter) {
+        Map<AEKey, Long> map = new HashMap<>();
+        for (var entry : counter) {
+            map.put(entry.getKey(), entry.getLongValue());
+        }
+        return map;
+    }
+
     @Test
     void singlePatternCraftProducesExpectedPlan() {
         FakePattern ironFromGold = FakePattern.crafting(IRON, 1, Map.of(GOLD, 2L));
@@ -238,6 +267,50 @@ final class FastCraftingCalculationTest {
         assertEquals(50L, plan.patternTimes().get(topFromMid));
         assertEquals(100L, plan.usedItems().get(GOLD));
         assertEquals(150L, plan.usedItems().get(DIAMOND));
+    }
+
+    @Test
+    void limitQtyBatchMatchesPerItemForDirectIngredients() {
+        // 1 IRON <- 1 GOLD + 1 BUCKET（桶回流）。干净场景：消耗输入 GOLD 直接取自库存。
+        FakePattern ironInBucket = FakePattern.of(IRON, 1,
+                new FakeInput(GOLD, 1),
+                new FakeInput(BUCKET, 1, BUCKET));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(GOLD, 100L, BUCKET, 1L))
+                .pattern(IRON, ironInBucket)
+                .build();
+
+        ICraftingPlan perItem = runFast(grid, IRON, 100, CalculationStrategy.REPORT_MISSING_ITEMS, true);
+        ICraftingPlan batched = runFast(grid, IRON, 100, CalculationStrategy.REPORT_MISSING_ITEMS, false);
+
+        assertPlansEqual(perItem, batched);
+        // 桶循环：无论 100 件只需 1 桶；100 件消耗 100 金。
+        assertEquals(1L, batched.usedItems().get(BUCKET));
+        assertEquals(100L, batched.usedItems().get(GOLD));
+        assertEquals(100L, batched.patternTimes().get(ironInBucket));
+    }
+
+    @Test
+    void limitQtyBatchMatchesPerItemForRecursiveIngredients() {
+        // 1 IRON <- 1 GOLD + 1 BUCKET（桶回流），且 GOLD <- 2 REDSTONE 需递归。干净场景。
+        FakePattern goldFromRedstone = FakePattern.crafting(GOLD, 1, Map.of(REDSTONE, 2L));
+        FakePattern ironInBucket = FakePattern.of(IRON, 1,
+                new FakeInput(GOLD, 1),
+                new FakeInput(BUCKET, 1, BUCKET));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(REDSTONE, 200L, BUCKET, 1L))
+                .pattern(GOLD, goldFromRedstone)
+                .pattern(IRON, ironInBucket)
+                .build();
+
+        ICraftingPlan perItem = runFast(grid, IRON, 100, CalculationStrategy.REPORT_MISSING_ITEMS, true);
+        ICraftingPlan batched = runFast(grid, IRON, 100, CalculationStrategy.REPORT_MISSING_ITEMS, false);
+
+        assertPlansEqual(perItem, batched);
+        assertEquals(1L, batched.usedItems().get(BUCKET));
+        assertEquals(200L, batched.usedItems().get(REDSTONE));
+        assertEquals(100L, batched.patternTimes().get(ironInBucket));
+        assertEquals(100L, batched.patternTimes().get(goldFromRedstone));
     }
 
     // ------------------------------------------------------------------
