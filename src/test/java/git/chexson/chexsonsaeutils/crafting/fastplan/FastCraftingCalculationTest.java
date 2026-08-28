@@ -32,6 +32,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -62,6 +63,9 @@ final class FastCraftingCalculationTest {
     private static final AEItemKey GOLD = AEItemKey.of(Items.GOLD_INGOT);
     private static final AEItemKey DIAMOND = AEItemKey.of(Items.DIAMOND);
     private static final AEItemKey REDSTONE = AEItemKey.of(Items.REDSTONE);
+    private static final AEItemKey BUCKET = AEItemKey.of(Items.BUCKET);
+    private static final AEItemKey MID = AEItemKey.of(Items.GUNPOWDER);
+    private static final AEItemKey TOP = AEItemKey.of(Items.CLOCK);
 
     private static ICraftingPlan runFast(FakeGrid grid, AEKey output, long amount, CalculationStrategy strategy) {
         var calc = new FastCraftingCalculation(
@@ -185,6 +189,57 @@ final class FastCraftingCalculationTest {
         assertTrue(elapsedMillis < 30_000L, "fast path exceeded budget: " + elapsedMillis + "ms");
     }
 
+    @Test
+    void containerItemPatternCyclesAndLimitsRequiredExtract() {
+        // 1 IRON <- 2 GOLD + 1 BUCKET, and the bucket is returned (container item).
+        // Crafting must run one-by-one (limitQty) so the single bucket cycles, and the
+        // plan must only require 1 bucket while consuming all 20 gold.
+        FakePattern ironInBucket = FakePattern.of(IRON, 1,
+                new FakeInput(GOLD, 2),
+                new FakeInput(BUCKET, 1, BUCKET));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(GOLD, 20L, BUCKET, 1L))
+                .pattern(IRON, ironInBucket)
+                .build();
+
+        ICraftingPlan plan = runFast(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+
+        assertNotNull(plan);
+        assertFalse(plan.simulation());
+        assertEquals(new GenericStack(IRON, 10), plan.finalOutput());
+        assertEquals(10L, plan.patternTimes().get(ironInBucket));
+        assertEquals(20L, plan.usedItems().get(GOLD));
+        // The single bucket is reused across all 10 crafts, so only 1 is extracted.
+        assertEquals(1L, plan.usedItems().get(BUCKET));
+    }
+
+    @Test
+    void nestedMultiBranchReusesPooledChildStates() {
+        // TOP <- 2 MID ; MID has two branches (from GOLD or from DIAMOND). The nested
+        // multi-branch forces the child-state pool to hand out distinct, nested
+        // instances; results must still match the native accounting.
+        FakePattern midFromGold = FakePattern.crafting(MID, 1, Map.of(GOLD, 2L));
+        FakePattern midFromDiamond = FakePattern.crafting(MID, 1, Map.of(DIAMOND, 3L));
+        FakePattern topFromMid = FakePattern.crafting(TOP, 1, Map.of(MID, 2L));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(GOLD, 100L, DIAMOND, 300L))
+                .pattern(MID, midFromGold, midFromDiamond)
+                .pattern(TOP, topFromMid)
+                .build();
+
+        ICraftingPlan plan = runFast(grid, TOP, 50, CalculationStrategy.REPORT_MISSING_ITEMS);
+
+        assertNotNull(plan);
+        assertFalse(plan.simulation());
+        assertEquals(new GenericStack(TOP, 50), plan.finalOutput());
+        // 50 TOP needs 100 MID; gold branch yields 50 MID (100 gold / 2), the rest from diamond.
+        assertEquals(50L, plan.patternTimes().get(midFromGold));
+        assertEquals(50L, plan.patternTimes().get(midFromDiamond));
+        assertEquals(50L, plan.patternTimes().get(topFromMid));
+        assertEquals(100L, plan.usedItems().get(GOLD));
+        assertEquals(150L, plan.usedItems().get(DIAMOND));
+    }
+
     // ------------------------------------------------------------------
     // Fakes
     // ------------------------------------------------------------------
@@ -203,8 +258,18 @@ final class FastCraftingCalculationTest {
                     .toArray(IInput[]::new);
         }
 
+        private FakePattern(AEItemKey definition, GenericStack output, IInput[] inputs) {
+            this.definition = definition;
+            this.output = output;
+            this.inputs = inputs;
+        }
+
         static FakePattern crafting(AEKey output, long outputCount, Map<? extends AEKey, Long> inputs) {
             return new FakePattern(output, outputCount, inputs);
+        }
+
+        static FakePattern of(AEKey output, long outputCount, IInput... inputs) {
+            return new FakePattern(AEItemKey.of(Items.PAPER), new GenericStack(output, outputCount), inputs);
         }
 
         @Override
@@ -226,10 +291,17 @@ final class FastCraftingCalculationTest {
     private static final class FakeInput implements IPatternDetails.IInput {
         private final GenericStack possible;
         private final long multiplier;
+        @Nullable
+        private final AEKey remainingKey;
 
         private FakeInput(AEKey key, long multiplier) {
+            this(key, multiplier, null);
+        }
+
+        private FakeInput(AEKey key, long multiplier, @Nullable AEKey remainingKey) {
             this.possible = new GenericStack(key, 1);
             this.multiplier = multiplier;
+            this.remainingKey = remainingKey;
         }
 
         @Override
@@ -249,7 +321,7 @@ final class FastCraftingCalculationTest {
 
         @Override
         public AEKey getRemainingKey(AEKey template) {
-            return null;
+            return remainingKey;
         }
     }
 

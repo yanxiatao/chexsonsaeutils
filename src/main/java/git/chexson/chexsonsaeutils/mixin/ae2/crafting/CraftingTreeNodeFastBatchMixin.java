@@ -13,6 +13,7 @@ import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.CraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
 import git.chexson.chexsonsaeutils.crafting.fastplan.FastCraftingCalculation;
+import git.chexson.chexsonsaeutils.crafting.fastplan.FastSimStatePool;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -126,7 +127,7 @@ public abstract class CraftingTreeNodeFastBatchMixin {
                 while (accessor.chexsonsaeutils$isPossible() && totalRequestedItems > 0) {
                     long maxByRemaining = (totalRequestedItems + craftedPer - 1) / craftedPer;
                     long testAmount = Math.min(probe, Math.max(1L, maxByRemaining));
-                    var child = new appeng.crafting.inv.ChildCraftingSimulationState(inv);
+                    var child = FastSimStatePool.acquire(inv);
                     try {
                         accessor.chexsonsaeutils$request(child, testAmount);
                         var available = child.extract(this.what, totalRequestedItems, Actionable.MODULATE);
@@ -148,6 +149,8 @@ public abstract class CraftingTreeNodeFastBatchMixin {
                             break;
                         }
                         probe = Math.max(1L, probe / 2);
+                    } finally {
+                        FastSimStatePool.release(child);
                     }
                 }
             }
