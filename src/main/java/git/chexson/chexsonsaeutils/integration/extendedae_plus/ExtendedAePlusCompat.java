@@ -11,14 +11,14 @@ import com.extendedae_plus.init.ModItems;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
- * ExtendedAE_Plus 兼容注册：频道卡可安装到框架样板供应器。
+ * ExtendedAE_Plus 兼容注册：频道卡可安装到定制样板供应器。
  * <p>
  * 动机：ExtendedAE_Plus 是 compileOnly 依赖，注册必须 ModLoaded 门控 +
  * try-catch(Throwable) 防御（版本 API 变化时不阻断本 mod 加载）。
  * group 参数照 ExtendedAE_Plus 对样板供应器的用法（"group.pattern_provider.name"）。
  * <p>
  * 成员作用：{@link #registerUpgrade()} 在 onCommonSetup 中调用，把频道卡
- * （{@code ModItems.CHANNEL_CARD}）注册为框架样板供应器物品的升级项（最多 1 张）。
+ * （{@code ModItems.CHANNEL_CARD}）注册为定制样板供应器物品的升级项（最多 1 张）。
  */
 public final class ExtendedAePlusCompat {
 

@@ -29,22 +29,17 @@
  * 改动点（均以注释标注）：
  * 1. 包名与宿主类型改为本项目（CustomPatternProviderLogicHost）。
  * 2. target 解析：删除相邻方块缓存（PatternProviderTargetCache/findAdapter/getActiveSides），
- *    改为私有维度机器（FrameMachineAccess.getMachineItemHandler()，无 side 语义）。
- * 3. pushPattern/sendStacksOut：推送目标固定为私有维度机器，不向周围方块发/收（需求 8）。
- * 4. getTerminalGroup：机器在私有维度，无相邻机器分组，直接用宿主图标。
+ *    改为按宿主 getTargets() 方向解析相邻机器的 IItemHandler（resolveMachineHandler）。
+ * 3. pushPattern/sendStacksOut：推送目标固定为解析出的那台机器，不向其它周围方块发/收（需求 8）。
+ * 4. getTerminalGroup：不做相邻机器分组遍历，直接用宿主图标。
  * 5. 新增 pullFromMachine()：主动抽取机器输出到返回库存（需求 8 主动抽取按钮）。
  * 6. sendDirection 字段保留仅为旧存档 NBT 兼容，新逻辑无方向语义。
- * 7. 阶段 1 起支持双模式（空集/非空 target）：
- *    - 空集（框架样板供应器）：宿主 getTargets() 返回空集，resolveMachineHandler()
- *      退回单 handler 语义（无参 getMachineItemHandler() 的私有维度机器）。
- *    - 非空集（定制样板供应器）：宿主 getTargets() 返回方向集合（PUSH_DIRECTION），
- *      resolveMachineHandler() 遍历方向取第一个可用 handler（null = 该方向无机器）。
- *    已知局限：多方向模式只推送第一个可用方向的机器，非真正全方向并发推送
- *    （推送循环结构沿用 fork 前单目标设计，多方向并发需重构推送事务）。
+ * 7. 返回库存改用 CustomPatternProviderReturnInventory：带输入过滤，且单格可超过物品堆叠上限
+ *    （主动抽取一次搬空机器整槽产出的前提）。
  * 8. 继承改造（阶段 2）：父类 Ticker 由本类构造器 addService 覆盖（ManagedGridNode
  *    addService 为 putInstance 覆盖语义）——父类 Ticker 驱动父类 doWork（sendStacksOut
  *    依赖 sendDirection + 相邻方块适配器，sendDirection 为 null 且 sendList 非空时抛
- *    IllegalStateException），本类推送目标为私有维度机器，必须由本类 Ticker 驱动
+ *    IllegalStateException），本类推送目标为按方向解析的机器，必须由本类 Ticker 驱动
  *    本类 doWork（灌电 + 机器目标补发）；父类 sendList/returnInv/patternInputs/
  *    unlockEvent/unlockStack/redstoneState/priority 恒空/恒 0 闲置。
  */
@@ -93,19 +88,18 @@ import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.core.settings.TickRates;
 import appeng.helpers.patternprovider.PatternProviderLogic;
-import appeng.helpers.patternprovider.PatternProviderReturnInventory;
 import appeng.helpers.patternprovider.PatternProviderTarget;
 import appeng.helpers.patternprovider.UnlockCraftingEvent;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
-import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
+import git.chexson.chexsonsaeutils.integration.CustomPatternEnergyInjector;
 import git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl;
 import git.chexson.chexsonsaeutils.integration.extendedae_plus.EapWirelessBridgeHelper;
 
 /**
- * 框架样板供应器的样板供应逻辑（继承 AE2 PatternProviderLogic）。
+ * 定制样板供应器的样板供应逻辑（继承 AE2 PatternProviderLogic）。
  * <p>
  * 继承改造（阶段 2，R2 评审确认）：宿主 getLogic() 返回类型与 AE2
  * PatternProviderLogicHost 兼容，为阶段 3 GUI 复用（Menu/Screen 继承
@@ -116,15 +110,16 @@ import git.chexson.chexsonsaeutils.integration.extendedae_plus.EapWirelessBridge
  * fork 语义；父类字段（patternInventory/configManager/patterns）经
  * public 访问器（getPatternInv/getConfigManager/super.updatePatterns）复用。
  * <p>
- * 与 AE2 原版的差异（需求 8 隔离语义）：推送目标经 {@link #resolveMachineHandler()}
- * 解析——单 handler 模式（框架样板供应器）固定为私有维度机器
- * （{@link CustomPatternProviderLogicHost#getMachineItemHandler()}），不向周围方块发/收；
- * 多方向模式（定制样板供应器）遍历 getTargets() 方向取第一个可用机器。
- * 返回库存只收机器输出；额外提供 {@link #pullFromMachine()} 主动抽取机器输出到返回库存。
+ * 与 AE2 原版的差异（需求 8 隔离语义）：推送/抽取目标经 {@link #resolveMachineHandler()}
+ * 解析——遍历宿主 {@code getTargets()} 方向取第一个可用相邻机器，全部方向不可用时拒绝
+ * 推送与抽取；不像原版那样向周围所有方块广播推送。
+ * 返回库存为 {@link CustomPatternProviderReturnInventory}：只收符合输入过滤的机器输出，
+ * 单格可超过物品堆叠上限（超过后该格在 GUI 为只读包装栈，点击可取回一栈）；
+ * 额外提供 {@link #pullFromMachine()} 主动抽取机器输出到返回库存。
  * 其余行为（样板解码、阻塞模式、锁定模式、sendList 补发、终端展示）与 AE2 一致。
  * <p>
  * 仅支持 processing 样板（S3）：crafting 样板依赖 ICraftingMachine 推送路径（分子装配机），
- * 该路径已在 fork 时删除，crafting 样板无法推送到私有维度机器，也不会被主动抽取。
+ * 该路径已在 fork 时删除，crafting 样板无法推送到机器，也不会被主动抽取。
  */
 public class CustomPatternProviderLogic extends PatternProviderLogic {
     private static final Logger LOG = LoggerFactory.getLogger(CustomPatternProviderLogic.class);
@@ -154,11 +149,12 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
     // Pattern sending logic（父类 sendList private 不可达，自建；父类 sendList 恒空闲置）
     private final List<GenericStack> sendList = new ArrayList<>();
     /**
-     * 保留仅为旧存档 NBT 兼容（原版字段），新逻辑无方向语义（推送目标固定为私有维度机器）。
+     * 保留仅为旧存档 NBT 兼容（原版字段），新逻辑无方向语义（推送目标按 getTargets() 方向解析）。
      */
     private Direction sendDirection;
-    // Stack returning logic（父类 returnInv 无输入过滤，自建带过滤实例；父类 returnInv 恒空闲置）
-    private final PatternProviderReturnInventory returnInv;
+    // Stack returning logic（父类 returnInv 无输入过滤与超堆叠上限，自建带过滤实例；
+    // 父类 returnInv 恒空闲置）
+    private final CustomPatternProviderReturnInventory returnInv;
     /**
      * 需求 6a：输入过滤开关（NBT 持久化，Menu @GuiSync 同步）。
      * 过滤开启时 returnInv 注入网络只放行已配置样板的输出物品（outputCache）。
@@ -181,6 +177,17 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
      */
     private final Set<AEKey> patternInputs = new HashSet<>();
     /**
+     * 主动抽取缓存（{@link #rebuildPullCaches()} 懒重建，{@link #updatePatterns()} 置脏）：
+     * 配了抽取槽位的样板槽位并集，pass1 无条件抽取。
+     */
+    private final Set<Integer> pullExtractSlots = new HashSet<>();
+    /** 未配抽取槽位的样板输出并集，pass2 在输入过滤开启时的白名单。 */
+    private final Set<AEItemKey> pullOutputKeys = new HashSet<>();
+    /** 是否存在未配抽取槽位的可推送样板：false 时 pass2 整体跳过。 */
+    private boolean hasLoosePattern;
+    /** 抽取缓存失效标记：初值 true 保证首次抽取前必建表。 */
+    private boolean pullCachesDirty = true;
+    /**
      * 活跃合成追踪（照 advancedae AdvPatternProviderLogic）：经 AE2 官方
      * ICraftingWatcherNode 监听网络合成请求——网络中正在请求合成的样板输出集合。
      * 输入过滤白名单优先级：trackedCrafts 非空时以其为准，空时兜底 outputCache。
@@ -195,7 +202,7 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
      * appflux 未加载时为 null，Ticker 跳过灌电。
      */
     @Nullable
-    private final FrameEnergyInjector energyInjector;
+    private final CustomPatternEnergyInjector energyInjector;
 
     private YesNo redstoneState = YesNo.UNDECIDED;
 
@@ -215,31 +222,22 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
         this.host = host;
         this.mainNode = mainNode;
         this.actionSource = new MachineSource(mainNode::getNode);
-        this.returnInv = new PatternProviderReturnInventory(() -> {
-            this.mainNode.ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
-            this.host.saveChanges();
-        }) {
-            {
-                // 需求 6a：输入过滤（照 advancedae AdvPatternProviderReturnInventory 三级逻辑）——
-                // 过滤关闭放行；开启时优先 trackedCrafts（网络正在请求合成的产物）为白名单，
-                // trackedCrafts 空时兜底放行样板输出（outputCache）
-                this.setFilter((slot, what) -> {
-                    if (!CustomPatternProviderLogic.this.filteredImport) {
-                        return true;
-                    }
-                    if (!CustomPatternProviderLogic.this.trackedCrafts.isEmpty()) {
-                        return CustomPatternProviderLogic.this.trackedCrafts.contains(what);
-                    }
-                    return CustomPatternProviderLogic.this.outputCache.contains(what);
-                });
-            }
-        };
+        this.returnInv = new CustomPatternProviderReturnInventory(
+                () -> {
+                    this.mainNode.ifPresent(
+                            (grid, node) -> grid.getTickManager().alertDevice(node));
+                    this.host.saveChanges();
+                },
+                // 需求 6a：输入过滤三级逻辑统一由 passesInputFilter 承担
+                (slot, what) -> this.passesInputFilter(what),
+                // 返回栏单格超堆叠总闸：懒读配置，切换开关不重建库存实例
+                ChexsonsaeutilsCompatibilityConfig::customPatternProviderOverstackReturnEnabled);
         // 需求 7：appflux 感应卡灌电注入器（未装 appflux 时为 null）
         this.energyInjector = AppFluxEnergyInjectorImpl.create(host, mainNode, actionSource);
         // R2 硬性要求：覆盖父类构造器注册的 Ticker（ManagedGridNode.addService 为
         // putInstance 覆盖语义）。父类 Ticker 驱动父类 doWork（sendStacksOut 依赖
         // sendDirection + 相邻方块适配器，sendDirection 为 null 且 sendList 非空时
-        // 抛 IllegalStateException），本类推送目标为私有维度机器，必须由本类 Ticker
+        // 抛 IllegalStateException），本类推送目标为按方向解析的机器，必须由本类 Ticker
         // 驱动本类 doWork（灌电 + 机器目标补发）。
         mainNode.addService(IGridTickable.class, new Ticker());
         // 活跃合成追踪（照 advancedae）：注册 AE2 合成监视器节点服务，
@@ -473,6 +471,8 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
         super.updatePatterns();
         patternInputs.clear();
         outputCache.clear();
+        // 主动抽取缓存：样板集变化即失效，由 pullFromMachine 下次抽取前懒重建
+        this.pullCachesDirty = true;
         // 活跃合成追踪（照 advancedae）：样板集变化时重设关注集合——关注所有样板输出，
         // 网络合成请求变化经 onRequestChange 维护 trackedCrafts
         if (craftingWatcher != null) {
@@ -511,14 +511,13 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             return false;
         }
 
-        // 需求 4a：框架样板走强制槽位写入路径（不经过 target 的普通插入模拟）
+        // 需求 4a：定制样板走强制槽位写入路径（不经过 target 的普通插入模拟）
         if (patternDetails instanceof CustomProcessingPattern customPattern) {
             return pushCustomPattern(customPattern, inputHolder);
         }
 
-        // 阶段 1 泛化：机器目标解析见 getMachineTarget()——单 handler 模式（框架语义）
-        // 固定为私有维度机器（无 side 语义，机器本体单库存），多方向模式（定制样板
-        // 供应器）取第一个可用方向的机器；不向周围方块发/收（原版此处遍历
+        // 机器目标解析见 getMachineTarget()：遍历 getTargets() 方向取第一个可用机器；
+        // 无可用方向时拒绝推送（不向周围其它方块发/收，原版此处遍历
         // getActiveSides 的相邻机器与适配器）。
         var target = getMachineTarget();
         if (target == null) {
@@ -551,7 +550,7 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
     }
 
     /**
-     * 需求 4a：框架样板的强制槽位推送。
+     * 需求 4a：定制样板的强制槽位推送。
      * <p>
      * 与普通路径（adapterAcceptsAll + pushInputsToExternalInventory）不同：
      * 每个稀疏输入按 slotMapping 强制写入机器指定槽位（setStackInSlot 合并），
@@ -758,24 +757,17 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
     }
 
     /**
-     * 解析机器物品 handler（阶段 1 共享层泛化：单 handler 模式 / 多方向模式）。
+     * 解析机器物品 handler：遍历 {@link CustomPatternProviderLogicHost#getTargets()} 方向，
+     * 调用 {@link CustomPatternProviderLogicHost#getMachineItemHandler(Direction)}
+     * 取第一个可用 handler（null = 该方向无机器，跳过）。
      * <p>
-     * getTargets() 空集 = 单 handler 模式（框架样板供应器语义）：委托无参
-     * {@link CustomPatternProviderLogicHost#getMachineItemHandler()}，宿主保证永不
-     * 返回 null（空实现兜底），行为与改造前完全一致。
-     * 非空 = 多方向模式（定制样板供应器语义）：遍历方向调用
-     * {@link CustomPatternProviderLogicHost#getMachineItemHandler(Direction)}，
-     * 取第一个可用 handler（null 跳过）；全部为 null 时返回 null（调用方拒绝推送）。
+     * 全部方向不可用时返回 null，调用方拒绝推送/抽取（fail-closed）。
      *
-     * @return 机器物品 handler；多方向模式下无可用方向时返回 null
+     * @return 机器物品 handler；无可用方向时返回 null
      */
     @Nullable
     private IItemHandler resolveMachineHandler() {
-        var targets = host.getTargets();
-        if (targets.isEmpty()) {
-            return host.getMachineItemHandler();
-        }
-        for (var direction : targets) {
+        for (var direction : host.getTargets()) {
             var handler = host.getMachineItemHandler(direction);
             if (handler != null) {
                 return handler;
@@ -785,14 +777,13 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
     }
 
     /**
-     * 需求 8 改造：解析私有维度机器为推送目标（替代原版 findAdapter 的相邻方块缓存）。
+     * 需求 8 改造：解析相邻机器为推送目标（替代原版 findAdapter 的相邻方块缓存）。
      * <p>
      * 机器为 IItemHandler（物品通道），非物品通道的 AEKey 插入返回 0。
-     * 单 handler 模式（框架语义）宿主永不返回 null（客户端/机器不可达时返回空实现，
-     * 0 槽天然空操作），故无需判空（S2）；多方向模式（定制样板供应器）无可用方向时
-     * 返回 null，调用方拒绝推送。
+     * handler 来自 {@link #resolveMachineHandler()}：全部方向不可用时返回 null，
+     * 调用方据此拒绝推送/补发。
      *
-     * @return 私有维度机器的推送目标包装；多方向模式下无可用方向时返回 null
+     * @return 目标机器的推送包装；无可用方向时返回 null
      */
     private PatternProviderTarget getMachineTarget() {
         IItemHandler handler = resolveMachineHandler();
@@ -848,7 +839,7 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
 
     /**
      * 需求 8 改造：sendList 补发到机器（原版按 sendDirection 找相邻适配器）。
-     * 机器目标解析见 {@link #getMachineTarget()}（单 handler 模式 / 多方向模式）。
+     * 机器目标解析见 {@link #getMachineTarget()}（按 getTargets() 方向解析的机器）。
      * sendDirection 字段保留仅为旧存档 NBT 兼容，此处不再依赖。
      */
     private boolean sendStacksOut() {
@@ -904,13 +895,23 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
     /**
      * 需求 8 主动抽取：把机器中与样板输出匹配的物品抽取到返回库存。
      * <p>
-     * 机器目标解析见 {@link #resolveMachineHandler()}：单 handler 模式（框架语义）
-     * 抽取私有维度机器；多方向模式（定制样板供应器）抽取第一个可用方向的机器。
+     * 机器目标解析见 {@link #resolveMachineHandler()}：遍历 {@code getTargets()} 方向取第一个
+     * 可用 handler（该方向无机器时跳过）。两趟单扫：
+     * <ul>
+     * <li>pass 1：配置了抽取槽位（extractSlots）的样板槽位并集，无条件抽取、不受输入过滤开关
+     * 影响（显式槽位配置语义优先）。</li>
+     * <li>pass 2：存在未配抽取槽位的样板时单次扫描机器全部槽位。开关语义不变——输入过滤
+     * 开启=只抽样板输出（{@link #pullOutputKeys} 白名单），关闭=抽取机器内所有物品。</li>
+     * </ul>
+     * 单槽一次抽完（{@code extractItem(slot, 槽内全部数量)}），配合返回栏单格超堆叠
+     * （{@link CustomPatternProviderReturnInventory}）即可一轮搬空机器产出；返回栏装不下时
+     * 余量回滚进机器槽，不丢料。
+     * <p>
      * 只抽取 processing 样板的输出（I2 修复）：熔炉等机器的输入/燃料槽与样板输出不匹配，
      * 不会被抽走，避免机器断粮。crafting 样板（supportsPushInputsToExternalInventory 为 false）
      * 无法推送到本机器，跳过其输出。I2 修复：先实际抽取再按返回量插入 returnInv
      * （插入量 = min(机器实际抽取量, returnInv 可容纳量)），插入不足时剩余回滚到机器槽位，
-     * 避免自定义 handler 实际抽取量 < 模拟量导致物品复制。
+     * 避免自定义 handler 实际抽取量 &lt; 模拟量导致物品复制。
      * 抽取成功后唤醒网格 tick 把返回库存注入网络。
      *
      * @return true 表示至少抽取了部分物品
@@ -920,99 +921,31 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
         if (handler == null) {
             return false;
         }
+        if (this.pullCachesDirty) {
+            this.rebuildPullCaches();
+        }
         boolean didSomething = false;
-        for (var stack : getPatternInv()) {
-            var details = PatternDetailsHelper.decodePattern(stack, this.host.getBlockEntity().getLevel());
-            if (details == null || !details.supportsPushInputsToExternalInventory()) {
-                continue;
+        // pass 1：显式抽取槽位（需求 4a）——不受输入过滤开关影响
+        for (int slot : this.pullExtractSlots) {
+            if (slot >= 0 && slot < handler.getSlots()) {
+                didSomething |= this.pullOneSlot(handler, slot);
             }
-            // 需求 4a：框架样板按配置槽位强制抽取（配置了 extractSlots 则跳过普通输出匹配路径）
-            if (details instanceof CustomProcessingPattern customPattern && customPattern.getExtractSlots().length > 0) {
-                for (int slot : customPattern.getExtractSlots()) {
-                    if (slot < 0 || slot >= handler.getSlots()) {
-                        continue;
-                    }
-                    ItemStack machineStack = handler.getStackInSlot(slot);
-                    if (machineStack.isEmpty()) {
-                        continue;
-                    }
-                    // I2 修复：先实际抽取，再按返回量插入 returnInv（避免自定义 handler
-                    // 实际抽取量 < 模拟量时 returnInv 记账与机器存量不一致导致物品复制）
-                    ItemStack extracted = handler.extractItem(slot, machineStack.getCount(), false);
-                    if (extracted.isEmpty()) {
-                        continue;
-                    }
-                    var key = AEItemKey.of(extracted);
-                    if (key == null) {
-                        // 非物品栈无法进入 returnInv：回滚到机器槽位
-                        handler.insertItem(slot, extracted, false);
-                        continue;
-                    }
-                    long inserted = returnInv.insert(key, extracted.getCount(), Actionable.MODULATE, actionSource);
-                    if (inserted > 0) {
-                        didSomething = true;
-                    }
-                    if (inserted < extracted.getCount()) {
-                        // returnInv 满：剩余回滚到机器槽位
-                        var remainder = extracted.copy();
-                        remainder.shrink((int) inserted);
-                        var notInserted = handler.insertItem(slot, remainder, false);
-                        if (!notInserted.isEmpty()) {
-                            // 机器拒绝回收：进入 sendList 补发（兜底防物品丢失）
-                            var notInsertedKey = AEItemKey.of(notInserted);
-                            if (notInsertedKey != null) {
-                                this.addToSendList(notInsertedKey, notInserted.getCount());
-                            }
-                        }
-                    }
-                }
-                continue;
-            }
-            // 输入过滤开关控制抽取范围（用户确认语义）：开启=只抽样板输出；关闭=抽取机器内所有物品。
-            // extractSlots 分支不受开关影响（显式槽位配置语义优先，无条件抽取指定槽位）。
-            boolean filterToOutputs = this.filteredImport;
+        }
+        // pass 2：单次全机扫描（原实现按样板逐个重扫机器全部槽位 = 样板数 x 槽数）
+        if (this.hasLoosePattern) {
             for (int slot = 0; slot < handler.getSlots(); slot++) {
                 ItemStack machineStack = handler.getStackInSlot(slot);
                 if (machineStack.isEmpty()) {
                     continue;
                 }
-                if (filterToOutputs) {
-                    boolean matchesOutput = false;
-                    for (var output : details.getOutputs()) {
-                        if (output.what() instanceof AEItemKey outputKey && outputKey.matches(machineStack)) {
-                            matchesOutput = true;
-                            break;
-                        }
-                    }
-                    if (!matchesOutput) {
+                if (this.filteredImport) {
+                    // AEItemKey 的 equals 与 matches 同为 item + 组件全等，集合判定等价
+                    var key = AEItemKey.of(machineStack);
+                    if (key == null || !this.pullOutputKeys.contains(key)) {
                         continue;
                     }
                 }
-                // I2 修复：先实际抽取，再按返回量插入 returnInv（同 extractSlots 分支）
-                ItemStack extracted = handler.extractItem(slot, machineStack.getCount(), false);
-                if (extracted.isEmpty()) {
-                    continue;
-                }
-                var key = AEItemKey.of(extracted);
-                if (key == null) {
-                    handler.insertItem(slot, extracted, false);
-                    continue;
-                }
-                long inserted = returnInv.insert(key, extracted.getCount(), Actionable.MODULATE, actionSource);
-                if (inserted > 0) {
-                    didSomething = true;
-                }
-                if (inserted < extracted.getCount()) {
-                    var remainder = extracted.copy();
-                    remainder.shrink((int) inserted);
-                    var notInserted = handler.insertItem(slot, remainder, false);
-                    if (!notInserted.isEmpty()) {
-                        var notInsertedKey = AEItemKey.of(notInserted);
-                        if (notInsertedKey != null) {
-                            this.addToSendList(notInsertedKey, notInserted.getCount());
-                        }
-                    }
-                }
+                didSomething |= this.pullOneSlot(handler, slot);
             }
         }
         if (didSomething) {
@@ -1020,6 +953,82 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             this.host.saveChanges();
         }
         return didSomething;
+    }
+
+    /**
+     * 抽取机器指定槽位的全部内容到返回库存。
+     * <p>
+     * I2 修复顺序：先实际抽取，再按真实抽取量插入 returnInv；插入不足时把余量回滚进机器槽，
+     * 机器拒收回收时再进 sendList 补发——全程不复制、不吞料。
+     *
+     * @param handler 机器物品 handler
+     * @param slot    机器槽位序号（调用方保证在界内）
+     * @return true 表示至少抽到了 1 个
+     */
+    private boolean pullOneSlot(IItemHandler handler, int slot) {
+        ItemStack machineStack = handler.getStackInSlot(slot);
+        if (machineStack.isEmpty()) {
+            return false;
+        }
+        ItemStack extracted = handler.extractItem(slot, machineStack.getCount(), false);
+        if (extracted.isEmpty()) {
+            return false;
+        }
+        var key = AEItemKey.of(extracted);
+        if (key == null) {
+            // 非物品栈无法进入 returnInv：回滚到机器槽位
+            handler.insertItem(slot, extracted, false);
+            return false;
+        }
+        long inserted = returnInv.insert(key, extracted.getCount(), Actionable.MODULATE, actionSource);
+        if (inserted < extracted.getCount()) {
+            // returnInv 装不下：剩余回滚到机器槽位
+            var remainder = extracted.copy();
+            remainder.shrink((int) inserted);
+            var notInserted = handler.insertItem(slot, remainder, false);
+            if (!notInserted.isEmpty()) {
+                // 机器拒绝回收：进入 sendList 补发（兜底防物品丢失）
+                var notInsertedKey = AEItemKey.of(notInserted);
+                if (notInsertedKey != null) {
+                    this.addToSendList(notInsertedKey, notInserted.getCount());
+                }
+            }
+        }
+        return inserted > 0;
+    }
+
+    /**
+     * 重建主动抽取缓存（由 {@link #pullFromMachine()} 在脏标记下懒调用）。
+     * <p>
+     * 动机：原实现在每次抽取时把全部样板重新解码一遍，并对每个样板重扫机器全部槽位；
+     * 样板上限为页数 x 36（默认 288），主动抽取每 tick 一次时解码开销与槽数成正比。
+     */
+    private void rebuildPullCaches() {
+        this.pullCachesDirty = false;
+        this.pullExtractSlots.clear();
+        this.pullOutputKeys.clear();
+        this.hasLoosePattern = false;
+
+        for (var stack : getPatternInv()) {
+            var details = PatternDetailsHelper.decodePattern(stack, this.host.getBlockEntity().getLevel());
+            // 只登记可推送到机器的 processing 样板：crafting 样板无法推送，其输出也不应被抽走
+            if (details == null || !details.supportsPushInputsToExternalInventory()) {
+                continue;
+            }
+            if (details instanceof CustomProcessingPattern customPattern
+                    && customPattern.getExtractSlots().length > 0) {
+                for (int slot : customPattern.getExtractSlots()) {
+                    this.pullExtractSlots.add(slot);
+                }
+            } else {
+                this.hasLoosePattern = true;
+                for (var output : details.getOutputs()) {
+                    if (output.what() instanceof AEItemKey itemKey) {
+                        this.pullOutputKeys.add(itemKey);
+                    }
+                }
+            }
+        }
     }
 
     @Override
@@ -1054,7 +1063,7 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
     }
 
     @Override
-    public PatternProviderReturnInventory getReturnInv() {
+    public CustomPatternProviderReturnInventory getReturnInv() {
         return this.returnInv;
     }
 
@@ -1155,7 +1164,7 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
      */
     @Override
     public PatternContainerGroup getTerminalGroup() {
-        // 需求 8 改造：机器在私有维度，无相邻机器分组（原版遍历 getActiveSides 的相邻机器），
+        // 需求 8 改造：不做相邻机器分组遍历（原版遍历 getActiveSides 的相邻机器），
         // 直接用宿主图标与名称。
         var hostIcon = this.host.getTerminalIcon();
         return new PatternContainerGroup(

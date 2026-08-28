@@ -8,7 +8,7 @@ import net.minecraft.world.item.ItemStack;
 /**
  * ExtendedAE 集成（需求 5 阶段 5b）。
  * <p>
- * 动机：扩容「框架样板供应器」的消耗物是 ExtendedAE 的「扩展样板供应器」方块物品
+ * 动机：扩容「定制样板供应器」的消耗物是 ExtendedAE 的「扩展样板供应器」方块物品
  * （注册名 ex_pattern_provider，物品 ID extendedae:ex_pattern_provider，见
  * reference-sources/extendedae EAESingletons.java:301）。本类提供运行时物品匹配，
  * 不编译期依赖 ExtendedAE（未安装时返回 AIR，匹配恒 false）。

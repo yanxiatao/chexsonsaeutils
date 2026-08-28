@@ -16,7 +16,7 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
 
 /**
- * 框架样板编码 GUI 的「服务端 → 客户端」数据同步负载。
+ * 定制样板编码 GUI 的「服务端 → 客户端」数据同步负载。
  * <p>
  * 动机：编码 GUI 需要展示输入样板的稀疏输入列表与当前槽位映射（变长数据），
  * 而 AE2 的 @GuiSync 注解只支持定长字段，因此用自定义负载推送。

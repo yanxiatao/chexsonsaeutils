@@ -18,10 +18,10 @@ import appeng.api.stacks.GenericStack;
 import appeng.core.definitions.AEItems;
 
 /**
- * 框架样板的编码数据组件（DataComponent）。
+ * 定制样板的编码数据组件（DataComponent）。
  * <p>
  * 动机：处理样板（EncodedProcessingPattern）只有稀疏输入/输出，没有「输入 → 机器槽位」的
- * 强制映射信息。框架样板供应器需要把每个稀疏输入强制写入私有维度机器的指定槽位（突破
+ * 强制映射信息。定制样板供应器需要把每个稀疏输入强制写入相邻机器的指定槽位（突破
  * 堆叠上限），并在完成后从指定槽位强制抽取输出，因此在本组件中额外携带
  * slotMapping（输入 → 槽位映射）与 extractSlots（强制抽取槽位）。
  *

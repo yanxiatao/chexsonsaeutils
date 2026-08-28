@@ -19,11 +19,11 @@ import appeng.menu.locator.MenuHostLocator;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 
 /**
- * 框架样板供应器逻辑宿主接口。
+ * 定制样板供应器逻辑宿主接口。
  * <p>
  * 动机：AE2 的 {@code PatternProviderLogicHost} 的 {@code getLogic()} 返回 AE2 的
  * {@code PatternProviderLogic}，而本项目 fork 了 {@link CustomPatternProviderLogic}（target 解析改为
- * 私有维度机器），返回类型不同，无法直接实现 AE2 接口，故平行定义本接口。
+ * 按方向解析相邻机器），返回类型不同，无法直接实现 AE2 接口，故平行定义本接口。
  * 阶段 2 继承改造（R2 评审确认）：本接口改为 extends AE2 {@link PatternProviderLogicHost}，
  * {@link #getLogic()} 协变返回 {@link CustomPatternProviderLogic}（其 extends
  * PatternProviderLogic），使宿主类型与 AE2 接口兼容（阶段 3 GUI 复用铺路）。
@@ -33,19 +33,18 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
  * <p>
  * 与 AE2 接口的差异：openMenu/returnToMainMenu 覆写为本项目菜单
  * （CustomPatternProviderMenu，替代 AE2 默认的 PatternProviderMenu，避免继承后
- * 悄悄打开 AE2 菜单）；额外提供 {@link #getMachineItemHandler()}，供逻辑层解析
- * 私有维度机器的物品 handler（需求 8 的推送/抽取目标）。
+ * 悄悄打开 AE2 菜单）；额外提供 {@link #getMachineItemHandler(Direction)}，供逻辑层
+ * 解析相邻机器的物品 handler（需求 8 的推送/抽取目标）。
  * <p>
- * 阶段 1 共享层泛化：本接口同时服务框架样板供应器（单 handler 模式）与定制样板
- * 供应器（多方向模式）。{@link #getTargets()} 空集 = 单 handler 模式（框架语义，
- * 逻辑层委托无参 getMachineItemHandler/getMachineEnergyHandler）；非空 = 多方向
- * 模式（新方块语义，逻辑层遍历方向取第一个可用 handler）。
+ * 宿主契约：方块版与面板版的 {@link #getTargets()} 恒非空（方块按 PUSH_DIRECTION 属性、
+ * 面板恒为朝向），逻辑层按方向遍历取第一个可用 handler。无参
+ * {@link #getMachineItemHandler()}/{@link #getMachineEnergyHandler()} 供外部 capability
+ * 透传与灌电兜底使用（遍历方向取第一个可用，全不可用时返回空实现或 null）。
  */
 public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost {
 
     /**
      * 空 ITEM handler：机器缺失或客户端查询时的兜底实现（避免外部管道 NPE）。
-     * 原子化常量上移自已删除的 FrameMachineAccessImpl（子维度架构清理）。
      */
     IItemHandler EMPTY_ITEM_HANDLER = new IItemHandler() {
         @Override
@@ -93,11 +92,9 @@ public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost
     BlockEntity getBlockEntity();
 
     /**
-     * @return 推送目标方向集合。空集 = 单 handler 模式（框架样板供应器语义：机器在
-     *         私有维度，周围无方块，恒返回空集，逻辑层委托无参
-     *         {@link #getMachineItemHandler()}）；非空 = 多方向模式（定制样板供应器
-     *         语义：逻辑层遍历方向调用 {@link #getMachineItemHandler(Direction)}，
-     *         取第一个可用 handler）。
+     * @return 推送目标方向集合（宿主契约：恒非空）。方块版按 PUSH_DIRECTION 属性返回
+     *         定向或全部 6 方向，面板版恒为自身朝向；逻辑层遍历方向调用
+     *         {@link #getMachineItemHandler(Direction)} 取第一个可用 handler。
      */
     @Override
     EnumSet<Direction> getTargets();
@@ -109,14 +106,14 @@ public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost
     void saveChanges();
 
     /**
-     * @return 私有维度机器的物品 handler。永不返回 null：客户端或机器不可达时返回空实现
-     *         （0 槽，插入/抽取天然空操作），服务端返回机器本体 handler
+     * @return 机器物品 handler（兜底入口：遍历方向取第一个可用机器）。永不返回 null：
+     *         客户端或无可用机器时返回空实现（0 槽，插入/抽取天然空操作）
      */
     IItemHandler getMachineItemHandler();
 
     /**
      * @return 已解锁样板页数（需求 5，翻页 GUI 用）。默认 1：逻辑层共享接口不强制
-     *         翻页语义，宿主（框架样板供应器/定制样板供应器）按自身页数持久化覆写
+     *         翻页语义，宿主（方块版/面板版）按自身页数持久化覆写
      */
     default int getPages() {
         return 1;
@@ -207,24 +204,23 @@ public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost
      * {@link git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeLocator}
      * 已校验宿主类型，实际不会走到默认实现。
      *
-     * @param pages 目标页数（宿主自行 clamp 到 [1, maxFramePatternPages()]）
+     * @param pages 目标页数（宿主自行 clamp 到 [1, maxCustomPatternPages()]）
      */
     default void setPages(int pages) {
         throw new UnsupportedOperationException("宿主不支持扩容：" + getClass().getName());
     }
 
     /**
-     * @return 机器能量 handler（appflux 灌电目标）。框架语义：永不返回 null（客户端
-     *         或机器不可达时返回空实现）；定制样板供应器在 BE 层实现方向逻辑
-     *         （多方向模式下返回第一个可用方向的 handler，全不可用时返回 null）
+     * @return 机器能量 handler（appflux 灌电目标）：遍历方向取第一个可用能量 handler，
+     *         全不可用（含客户端）时返回 null，注入器据此跳过灌电
      */
     IEnergyStorage getMachineEnergyHandler();
 
     /**
-     * 按方向解析机器物品 handler（多方向模式）。
+     * 按方向解析机器物品 handler。
      * <p>
-     * 默认实现委托无参 {@link #getMachineItemHandler()}（框架语义：单 handler，
-     * 忽略方向）；定制样板供应器覆写为按方向查询相邻机器。
+     * 默认实现委托无参 {@link #getMachineItemHandler()}（忽略方向，取第一个可用机器）；
+     * 方块版与面板版均覆写为按方向查询相邻方块。
      *
      * @param direction 目标方向
      * @return 该方向的机器物品 handler；该方向无机器时返回 null
@@ -234,10 +230,10 @@ public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost
     }
 
     /**
-     * 按方向解析机器能量 handler（多方向模式）。
+     * 按方向解析机器能量 handler。
      * <p>
-     * 默认实现委托无参 {@link #getMachineEnergyHandler()}（框架语义：单 handler，
-     * 忽略方向）；定制样板供应器覆写为按方向查询相邻机器。
+     * 默认实现委托无参 {@link #getMachineEnergyHandler()}（忽略方向）；方块版与面板版
+     * 均覆写为按方向查询相邻方块。
      *
      * @param direction 目标方向
      * @return 该方向的机器能量 handler；该方向无机器时返回 null
@@ -247,7 +243,7 @@ public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost
     }
 
     /**
-     * 打开本项目框架样板供应器菜单（替代 AE2 默认的 PatternProviderMenu）。
+     * 打开本项目定制样板供应器菜单（替代 AE2 默认的 PatternProviderMenu）。
      * <p>
      * 动机：父接口默认实现打开 PatternProviderMenu.TYPE，本项目菜单为自定义
      * CustomPatternProviderMenu，继承后必须覆写，避免调用方打开错误菜单。

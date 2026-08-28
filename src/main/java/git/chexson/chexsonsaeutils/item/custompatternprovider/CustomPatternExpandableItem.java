@@ -9,7 +9,7 @@ package git.chexson.chexsonsaeutils.item.custompatternprovider;
  * <p>
  * 泛化方案选择：相比「实现 IStorageComponent 且携带 CUSTOM_PATTERN_PAGES 组件」的
  * 隐式判断，标记接口是显式契约——扩容判断零成本（instanceof），且不误伤其他
- * IStorageComponent（存储元件等无页数语义的物品不会被扩容），框架样板供应器物品
+ * IStorageComponent（存储元件等无页数语义的物品不会被扩容），定制样板供应器物品
  * 行为完全不变（实现本接口即保持原可扩容性）。
  * <p>
  * 实现要求：实现类应同时实现 {@link appeng.api.implementations.items.IStorageComponent}

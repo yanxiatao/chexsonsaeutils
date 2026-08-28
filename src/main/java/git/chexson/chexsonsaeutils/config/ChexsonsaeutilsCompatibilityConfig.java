@@ -33,6 +33,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue HIGH_CAPACITY_CRAFTING_MACHINE_ENABLED;
     public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_ENABLED;
     public static final ModConfigSpec.BooleanValue CUSTOM_PATTERN_PROVIDER_ENABLED;
+    public static final ModConfigSpec.BooleanValue CUSTOM_PATTERN_PROVIDER_OVERSTACK_RETURN_ENABLED;
     public static final ModConfigSpec.BooleanValue MULTI_LEVEL_EMITTER_ENABLED;
     public static final ModConfigSpec.BooleanValue AUTO_ITEM_GEN_ENABLED;
     public static final ModConfigSpec.BooleanValue INFINITY_CELL_ENABLED;
@@ -81,12 +82,12 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 .translation("configuration.chexsonsaeutils.processingPatternReplacementEnabled")
                 .define("processingPatternReplacementEnabled", true);
         MAX_CUSTOM_PATTERN_PAGES = builder
-                .comment("Maximum pattern pages of the frame pattern provider.",
+                .comment("Maximum pattern pages of the custom pattern provider.",
                         "Each page holds 36 pattern slots; the pattern inventory capacity is pages * 36.",
                         "Extending pages is unlocked by consuming items (phase 5b), and expanded pages are",
-                        "kept when the frame is dismantled. Takes effect after restart.")
-                .translation("configuration.chexsonsaeutils.maxFramePatternPages")
-                .defineInRange("maxFramePatternPages", 8, 1, 8);
+                        "kept when the provider is dismantled. Takes effect after restart.")
+                .translation("configuration.chexsonsaeutils.maxCustomPatternPages")
+                .defineInRange("maxCustomPatternPages", 8, 1, 8);
         HIGH_CAPACITY_CRAFTING_MACHINE_ENABLED = builder
                 .comment("Enable the high-capacity crafting machine behavior.",
                         "Registered blocks/items stay available for world compatibility;",
@@ -106,6 +107,14 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.customPatternProviderEnabled")
                 .define("customPatternProviderEnabled", true);
+        CUSTOM_PATTERN_PROVIDER_OVERSTACK_RETURN_ENABLED = builder
+                .comment("Allow one return-bar slot of the custom pattern provider to exceed the item",
+                        "stack size limit, so a full machine output slot can be pulled in one pass.",
+                        "When disabled, new writes are clamped to the original per-slot limit; content",
+                        "already stored above the limit is still returned to the network in full.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.customPatternProviderOverstackReturnEnabled")
+                .define("customPatternProviderOverstackReturnEnabled", true);
         MULTI_LEVEL_EMITTER_ENABLED = builder
                 .comment("Enable the multi-level emitter output logic.",
                         "Registered parts stay available for world compatibility;",
@@ -364,11 +373,17 @@ public final class ChexsonsaeutilsCompatibilityConfig {
 
     /**
      * @return 配置允许的最大样板页数（1-8，默认 8）。
-     *         阶段 1 共享层泛化：原 FramePatternProviderBlockEntity.maxPages() 静态
-     *         方法移至此处，框架样板供应器与定制样板供应器共用
      */
-    public static int maxFramePatternPages() {
+    public static int maxCustomPatternPages() {
         return MAX_CUSTOM_PATTERN_PAGES.get();
+    }
+
+    /**
+     * @return 定制样板供应器产物返回栏是否允许单格超过物品堆叠上限。
+     *         经 {@link #boolValue} 读取，配置未加载时回落到默认值（开启）。
+     */
+    public static boolean customPatternProviderOverstackReturnEnabled() {
+        return boolValue(CUSTOM_PATTERN_PROVIDER_OVERSTACK_RETURN_ENABLED);
     }
 
     public static int intValue(ModConfigSpec.ConfigValue<Integer> value) {

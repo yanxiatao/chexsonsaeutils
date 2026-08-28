@@ -19,7 +19,7 @@ import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncode
 import git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternSlotChangePacket;
 
 /**
- * 框架样板编码屏幕（原地编辑供应器原样板）。
+ * 定制样板编码屏幕（原地编辑供应器原样板）。
  * <p>
  * 布局由 {@code assets/ae2/screens/custom_pattern_encoder.json} 定义：无输入/输出槽
  * （直接编辑供应器样板槽中的原样板）；下方 3 行可见的稀疏输入列表（每行 = 输入

@@ -16,11 +16,11 @@ import appeng.parts.encoding.PatternEncodingLogic;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
 
 /**
- * 框架样板接入 AE2 原生编码终端的"放回自动解析"（照 advancedae MixinPatternEncodingLogic 模式）。
+ * 定制样板接入 AE2 原生编码终端的"放回自动解析"（照 advancedae MixinPatternEncodingLogic 模式）。
  * <p>
  * 动机：AE2 PatternEncodingLogic.loadEncodedPattern 纯 instanceof 四分支只认原生四类
- * 样板，框架样板放入编码终端的样板输出槽会被静默跳过、不回填输入/输出格。本 mixin 在
- * 其 HEAD 注入（不取消）：解码出框架样板时转换为等价 AEProcessingPattern
+ * 样板，定制样板放入编码终端的样板输出槽会被静默跳过、不回填输入/输出格。本 mixin 在
+ * 其 HEAD 注入（不取消）：解码出定制样板时转换为等价 AEProcessingPattern
  * （{@link CustomProcessingPattern#getAEProcessingPattern}），再调用原生
  * loadProcessingPattern 完成回填；其余类型放行原逻辑。
  */

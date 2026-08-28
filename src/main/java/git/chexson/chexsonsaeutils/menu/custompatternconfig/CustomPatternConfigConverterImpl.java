@@ -11,11 +11,11 @@ import appeng.crafting.pattern.AEProcessingPattern;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternItem;
 
 /**
- * 框架样板配置转换器实现（CustomPatternConfigConverter 接口实现）。
+ * 定制样板配置转换器实现（CustomPatternConfigConverter 接口实现）。
  * <p>
  * 动机：承接接口定义的两个行为——解码输入样板（仅接受 AE2 处理样板，
  * 其他编码样板返回 null 触发 UI 清空）与调用
- * {@link CustomPatternItem#convertFromProcessingPattern} 生成框架样板。
+ * {@link CustomPatternItem#convertFromProcessingPattern} 生成定制样板。
  */
 public class CustomPatternConfigConverterImpl implements CustomPatternConfigConverter {
 

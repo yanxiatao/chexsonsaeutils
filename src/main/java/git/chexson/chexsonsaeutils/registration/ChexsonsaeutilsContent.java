@@ -133,7 +133,7 @@ public final class ChexsonsaeutilsContent {
                             .persistent(EncodedCustomPattern.CODEC)
                             .networkSynchronized(EncodedCustomPattern.STREAM_CODEC)
                             .build());
-    /** 框架样板供应器的已扩展样板页数（拆除保留闭环：BE NBT → 掉落物品组件 → 放置/捕获读回）。 */
+    /** 定制样板供应器的已扩展样板页数（拆除保留闭环：BE NBT → 掉落物品组件 → 放置/捕获读回）。 */
     public static final Supplier<DataComponentType<Integer>> CUSTOM_PATTERN_PAGES =
             DATA_COMPONENT_TYPES.register("custom_pattern_pages",
                     () -> DataComponentType.<Integer>builder()
@@ -409,7 +409,7 @@ public final class ChexsonsaeutilsContent {
 
     private static void registerCustomPatternProviderBootstrap() {
         CustomPatternProviderBlock block = CUSTOM_PATTERN_PROVIDER_BLOCK.get();
-        // 无 ticker：定制供应器无 serverTick 需求（无私有维度/隔离）
+        // 无方块级 ticker：推送/抽取由网格 Ticker 驱动
         block.setBlockEntity(
                 CustomPatternProviderBlockEntity.class,
                 CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),

@@ -8,6 +8,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 
+import appeng.api.stacks.GenericStack;
 import appeng.client.gui.Icon;
 import appeng.client.gui.implementations.PatternProviderScreen;
 import appeng.client.gui.style.StyleManager;
@@ -52,10 +53,12 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
                 btn -> this.menu.toggleActiveExtract());
         this.extractButton.setTooltipOn(List.of(
                 Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_on"),
-                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_on_hint")));
+                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_on_hint"),
+                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.withdraw_hint")));
         this.extractButton.setTooltipOff(List.of(
                 Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_off"),
-                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_off_hint")));
+                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.pull_off_hint"),
+                Component.translatable("gui.chexsonsaeutils.custom_pattern_provider.withdraw_hint")));
         this.addToLeftToolbar(this.extractButton);
         // 样板配置按钮（需求 4b）：配置模式下点击处理样板槽位打开配置 GUI
         this.configButton = new ToggleButton(Icon.COG, Icon.COG_DISABLED, btn -> this.menu.toggleConfigMode());
@@ -187,13 +190,21 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
 
     /**
      * 配置模式下拦截供应器样板槽位的样板点击：不执行普通槽位操作，
-     * 改为请求服务端打开配置 GUI（需求 4b，接受处理样板与框架样板两类）。
+     * 改为请求服务端打开配置 GUI（需求 4b，接受处理样板与定制样板两类）。
      * I1 修复：只拦截 ENCODED_PATTERN 语义槽（供应器样板槽），背包槽位
      * 的正常物品移动/样板拿取不被劫持。
      * 需求 5：非当前页样板槽（渲染隐藏）的点击直接忽略，双保险防伪造。
      */
     @Override
     protected void slotClicked(Slot slot, int slotIndex, int button, ClickType clickType) {
+        // 超过堆叠上限的返回栏槽位是 AE2 WrappedGenericStack，AppEngSlot 对其禁拾取
+        // （mayPickup/remove 直接拒绝）——改为请求服务端取回一栈，连点可抽完该格
+        if (slot != null
+                && GenericStack.isWrapped(slot.getItem())
+                && this.menu.getSlots(SlotSemantics.STORAGE).contains(slot)) {
+            this.menu.withdrawReturnSlotClient(slotIndex);
+            return;
+        }
         if (slot instanceof AppEngSlot appEngSlot
                 && !appEngSlot.isActive()
                 && this.menu.getSlots(SlotSemantics.ENCODED_PATTERN).contains(slot)) {

@@ -10,10 +10,10 @@ import appeng.api.crafting.IPatternDetailsDecoder;
 import appeng.api.stacks.AEItemKey;
 
 /**
- * 框架样板的 IPatternDetailsDecoder 实现。
+ * 定制样板的 IPatternDetailsDecoder 实现。
  * <p>
  * 动机：AE2 的 PatternDetailsHelper 通过已注册的 decoder 列表把物品解码为
- * IPatternDetails。本类把 CustomPatternItem 接入该机制，使框架样板能被
+ * IPatternDetails。本类把 CustomPatternItem 接入该机制，使定制样板能被
  * PatternDetailsHelper.decodePattern 识别（供应器、样板终端等通用路径）。
  * 注册时机：Chexsonsaeutils 主类构造器（FMLCommonSetup enqueueWork）。
  */

@@ -10,7 +10,7 @@ import net.minecraft.world.level.Level;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
 
 /**
- * 框架样板编码 GUI 的菜单宿主（MenuHost）。
+ * 定制样板编码 GUI 的菜单宿主（MenuHost）。
  * <p>
  * 动机：编码 GUI 直接编辑供应器样板槽中的原样板（原地转换，无样板副本），
  * 宿主只需定位到打开它的供应器（BlockPos + 维度 + 样板槽序号）并缓存
@@ -25,12 +25,6 @@ public class CustomPatternConfigHost {
     private final BlockPos pos;
     private final ResourceKey<Level> dimension;
     private final int patternSlotIndex;
-
-    /**
-     * 来源供应器类型：true = 定制样板供应器（面板），false = 框架样板供应器（方块）。
-     * 动机：编码 GUI 标题需按来源供应器显示，Screen 据此选择布局 json。
-     */
-    private final boolean fromCustomProvider;
 
     /** 缓存的供应器宿主引用（延迟定位；isRemoved 后重新定位）。 */
     private CustomPatternProviderLogicHost provider;
@@ -49,21 +43,11 @@ public class CustomPatternConfigHost {
      * @param pos              供应器方块位置
      * @param dimension        供应器所在维度
      * @param patternSlotIndex 供应器样板槽序号（patternInventory 内索引）
-     * @param fromCustomProvider 来源供应器类型（true = 定制样板供应器）
      */
-    public CustomPatternConfigHost(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex,
-            boolean fromCustomProvider) {
+    public CustomPatternConfigHost(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex) {
         this.pos = pos;
         this.dimension = dimension;
         this.patternSlotIndex = patternSlotIndex;
-        this.fromCustomProvider = fromCustomProvider;
-    }
-
-    /**
-     * @return 来源供应器类型（true = 定制样板供应器，标题/布局据此区分）
-     */
-    public boolean isFromCustomProvider() {
-        return fromCustomProvider;
     }
 
     /**

@@ -36,7 +36,7 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 /**
  * 定制样板供应器方块（阶段 2）。
  * <p>
- * 与框架样板供应器的差异：不包裹机器，机器即周围相邻方块。推送方向由
+ * 机器即周围相邻方块（本方块不包裹机器、无内部库存）。推送方向由
  * PUSH_DIRECTION 属性控制（复用 AE2 PatternProviderBlock 的属性与 PushDirection
  * 枚举，blockstates 变体名 push_direction）：ALL = 全部 6 方向，定向 = 单方向。
  * <p>
@@ -45,7 +45,7 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  *   <li>手持 wrench 标签物品右击：循环旋转推送方向（照 extendedae BlockExPatternProvider.setSide）。</li>
  *   <li>其他右击（含空手）：打开定制样板供应器 GUI。</li>
  * </ul>
- * 无 serverTick（无私有维度/隔离），getTicker 返回 null。
+ * 无 serverTick 需求（推送/抽取由网格 Ticker 驱动），getTicker 返回 null。
  */
 public class CustomPatternProviderBlock extends AEBaseEntityBlock<CustomPatternProviderBlockEntity> {
 
@@ -64,7 +64,7 @@ public class CustomPatternProviderBlock extends AEBaseEntityBlock<CustomPatternP
     }
 
     /**
-     * 无 ticker：本方块无 serverTick 需求（无私有维度/隔离/搬移逻辑）。
+     * 无 ticker：本方块无方块级 tick 需求（推送/抽取经网格 Ticker 驱动）。
      */
     @Override
     @Nullable
