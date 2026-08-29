@@ -313,6 +313,149 @@ final class FastCraftingCalculationTest {
         assertEquals(100L, batched.patternTimes().get(goldFromRedstone));
     }
 
+    @Test
+    void selfOutputBatchMatchesPerItemForCatalystIngredient() {
+        // 1 IRON <- 1 GOLD + 1 REDSTONE，产出含 GOLD（自输出催化物，直连处理机/聚合模式
+        // 样板的 getRemainingKey 恒为 null，其 limitQty 只会是这一类）。库存只有 1 份
+        // GOLD：逐件路径反复“取 GOLD→回流”，批量等价记账必须逐位一致。
+        FakePattern ironWithGoldCatalyst = FakePattern.withOutputs(
+                new FakeInput[]{new FakeInput(GOLD, 1), new FakeInput(REDSTONE, 1)},
+                new GenericStack(IRON, 1), new GenericStack(GOLD, 1));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(GOLD, 1L, REDSTONE, 100L))
+                .pattern(IRON, ironWithGoldCatalyst)
+                .build();
+
+        ICraftingPlan perItem = runFast(grid, IRON, 100, CalculationStrategy.REPORT_MISSING_ITEMS, true);
+        ICraftingPlan batched = runFast(grid, IRON, 100, CalculationStrategy.REPORT_MISSING_ITEMS, false);
+
+        assertPlansEqual(perItem, batched);
+        assertEquals(new GenericStack(IRON, 100), batched.finalOutput());
+        assertEquals(100L, batched.patternTimes().get(ironWithGoldCatalyst));
+        // 催化物循环：100 件也只提取 1 份 GOLD；消耗 100 份 REDSTONE。
+        assertEquals(1L, batched.usedItems().get(GOLD));
+        assertEquals(100L, batched.usedItems().get(REDSTONE));
+    }
+
+    @Test
+    void selfOutputBatchMatchesPerItemWithRecursiveIngredient() {
+        // 1 IRON <- 1 GOLD + 1 DIAMOND（催化），且 GOLD <- 2 REDSTONE 需递归：
+        // 批量路径的消耗输入按 times 倍递归，循环输入只提取一次。
+        FakePattern goldFromRedstone = FakePattern.crafting(GOLD, 1, Map.of(REDSTONE, 2L));
+        FakePattern ironWithDiamondCatalyst = FakePattern.withOutputs(
+                new FakeInput[]{new FakeInput(GOLD, 1), new FakeInput(DIAMOND, 1)},
+                new GenericStack(IRON, 1), new GenericStack(DIAMOND, 1));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(DIAMOND, 1L, REDSTONE, 400L))
+                .pattern(GOLD, goldFromRedstone)
+                .pattern(IRON, ironWithDiamondCatalyst)
+                .build();
+
+        ICraftingPlan perItem = runFast(grid, IRON, 200, CalculationStrategy.REPORT_MISSING_ITEMS, true);
+        ICraftingPlan batched = runFast(grid, IRON, 200, CalculationStrategy.REPORT_MISSING_ITEMS, false);
+
+        assertPlansEqual(perItem, batched);
+        assertEquals(1L, batched.usedItems().get(DIAMOND));
+        assertEquals(400L, batched.usedItems().get(REDSTONE));
+        assertEquals(200L, batched.patternTimes().get(ironWithDiamondCatalyst));
+        assertEquals(200L, batched.patternTimes().get(goldFromRedstone));
+    }
+
+    @Test
+    void selfOutputBatchMatchesPerItemInMultiBranchProbe() {
+        // IRON 两个分支：分支一 [1 IRON <- 1 GOLD + 1 DIAMOND（催化）]，
+        // 分支二 [1 IRON <- 3 REDSTONE]。分支一耗尽 GOLD 后转分支二。
+        // 多分支指数探测对 limitQty 过程必须用复用感知批量，不得把催化物的
+        // requiredExtract 记成 N 倍。
+        FakePattern ironCatalyzed = FakePattern.withOutputs(
+                new FakeInput[]{new FakeInput(GOLD, 1), new FakeInput(DIAMOND, 1)},
+                new GenericStack(IRON, 1), new GenericStack(DIAMOND, 1));
+        FakePattern ironFromRedstone = FakePattern.crafting(IRON, 1, Map.of(REDSTONE, 3L));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(DIAMOND, 1L, GOLD, 5L, REDSTONE, 1_000L))
+                .pattern(IRON, ironCatalyzed, ironFromRedstone)
+                .build();
+
+        ICraftingPlan perItem = runFast(grid, IRON, 50, CalculationStrategy.REPORT_MISSING_ITEMS, true);
+        ICraftingPlan batched = runFast(grid, IRON, 50, CalculationStrategy.REPORT_MISSING_ITEMS, false);
+
+        assertPlansEqual(perItem, batched);
+        // 分支一 5 次（5 份 GOLD 耗尽），分支二补 45 次。
+        assertEquals(5L, batched.patternTimes().get(ironCatalyzed));
+        assertEquals(45L, batched.patternTimes().get(ironFromRedstone));
+        assertEquals(1L, batched.usedItems().get(DIAMOND));
+        assertEquals(5L, batched.usedItems().get(GOLD));
+        assertEquals(135L, batched.usedItems().get(REDSTONE));
+    }
+
+    @Test
+    void selfOutputBatchMatchesPerItemWhenOutputExceedsConsumption() {
+        // 1 IRON <- 1 GOLD，产出含 2 GOLD（催化物放大，每次净 +1）。
+        // 批量修正后的产出插入必须与逐件的净增量累计一致。
+        FakePattern amplifying = FakePattern.withOutputs(
+                new FakeInput[]{new FakeInput(GOLD, 1)},
+                new GenericStack(IRON, 1), new GenericStack(GOLD, 2));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(GOLD, 1L))
+                .pattern(IRON, amplifying)
+                .build();
+
+        ICraftingPlan perItem = runFast(grid, IRON, 64, CalculationStrategy.REPORT_MISSING_ITEMS, true);
+        ICraftingPlan batched = runFast(grid, IRON, 64, CalculationStrategy.REPORT_MISSING_ITEMS, false);
+
+        assertPlansEqual(perItem, batched);
+        assertEquals(new GenericStack(IRON, 64), batched.finalOutput());
+        assertEquals(64L, batched.patternTimes().get(amplifying));
+        assertEquals(1L, batched.usedItems().get(GOLD));
+    }
+
+    @Test
+    void selfOutputBatchMatchesPerItemUnderCraftLess() {
+        // 催化物 + 有限 REDSTONE：CRAFT_LESS 二分找最大可合成量，两条路径须一致。
+        FakePattern ironWithGoldCatalyst = FakePattern.withOutputs(
+                new FakeInput[]{new FakeInput(GOLD, 1), new FakeInput(REDSTONE, 1)},
+                new GenericStack(IRON, 1), new GenericStack(GOLD, 1));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(GOLD, 1L, REDSTONE, 10L))
+                .pattern(IRON, ironWithGoldCatalyst)
+                .build();
+
+        ICraftingPlan perItem = runFast(grid, IRON, 32, CalculationStrategy.CRAFT_LESS, true);
+        ICraftingPlan batched = runFast(grid, IRON, 32, CalculationStrategy.CRAFT_LESS, false);
+
+        assertPlansEqual(perItem, batched);
+        // REDSTONE 只有 10 份，最大可合成 10 件。
+        assertEquals(10L, batched.finalOutput().amount());
+        assertEquals(1L, batched.usedItems().get(GOLD));
+        assertEquals(10L, batched.usedItems().get(REDSTONE));
+    }
+
+    @Test
+    void selfOutputBatchMatchesPerItemWithContainerAndCatalystMixed() {
+        // 1 IRON <- 2 GOLD（消耗）+ 1 BUCKET（容器回流）+ 1 DIAMOND（催化）。
+        // 容器与自输出为不同键时可同批处理。
+        FakePattern mixed = FakePattern.withOutputs(
+                new FakeInput[]{
+                        new FakeInput(GOLD, 2),
+                        new FakeInput(BUCKET, 1, BUCKET),
+                        new FakeInput(DIAMOND, 1)
+                },
+                new GenericStack(IRON, 1), new GenericStack(DIAMOND, 1));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(GOLD, 20L, BUCKET, 1L, DIAMOND, 1L))
+                .pattern(IRON, mixed)
+                .build();
+
+        ICraftingPlan perItem = runFast(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS, true);
+        ICraftingPlan batched = runFast(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS, false);
+
+        assertPlansEqual(perItem, batched);
+        assertEquals(10L, batched.patternTimes().get(mixed));
+        assertEquals(20L, batched.usedItems().get(GOLD));
+        assertEquals(1L, batched.usedItems().get(BUCKET));
+        assertEquals(1L, batched.usedItems().get(DIAMOND));
+    }
+
     // ------------------------------------------------------------------
     // Fakes
     // ------------------------------------------------------------------
@@ -320,20 +463,20 @@ final class FastCraftingCalculationTest {
     /** Minimal crafting pattern: outputs {@code outputCount} of {@code output} per run. */
     private static final class FakePattern implements IPatternDetails {
         private final AEItemKey definition;
-        private final GenericStack output;
+        private final List<GenericStack> outputs;
         private final IInput[] inputs;
 
         private FakePattern(AEKey output, long outputCount, Map<? extends AEKey, Long> inputs) {
             this.definition = AEItemKey.of(Items.PAPER);
-            this.output = new GenericStack(output, outputCount);
+            this.outputs = List.of(new GenericStack(output, outputCount));
             this.inputs = inputs.entrySet().stream()
                     .map(e -> (IInput) new FakeInput(e.getKey(), e.getValue()))
                     .toArray(IInput[]::new);
         }
 
-        private FakePattern(AEItemKey definition, GenericStack output, IInput[] inputs) {
+        private FakePattern(AEItemKey definition, List<GenericStack> outputs, IInput[] inputs) {
             this.definition = definition;
-            this.output = output;
+            this.outputs = outputs;
             this.inputs = inputs;
         }
 
@@ -342,7 +485,13 @@ final class FastCraftingCalculationTest {
         }
 
         static FakePattern of(AEKey output, long outputCount, IInput... inputs) {
-            return new FakePattern(AEItemKey.of(Items.PAPER), new GenericStack(output, outputCount), inputs);
+            return new FakePattern(AEItemKey.of(Items.PAPER),
+                    List.of(new GenericStack(output, outputCount)), inputs);
+        }
+
+        /** 多输出样板：用于催化物（自输出）场景，输出同时包含产物与循环输入。 */
+        static FakePattern withOutputs(IInput[] inputs, GenericStack... outputs) {
+            return new FakePattern(AEItemKey.of(Items.PAPER), List.of(outputs), inputs);
         }
 
         @Override
@@ -357,7 +506,7 @@ final class FastCraftingCalculationTest {
 
         @Override
         public List<GenericStack> getOutputs() {
-            return List.of(output);
+            return outputs;
         }
     }
 
