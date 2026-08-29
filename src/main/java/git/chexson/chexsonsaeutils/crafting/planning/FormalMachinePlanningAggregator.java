@@ -14,7 +14,6 @@ import appeng.crafting.pattern.AECraftingPattern;
 import appeng.me.service.CraftingService;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AbstractHighCapacityCraftingHostBlockEntity;
-import git.chexson.chexsonsaeutils.blockentity.crafting.TaskCompletionRoute;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
 import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternSelectedInputsPlan;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternImpl;
@@ -544,8 +543,7 @@ public final class FormalMachinePlanningAggregator {
                     node.craftCount(),
                     stepInputs,
                     new GenericStack(node.outputKey(), primaryAmount),
-                    stepRemainders,
-                    TaskCompletionRoute.AE_STORAGE
+                    stepRemainders
             ));
 
             mergeStacks(totalInputs, stepInputs);

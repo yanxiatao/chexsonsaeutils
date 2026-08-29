@@ -6,7 +6,6 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
-import git.chexson.chexsonsaeutils.blockentity.crafting.CompiledTask;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -35,15 +34,15 @@ public final class FormalMachineAggregationRemainderHelper {
             return null;
         }
 
-        CompiledTask compiledTask = CompiledTask.compile(supportedPattern, inputHolders, 1, 1);
-        if (compiledTask == null) {
-            return null;
-        }
-
-        ItemStack[] craftingGrid = compiledTask.getCraftingGridCopies();
+        ItemStack[] craftingGrid = new ItemStack[9];
         for (int slot = 0; slot < craftingGrid.length; slot++) {
-            if (craftingGrid[slot] == null) {
-                craftingGrid[slot] = ItemStack.EMPTY;
+            craftingGrid[slot] = ItemStack.EMPTY;
+        }
+        supportedPattern.fillCraftingGrid(inputHolders, (slot, stack) -> craftingGrid[slot] = stack.copy());
+        for (KeyCounter inputHolder : inputHolders) {
+            inputHolder.removeZeros();
+            if (!inputHolder.isEmpty()) {
+                return null;
             }
         }
 
