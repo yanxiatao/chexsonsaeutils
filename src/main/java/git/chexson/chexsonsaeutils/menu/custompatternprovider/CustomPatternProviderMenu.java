@@ -59,24 +59,28 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
 
     private final T host;
 
-    /** 样板配置模式状态（需求 4b）：服务端翻转并同步，配置模式下点击处理样板槽位打开配置 GUI。 */
-    @GuiSync(2)
+    /**
+     * 样板配置模式状态（需求 4b）：服务端翻转并同步，配置模式下点击处理样板槽位打开配置 GUI。
+     * 注：同步 id 使用高位唯一段——ExtendedAE 系列会用 mixin 向基类 PatternProviderMenu
+     * 注入低位 @GuiSync 字段，低位 id 存在冲突风险。
+     */
+    @GuiSync(32500)
     public boolean configMode = false;
 
     /** 当前样板页（需求 5）：服务端权威，clamp 到 [0, pages-1]，翻页只切换槽位可见性。 */
-    @GuiSync(8)
+    @GuiSync(32501)
     public int page = 0;
 
     /** 已解锁样板页数（需求 5）：来自宿主，服务端广播。 */
-    @GuiSync(9)
+    @GuiSync(32502)
     public int pages = 1;
 
     /** 输入过滤开关（需求 6a）：服务端权威（Logic NBT 持久化），客户端按钮据此显示。 */
-    @GuiSync(10)
+    @GuiSync(32503)
     public boolean filteredImport = false;
 
     /** 主动抽取开关（需求 8 toggle）：服务端权威（Logic NBT 持久化），客户端按钮据此显示。 */
-    @GuiSync(11)
+    @GuiSync(32504)
     public boolean activeExtract = false;
 
     public CustomPatternProviderMenu(int id, Inventory playerInventory, T host) {

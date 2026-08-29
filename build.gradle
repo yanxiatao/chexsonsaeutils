@@ -111,6 +111,12 @@ dependencies {
     // 无公开 maven 坐标，jar 由 reference-sources/ExtendedAE_Plus/bin/main 编译产物打包
     // （本仓库参考源码对应版本，仅编译期引用）。
     compileOnly files('libs/extendedae_plus-1.21.1.jar')
+    // ExtendedAE：必需前置（定制样板供应器 GUI 纹理与扩容物品来源）。
+    // 无公开可用 maven 坐标（modrinth 镜像解析失败），jar 复制自 run/mods
+    // （用户 dev 环境实际使用的有效 mod 文件），dev/测试运行时加载；
+    // glodium 为 ExtendedAE 的必需依赖（ae2wtlib_api 已内嵌于 extendedae jarjar）。
+    localRuntime files('libs/extendedae-1.21.1.jar')
+    localRuntime files('libs/glodium-1.21.1.jar')
     localRuntime "curse.maven:architectury-api-419699:${architectury_api_file_id}"
     localRuntime "curse.maven:ftb-library-forge-404465:${ftb_library_file_id}"
     localRuntime "org.appliedenergistics:appliedenergistics2:${ae2_version}"
@@ -122,6 +128,8 @@ dependencies {
 
     testImplementation "org.appliedenergistics:appliedenergistics2:${ae2_version}"
     testImplementation "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
+    testRuntimeOnly files('libs/extendedae-1.21.1.jar')
+    testRuntimeOnly files('libs/glodium-1.21.1.jar')
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

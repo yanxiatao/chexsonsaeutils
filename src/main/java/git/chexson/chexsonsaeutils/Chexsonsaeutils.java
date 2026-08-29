@@ -9,12 +9,14 @@ import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessi
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.cell.InfinityCellStore;
+import git.chexson.chexsonsaeutils.cell.MatterMassStore;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.cell.CellCommand;
 import git.chexson.chexsonsaeutils.cell.CellRegistration;
 import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternDecoder;
+import git.chexson.chexsonsaeutils.crafting.mattermass.MatterMassPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingReloadListener;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeUserConfigStore;
@@ -124,6 +126,8 @@ public class Chexsonsaeutils {
         NeoForge.EVENT_BUS.addListener(this::onLevelSave);
         NeoForge.EVENT_BUS.addListener(this::onLevelUnload);
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
+        NeoForge.EVENT_BUS.addListener(git.chexson.chexsonsaeutils.events.MatterMassMergeHandler::onItemPickup);
+        NeoForge.EVENT_BUS.addListener(git.chexson.chexsonsaeutils.events.MatterMassMergeHandler::onContainerClose);
         // 槽位编号叠加为纯客户端功能：仅客户端注册，避免专用服务端构造期经方法引用
         // 加载 SlotNumberOverlay（引用 Minecraft/LocalPlayer）触发 dist 校验失败。
         if (FMLEnvironment.dist.isClient()) {
@@ -149,6 +153,9 @@ public class Chexsonsaeutils {
         }
         if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerFormalMachineAggregatedPatternDecoder);
+        }
+        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED, "matterMassPatternProviderEnabled")) {
+            event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(MatterMassPatternDecoder.INSTANCE));
         }
     }
 
@@ -203,6 +210,7 @@ public class Chexsonsaeutils {
                 && level.dimension() == Level.OVERWORLD) {
             var server = level.getServer();
             InfinityCellStore.global().loadOnce(server.getWorldPath(LevelResource.ROOT), server.registryAccess());
+            MatterMassStore.global().loadOnce(server.getWorldPath(LevelResource.ROOT), server.registryAccess());
         }
     }
 
@@ -210,6 +218,7 @@ public class Chexsonsaeutils {
         if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level
                 && level.dimension() == Level.OVERWORLD) {
             saveInfinityCellStore(level);
+            saveMatterMassStore(level);
         }
     }
 
@@ -217,6 +226,7 @@ public class Chexsonsaeutils {
         if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level
                 && level.dimension() == Level.OVERWORLD) {
             saveInfinityCellStore(level);
+            saveMatterMassStore(level);
         }
     }
 
@@ -225,11 +235,20 @@ public class Chexsonsaeutils {
                 event.getServer().getWorldPath(LevelResource.ROOT),
                 event.getServer().registryAccess()
         );
+        MatterMassStore.global().save(
+                event.getServer().getWorldPath(LevelResource.ROOT),
+                event.getServer().registryAccess()
+        );
     }
 
     private static void saveInfinityCellStore(net.minecraft.server.level.ServerLevel level) {
         var server = level.getServer();
         InfinityCellStore.global().save(server.getWorldPath(LevelResource.ROOT), server.registryAccess());
+    }
+
+    private static void saveMatterMassStore(net.minecraft.server.level.ServerLevel level) {
+        var server = level.getServer();
+        MatterMassStore.global().save(server.getWorldPath(LevelResource.ROOT), server.registryAccess());
     }
 
     @EventBusSubscriber(modid = MODID, value = Dist.CLIENT)

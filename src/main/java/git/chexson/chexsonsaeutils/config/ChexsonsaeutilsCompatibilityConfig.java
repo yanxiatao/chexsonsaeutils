@@ -34,6 +34,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_ENABLED;
     public static final ModConfigSpec.BooleanValue CUSTOM_PATTERN_PROVIDER_ENABLED;
     public static final ModConfigSpec.BooleanValue CUSTOM_PATTERN_PROVIDER_OVERSTACK_RETURN_ENABLED;
+    public static final ModConfigSpec.BooleanValue MATTER_MASS_PATTERN_PROVIDER_ENABLED;
     public static final ModConfigSpec.BooleanValue MULTI_LEVEL_EMITTER_ENABLED;
     public static final ModConfigSpec.BooleanValue AUTO_ITEM_GEN_ENABLED;
     public static final ModConfigSpec.BooleanValue INFINITY_CELL_ENABLED;
@@ -115,6 +116,14 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.customPatternProviderOverstackReturnEnabled")
                 .define("customPatternProviderOverstackReturnEnabled", true);
+        MATTER_MASS_PATTERN_PROVIDER_ENABLED = builder
+                .comment("Enable the matter mass pattern provider feature bundle.",
+                        "Registered blocks/items stay available for world compatibility;",
+                        "when disabled, machines stop converting patterns and delivering matter masses,",
+                        "and the pattern decoder / cell handler / mixins are not loaded.",
+                        "Takes effect after restart.")
+                .translation("configuration.chexsonsaeutils.matterMassPatternProviderEnabled")
+                .define("matterMassPatternProviderEnabled", true);
         MULTI_LEVEL_EMITTER_ENABLED = builder
                 .comment("Enable the multi-level emitter output logic.",
                         "Registered parts stay available for world compatibility;",

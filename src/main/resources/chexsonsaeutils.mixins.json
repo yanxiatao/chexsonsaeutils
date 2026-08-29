@@ -46,6 +46,8 @@
     "ae2.menu.CraftingCPUMenuAccessor",
     "ae2.menu.CraftingCPUMenuContinuationMixin",
     "ae2.parts.encoding.PatternEncodingLogicMixin",
+    "ae2.parts.encoding.PatternEncodingLogicMatterMassMixin",
+    "ae2.blockentity.IOPortBlockEntityMatterMassMixin",
     "ae2ct.AE2CraftingPlanSummaryCompatMixin",
     "ae2ct.AE2CTRecipeHelperCompatMixin",
     "buildinggadgets2.TemplateManagerHandlerMixin",
