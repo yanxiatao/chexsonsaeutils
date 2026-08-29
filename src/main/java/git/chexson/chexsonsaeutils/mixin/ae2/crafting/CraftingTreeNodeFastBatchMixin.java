@@ -134,20 +134,36 @@ public abstract class CraftingTreeNodeFastBatchMixin {
                 }
             }
         } else if (this.nodes.size() > 1) {
-            // 多分支：指数批量探测（O(log n)），替代原生逐件（O(n)）
+            // 多分支：指数批量探测（O(log n)），替代原生逐件（O(n)）。
+            // limitQty 过程（容器回流/自输出催化物）若直接批量 request，会把循环物品的
+            // requiredExtract 记成 N 倍（原生逐件可复用，只记单次量），因此优先走
+            // tryBatch 的复用感知批量；不满足干净条件时退回逐件探测（原生语义）。
             for (CraftingTreeProcess pro : this.nodes) {
                 var accessor = (CraftingTreeProcessFastAccessor) pro;
                 if (!accessor.chexsonsaeutils$isPossible() || totalRequestedItems <= 0) {
                     continue;
                 }
                 long craftedPer = Math.max(1L, accessor.chexsonsaeutils$getOutputCount(this.what));
+                boolean limitQty = accessor.chexsonsaeutils$limitsQuantity();
                 long probe = 1;
                 while (accessor.chexsonsaeutils$isPossible() && totalRequestedItems > 0) {
                     long maxByRemaining = (totalRequestedItems + craftedPer - 1) / craftedPer;
                     long testAmount = Math.min(probe, Math.max(1L, maxByRemaining));
                     var child = FastSimStatePool.acquire(inv);
+                    long craftedInProbe;
                     try {
-                        accessor.chexsonsaeutils$request(child, testAmount);
+                        if (limitQty && testAmount >= 2
+                                && craftedPer <= Long.MAX_VALUE / testAmount
+                                && FastLimitQtyBatcher.tryBatch(
+                                        child, pro, this.what, testAmount * craftedPer, craftedPer)) {
+                            craftedInProbe = testAmount;
+                        } else if (limitQty) {
+                            accessor.chexsonsaeutils$request(child, 1);
+                            craftedInProbe = 1;
+                        } else {
+                            accessor.chexsonsaeutils$request(child, testAmount);
+                            craftedInProbe = testAmount;
+                        }
                         var available = child.extract(this.what, totalRequestedItems, Actionable.MODULATE);
                         if (available != 0) {
                             child.applyDiff(inv);
@@ -155,14 +171,17 @@ public abstract class CraftingTreeNodeFastBatchMixin {
                             if (totalRequestedItems <= 0) {
                                 return;
                             }
-                            probe = Math.min(probe * 2, Math.max(1L,
-                                    (totalRequestedItems + craftedPer - 1) / craftedPer));
+                            probe = craftedInProbe == testAmount
+                                    ? Math.min(probe * 2, Math.max(1L,
+                                            (totalRequestedItems + craftedPer - 1) / craftedPer))
+                                    : 1;
                         } else {
                             accessor.chexsonsaeutils$setPossible(false);
                         }
                     } catch (CraftBranchFailure fail) {
-                        if (testAmount <= 1) {
-                            // 单件都失败：保留原生语义，尝试下一分支
+                        // tryBatch 内部吞掉失败并返回 false，故异常只可能来自逐件/批量
+                        // request。limitQty 分支此时必为逐件单件失败：保留原生语义，尝试下一分支。
+                        if (limitQty || testAmount <= 1) {
                             accessor.chexsonsaeutils$setPossible(true);
                             break;
                         }
