@@ -425,7 +425,6 @@ public final class ChexsonsaeutilsContent {
                 HIGH_CAPACITY_CRAFTING_MACHINE_BLOCK_ENTITY.get(),
                 HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get()
         );
-        Upgrades.add(AEItems.SPEED_CARD, HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get(), 5);
     }
 
     private static void registerAEDirectProcessingMachineBootstrap() {

@@ -46,13 +46,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS;
     public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK;
     public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_TOTAL_PATTERN_SLOTS;
-    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_DEFAULT_BASE_TICKS;
-    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_LOCAL_EXECUTION_QUEUE_CAPACITY;
-    public static final ModConfigSpec.ConfigValue<Long> HIGH_CAPACITY_TICK_SOFT_BUDGET_NANOS;
-    public static final ModConfigSpec.ConfigValue<Long> HIGH_CAPACITY_TICK_HARD_BUDGET_NANOS;
-    public static final ModConfigSpec.ConfigValue<Long> HIGH_CAPACITY_TICK_ABSOLUTE_BUDGET_NANOS;
-    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_COMPLETION_PROGRESS_SAVE_INTERVAL;
-    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_QUEUE_PROGRESS_SAVE_INTERVAL;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_BASE_TICKS;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_MAX_TICKS;
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID;
@@ -344,35 +337,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Shrinking this below a host's used slots may affect existing saves.")
                 .translation("configuration.chexsonsaeutils.totalPatternSlots")
                 .defineInRange("totalPatternSlots", 16_384, 1, 65_536);
-        HIGH_CAPACITY_DEFAULT_BASE_TICKS = builder
-                .comment("Base crafting duration in ticks before speed card reduction.")
-                .translation("configuration.chexsonsaeutils.defaultBaseTicks")
-                .defineInRange("defaultBaseTicks", 20, 1, Integer.MAX_VALUE);
-        HIGH_CAPACITY_LOCAL_EXECUTION_QUEUE_CAPACITY = builder
-                .comment("Maximum tasks kept in each host's local execution queue.")
-                .translation("configuration.chexsonsaeutils.localExecutionQueueCapacity")
-                .defineInRange("localExecutionQueueCapacity", 1_024, 1, Integer.MAX_VALUE);
-        HIGH_CAPACITY_TICK_SOFT_BUDGET_NANOS = builder
-                .comment("Soft wall-clock budget per host tick in nanos.")
-                .translation("configuration.chexsonsaeutils.tickSoftBudgetNanos")
-                .defineInRange("tickSoftBudgetNanos", 4_000_000L, 1L, 45_000_000L);
-        HIGH_CAPACITY_TICK_HARD_BUDGET_NANOS = builder
-                .comment("Hard wall-clock budget per host tick in nanos.")
-                .translation("configuration.chexsonsaeutils.tickHardBudgetNanos")
-                .defineInRange("tickHardBudgetNanos", 5_000_000L, 1L, 45_000_000L);
-        HIGH_CAPACITY_TICK_ABSOLUTE_BUDGET_NANOS = builder
-                .comment("Absolute wall-clock budget per host tick in nanos.",
-                        "Must stay above the hard budget to remain effective.")
-                .translation("configuration.chexsonsaeutils.tickAbsoluteBudgetNanos")
-                .defineInRange("tickAbsoluteBudgetNanos", 6_000_000L, 1L, 45_000_000L);
-        HIGH_CAPACITY_COMPLETION_PROGRESS_SAVE_INTERVAL = builder
-                .comment("Completion slices processed before forcing a progress save.")
-                .translation("configuration.chexsonsaeutils.completionProgressSaveInterval")
-                .defineInRange("completionProgressSaveInterval", 32, 1, Integer.MAX_VALUE);
-        HIGH_CAPACITY_QUEUE_PROGRESS_SAVE_INTERVAL = builder
-                .comment("Queue mutations processed before forcing a progress save.")
-                .translation("configuration.chexsonsaeutils.queueProgressSaveInterval")
-                .defineInRange("queueProgressSaveInterval", 128, 1, Integer.MAX_VALUE);
         builder.pop();
         SPEC = builder.build();
     }

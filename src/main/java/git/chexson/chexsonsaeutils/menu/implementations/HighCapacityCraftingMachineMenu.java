@@ -1,14 +1,12 @@
 package git.chexson.chexsonsaeutils.menu.implementations;
 
+import appeng.menu.AEBaseMenu;
 import appeng.menu.SlotSemantics;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
-import appeng.menu.implementations.UpgradeableMenu;
-import appeng.menu.slot.AppEngSlot;
 import appeng.menu.slot.RestrictedInputSlot;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
-import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineStatus;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -19,7 +17,7 @@ import net.minecraft.world.item.ItemStack;
 import java.util.List;
 import java.util.Objects;
 
-public class HighCapacityCraftingMachineMenu extends UpgradeableMenu<HighCapacityCraftingMachineBlockEntity> {
+public class HighCapacityCraftingMachineMenu extends AEBaseMenu {
 
     public static final MenuType<HighCapacityCraftingMachineMenu> TYPE = MenuTypeBuilder
             .create(HighCapacityCraftingMachineMenu::new, HighCapacityCraftingMachineBlockEntity.class)
@@ -33,6 +31,8 @@ public class HighCapacityCraftingMachineMenu extends UpgradeableMenu<HighCapacit
     private static final String ACTION_SEARCH_PATTERNS = "searchPatterns";
     private static final String ACTION_CLEAR_SEARCH = "clearSearch";
 
+    private final HighCapacityCraftingMachineBlockEntity host;
+
     @GuiSync(20)
     public int pageIndex;
     @GuiSync(21)
@@ -43,35 +43,22 @@ public class HighCapacityCraftingMachineMenu extends UpgradeableMenu<HighCapacit
     public int activePatternSlots;
     @GuiSync(24)
     public int decodedPatternCount;
-    @GuiSync(25)
-    public int queuedTasks;
-    @GuiSync(26)
-    public int runningTasks;
     @GuiSync(27)
     public int highlightedGlobalSlot = -1;
     @GuiSync(28)
     public int highlightedPageSlot = -1;
     @GuiSync(29)
     public int searchResultCount;
-    @GuiSync(30)
-    public int machineStatus = HighCapacityCraftingMachineStatus.NETWORK_OFFLINE.ordinal();
-    @GuiSync(31)
-    public boolean waitingAeReturn;
     @GuiSync(32)
     public String lastSearchQuery = "";
     @GuiSync(33)
     public int highlightedPageSlotMask;
-    @GuiSync(34)
-    public long formalStatusHeartbeatCount;
-    @GuiSync(35)
-    public long cpuWaitingAeFallbackPartialInsertCount;
-    @GuiSync(36)
-    public long cpuWaitingNoProgressRetries;
-    @GuiSync(37)
-    public long cpuWaitingRouteNanosMax;
 
     public HighCapacityCraftingMachineMenu(int id, Inventory playerInventory, HighCapacityCraftingMachineBlockEntity host) {
         super(TYPE, id, playerInventory, host);
+        this.host = host;
+        setupInventorySlots();
+        createPlayerInventorySlots(playerInventory);
         registerClientAction(ACTION_NEXT_PAGE, this::nextPageOnServer);
         registerClientAction(ACTION_PREVIOUS_PAGE, this::previousPageOnServer);
         registerClientAction(ACTION_GOTO_PAGE, Integer.class, this::gotoPageOnServer);
@@ -79,7 +66,10 @@ public class HighCapacityCraftingMachineMenu extends UpgradeableMenu<HighCapacit
         registerClientAction(ACTION_CLEAR_SEARCH, this::clearSearchOnServer);
     }
 
-    @Override
+    public HighCapacityCraftingMachineBlockEntity getHost() {
+        return host;
+    }
+
     protected void setupInventorySlots() {
         var patternInventory = getHost().getTerminalPatternInventory();
         for (int slot = 0; slot < getHost().getVisiblePatternSlots(); slot++) {
@@ -103,17 +93,13 @@ public class HighCapacityCraftingMachineMenu extends UpgradeableMenu<HighCapacit
             totalPatternSlots = getHost().getTotalPatternSlots();
             activePatternSlots = getHost().getActivePatternSlots();
             decodedPatternCount = getHost().getDecodedPatternCount();
-            queuedTasks = getHost().getQueuedTaskCount();
-            runningTasks = getHost().getRunningTaskCount();
             highlightedGlobalSlot = getHost().getHighlightedGlobalSlot();
             highlightedPageSlot = getHost().getHighlightedPageSlot();
             searchResultCount = getHost().getSearchResultCount();
-            machineStatus = getHost().getMachineStatus().ordinal();
-            waitingAeReturn = getHost().isWaitingAeReturn();
             lastSearchQuery = getHost().getLastSearchQuery();
             highlightedPageSlotMask = getHost().getHighlightedPageSlotMask();
         }
-        standardDetectAndSendChanges();
+        super.broadcastChanges();
     }
 
     public void nextPage() {
@@ -162,14 +148,6 @@ public class HighCapacityCraftingMachineMenu extends UpgradeableMenu<HighCapacit
 
     public boolean canGoToNextPage() {
         return pageIndex + 1 < pageCount;
-    }
-
-    public HighCapacityCraftingMachineStatus getMachineStatus() {
-        HighCapacityCraftingMachineStatus[] values = HighCapacityCraftingMachineStatus.values();
-        if (machineStatus < 0 || machineStatus >= values.length) {
-            return HighCapacityCraftingMachineStatus.NETWORK_OFFLINE;
-        }
-        return values[machineStatus];
     }
 
     public int getPatternPageSlotIndex(Slot slot) {

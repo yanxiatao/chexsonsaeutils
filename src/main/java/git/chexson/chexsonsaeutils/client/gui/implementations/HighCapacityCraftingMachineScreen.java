@@ -2,7 +2,6 @@ package git.chexson.chexsonsaeutils.client.gui.implementations;
 
 import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.style.StyleManager;
-import appeng.client.gui.widgets.UpgradesPanel;
 import appeng.menu.SlotSemantic;
 import appeng.menu.SlotSemantics;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
@@ -37,7 +36,6 @@ public class HighCapacityCraftingMachineScreen extends AEBaseScreen<HighCapacity
             Component title
     ) {
         super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/high_capacity_crafting_machine.json"));
-        this.widgets.add("upgrades", new UpgradesPanel(menu.getSlots(SlotSemantics.UPGRADE), menu.getHost()));
     }
 
     @Override

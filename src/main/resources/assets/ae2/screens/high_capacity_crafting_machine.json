@@ -21,17 +21,6 @@
       "left": 8,
       "top": 232,
       "grid": "HORIZONTAL"
-    },
-    "UPGRADE": {
-      "left": 196,
-      "top": 82,
-      "grid": "VERTICAL"
-    }
-  },
-  "widgets": {
-    "upgrades": {
-      "left": 176,
-      "top": 82
     }
   },
   "text": {
