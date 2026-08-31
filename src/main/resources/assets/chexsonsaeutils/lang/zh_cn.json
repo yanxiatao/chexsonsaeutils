@@ -13,6 +13,8 @@
   "gui.chexsonsaeutils.matter_mass_pattern_provider.return_network_hint": "合成出的物质团将插入回 ME 网络。",
   "gui.chexsonsaeutils.matter_mass_pattern_provider.return_player": "返回：玩家背包",
   "gui.chexsonsaeutils.matter_mass_pattern_provider.return_player_hint": "合成出的物质团直接发送给放置本机的玩家。玩家离线或背包已满时阻塞等待。",
+  "gui.chexsonsaeutils.matter_mass_pattern_provider.return_passthrough": "返回：返还原料",
+  "gui.chexsonsaeutils.matter_mass_pattern_provider.return_passthrough_hint": "不产生物质团；推送的原料将插回 ME 网络，且该产出的合成正常算作完成。",
   "gui.chexsonsaeutils.matter_mass.release_blocked": "背包空间或空桶不足。再次蹲下右键强制释放。",
   "tooltip.chexsonsaeutils.matter_mass.empty": "空",
   "item.chexsonsaeutils.multi_level_emitter": "ME多槽发信器",

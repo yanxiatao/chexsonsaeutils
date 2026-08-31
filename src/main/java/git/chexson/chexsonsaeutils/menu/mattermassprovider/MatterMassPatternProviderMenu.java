@@ -52,9 +52,9 @@ public class MatterMassPatternProviderMenu extends AEBaseMenu {
     @GuiSync(32601)
     public int pages = 1;
 
-    /** 产物返回目标：true = 玩家背包，false = AE 网络（服务端权威）。 */
+    /** 产物返回目标模式序号（{@link ReturnMode} 序，服务端权威）：0=网络 1=玩家 2=返还原料。 */
     @GuiSync(32602)
-    public boolean returnToPlayer = false;
+    public int returnMode = 0;
 
     public MatterMassPatternProviderMenu(int id, Inventory playerInventory, MatterMassPatternProviderHost host) {
         super(TYPE, id, playerInventory, host);
@@ -73,7 +73,7 @@ public class MatterMassPatternProviderMenu extends AEBaseMenu {
         registerClientAction("open_upgrade_gui", this::openUpgradeGui);
 
         this.pages = host.getPages();
-        this.returnToPlayer = host.getReturnMode() == ReturnMode.PLAYER;
+        this.returnMode = host.getReturnMode().ordinal();
         if (isServerSide()) {
             updateSlotActivity();
         }
@@ -87,7 +87,7 @@ public class MatterMassPatternProviderMenu extends AEBaseMenu {
     public void broadcastChanges() {
         if (isServerSide()) {
             pages = mmHost.getPages();
-            returnToPlayer = mmHost.getReturnMode() == ReturnMode.PLAYER;
+            returnMode = mmHost.getReturnMode().ordinal();
             if (page >= pages) {
                 page = Math.max(0, pages - 1);
             }
@@ -104,8 +104,8 @@ public class MatterMassPatternProviderMenu extends AEBaseMenu {
         return pages;
     }
 
-    public boolean isReturnToPlayer() {
-        return returnToPlayer;
+    public int getReturnMode() {
+        return returnMode;
     }
 
     /** 客户端翻页按钮点击入口。 */
@@ -136,14 +136,15 @@ public class MatterMassPatternProviderMenu extends AEBaseMenu {
         updateSlotActivity();
     }
 
-    /** 服务端入口：切换产物返回目标（网络 <-> 玩家背包）。 */
+    /** 服务端入口：循环切换产物返回目标（网络 -> 玩家 -> 返还原料 -> 网络）。 */
     private void toggleReturnMode() {
         if (!isServerSide()) {
             return;
         }
         if (mmHost instanceof MatterMassPatternProviderBlockEntity blockEntity) {
-            var current = blockEntity.getReturnMode();
-            blockEntity.setReturnMode(current == ReturnMode.PLAYER ? ReturnMode.NETWORK : ReturnMode.PLAYER);
+            var values = ReturnMode.values();
+            var next = values[(blockEntity.getReturnMode().ordinal() + 1) % values.length];
+            blockEntity.setReturnMode(next);
         }
     }
 

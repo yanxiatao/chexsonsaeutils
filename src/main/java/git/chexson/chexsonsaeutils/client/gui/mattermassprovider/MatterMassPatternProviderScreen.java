@@ -1,7 +1,5 @@
 package git.chexson.chexsonsaeutils.client.gui.mattermassprovider;
 
-import java.util.List;
-
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -12,7 +10,6 @@ import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.Icon;
 import appeng.client.gui.style.StyleManager;
 import appeng.client.gui.widgets.IconButton;
-import appeng.client.gui.widgets.ToggleButton;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
 import git.chexson.chexsonsaeutils.blockentity.mattermassprovider.MatterMassPatternProviderBlockEntity;
@@ -31,7 +28,7 @@ import git.chexson.chexsonsaeutils.menu.mattermassprovider.MatterMassPatternProv
 public class MatterMassPatternProviderScreen extends AEBaseScreen<MatterMassPatternProviderMenu>
         implements MultiPagePatternScreen {
 
-    private final ToggleButton returnModeButton;
+    private final IconButton returnModeButton;
     private final IconButton prevPageButton;
     private final IconButton nextPageButton;
 
@@ -43,15 +40,17 @@ public class MatterMassPatternProviderScreen extends AEBaseScreen<MatterMassPatt
         super(menu, playerInventory, title,
                 StyleManager.loadStyleDoc("/screens/matter_mass_pattern_provider.json"));
 
-        // 返回目标切换：false = AE 网络（AUTO_EXPORT_OFF 图标），true = 玩家背包（AUTO_EXPORT_ON 图标）
-        this.returnModeButton = new ToggleButton(Icon.AUTO_EXPORT_ON, Icon.AUTO_EXPORT_OFF,
-                btn -> this.menu.toggleReturnModeClient());
-        this.returnModeButton.setTooltipOn(List.of(
-                Component.translatable("gui.chexsonsaeutils.matter_mass_pattern_provider.return_player"),
-                Component.translatable("gui.chexsonsaeutils.matter_mass_pattern_provider.return_player_hint")));
-        this.returnModeButton.setTooltipOff(List.of(
-                Component.translatable("gui.chexsonsaeutils.matter_mass_pattern_provider.return_network"),
-                Component.translatable("gui.chexsonsaeutils.matter_mass_pattern_provider.return_network_hint")));
+        // 返回目标三态循环按钮：0=网络 1=玩家 2=返还原料，图标随模式变化
+        this.returnModeButton = new IconButton(btn -> this.menu.toggleReturnModeClient()) {
+            @Override
+            protected Icon getIcon() {
+                return switch (MatterMassPatternProviderScreen.this.menu.getReturnMode()) {
+                    case 1 -> Icon.AUTO_EXPORT_ON;
+                    case 2 -> Icon.BACK;
+                    default -> Icon.AUTO_EXPORT_OFF;
+                };
+            }
+        };
         this.addToLeftToolbar(this.returnModeButton);
 
         // 翻页按钮（边界页隐藏）
@@ -90,7 +89,7 @@ public class MatterMassPatternProviderScreen extends AEBaseScreen<MatterMassPatt
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
-        this.returnModeButton.setState(this.menu.isReturnToPlayer());
+        this.returnModeButton.setMessage(returnModeMessage());
         // 翻页时重摆样板槽并清除悬停残留（照 ExtendedAE_Plus）
         if (this.lastRenderedPage != this.menu.getPage()) {
             this.lastRenderedPage = this.menu.getPage();
@@ -123,6 +122,19 @@ public class MatterMassPatternProviderScreen extends AEBaseScreen<MatterMassPatt
                 ++slotId;
             }
         }
+    }
+
+    /** 按当前返回模式生成按钮提示文本（标题+说明）。 */
+    private Component returnModeMessage() {
+        String base = "gui.chexsonsaeutils.matter_mass_pattern_provider.";
+        return switch (this.menu.getReturnMode()) {
+            case 1 -> Component.translatable(base + "return_player")
+                    .append("\n").append(Component.translatable(base + "return_player_hint"));
+            case 2 -> Component.translatable(base + "return_passthrough")
+                    .append("\n").append(Component.translatable(base + "return_passthrough_hint"));
+            default -> Component.translatable(base + "return_network")
+                    .append("\n").append(Component.translatable(base + "return_network_hint"));
+        };
     }
 
     /** 页号绘制在右上角（"当前页/总页数"，1 起），照 CustomPatternProviderScreen.drawFG。 */

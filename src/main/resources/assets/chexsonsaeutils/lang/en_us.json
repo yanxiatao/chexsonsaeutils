@@ -13,6 +13,8 @@
   "gui.chexsonsaeutils.matter_mass_pattern_provider.return_network_hint": "Crafted matter masses are inserted back into the ME network.",
   "gui.chexsonsaeutils.matter_mass_pattern_provider.return_player": "Return: player inventory",
   "gui.chexsonsaeutils.matter_mass_pattern_provider.return_player_hint": "Crafted matter masses are sent to the player who placed this machine. Blocked while the player is offline or the inventory is full.",
+  "gui.chexsonsaeutils.matter_mass_pattern_provider.return_passthrough": "Return: pass inputs back",
+  "gui.chexsonsaeutils.matter_mass_pattern_provider.return_passthrough_hint": "No matter mass is produced; the pushed ingredients are inserted back into the ME network and the craft is counted as completed.",
   "gui.chexsonsaeutils.matter_mass.release_blocked": "Inventory space or empty buckets are not enough. Sneak-use again to force release.",
   "tooltip.chexsonsaeutils.matter_mass.empty": "Empty",
   "item.chexsonsaeutils.multi_level_emitter": "ME Multi-Level Emitter",

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -64,14 +65,18 @@ public class MatterMassPatternProviderLogic extends CustomPatternProviderLogic {
     private static final String NBT_PENDING_MASSES = "matterMassPending";
 
     /**
-     * 待交付物质团（原料已入团，等待返回网络/玩家）。
+     * 待交付条目（原料已收下，等待返回网络/玩家/直接退回）。
      * <p>
      * 双 UUID 设计：{@code patternUuid} 为样板预分配 UUID，仅用于构造与上报输出
      * 一致的物质团匹配 key（经 insertIntoCpus 完成合成记账）；{@code contentsUuid}
      * 为本次合成独有，作为该张物质团内容物条目的键——同一样板的多次合成各产物
      * 内容物互相独立，避免共享条目导致的互相抽干/聚合丢失。
+     * <p>
+     * {@code returnInputs} 非 null 时为 PASS_THROUGH 模式：不建物质团，
+     * 待退回网络的原料清单；物质团模式该字段为 null。
      */
-    public record PendingMass(UUID patternUuid, UUID contentsUuid, Component name) {
+    public record PendingMass(UUID patternUuid, @Nullable UUID contentsUuid, Component name,
+            @Nullable List<GenericStack> returnInputs) {
     }
 
     private final MatterMassPatternProviderHost mmHost;
@@ -141,9 +146,16 @@ public class MatterMassPatternProviderLogic extends CustomPatternProviderLogic {
         if (contents.isEmpty()) {
             return false;
         }
-        var contentsUuid = UUID.randomUUID();
-        MatterMassStore.global().append(contentsUuid, contents);
-        pendingMasses.add(new PendingMass(massPattern.getMassUuid(), contentsUuid, massPattern.firstOutputName()));
+        if (mmHost.getReturnMode() == ReturnMode.PASS_THROUGH) {
+            // 不产物质团：原料待退回网络，合成以样板上报输出记账完成
+            pendingMasses.add(new PendingMass(massPattern.getMassUuid(), null,
+                    massPattern.firstOutputName(), contents));
+        } else {
+            var contentsUuid = UUID.randomUUID();
+            MatterMassStore.global().append(contentsUuid, contents);
+            pendingMasses.add(new PendingMass(massPattern.getMassUuid(), contentsUuid,
+                    massPattern.firstOutputName(), null));
+        }
         saveChanges();
         alertTick();
         return true;
@@ -161,8 +173,18 @@ public class MatterMassPatternProviderLogic extends CustomPatternProviderLogic {
         for (var pending : pendingMasses) {
             var entry = new CompoundTag();
             entry.putUUID("patternUuid", pending.patternUuid());
-            entry.putUUID("contentsUuid", pending.contentsUuid());
+            if (pending.contentsUuid() != null) {
+                entry.putUUID("contentsUuid", pending.contentsUuid());
+            }
             entry.putString("name", Component.Serializer.toJson(pending.name(), registries));
+            if (pending.returnInputs() != null) {
+                var inputsTag = new ListTag();
+                var ops = registries.createSerializationContext(NbtOps.INSTANCE);
+                for (var in : pending.returnInputs()) {
+                    inputsTag.add(GenericStack.CODEC.encodeStart(ops, in).getOrThrow());
+                }
+                entry.put("returnInputs", inputsTag);
+            }
             list.add(entry);
         }
         tag.put(NBT_PENDING_MASSES, list);
@@ -180,18 +202,40 @@ public class MatterMassPatternProviderLogic extends CustomPatternProviderLogic {
             var patternUuid = entry.hasUUID("patternUuid") ? entry.getUUID("patternUuid")
                     : entry.getUUID("uuid");
             var contentsUuid = entry.hasUUID("contentsUuid") ? entry.getUUID("contentsUuid")
-                    : entry.getUUID("uuid");
+                    : (entry.contains("returnInputs") ? null : entry.getUUID("uuid"));
+            List<GenericStack> returnInputs = null;
+            if (entry.contains("returnInputs", Tag.TAG_LIST)) {
+                returnInputs = new ArrayList<>();
+                var ops = registries.createSerializationContext(NbtOps.INSTANCE);
+                var inputsTag = entry.getList("returnInputs", Tag.TAG_COMPOUND);
+                for (int j = 0; j < inputsTag.size(); j++) {
+                    GenericStack.CODEC.parse(ops, inputsTag.getCompound(j)).result().ifPresent(returnInputs::add);
+                }
+            }
             pendingMasses.add(new PendingMass(patternUuid, contentsUuid,
-                    name != null ? name : Component.literal("Matter Mass")));
+                    name != null ? name : Component.literal("Matter Mass"), returnInputs));
         }
     }
 
-    /** 机器被拆时待交付物质团随掉落返还（原料不丢）。 */
+    /** 机器被拆时待交付条目随掉落返还（原料不丢）。 */
     @Override
     public void addDrops(List<ItemStack> drops) {
         super.addDrops(drops);
         for (var pending : pendingMasses) {
-            drops.add(MatterMassItem.createStack(pending.name(), pending.contentsUuid()));
+            if (pending.returnInputs() != null) {
+                for (var in : pending.returnInputs()) {
+                    if (in.what() instanceof AEItemKey itemKey) {
+                        long amount = in.amount();
+                        while (amount > 0) {
+                            int n = (int) Math.min(amount, itemKey.getMaxStackSize());
+                            drops.add(itemKey.toStack(n));
+                            amount -= n;
+                        }
+                    }
+                }
+            } else if (pending.contentsUuid() != null) {
+                drops.add(MatterMassItem.createStack(pending.name(), pending.contentsUuid()));
+            }
         }
         pendingMasses.clear();
     }
@@ -273,15 +317,22 @@ public class MatterMassPatternProviderLogic extends CustomPatternProviderLogic {
         }
     }
 
-    /** 交付队首物质团；@return 本次是否有成功交付/出队 */
+    /** 交付队首条目；@return 本次是否有成功交付/出队 */
     private boolean deliverNext(IGrid grid) {
         var pending = pendingMasses.get(0);
+        // 合成匹配 key：样板 UUID（与上报输出一致），用于 insertIntoCpus 记账完成
+        var matchingKey = AEItemKey.of(MatterMassItem.createStack(pending.name(), pending.patternUuid()));
+        if (matchingKey == null) {
+            pendingMasses.remove(0);
+            return true;
+        }
+        if (pending.returnInputs() != null) {
+            return deliverInputsToNetwork(grid, pending, matchingKey);
+        }
         // 实体物质团：内容物 UUID（每张团内容物独立）
         var stack = MatterMassItem.createStack(pending.name(), pending.contentsUuid());
         var massKey = AEItemKey.of(stack);
-        // 合成匹配 key：样板 UUID（与上报输出一致），用于 insertIntoCpus 记账完成
-        var matchingKey = AEItemKey.of(MatterMassItem.createStack(pending.name(), pending.patternUuid()));
-        if (massKey == null || matchingKey == null) {
+        if (massKey == null) {
             pendingMasses.remove(0);
             return true;
         }
@@ -293,6 +344,28 @@ public class MatterMassPatternProviderLogic extends CustomPatternProviderLogic {
         var inserted = storage.insert(massKey, 1, Actionable.MODULATE, mmActionSource);
         if (inserted <= 0) {
             return false;
+        }
+        if (grid.getCraftingService() instanceof appeng.me.service.CraftingService craftingService) {
+            craftingService.insertIntoCpus(matchingKey, 1, Actionable.MODULATE);
+        }
+        pendingMasses.remove(0);
+        return true;
+    }
+
+    /**
+     * PASS_THROUGH 交付：把待退回原料先整体模拟（任一装不下则阻塞重试，不丢料），
+     * 全部可容纳后实插回网络存储，随后以样板上报输出 insertIntoCpus 记账，
+     * 保证该产出的合成正常算作完成。
+     */
+    private boolean deliverInputsToNetwork(IGrid grid, PendingMass pending, AEItemKey matchingKey) {
+        var storage = grid.getStorageService().getInventory();
+        for (var in : pending.returnInputs()) {
+            if (storage.insert(in.what(), in.amount(), Actionable.SIMULATE, mmActionSource) < in.amount()) {
+                return false;
+            }
+        }
+        for (var in : pending.returnInputs()) {
+            storage.insert(in.what(), in.amount(), Actionable.MODULATE, mmActionSource);
         }
         if (grid.getCraftingService() instanceof appeng.me.service.CraftingService craftingService) {
             craftingService.insertIntoCpus(matchingKey, 1, Actionable.MODULATE);
