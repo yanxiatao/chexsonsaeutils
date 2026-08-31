@@ -19,6 +19,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue PARALLEL_CRAFTING_CPU_ENABLED;
     public static final ModConfigSpec.BooleanValue PARALLEL_CPU_FAST_PLANNING_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CPU_FAST_PLANNING_BUDGET_MILLIS;
+    public static final ModConfigSpec.BooleanValue PARALLEL_CPU_FAST_PLANNING_ANY_GRID_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_SUBMISSIONS_PER_TICK_PER_GRID;
@@ -212,6 +213,14 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "native AE2 path. 0 disables the budget (run to completion).")
                 .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningBudgetMillis")
                 .defineInRange("parallelCpuFastPlanningBudgetMillis", 10_000, 0, Integer.MAX_VALUE);
+        PARALLEL_CPU_FAST_PLANNING_ANY_GRID_ENABLED = builder
+                .comment("Allow the fast crafting-plan calculation path on grids that do not host",
+                        "this mod's parallel CPU. When disabled (default), only grids with an",
+                        "active parallel CPU use the fast path. Enabling it detaches plain",
+                        "networks from AE2's per-tick time slicing as well, trading background",
+                        "thread CPU time for faster plans. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningAnyGridEnabled")
+                .define("parallelCpuFastPlanningAnyGridEnabled", false);
         PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK = builder
                 .comment("Maximum internal crafting lanes per tool block.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxInternalLanesPerBlock")

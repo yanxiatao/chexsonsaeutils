@@ -11,10 +11,12 @@ import org.jetbrains.annotations.Nullable;
  * Decides whether a crafting-plan calculation should use this mod's parallel
  * CPU fast path instead of AE2's throttled native calculation.
  *
- * <p>The fast path is used only when the AE network actually hosts one of this
- * mod's parallel CPUs ("when AE uses our CPU"), the feature toggle is on, and
- * the parallel CPU feature itself is enabled. Any uncertainty falls through to
- * the native path.
+ * <p>By default the fast path is used only when the AE network actually hosts
+ * one of this mod's parallel CPUs ("when AE uses our CPU"), the feature toggle
+ * is on, and the parallel CPU feature itself is enabled. The opt-in
+ * {@code parallelCpuFastPlanningAnyGridEnabled} switch (default off) lets any
+ * grid use the fast path even without a parallel CPU. Any uncertainty falls
+ * through to the native path.
  */
 public final class ParallelCpuFastPlanning {
 
@@ -29,6 +31,11 @@ public final class ParallelCpuFastPlanning {
                 ChexsonsaeutilsCompatibilityConfig.PARALLEL_CPU_FAST_PLANNING_ENABLED,
                 "parallelCpuFastPlanningEnabled")) {
             return false;
+        }
+        if (FeatureGates.isEnabled(
+                ChexsonsaeutilsCompatibilityConfig.PARALLEL_CPU_FAST_PLANNING_ANY_GRID_ENABLED,
+                "parallelCpuFastPlanningAnyGridEnabled")) {
+            return true;
         }
         if (!FeatureGates.isEnabled(
                 ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_ENABLED,
