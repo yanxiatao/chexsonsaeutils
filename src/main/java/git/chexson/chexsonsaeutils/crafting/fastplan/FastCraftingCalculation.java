@@ -3,7 +3,6 @@ package git.chexson.chexsonsaeutils.crafting.fastplan;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingPlan;
-import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.crafting.ICraftingSimulationRequester;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
@@ -14,6 +13,7 @@ import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.inv.ChildCraftingSimulationState;
 import appeng.crafting.inv.CraftingSimulationState;
 import appeng.crafting.inv.NetworkCraftingSimulationState;
+import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCalculationAccessor;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeInvoker;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -83,12 +83,27 @@ public class FastCraftingCalculation extends CraftingCalculation {
         this.fastStrategy = strategy;
         this.fastRequestedAmount = output.amount();
         this.budgetNanos = budgetMillis <= 0L ? -1L : budgetMillis * 1_000_000L;
-        this.fastNetworkInv = new NetworkCraftingSimulationState(
-                grid.getStorageService(),
-                simRequester.getActionSource()
-        );
-        ICraftingService craftingService = grid.getCraftingService();
-        this.fastTree = new CraftingTreeNode(craftingService, this, output.what(), 1, null, -1);
+        // Reuse the snapshot and search tree the super constructor just built on the
+        // server thread; building a second pair doubled the per-request main-thread
+        // cost. Unit tests run without mixins, so fall back to dedicated instances.
+        NetworkCraftingSimulationState networkInv = null;
+        CraftingTreeNode tree = null;
+        try {
+            CraftingCalculationAccessor accessor = (CraftingCalculationAccessor) this;
+            networkInv = accessor.chexsonsaeutils$getNetworkInv();
+            tree = accessor.chexsonsaeutils$getTree();
+        } catch (ClassCastException | LinkageError ignored) {
+            // Mixin layer absent (unit tests).
+        }
+        if (networkInv == null || tree == null) {
+            networkInv = new NetworkCraftingSimulationState(
+                    grid.getStorageService(),
+                    simRequester.getActionSource()
+            );
+            tree = new CraftingTreeNode(grid.getCraftingService(), this, output.what(), 1, null, -1);
+        }
+        this.fastNetworkInv = networkInv;
+        this.fastTree = tree;
     }
 
     @Override
