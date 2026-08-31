@@ -226,6 +226,7 @@ public class Chexsonsaeutils {
         if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level
                 && level.dimension() == Level.OVERWORLD) {
             saveInfinityCellStore(level);
+            InfinityCellStore.awaitPendingWrites();
             saveMatterMassStore(level);
         }
     }
@@ -235,6 +236,7 @@ public class Chexsonsaeutils {
                 event.getServer().getWorldPath(LevelResource.ROOT),
                 event.getServer().registryAccess()
         );
+        InfinityCellStore.awaitPendingWrites();
         MatterMassStore.global().save(
                 event.getServer().getWorldPath(LevelResource.ROOT),
                 event.getServer().registryAccess()
