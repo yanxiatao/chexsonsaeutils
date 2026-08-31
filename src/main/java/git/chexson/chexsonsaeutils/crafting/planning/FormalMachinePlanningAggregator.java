@@ -29,6 +29,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -36,11 +37,13 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 
 // ponytail: monolithic static utility (1917 loc / 74 methods).
 // Split into SelectedPlanGraphBuilder, HostAggregationBuilder,
@@ -173,7 +176,8 @@ public final class FormalMachinePlanningAggregator {
         );
         if (dependencyOrderedPatternTimes == null) {
             LOGGER.warn(
-                    "Failed to topologically order rewritten formal-machine crafting plan for output {} amount {}",
+                    "Rewritten formal-machine crafting plan contains patterns with non-deterministic inputs"
+                            + " for output {} amount {}",
                     requestedOutput,
                     requestedAmount
             );
@@ -615,63 +619,234 @@ public final class FormalMachinePlanningAggregator {
         );
     }
 
-    static @Nullable List<AEKey> topoSortDependencyOutputs(
+    static List<AEKey> topoSortDependencyOutputs(
             Map<AEKey, ? extends Collection<AEKey>> inputsByOutput
     ) {
         if (inputsByOutput == null || inputsByOutput.isEmpty()) {
             return List.of();
         }
+        return orderDependencyFirst(inputsByOutput.keySet(), inputsByOutput::get);
+    }
 
-        Map<AEKey, Integer> indegree = new LinkedHashMap<>();
-        Map<AEKey, List<AEKey>> adjacency = new LinkedHashMap<>();
-        for (AEKey output : inputsByOutput.keySet()) {
-            if (output == null) {
-                continue;
-            }
-            indegree.putIfAbsent(output, 0);
-            adjacency.putIfAbsent(output, new ArrayList<>());
+    // Best-effort dependency-first order: acyclic graphs keep legacy FIFO Kahn output
+    // bit-for-bit; cyclic groups are condensed via SCC and emitted adjacently instead
+    // of failing. Null dependencies, null members, unknown members and self-loops are
+    // ignored; input nodes are deduplicated keeping first occurrence.
+    static <N> List<N> orderDependencyFirst(
+            Collection<? extends N> nodes,
+            Function<? super N, ? extends Collection<? extends N>> dependenciesOf
+    ) {
+        if (nodes == null || nodes.isEmpty() || dependenciesOf == null) {
+            return List.of();
         }
 
-        for (Map.Entry<AEKey, ? extends Collection<AEKey>> entry : inputsByOutput.entrySet()) {
-            AEKey consumerOutput = entry.getKey();
-            if (consumerOutput == null || !adjacency.containsKey(consumerOutput) || entry.getValue() == null) {
+        List<N> uniqueNodes = new ArrayList<>();
+        Map<N, Integer> indexOf = new LinkedHashMap<>();
+        for (N node : nodes) {
+            if (node != null && !indexOf.containsKey(node)) {
+                indexOf.put(node, uniqueNodes.size());
+                uniqueNodes.add(node);
+            }
+        }
+        if (uniqueNodes.isEmpty()) {
+            return List.of();
+        }
+
+        int nodeCount = uniqueNodes.size();
+        List<LinkedHashSet<Integer>> consumersOf = new ArrayList<>(nodeCount);
+        for (int index = 0; index < nodeCount; index++) {
+            consumersOf.add(new LinkedHashSet<>());
+        }
+        int[] indegree = new int[nodeCount];
+        for (int consumerIndex = 0; consumerIndex < nodeCount; consumerIndex++) {
+            Collection<? extends N> dependencies = dependenciesOf.apply(uniqueNodes.get(consumerIndex));
+            if (dependencies == null) {
                 continue;
             }
-            for (AEKey inputKey : entry.getValue()) {
-                if (inputKey == null || inputKey.equals(consumerOutput) || !adjacency.containsKey(inputKey)) {
+            for (N dependency : dependencies) {
+                Integer dependencyIndex = dependency == null ? null : indexOf.get(dependency);
+                if (dependencyIndex == null || dependencyIndex == consumerIndex) {
                     continue;
                 }
-                adjacency.computeIfAbsent(inputKey, ignored -> new ArrayList<>()).add(consumerOutput);
-                indegree.merge(consumerOutput, 1, Integer::sum);
+                if (consumersOf.get(dependencyIndex).add(consumerIndex)) {
+                    indegree[consumerIndex]++;
+                }
             }
         }
 
-        ArrayDeque<AEKey> ready = new ArrayDeque<>();
-        for (Map.Entry<AEKey, Integer> entry : indegree.entrySet()) {
-            if (entry.getValue() == 0) {
-                ready.addLast(entry.getKey());
+        List<Integer> orderedIndexes = fifoKahn(consumersOf, indegree, nodeCount);
+        if (orderedIndexes.size() == nodeCount) {
+            return materializeOrdered(uniqueNodes, orderedIndexes);
+        }
+
+        return materializeOrdered(uniqueNodes, orderByStrongComponents(consumersOf, nodeCount));
+    }
+
+    private static List<Integer> fifoKahn(
+            List<LinkedHashSet<Integer>> consumersOf,
+            int[] indegree,
+            int nodeCount
+    ) {
+        ArrayDeque<Integer> ready = new ArrayDeque<>();
+        for (int index = 0; index < nodeCount; index++) {
+            if (indegree[index] == 0) {
+                ready.addLast(index);
             }
         }
 
-        List<AEKey> ordered = new ArrayList<>(indegree.size());
+        List<Integer> ordered = new ArrayList<>(nodeCount);
         while (!ready.isEmpty()) {
-            AEKey current = ready.removeFirst();
+            int current = ready.removeFirst();
             ordered.add(current);
-            for (AEKey consumer : adjacency.getOrDefault(current, List.of())) {
-                int next = indegree.getOrDefault(consumer, 0) - 1;
-                indegree.put(consumer, next);
-                if (next == 0) {
+            for (int consumer : consumersOf.get(current)) {
+                indegree[consumer]--;
+                if (indegree[consumer] == 0) {
                     ready.addLast(consumer);
                 }
             }
         }
+        return ordered;
+    }
 
-        return ordered.size() == indegree.size() ? List.copyOf(ordered) : null;
+    private static List<Integer> orderByStrongComponents(
+            List<LinkedHashSet<Integer>> consumersOf,
+            int nodeCount
+    ) {
+        List<List<Integer>> components = stronglyConnectedComponents(consumersOf, nodeCount);
+        int componentCount = components.size();
+
+        int[] componentOf = new int[nodeCount];
+        int[] minMemberIndex = new int[componentCount];
+        for (int component = 0; component < componentCount; component++) {
+            int minMember = Integer.MAX_VALUE;
+            for (int member : components.get(component)) {
+                componentOf[member] = component;
+                minMember = Math.min(minMember, member);
+            }
+            minMemberIndex[component] = minMember;
+        }
+
+        List<LinkedHashSet<Integer>> componentConsumers = new ArrayList<>(componentCount);
+        for (int component = 0; component < componentCount; component++) {
+            componentConsumers.add(new LinkedHashSet<>());
+        }
+        int[] componentIndegree = new int[componentCount];
+        for (int dependency = 0; dependency < nodeCount; dependency++) {
+            int dependencyComponent = componentOf[dependency];
+            for (int consumer : consumersOf.get(dependency)) {
+                int consumerComponent = componentOf[consumer];
+                if (consumerComponent != dependencyComponent
+                        && componentConsumers.get(dependencyComponent).add(consumerComponent)) {
+                    componentIndegree[consumerComponent]++;
+                }
+            }
+        }
+
+        PriorityQueue<Integer> ready = new PriorityQueue<>(
+                Math.max(1, componentCount),
+                Comparator.comparingInt(component -> minMemberIndex[component])
+        );
+        for (int component = 0; component < componentCount; component++) {
+            if (componentIndegree[component] == 0) {
+                ready.add(component);
+            }
+        }
+
+        List<Integer> ordered = new ArrayList<>(nodeCount);
+        while (!ready.isEmpty()) {
+            int component = ready.poll();
+            List<Integer> members = new ArrayList<>(components.get(component));
+            Collections.sort(members);
+            ordered.addAll(members);
+            for (int consumer : componentConsumers.get(component)) {
+                componentIndegree[consumer]--;
+                if (componentIndegree[consumer] == 0) {
+                    ready.add(consumer);
+                }
+            }
+        }
+        return ordered;
+    }
+
+    // Iterative Tarjan SCC; explicit call stack avoids recursion limits on large plan graphs.
+    static List<List<Integer>> stronglyConnectedComponents(
+            List<LinkedHashSet<Integer>> consumersOf,
+            int nodeCount
+    ) {
+        int[][] successors = new int[nodeCount][];
+        for (int node = 0; node < nodeCount; node++) {
+            LinkedHashSet<Integer> edges = consumersOf.get(node);
+            successors[node] = new int[edges.size()];
+            int position = 0;
+            for (int consumer : edges) {
+                successors[node][position++] = consumer;
+            }
+        }
+
+        int[] discovery = new int[nodeCount];
+        int[] lowlink = new int[nodeCount];
+        boolean[] onStack = new boolean[nodeCount];
+        int[] componentStack = new int[nodeCount];
+        int stackSize = 0;
+        int clock = 0;
+        List<List<Integer>> components = new ArrayList<>();
+        ArrayDeque<int[]> callStack = new ArrayDeque<>();
+
+        for (int root = 0; root < nodeCount; root++) {
+            if (discovery[root] != 0) {
+                continue;
+            }
+            discovery[root] = lowlink[root] = ++clock;
+            componentStack[stackSize++] = root;
+            onStack[root] = true;
+            callStack.addLast(new int[]{root, 0});
+
+            while (!callStack.isEmpty()) {
+                int[] frame = callStack.peekLast();
+                int node = frame[0];
+                if (frame[1] < successors[node].length) {
+                    int successor = successors[node][frame[1]++];
+                    if (discovery[successor] == 0) {
+                        discovery[successor] = lowlink[successor] = ++clock;
+                        componentStack[stackSize++] = successor;
+                        onStack[successor] = true;
+                        callStack.addLast(new int[]{successor, 0});
+                    } else if (onStack[successor]) {
+                        lowlink[node] = Math.min(lowlink[node], discovery[successor]);
+                    }
+                } else {
+                    callStack.removeLast();
+                    if (!callStack.isEmpty()) {
+                        int parent = callStack.peekLast()[0];
+                        lowlink[parent] = Math.min(lowlink[parent], lowlink[node]);
+                    }
+                    if (lowlink[node] == discovery[node]) {
+                        List<Integer> component = new ArrayList<>();
+                        int member;
+                        do {
+                            member = componentStack[--stackSize];
+                            onStack[member] = false;
+                            component.add(member);
+                        } while (member != node);
+                        components.add(component);
+                    }
+                }
+            }
+        }
+        return components;
+    }
+
+    private static <N> List<N> materializeOrdered(List<N> uniqueNodes, List<Integer> orderedIndexes) {
+        List<N> ordered = new ArrayList<>(orderedIndexes.size());
+        for (int index : orderedIndexes) {
+            ordered.add(uniqueNodes.get(index));
+        }
+        return List.copyOf(ordered);
     }
 
     private static @Nullable List<SelectedGraphNode> topoSortHostNodes(Map<AEKey, SelectedGraphNode> hostNodes) {
         List<AEKey> orderedOutputs = topoSortDependencyOutputs(formalInputsByOutput(hostNodes));
-        if (orderedOutputs == null || orderedOutputs.size() != hostNodes.size()) {
+        if (orderedOutputs.size() != hostNodes.size()) {
             return null;
         }
 
@@ -694,8 +869,6 @@ public final class FormalMachinePlanningAggregator {
             return patternTimes;
         }
 
-        Map<IPatternDetails, Integer> indegree = new LinkedHashMap<>();
-        Map<IPatternDetails, LinkedHashSet<IPatternDetails>> adjacency = new LinkedHashMap<>();
         Map<IPatternDetails, Map<AEKey, Long>> inputsByPattern = new LinkedHashMap<>();
         Map<AEKey, List<IPatternDetails>> producersByOutput = new LinkedHashMap<>();
 
@@ -711,8 +884,6 @@ public final class FormalMachinePlanningAggregator {
                 return null;
             }
 
-            indegree.putIfAbsent(pattern, 0);
-            adjacency.putIfAbsent(pattern, new LinkedHashSet<>());
             inputsByPattern.put(pattern, inputs);
             for (GenericStack output : pattern.getOutputs()) {
                 if (output == null || output.what() == null || output.amount() <= 0L) {
@@ -722,41 +893,25 @@ public final class FormalMachinePlanningAggregator {
             }
         }
 
+        Map<IPatternDetails, LinkedHashSet<IPatternDetails>> dependencies = new LinkedHashMap<>();
         for (Map.Entry<IPatternDetails, Map<AEKey, Long>> entry : inputsByPattern.entrySet()) {
             IPatternDetails consumer = entry.getKey();
+            LinkedHashSet<IPatternDetails> producers = new LinkedHashSet<>();
             for (AEKey inputKey : entry.getValue().keySet()) {
                 for (IPatternDetails producer : producersByOutput.getOrDefault(inputKey, List.of())) {
-                    if (producer == consumer) {
-                        continue;
-                    }
-                    if (adjacency.get(producer).add(consumer)) {
-                        indegree.merge(consumer, 1, Integer::sum);
+                    if (producer != consumer) {
+                        producers.add(producer);
                     }
                 }
             }
-        }
-
-        ArrayDeque<IPatternDetails> ready = new ArrayDeque<>();
-        for (Map.Entry<IPatternDetails, Integer> entry : indegree.entrySet()) {
-            if (entry.getValue() == 0) {
-                ready.addLast(entry.getKey());
-            }
+            dependencies.put(consumer, producers);
         }
 
         Map<IPatternDetails, Long> ordered = new LinkedHashMap<>();
-        while (!ready.isEmpty()) {
-            IPatternDetails current = ready.removeFirst();
-            ordered.put(current, patternTimes.get(current));
-            for (IPatternDetails consumer : adjacency.getOrDefault(current, new LinkedHashSet<>())) {
-                int next = indegree.getOrDefault(consumer, 0) - 1;
-                indegree.put(consumer, next);
-                if (next == 0) {
-                    ready.addLast(consumer);
-                }
-            }
+        for (IPatternDetails pattern : orderDependencyFirst(patternTimes.keySet(), dependencies::get)) {
+            ordered.put(pattern, patternTimes.get(pattern));
         }
-
-        return ordered.size() == patternTimes.size() ? ordered : null;
+        return ordered;
     }
 
     private static Map<IPatternDetails, Long> immutableOrderedPatternTimes(
@@ -813,6 +968,7 @@ public final class FormalMachinePlanningAggregator {
             }
         }
 
+        // Reachable for cyclic dependency segments too; the pick is arbitrary but deterministic.
         List<SelectedGraphNode> reversedOrder = new ArrayList<>(executionOrder);
         Collections.reverse(reversedOrder);
         for (SelectedGraphNode node : reversedOrder) {
