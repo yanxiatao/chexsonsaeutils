@@ -782,6 +782,15 @@ public class DyeablePatternCraftingCalculation extends CraftingCalculation {
         return PatternColorHelper.getPatternColor(output.what().wrapForDisplayOrFilter());
     }
 
+    /**
+     * Whether this requested output needs the dyeable ring-replacement planning.
+     * Items without a pattern color never trigger dyeable behavior, so they are
+     * safe to route to other calculation paths (e.g. the parallel CPU fast path).
+     */
+    public static boolean isDyeableRequest(@Nullable GenericStack output) {
+        return resolveRequestedColor(output) != -1;
+    }
+
     @Nullable
     static DyeablePatternCompressedRing resolvePreparedCompressedRing(
             @Nullable GenericStack output,

@@ -17,6 +17,9 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue BUILDING_GADGETS2_INTEGRATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FTB_ULTIMINE_MEMORY_CARD_ENABLED;
     public static final ModConfigSpec.BooleanValue PARALLEL_CRAFTING_CPU_ENABLED;
+    public static final ModConfigSpec.BooleanValue PARALLEL_CPU_FAST_PLANNING_ENABLED;
+    public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CPU_FAST_PLANNING_BUDGET_MILLIS;
+    public static final ModConfigSpec.BooleanValue PARALLEL_CPU_FAST_PLANNING_ANY_GRID_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_SUBMISSIONS_PER_TICK_PER_GRID;
@@ -28,6 +31,26 @@ public final class ChexsonsaeutilsCompatibilityConfig {
             AE_DIRECT_PROCESSING_MACHINE_RECIPE_MAPPINGS;
     public static final ModConfigSpec.ConfigValue<String> AE_DIRECT_PROCESSING_MACHINE_BUDGET_PROFILE;
     public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_GENERIC_DISCOVERY_ENABLED;
+    public static final ModConfigSpec.BooleanValue HIGH_CAPACITY_CRAFTING_MACHINE_ENABLED;
+    public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_ENABLED;
+    public static final ModConfigSpec.BooleanValue CUSTOM_PATTERN_PROVIDER_ENABLED;
+    public static final ModConfigSpec.BooleanValue CUSTOM_PATTERN_PROVIDER_OVERSTACK_RETURN_ENABLED;
+    public static final ModConfigSpec.BooleanValue MATTER_MASS_PATTERN_PROVIDER_ENABLED;
+    public static final ModConfigSpec.BooleanValue MULTI_LEVEL_EMITTER_ENABLED;
+    public static final ModConfigSpec.BooleanValue AUTO_ITEM_GEN_ENABLED;
+    public static final ModConfigSpec.BooleanValue INFINITY_CELL_ENABLED;
+    public static final ModConfigSpec.BooleanValue SLOT_NUMBER_OVERLAY_ENABLED;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_TOTAL_PATTERN_SLOTS;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_DEFAULT_OPERATION_TICKS;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_QUEUE_TASKS;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_BATCHES;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS;
+    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK;
+    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_TOTAL_PATTERN_SLOTS;
+    public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_BASE_TICKS;
+    public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_MAX_TICKS;
+    public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID;
+    public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_REINJECT_PATTERN_INPUTS_PER_TICK_PER_GRID;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -54,12 +77,68 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 .translation("configuration.chexsonsaeutils.processingPatternReplacementEnabled")
                 .define("processingPatternReplacementEnabled", true);
         MAX_CUSTOM_PATTERN_PAGES = builder
-                .comment("Maximum pattern pages of the frame pattern provider.",
+                .comment("Maximum pattern pages of the custom pattern provider.",
                         "Each page holds 36 pattern slots; the pattern inventory capacity is pages * 36.",
                         "Extending pages is unlocked by consuming items (phase 5b), and expanded pages are",
-                        "kept when the frame is dismantled. Takes effect after restart.")
-                .translation("configuration.chexsonsaeutils.maxFramePatternPages")
-                .defineInRange("maxFramePatternPages", 8, 1, 8);
+                        "kept when the provider is dismantled. Takes effect after restart.")
+                .translation("configuration.chexsonsaeutils.maxCustomPatternPages")
+                .defineInRange("maxCustomPatternPages", 8, 1, 8);
+        HIGH_CAPACITY_CRAFTING_MACHINE_ENABLED = builder
+                .comment("Enable the high-capacity crafting machine behavior.",
+                        "Registered blocks/items stay available for world compatibility;",
+                        "when disabled, placed machines stop processing. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.highCapacityCraftingMachineEnabled")
+                .define("highCapacityCraftingMachineEnabled", true);
+        AE_DIRECT_PROCESSING_MACHINE_ENABLED = builder
+                .comment("Enable the AE direct processing machine behavior.",
+                        "Registered blocks/items stay available for world compatibility;",
+                        "when disabled, placed machines stop processing. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.aeDirectProcessingMachineEnabled")
+                .define("aeDirectProcessingMachineEnabled", true);
+        CUSTOM_PATTERN_PROVIDER_ENABLED = builder
+                .comment("Enable the custom pattern provider active behavior.",
+                        "Registered blocks/items stay available for world compatibility;",
+                        "when disabled, providers stop active extraction and pushing.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.customPatternProviderEnabled")
+                .define("customPatternProviderEnabled", true);
+        CUSTOM_PATTERN_PROVIDER_OVERSTACK_RETURN_ENABLED = builder
+                .comment("Allow one return-bar slot of the custom pattern provider to exceed the item",
+                        "stack size limit, so a full machine output slot can be pulled in one pass.",
+                        "When disabled, new writes are clamped to the original per-slot limit; content",
+                        "already stored above the limit is still returned to the network in full.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.customPatternProviderOverstackReturnEnabled")
+                .define("customPatternProviderOverstackReturnEnabled", true);
+        MATTER_MASS_PATTERN_PROVIDER_ENABLED = builder
+                .comment("Enable the matter mass pattern provider feature bundle.",
+                        "Registered blocks/items stay available for world compatibility;",
+                        "when disabled, machines stop converting patterns and delivering matter masses,",
+                        "and the pattern decoder / cell handler / mixins are not loaded.",
+                        "Takes effect after restart.")
+                .translation("configuration.chexsonsaeutils.matterMassPatternProviderEnabled")
+                .define("matterMassPatternProviderEnabled", true);
+        MULTI_LEVEL_EMITTER_ENABLED = builder
+                .comment("Enable the multi-level emitter output logic.",
+                        "Registered parts stay available for world compatibility;",
+                        "when disabled, emitters always read as off. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.multiLevelEmitterEnabled")
+                .define("multiLevelEmitterEnabled", true);
+        AUTO_ITEM_GEN_ENABLED = builder
+                .comment("Enable the auto item generator (debug) block behavior.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.autoItemGenEnabled")
+                .define("autoItemGenEnabled", true);
+        INFINITY_CELL_ENABLED = builder
+                .comment("Enable the infinity storage cell registration.",
+                        "Has no effect after restart.")
+                .translation("configuration.chexsonsaeutils.infinityCellEnabled")
+                .define("infinityCellEnabled", true);
+        SLOT_NUMBER_OVERLAY_ENABLED = builder
+                .comment("Enable the client-side slot number overlay.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.slotNumberOverlayEnabled")
+                .define("slotNumberOverlayEnabled", true);
         builder.pop();
 
         builder.comment("AEA Feature Migration")
@@ -120,6 +199,28 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuEnabled")
                 .define("parallelCraftingCpuEnabled", true);
+        PARALLEL_CPU_FAST_PLANNING_ENABLED = builder
+                .comment("Enable the parallel CPU fast crafting-plan calculation path.",
+                        "When the AE network hosts this mod's parallel CPU, crafting plans are",
+                        "computed on a dedicated fast path without AE2's per-tick time slicing,",
+                        "which is much faster for large jobs. On any failure the calculation",
+                        "automatically falls back to the native AE2 path. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningEnabled")
+                .define("parallelCpuFastPlanningEnabled", true);
+        PARALLEL_CPU_FAST_PLANNING_BUDGET_MILLIS = builder
+                .comment("Wall-clock budget in milliseconds for a single fast planning run.",
+                        "If the fast path exceeds it, the calculation falls back to the throttled",
+                        "native AE2 path. 0 disables the budget (run to completion).")
+                .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningBudgetMillis")
+                .defineInRange("parallelCpuFastPlanningBudgetMillis", 10_000, 0, Integer.MAX_VALUE);
+        PARALLEL_CPU_FAST_PLANNING_ANY_GRID_ENABLED = builder
+                .comment("Allow the fast crafting-plan calculation path on grids that do not host",
+                        "this mod's parallel CPU. When disabled (default), only grids with an",
+                        "active parallel CPU use the fast path. Enabling it detaches plain",
+                        "networks from AE2's per-tick time slicing as well, trading background",
+                        "thread CPU time for faster plans. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningAnyGridEnabled")
+                .define("parallelCpuFastPlanningAnyGridEnabled", false);
         PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK = builder
                 .comment("Maximum internal crafting lanes per tool block.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxInternalLanesPerBlock")
@@ -156,6 +257,26 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuLaneShardCount")
                 .defineInRange("parallelCraftingCpuLaneShardCount",
                         4_096, 1, Integer.MAX_VALUE);
+        PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_BASE_TICKS = builder
+                .comment("Base exponential backoff delay in ticks for busy pattern providers.")
+                .translation("configuration.chexsonsaeutils.parallelCraftingCpuProviderBackoffBaseTicks")
+                .defineInRange("parallelCraftingCpuProviderBackoffBaseTicks",
+                        2, 1, Integer.MAX_VALUE);
+        PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_MAX_TICKS = builder
+                .comment("Maximum backoff delay in ticks for busy pattern providers.")
+                .translation("configuration.chexsonsaeutils.parallelCraftingCpuProviderBackoffMaxTicks")
+                .defineInRange("parallelCraftingCpuProviderBackoffMaxTicks",
+                        40, 1, Integer.MAX_VALUE);
+        PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID = builder
+                .comment("Maximum pattern input extractions budgeted per grid tick.")
+                .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxExtractPatternInputsPerTickPerGrid")
+                .defineInRange("parallelCraftingCpuMaxExtractPatternInputsPerTickPerGrid",
+                        1_048_576L, 1L, Long.MAX_VALUE / 4L);
+        PARALLEL_CRAFTING_CPU_MAX_REINJECT_PATTERN_INPUTS_PER_TICK_PER_GRID = builder
+                .comment("Maximum pattern input reinjections budgeted per grid tick.")
+                .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxReinjectPatternInputsPerTickPerGrid")
+                .defineInRange("parallelCraftingCpuMaxReinjectPatternInputsPerTickPerGrid",
+                        1_048_576L, 1L, Long.MAX_VALUE / 4L);
         builder.pop();
 
         builder.comment("AE Direct Processing Machine")
@@ -190,6 +311,41 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 )
                 .translation("configuration.chexsonsaeutils.genericDiscoveryEnabled")
                 .define("genericDiscoveryEnabled", true);
+        AE_DIRECT_PROCESSING_MACHINE_TOTAL_PATTERN_SLOTS = builder
+                .comment("Total pattern slot capacity of the AE direct processing machine.",
+                        "Shrinking this below a machine's used slots may affect existing saves.")
+                .translation("configuration.chexsonsaeutils.totalPatternSlots")
+                .defineInRange("totalPatternSlots", 16_384, 1, 65_536);
+        AE_DIRECT_PROCESSING_MACHINE_DEFAULT_OPERATION_TICKS = builder
+                .comment("Base processing duration in ticks before speed card reduction.")
+                .translation("configuration.chexsonsaeutils.defaultOperationTicks")
+                .defineInRange("defaultOperationTicks", 20, 1, Integer.MAX_VALUE);
+        AE_DIRECT_PROCESSING_MACHINE_MAX_QUEUE_TASKS = builder
+                .comment("Maximum tasks kept in the execution queue per machine.")
+                .translation("configuration.chexsonsaeutils.maxQueueTasks")
+                .defineInRange("maxQueueTasks", 256, 1, Integer.MAX_VALUE);
+        AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_BATCHES = builder
+                .comment("Maximum output batches buffered before backpressure rejects new work.")
+                .translation("configuration.chexsonsaeutils.maxPendingOutputBatches")
+                .defineInRange("maxPendingOutputBatches", 1_024, 1, Integer.MAX_VALUE);
+        AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS = builder
+                .comment("Cap for the exponential retry delay when output return to the network fails.")
+                .translation("configuration.chexsonsaeutils.maxPendingOutputRetryDelayTicks")
+                .defineInRange("maxPendingOutputRetryDelayTicks", 20, 1, Integer.MAX_VALUE);
+        AE_DIRECT_PROCESSING_MACHINE_DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK = builder
+                .comment("Dirty pattern slot refreshes budgeted per tick per machine.")
+                .translation("configuration.chexsonsaeutils.dirtyPatternRefreshBudgetPerTick")
+                .defineInRange("dirtyPatternRefreshBudgetPerTick", 64, 1, Integer.MAX_VALUE);
+        builder.pop();
+
+        builder.comment("High Capacity Crafting Machine")
+                .translation("configuration.chexsonsaeutils.section.highCapacityCraftingMachine")
+                .push("highCapacityCraftingMachine");
+        HIGH_CAPACITY_TOTAL_PATTERN_SLOTS = builder
+                .comment("Total pattern slot capacity of high-capacity crafting hosts.",
+                        "Shrinking this below a host's used slots may affect existing saves.")
+                .translation("configuration.chexsonsaeutils.totalPatternSlots")
+                .defineInRange("totalPatternSlots", 16_384, 1, 65_536);
         builder.pop();
         SPEC = builder.build();
     }
@@ -199,10 +355,28 @@ public final class ChexsonsaeutilsCompatibilityConfig {
 
     /**
      * @return 配置允许的最大样板页数（1-8，默认 8）。
-     *         阶段 1 共享层泛化：原 FramePatternProviderBlockEntity.maxPages() 静态
-     *         方法移至此处，框架样板供应器与定制样板供应器共用
      */
-    public static int maxFramePatternPages() {
+    public static int maxCustomPatternPages() {
         return MAX_CUSTOM_PATTERN_PAGES.get();
+    }
+
+    /**
+     * @return 定制样板供应器产物返回栏是否允许单格超过物品堆叠上限。
+     *         经 {@link #boolValue} 读取，配置未加载时回落到默认值（开启）。
+     */
+    public static boolean customPatternProviderOverstackReturnEnabled() {
+        return boolValue(CUSTOM_PATTERN_PROVIDER_OVERSTACK_RETURN_ENABLED);
+    }
+
+    public static int intValue(ModConfigSpec.ConfigValue<Integer> value) {
+        return SPEC.isLoaded() ? value.get() : value.getDefault();
+    }
+
+    public static long longValue(ModConfigSpec.ConfigValue<Long> value) {
+        return SPEC.isLoaded() ? value.get() : value.getDefault();
+    }
+
+    public static boolean boolValue(ModConfigSpec.BooleanValue value) {
+        return SPEC.isLoaded() ? value.get() : value.getDefault();
     }
 }

@@ -48,9 +48,9 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 /**
  * 定制样板供应器方块实体（阶段 2）。
  * <p>
- * 与框架样板供应器的差异：不包裹机器（无私有维度/隔离/搬移），机器即周围相邻方块——
- * 多方向模式由方块 PUSH_DIRECTION 属性决定推送方向集合（getTargets），逻辑层
- * {@link CustomPatternProviderLogic#resolveMachineHandler()} 遍历方向取第一个可用机器。
+ * 机器即周围相邻方块（不包裹机器、无内部库存）：多方向模式由方块 PUSH_DIRECTION
+ * 属性决定推送方向集合（getTargets），逻辑层
+ * {@link CustomPatternProviderLogic#resolveMachineHandler} 遍历方向取第一个可用机器。
  * 共享功能（定制样板/翻页/扩容/输入过滤/appflux 灌电/样板配置）全部继承自
  * {@link CustomPatternProviderLogic} 与 {@link CustomPatternProviderLogicHost}。
  * <p>
@@ -77,7 +77,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
      */
     private final CustomPatternProviderLogic logic = createLogic();
 
-    /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxFramePatternPages()]。 */
+    /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxCustomPatternPages()]。 */
     private int pages = 1;
 
     public CustomPatternProviderBlockEntity(BlockPos pos, BlockState blockState) {
@@ -98,7 +98,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
      */
     protected CustomPatternProviderLogic createLogic() {
         return new CustomPatternProviderLogic(this.getMainNode(), this,
-                ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages() * PATTERN_SLOTS_PER_PAGE);
+                ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages() * PATTERN_SLOTS_PER_PAGE);
     }
 
     @Override
@@ -162,7 +162,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * @return 已解锁样板页数（默认 1，clamp 到 [1, maxFramePatternPages()]）
+     * @return 已解锁样板页数（默认 1，clamp 到 [1, maxCustomPatternPages()]）
      */
     @Override
     public int getPages() {
@@ -170,7 +170,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * 设置已解锁样板页数（clamp 到 [1, maxFramePatternPages()]，越界值收敛并告警）。
+     * 设置已解锁样板页数（clamp 到 [1, maxCustomPatternPages()]，越界值收敛并告警）。
      * <p>
      * 注意：loadTag 路径不调用本方法（加载期间 saveChanges 会触发过早写盘），直接赋值字段。
      */
@@ -180,13 +180,13 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * 页数收敛到 [1, maxFramePatternPages()]；发生截断时输出告警日志（loadTag/setPages 共用）。
+     * 页数收敛到 [1, maxCustomPatternPages()]；发生截断时输出告警日志（loadTag/setPages 共用）。
      *
      * @param rawPages 待收敛的原始页数
      * @return 收敛后的页数
      */
     private int clampPages(int rawPages) {
-        int max = ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages();
+        int max = ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages();
         int clamped = Math.max(1, Math.min(rawPages, max));
         if (clamped != rawPages) {
             LOGGER.warn("样板页数截断：old={}, new={}, maxPages={}", rawPages, clamped, max);

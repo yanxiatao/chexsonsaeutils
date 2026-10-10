@@ -1,6 +1,7 @@
 package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 
 import appeng.crafting.CraftingCalculation;
+import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.inv.NetworkCraftingSimulationState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
@@ -9,4 +10,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 public interface CraftingCalculationAccessor {
     @Accessor(value = "networkInv", remap = false)
     NetworkCraftingSimulationState chexsonsaeutils$getNetworkInv();
+
+    @Accessor(value = "tree", remap = false)
+    CraftingTreeNode chexsonsaeutils$getTree();
 }

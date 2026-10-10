@@ -8,9 +8,9 @@ import net.minecraft.world.level.Level;
 import appeng.api.stacks.GenericStack;
 
 /**
- * 框架样板配置转换器（接口）。
+ * 定制样板配置转换器（接口）。
  * <p>
- * 动机：配置 GUI 的核心行为是「处理样板 → 框架样板」的转换，该逻辑与
+ * 动机：配置 GUI 的核心行为是「处理样板 → 定制样板」的转换，该逻辑与
  * 菜单/屏幕解耦，便于独立测试与复用。实现见 {@link CustomPatternConfigConverterImpl}。
  */
 public interface CustomPatternConfigConverter {
@@ -25,13 +25,13 @@ public interface CustomPatternConfigConverter {
     List<GenericStack> decodeSparseInputs(ItemStack input, Level level);
 
     /**
-     * 按槽位映射与抽取槽位生成框架样板。
+     * 按槽位映射与抽取槽位生成定制样板。
      *
      * @param input          输入处理样板
      * @param slotMapping    每个稀疏输入对应的机器槽位（-1 = 未指定）
      * @param extractSlots   抽取槽位列表
      * @param overflowStacks 是否允许指定槽位推送突破堆叠上限（随样板写入组件）
-     * @return 框架样板物品
+     * @return 定制样板物品
      * @throws IllegalArgumentException slotMapping 长度与稀疏输入数不符时
      */
     ItemStack encodeCustomPattern(ItemStack input, int[] slotMapping, int[] extractSlots, boolean overflowStacks);

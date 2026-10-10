@@ -3,7 +3,6 @@ package git.chexson.chexsonsaeutils.crafting.formalmachine;
 import appeng.api.config.Actionable;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.inv.ListCraftingInventory;
-import git.chexson.chexsonsaeutils.blockentity.crafting.CompiledTask;
 import org.jetbrains.annotations.Nullable;
 
 public final class BulkPatternExtractionPlanner {
@@ -69,19 +68,6 @@ public final class BulkPatternExtractionPlanner {
             extractedInputs.add(entry.getKey(), extracted);
         }
         return new BulkExtractionResult(allowedExecutions, new KeyCounter[]{extractedInputs});
-    }
-
-    public static int capAdditionalExecutionsForTask(CompiledTask compiledTask, long remainingTaskExecutions) {
-        if (compiledTask == null) {
-            return 0;
-        }
-        long remaining = Math.max(0L, remainingTaskExecutions);
-        int safeAdditional = compiledTask.remainingAppendCapacity();
-        if (remaining <= 1L || safeAdditional <= 0) {
-            return 0;
-        }
-        long requestedAdditional = Math.min(Integer.MAX_VALUE, remaining - 1L);
-        return Math.min(safeAdditional, (int) requestedAdditional);
     }
 
     private static KeyCounter flattenInputs(KeyCounter[] inputs) {

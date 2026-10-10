@@ -88,27 +88,51 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private static final String NBT_PENDING_OUTPUT_RETRY_BACKOFF = "pendingOutputRetryBackoff";
     private static final String NBT_BATCH_PAYLOAD = "payload";
     private static final String NBT_BATCH_SOURCE_CRAFTING_ID = "sourceCraftingId";
-    private static final int TOTAL_PATTERN_SLOTS = 16_384;
     private static final int PAGE_SIZE = 27;
     private static final int UPGRADE_SLOTS = 5;
-    private static final int DEFAULT_OPERATION_TICKS = 20;
-    private static final int MAX_QUEUE_TASKS = 256;
-    private static final int MAX_PENDING_OUTPUT_BATCHES = 1_024;
-    private static final int MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS = 20;
-    private static final int DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK = 64;
+
+    private static int configTotalPatternSlots() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_TOTAL_PATTERN_SLOTS);
+    }
+
+    private static int configDefaultOperationTicks() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_DEFAULT_OPERATION_TICKS);
+    }
+
+    private static int configMaxQueueTasks() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_MAX_QUEUE_TASKS);
+    }
+
+    private static int configMaxPendingOutputBatches() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_BATCHES);
+    }
+
+    private static int configMaxPendingOutputRetryDelayTicks() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS);
+    }
+
+    private static int configDirtyPatternRefreshBudgetPerTick() {
+        return ChexsonsaeutilsCompatibilityConfig.intValue(
+                ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK);
+    }
 
     private final MachineSource actionSource = new MachineSource(this);
     private final IUpgradeInventory upgrades;
     private final AppEngInternalInventory machineBindingInventory = new AppEngInternalInventory(this, 1, 1);
     private final DirtySlotPatternRefreshScheduler refreshScheduler =
-            new DirtySlotPatternRefreshScheduler(TOTAL_PATTERN_SLOTS);
+            new DirtySlotPatternRefreshScheduler(configTotalPatternSlots());
     private final DecodedPatternEntryCache decodedPatternEntryCache =
-            new DecodedPatternEntryCache(TOTAL_PATTERN_SLOTS);
+            new DecodedPatternEntryCache(configTotalPatternSlots());
     private final DirectProcessingPatternInventory patternInventory =
-            new DirectProcessingPatternInventory(this, refreshScheduler, TOTAL_PATTERN_SLOTS, PAGE_SIZE);
+            new DirectProcessingPatternInventory(this, refreshScheduler, configTotalPatternSlots(), PAGE_SIZE);
     private final DirectProcessingPatternProvider patternProvider = new DirectProcessingPatternProvider();
     private final PatternCompatibilityCache compatibilityCache = new PatternCompatibilityCache();
-    private final ProcessingExecutionQueue executionQueue = new ProcessingExecutionQueue(MAX_QUEUE_TASKS);
+    private final ProcessingExecutionQueue executionQueue = new ProcessingExecutionQueue(configMaxQueueTasks());
     private final DirectProcessingItemHandler automationItemHandler = new DirectProcessingItemHandler(this);
     private final Map<Integer, IPatternDetails> supportedPatternsBySlot = new LinkedHashMap<>();
     private final Map<Integer, PatternCompatibility> patternCompatibilityBySlot = new LinkedHashMap<>();
@@ -273,8 +297,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         }
         if (!this.getMainNode().isActive()
                 || pendingOutputRetryDelayTicks > 0
-                || pendingOutputBatches.size() >= MAX_PENDING_OUTPUT_BATCHES
-                || executionQueue.totalTaskCount() >= MAX_QUEUE_TASKS) {
+                || pendingOutputBatches.size() >= configMaxPendingOutputBatches()
+                || executionQueue.totalTaskCount() >= configMaxQueueTasks()) {
             pushPatternRejectedCount++;
             return false;
         }
@@ -307,8 +331,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         }
         if (!this.getMainNode().isActive()
                 || pendingOutputRetryDelayTicks > 0
-                || pendingOutputBatches.size() >= MAX_PENDING_OUTPUT_BATCHES
-                || executionQueue.totalTaskCount() >= MAX_QUEUE_TASKS) {
+                || pendingOutputBatches.size() >= configMaxPendingOutputBatches()
+                || executionQueue.totalTaskCount() >= configMaxQueueTasks()) {
             pushPatternRejectedCount++;
             return false;
         }
@@ -332,8 +356,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     @Override
     public boolean isBusy() {
         return pendingOutputRetryDelayTicks > 0
-                || pendingOutputBatches.size() >= MAX_PENDING_OUTPUT_BATCHES
-                || executionQueue.totalTaskCount() >= MAX_QUEUE_TASKS;
+                || pendingOutputBatches.size() >= configMaxPendingOutputBatches()
+                || executionQueue.totalTaskCount() >= configMaxQueueTasks();
     }
 
     @Override
@@ -679,7 +703,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         if (currentLevel == null) {
             return;
         }
-        List<Integer> dirtySlots = refreshScheduler.drainDirtySlots(DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK);
+        List<Integer> dirtySlots = refreshScheduler.drainDirtySlots(configDirtyPatternRefreshBudgetPerTick());
         dirtyRefreshScanCount += dirtySlots.size();
         boolean changed = false;
         for (int slot : dirtySlots) {
@@ -730,6 +754,10 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     private void serverTick() {
+        if (!ChexsonsaeutilsCompatibilityConfig.boolValue(
+                ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_ENABLED)) {
+            return;
+        }
         long startedAtNanos = System.nanoTime();
         try {
             budgetController.resetForTick(startedAtNanos);
@@ -908,7 +936,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     @Override
     public int getCurrentOperationTicks() {
         int speedCards = getInstalledUpgrades(AEItems.SPEED_CARD);
-        return Math.max(1, DEFAULT_OPERATION_TICKS >> Math.min(4, speedCards));
+        return Math.max(1, configDefaultOperationTicks() >> Math.min(4, speedCards));
     }
 
     private int getProcessingLaneCount() {
@@ -961,7 +989,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         if (currentDelay <= 0) {
             return 1;
         }
-        return Math.min(MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS, currentDelay * 2);
+        return Math.min(configMaxPendingOutputRetryDelayTicks(), currentDelay * 2);
     }
 
     private void enqueuePendingOutput(

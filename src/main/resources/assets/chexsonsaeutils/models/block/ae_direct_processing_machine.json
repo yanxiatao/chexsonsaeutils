@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:block/cube_all",
   "textures": {
-    "all": "minecraft:block/oxidized_copper"
+    "all": "chexsonsaeutils:block/ae_direct_processing_machine"
   }
 }

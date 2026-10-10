@@ -28,12 +28,12 @@ import git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternEnc
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
- * 框架样板编码菜单（原地编辑供应器原样板）。
+ * 定制样板编码菜单（原地编辑供应器原样板）。
  * <p>
  * 动机：用户要求修改样板时直接自动修改供应器中的对应样板（不复制样板生成
- * 框架样板、不手动取出重新放置）。本菜单不再有输入槽/输出槽（无样板副本），
+ * 定制样板、不手动取出重新放置）。本菜单不再有输入槽/输出槽（无样板副本），
  * 打开时从供应器样板槽读样板解码显示，修改槽位实时写回供应器原样板——
- * 处理样板原地转换为框架样板（setItemDirect 替换 + updatePatterns 刷新），
+ * 处理样板原地转换为定制样板（setItemDirect 替换 + updatePatterns 刷新），
  * 关闭即生效。
  * <p>
  * 数据流：客户端槽位输入经 {@code CustomPatternSlotChangePacket} 到达 update()，
@@ -143,7 +143,7 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
 
     /**
      * 从供应器样板槽读当前样板并解码显示（不写回）。
-     * 处理样板 → 全 -1 映射显示；框架样板 → 显示组件内现有映射/抽取槽位；
+     * 处理样板 → 全 -1 映射显示；定制样板 → 显示组件内现有映射/抽取槽位；
      * 其他/空 → 空配置。
      */
     private void decodeInputAndEncode() {
@@ -163,7 +163,7 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
             this.host.setOverflowStacks(false);
             sendUpdate();
         } else if (details instanceof CustomProcessingPattern customPattern) {
-            // 框架样板：显示组件内已有配置（原地编辑的当前状态）
+            // 定制样板：显示组件内已有配置（原地编辑的当前状态）
             this.serverSparseInputs = customPattern.getSparseInputs();
             this.host.setSlotMapping(customPattern.getSlotMapping());
             this.host.setExtractSlots(customPattern.getExtractSlots());
@@ -214,8 +214,8 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
     }
 
     /**
-     * 写回供应器样板槽：处理样板 → 框架样板原地转换（setItemDirect 替换），
-     * 框架样板 → 按当前映射/抽取槽位重编码组件；随后触发供应器刷新
+     * 写回供应器样板槽：处理样板 → 定制样板原地转换（setItemDirect 替换），
+     * 定制样板 → 按当前映射/抽取槽位重编码组件；随后触发供应器刷新
      * （updatePatterns 重建输出物品集合，让网格感知样板变化）。
      */
     private void writeBack() {
@@ -235,7 +235,7 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
         var details = PatternDetailsHelper.decodePattern(stack, getPlayer().level());
         ItemStack newStack;
         if (details instanceof AEProcessingPattern) {
-            // 处理样板 → 框架样板：convertFromProcessingPattern 生成携带
+            // 处理样板 → 定制样板：convertFromProcessingPattern 生成携带
             // ENCODED_CUSTOM_PATTERN 组件的 CustomPatternItem（原地转换，无副本）
             try {
                 newStack = this.converter.encodeCustomPattern(
@@ -247,7 +247,7 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
                 return;
             }
         } else if (details instanceof CustomProcessingPattern customPattern) {
-            // 框架样板：按当前映射/抽取槽位重编码组件
+            // 定制样板：按当前映射/抽取槽位重编码组件
             newStack = new ItemStack(ChexsonsaeutilsContent.CUSTOM_PATTERN_ITEM.get());
             try {
                 CustomProcessingPattern.encode(newStack, customPattern.getSparseInputs(),
@@ -392,13 +392,6 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
         } catch (NumberFormatException ignored) {
             // 非法 CSV：忽略本次修改（确认编码时沿用上次合法值）
         }
-    }
-
-    /**
-     * @return 来源供应器类型（true = 定制样板供应器；Screen 据此选择布局 json 与标题）
-     */
-    public boolean isFromCustomProvider() {
-        return this.host.isFromCustomProvider();
     }
 
     /**

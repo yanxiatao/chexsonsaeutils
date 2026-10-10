@@ -74,6 +74,14 @@ final class DyeablePatternCraftingTreeProcess {
         return this.limitQty;
     }
 
+    Map<DyeablePatternCraftingTreeNode, Long> nodesView() {
+        return this.nodes;
+    }
+
+    boolean hasContainerItems() {
+        return this.containerItems;
+    }
+
     private void updateLimitQty() {
         for (IPatternDetails.IInput input : details.getInputs()) {
             var primaryInput = input.getPossibleInputs()[0];

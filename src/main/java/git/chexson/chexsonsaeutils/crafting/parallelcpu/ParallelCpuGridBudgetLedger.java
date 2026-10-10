@@ -169,8 +169,8 @@ public final class ParallelCpuGridBudgetLedger {
             return new Limits(
                     settings.maxPatternPushesPerTickPerGrid(),
                     settings.maxProviderChecksPerTickPerGrid(),
-                    settings.maxPatternPushesPerTickPerGrid(),
-                    settings.maxPatternPushesPerTickPerGrid(),
+                    settings.maxExtractPatternInputsPerTickPerGrid(),
+                    settings.maxReinjectPatternInputsPerTickPerGrid(),
                     settings.tickBudgetNanosPerGrid()
             );
         }

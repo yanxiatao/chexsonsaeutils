@@ -11,14 +11,14 @@ import com.glodblock.github.appflux.common.AFSingletons;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
- * appflux 兼容注册（需求 7）：感应卡可安装到框架样板供应器。
+ * appflux 兼容注册（需求 7）：感应卡可安装到定制样板供应器。
  * <p>
  * 动机：仿 extendedae {@code AFCommonLoad} 先例——appflux 是 compileOnly 依赖，
  * 注册必须 ModLoaded 门控 + try-catch(Throwable) 防御（appflux 版本 API 变化时
  * 不阻断本 mod 加载）。
  * <p>
  * 成员作用：{@link #registerUpgrade()} 在 onCommonSetup 中调用，把感应卡
- * （{@code AFSingletons.INDUCTION_CARD}）注册为框架样板供应器物品的升级项
+ * （{@code AFSingletons.INDUCTION_CARD}）注册为定制样板供应器物品的升级项
  * （最多 1 张，tooltip 分组用方块名）。升级槽 UI 的显示由 appflux 自理
  * （照 extendedae 模式，本项目不显示升级槽）。
  */

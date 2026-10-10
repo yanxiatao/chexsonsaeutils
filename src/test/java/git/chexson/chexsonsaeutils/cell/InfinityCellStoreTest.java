@@ -120,6 +120,7 @@ final class InfinityCellStoreTest {
         assertFalse(Files.exists(CellStoragePaths.getNbtFile(root, cellId)));
 
         store.save(root);
+        InfinityCellStore.awaitPendingWrites();
 
         var file = CellStoragePaths.getNbtFile(root, cellId);
         assertTrue(Files.exists(file));
@@ -164,6 +165,7 @@ final class InfinityCellStoreTest {
         first.save(firstRoot);
         second.cell(cellId).insert(ITEM_COPPER, 34, Actionable.MODULATE);
         second.save(secondRoot);
+        InfinityCellStore.awaitPendingWrites();
 
         var store = new InfinityCellStore();
         store.loadOnce(firstRoot);

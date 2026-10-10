@@ -12,14 +12,7 @@ public class HighCapacityCraftingMachineBlockEntity extends AbstractHighCapacity
                 pos,
                 blockState,
                 () -> Chexsonsaeutils.HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get().getDefaultInstance(),
-                "gui.chexsonsaeutils.high_capacity_crafting_machine.page_status",
-                BatchExecutionMode.SAME_PATTERN_DRAIN,
-                true
+                "gui.chexsonsaeutils.high_capacity_crafting_machine.page_status"
         );
-    }
-
-    @Override
-    protected int computeLaneCount(int speedCards) {
-        return Math.max(1, 1 << Math.max(0, speedCards));
     }
 }

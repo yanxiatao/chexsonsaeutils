@@ -1,6 +1,8 @@
 package git.chexson.chexsonsaeutils.cell;
 
 import appeng.api.config.Actionable;
+import appeng.api.stacks.AEFluidKey;
+import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.KeyCounter;
@@ -16,7 +18,6 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
-import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -28,20 +29,45 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * 无限存储单元的世界级存储。
+ * <p>
+ * 内容物按单元 UUID 存于 {@code <world>/data/chexsonsaeutils/cells/<uuid>.nbt}。
+ * 单元文件惰性加载：首次 {@link #cell(UUID)} 访问才解析对应文件，世界加载零成本。
+ * 保存时主线程只做 NBT 编码，文件落盘在单线程后台队列完成；
+ * 关服/世界卸载等边界由调用方 {@link #awaitPendingWrites()} 收尾。
+ */
 public final class InfinityCellStore {
     private static final Logger LOG = LoggerFactory.getLogger(InfinityCellStore.class);
     private static final int FORMAT_VERSION = 1;
     private static final BigInteger LONG_MAX = BigInteger.valueOf(Long.MAX_VALUE);
+    private static final long SAVE_WAIT_SECONDS = 30;
     private static final InfinityCellStore GLOBAL = new InfinityCellStore();
+    private static final ExecutorService SAVE_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+        var thread = new Thread(runnable, "chexsonsaeutils-cell-save");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static volatile CompletableFuture<Void> lastSaveTask = CompletableFuture.completedFuture(null);
 
     private final KeyDictionary keyDictionary = new KeyDictionary();
     private final Map<UUID, CellData> cells = new HashMap<>();
+    private final Set<UUID> loadedCells = new HashSet<>();
     @Nullable
     private Path currentRoot;
+    @Nullable
+    private RegistryAccess currentRegistries;
     private boolean currentRootLoaded;
 
     public static InfinityCellStore global() {
@@ -49,7 +75,22 @@ public final class InfinityCellStore {
     }
 
     public synchronized CellData cell(UUID id) {
+        ensureLoaded(id);
         return cells.computeIfAbsent(id, ignored -> new CellData(keyDictionary));
+    }
+
+    private void ensureLoaded(UUID id) {
+        if (loadedCells.contains(id)) {
+            return;
+        }
+        loadedCells.add(id);
+        if (currentRoot == null) {
+            return;
+        }
+        var file = CellStoragePaths.getNbtFile(currentRoot, id);
+        if (Files.exists(file)) {
+            loadCellFile(file, currentRegistries != null ? currentRegistries : defaultRegistries());
+        }
     }
 
     public KeyDictionary keyDictionary() {
@@ -63,17 +104,7 @@ public final class InfinityCellStore {
     public synchronized void load(Path worldRoot, RegistryAccess registries) {
         prepareRootLoad(worldRoot, registries);
         currentRoot = worldRoot;
-        var dir = CellStoragePaths.getCellDir(worldRoot);
-        if (!Files.isDirectory(dir)) {
-            currentRootLoaded = true;
-            return;
-        }
-        try (var files = Files.list(dir)) {
-            files.filter(path -> path.getFileName().toString().endsWith(".nbt"))
-                    .forEach(path -> loadCellFile(path, registries));
-        } catch (IOException e) {
-            LOG.error("Failed to load infinity cell store from {}", dir, e);
-        }
+        currentRegistries = registries;
         currentRootLoaded = true;
     }
 
@@ -96,39 +127,79 @@ public final class InfinityCellStore {
         currentRoot = worldRoot;
         try {
             Files.createDirectories(CellStoragePaths.getCellDir(worldRoot));
-            for (var entry : cells.entrySet()) {
-                if (entry.getValue().isDirty()) {
-                    saveCellFile(worldRoot, entry.getKey(), entry.getValue(), registries);
-                }
-            }
         } catch (IOException e) {
-            LOG.error("Failed to save infinity cell store to {}", worldRoot, e);
+            LOG.error("Failed to create infinity cell store directory in {}", worldRoot, e);
+            return;
+        }
+        for (var entry : cells.entrySet()) {
+            var data = entry.getValue();
+            if (data.isDirty()) {
+                submitSaveJob(worldRoot, entry.getKey(), data, registries);
+            }
         }
     }
 
-    public synchronized void saveCurrentWorld() {
-        var server = ServerLifecycleHooks.getCurrentServer();
-        var root = currentRoot;
-        var registries = defaultRegistries();
-        if (server != null) {
-            root = server.getWorldPath(LevelResource.ROOT);
-            registries = server.registryAccess();
+    /** 等待已提交的后台落盘任务完成（关服、世界卸载、根切换等边界调用）。 */
+    public static void awaitPendingWrites() {
+        try {
+            lastSaveTask.get(SAVE_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            LOG.error("Failed while waiting for infinity cell saves to complete", e);
         }
-        if (root == null) {
-            LOG.warn("Skipped infinity cell save because no world root is available");
+    }
+
+    private void submitSaveJob(Path worldRoot, UUID id, CellData data, RegistryAccess registries) {
+        var path = CellStoragePaths.getNbtFile(worldRoot, id);
+        if (data.isEmpty()) {
+            data.markClean();
+            lastSaveTask = CompletableFuture.runAsync(() -> deleteFileQuietly(path), SAVE_EXECUTOR);
             return;
         }
-        save(root, registries);
+        CompoundTag tag;
+        try {
+            tag = buildTag(data, registries);
+        } catch (IOException e) {
+            LOG.error("Failed to encode infinity cell {}", id, e);
+            return;
+        }
+        var stamp = data.version();
+        lastSaveTask = CompletableFuture.runAsync(() -> {
+            try {
+                var tmp = path.resolveSibling(path.getFileName() + ".tmp");
+                NbtIo.writeCompressed(tag, tmp);
+                try {
+                    Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException ignored) {
+                    Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
+                }
+                // 落盘期间主线程可能又改了数据；版本一致才清脏，否则留给下次保存
+                data.markCleanIfVersion(stamp);
+            } catch (IOException e) {
+                LOG.error("Failed to save infinity cell file {}", path, e);
+            }
+        }, SAVE_EXECUTOR);
+    }
+
+    private static void deleteFileQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException e) {
+            LOG.error("Failed to delete infinity cell file {}", path, e);
+        }
     }
 
     private void prepareRootLoad(Path worldRoot, RegistryAccess registries) {
         if (currentRoot != null && !currentRoot.equals(worldRoot) && hasDirtyCells()) {
             LOG.warn("Saving dirty infinity cell store before switching world root from {} to {}", currentRoot, worldRoot);
             save(currentRoot, registries);
+            awaitPendingWrites();
         }
         if (!worldRoot.equals(currentRoot)) {
             keyDictionary.clear();
             cells.clear();
+            loadedCells.clear();
         }
         currentRoot = worldRoot;
         currentRootLoaded = false;
@@ -206,28 +277,12 @@ public final class InfinityCellStore {
         return null;
     }
 
-    private void saveCellFile(Path worldRoot, UUID id, CellData data, RegistryAccess registries)
-            throws IOException {
-        var path = CellStoragePaths.getNbtFile(worldRoot, id);
-        if (data.isEmpty()) {
-            Files.deleteIfExists(path);
-            data.markClean();
-            return;
-        }
-
+    private CompoundTag buildTag(CellData data, RegistryAccess registries) throws IOException {
         var tag = new CompoundTag();
         tag.putInt("version", FORMAT_VERSION);
         tag.put("keys", writeKeys(data, registries));
         tag.put("entries", writeEntries(data));
-
-        var tmp = path.resolveSibling(path.getFileName() + ".tmp");
-        NbtIo.writeCompressed(tag, tmp);
-        try {
-            Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException ignored) {
-            Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
-        }
-        data.markClean();
+        return tag;
     }
 
     private ListTag writeKeys(CellData data, RegistryAccess registries) throws IOException {
@@ -241,7 +296,10 @@ public final class InfinityCellStore {
             keyTag.putInt("id", keyId);
             keyTag.putString("type", key.getType().getId().toString());
             keyTag.put("tag", key.toTag(registries));
-            keyTag.put("generic", key.toTagGeneric(registries));
+            // item/fluid 类型解码只读 type+tag，generic 仅是其他类型的后备，跳过以减小存档
+            if (!(key instanceof AEItemKey) && !(key instanceof AEFluidKey)) {
+                keyTag.put("generic", key.toTagGeneric(registries));
+            }
             keys.add(keyTag);
         }
         return keys;
@@ -253,11 +311,11 @@ public final class InfinityCellStore {
             var entryTag = new CompoundTag();
             var keyId = entry.getIntKey();
             entryTag.putInt("keyId", keyId);
-            var exact = data.exactAmount(keyId);
-            if (exact.compareTo(LONG_MAX) <= 0) {
-                entryTag.putLong("amount", exact.longValue());
+            var overflow = data.overflowOrNull(keyId);
+            if (overflow == null) {
+                entryTag.putLong("amount", entry.getLongValue());
             } else {
-                entryTag.putByteArray("bigAmount", exact.toByteArray());
+                entryTag.putByteArray("bigAmount", overflow.toByteArray());
             }
             entries.add(entryTag);
         }
@@ -334,8 +392,11 @@ public final class InfinityCellStore {
         private final KeyDictionary keyDictionary;
         private final Int2LongOpenHashMap amounts = new Int2LongOpenHashMap();
         private final Int2ObjectOpenHashMap<BigInteger> overflowAmounts = new Int2ObjectOpenHashMap<>();
-        private BigInteger total = BigInteger.ZERO;
+        private long totalLong;
+        @Nullable
+        private BigInteger totalBig;
         private long version;
+        private long structuralVersion;
         private boolean dirty;
         @Nullable
         private Snapshot cachedSnapshot;
@@ -387,30 +448,40 @@ public final class InfinityCellStore {
         }
 
         public synchronized Snapshot snapshot() {
-            if (cachedSnapshot != null && cachedSnapshot.version == version) {
-                return cachedSnapshot;
+            var snap = cachedSnapshot;
+            if (snap != null && snap.version == version) {
+                return snap;
             }
-            var keys = new AEKey[amounts.size()];
-            var values = new long[amounts.size()];
+            if (snap != null && snap.structuralVersion == structuralVersion && snap.size() == amounts.size()) {
+                // 类型集合未变：原地回填数量，避免转运期每 tick 重建数组
+                for (int i = 0; i < snap.keyIds.length; i++) {
+                    snap.amounts[i] = visibleAmount(snap.keyIds[i]);
+                }
+                snap.version = version;
+                return snap;
+            }
+            var size = amounts.size();
+            var keys = new AEKey[size];
+            var ids = new int[size];
+            var values = new long[size];
             var index = 0;
             for (var entry : amounts.int2LongEntrySet()) {
-                var amount = visibleAmount(entry.getIntKey());
-                if (amount <= 0) {
-                    continue;
-                }
-                var key = keyDictionary.keyFor(entry.getIntKey());
+                var keyId = entry.getIntKey();
+                var key = keyDictionary.keyFor(keyId);
                 if (key == null) {
                     continue;
                 }
                 keys[index] = key;
-                values[index] = amount;
+                ids[index] = keyId;
+                values[index] = visibleAmount(keyId);
                 index++;
             }
-            if (index != keys.length) {
-                keys = java.util.Arrays.copyOf(keys, index);
-                values = java.util.Arrays.copyOf(values, index);
+            if (index != size) {
+                keys = Arrays.copyOf(keys, index);
+                ids = Arrays.copyOf(ids, index);
+                values = Arrays.copyOf(values, index);
             }
-            cachedSnapshot = new Snapshot(keys, values, version);
+            cachedSnapshot = new Snapshot(keys, ids, values, structuralVersion, version);
             return cachedSnapshot;
         }
 
@@ -421,12 +492,8 @@ public final class InfinityCellStore {
             }
         }
 
-        public synchronized BigInteger snapshotTotal() {
-            return total;
-        }
-
         public synchronized BigInteger totalAmount() {
-            return total;
+            return totalBig != null ? totalBig : BigInteger.valueOf(totalLong);
         }
 
         public synchronized int typeCount() {
@@ -445,11 +512,26 @@ public final class InfinityCellStore {
             dirty = false;
         }
 
+        /** @return 版本一致并清脏；期间发生过新变更则保留脏标记 */
+        synchronized boolean markCleanIfVersion(long stamp) {
+            if (version != stamp) {
+                return false;
+            }
+            dirty = false;
+            return true;
+        }
+
+        synchronized long version() {
+            return version;
+        }
+
         synchronized void clearForLoad() {
             amounts.clear();
             overflowAmounts.clear();
-            total = BigInteger.ZERO;
+            totalLong = 0;
+            totalBig = null;
             version++;
+            structuralVersion++;
             cachedSnapshot = null;
         }
 
@@ -465,8 +547,9 @@ public final class InfinityCellStore {
                 amounts.put(keyId, Long.MAX_VALUE);
                 overflowAmounts.put(keyId, amount);
             }
-            total = total.subtract(previous).add(amount);
+            addToTotal(amount.subtract(previous));
             version++;
+            structuralVersion++;
             cachedSnapshot = null;
         }
 
@@ -483,12 +566,17 @@ public final class InfinityCellStore {
             return overflow != null ? overflow : BigInteger.valueOf(amounts.get(keyId));
         }
 
+        @Nullable
+        synchronized BigInteger overflowOrNull(int keyId) {
+            return overflowAmounts.get(keyId);
+        }
+
         private long visibleAmount(int keyId) {
             return overflowAmounts.containsKey(keyId) ? Long.MAX_VALUE : amounts.get(keyId);
         }
 
         private void add(int keyId, long delta) {
-            total = total.add(BigInteger.valueOf(delta));
+            addToTotal(delta);
             var overflow = overflowAmounts.get(keyId);
             if (overflow != null) {
                 overflowAmounts.put(keyId, overflow.add(BigInteger.valueOf(delta)));
@@ -497,6 +585,9 @@ public final class InfinityCellStore {
             }
 
             var current = amounts.get(keyId);
+            if (current == 0) {
+                structuralVersion++;
+            }
             if (Long.MAX_VALUE - current < delta) {
                 overflowAmounts.put(keyId, BigInteger.valueOf(current).add(BigInteger.valueOf(delta)));
                 amounts.put(keyId, Long.MAX_VALUE);
@@ -507,7 +598,7 @@ public final class InfinityCellStore {
         }
 
         private void subtract(int keyId, long delta) {
-            total = total.subtract(BigInteger.valueOf(delta));
+            addToTotal(-delta);
             var overflow = overflowAmounts.get(keyId);
             if (overflow != null) {
                 var updated = overflow.subtract(BigInteger.valueOf(delta));
@@ -520,6 +611,7 @@ public final class InfinityCellStore {
                 } else {
                     overflowAmounts.remove(keyId);
                     amounts.remove(keyId);
+                    structuralVersion++;
                 }
                 markChanged();
                 return;
@@ -530,18 +622,69 @@ public final class InfinityCellStore {
                 amounts.put(keyId, updated);
             } else {
                 amounts.remove(keyId);
+                structuralVersion++;
             }
             markChanged();
+        }
+
+        private void addToTotal(long delta) {
+            if (totalBig != null) {
+                totalBig = totalBig.add(BigInteger.valueOf(delta));
+                return;
+            }
+            try {
+                totalLong = Math.addExact(totalLong, delta);
+            } catch (ArithmeticException overflowed) {
+                totalBig = BigInteger.valueOf(totalLong).add(BigInteger.valueOf(delta));
+            }
+        }
+
+        private void addToTotal(BigInteger delta) {
+            if (totalBig != null) {
+                totalBig = totalBig.add(delta);
+                return;
+            }
+            var updated = BigInteger.valueOf(totalLong).add(delta);
+            if (updated.bitLength() < 63) {
+                totalLong = updated.longValue();
+            } else {
+                totalBig = updated;
+            }
         }
 
         private void markChanged() {
             version++;
             dirty = true;
-            cachedSnapshot = null;
         }
     }
 
-    public record Snapshot(AEKey[] keys, long[] amounts, long version) {
+    public static final class Snapshot {
+        private final AEKey[] keys;
+        private final int[] keyIds;
+        private final long[] amounts;
+        private final long structuralVersion;
+        private long version;
+
+        private Snapshot(AEKey[] keys, int[] keyIds, long[] amounts, long structuralVersion, long version) {
+            this.keys = keys;
+            this.keyIds = keyIds;
+            this.amounts = amounts;
+            this.structuralVersion = structuralVersion;
+            this.version = version;
+        }
+
+        public AEKey[] keys() {
+            return keys;
+        }
+
+        public long[] amounts() {
+            return amounts;
+        }
+
+        public long version() {
+            return version;
+        }
+
         public int size() {
             return keys.length;
         }

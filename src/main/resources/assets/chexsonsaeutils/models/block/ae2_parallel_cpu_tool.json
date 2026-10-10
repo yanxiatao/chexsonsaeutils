@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:block/cube_all",
   "textures": {
-    "all": "minecraft:block/iron_block"
+    "all": "chexsonsaeutils:block/ae2_parallel_cpu_tool"
   }
 }

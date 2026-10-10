@@ -1,7 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.planning;
 
 import appeng.api.stacks.GenericStack;
-import git.chexson.chexsonsaeutils.blockentity.crafting.TaskCompletionRoute;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -16,8 +15,7 @@ public record FormalMachineAggregationStep(
         long executionCount,
         List<GenericStack> stepInputs,
         GenericStack stepPrimaryOutput,
-        List<GenericStack> stepRemainders,
-        TaskCompletionRoute stepRoute
+        List<GenericStack> stepRemainders
 ) {
 
     private static final String NBT_PATTERN_DEFINITION = "patternDefinition";
@@ -25,25 +23,12 @@ public record FormalMachineAggregationStep(
     private static final String NBT_STEP_INPUTS = "stepInputs";
     private static final String NBT_STEP_PRIMARY_OUTPUT = "stepPrimaryOutput";
     private static final String NBT_STEP_REMAINDERS = "stepRemainders";
-    private static final String NBT_STEP_ROUTE = "stepRoute";
 
     public FormalMachineAggregationStep {
         patternDefinition = patternDefinition == null ? ItemStack.EMPTY : patternDefinition.copy();
         executionCount = Math.max(1L, executionCount);
         stepInputs = copyStacks(stepInputs);
         stepRemainders = copyStacks(stepRemainders);
-        stepRoute = stepRoute == null ? TaskCompletionRoute.AE_STORAGE : stepRoute;
-    }
-
-    public FormalMachineAggregationStep withRoute(TaskCompletionRoute route) {
-        return new FormalMachineAggregationStep(
-                patternDefinition,
-                executionCount,
-                stepInputs,
-                stepPrimaryOutput,
-                stepRemainders,
-                route
-        );
     }
 
     public CompoundTag writeToTag(HolderLookup.Provider registries) {
@@ -57,7 +42,6 @@ public record FormalMachineAggregationStep(
             tag.put(NBT_STEP_PRIMARY_OUTPUT, GenericStack.writeTag(registries, stepPrimaryOutput));
         }
         tag.put(NBT_STEP_REMAINDERS, writeStacks(registries, stepRemainders));
-        tag.putString(NBT_STEP_ROUTE, stepRoute.name());
         return tag;
     }
 
@@ -71,8 +55,7 @@ public record FormalMachineAggregationStep(
                     1L,
                     List.of(),
                     null,
-                    List.of(),
-                    TaskCompletionRoute.AE_STORAGE
+                    List.of()
             );
         }
         return new FormalMachineAggregationStep(
@@ -84,10 +67,7 @@ public record FormalMachineAggregationStep(
                 tag.contains(NBT_STEP_PRIMARY_OUTPUT)
                         ? GenericStack.readTag(registries, tag.getCompound(NBT_STEP_PRIMARY_OUTPUT))
                         : null,
-                readStacks(tag.getList(NBT_STEP_REMAINDERS, Tag.TAG_COMPOUND), registries),
-                tag.contains(NBT_STEP_ROUTE)
-                        ? TaskCompletionRoute.valueOf(tag.getString(NBT_STEP_ROUTE))
-                        : TaskCompletionRoute.AE_STORAGE
+                readStacks(tag.getList(NBT_STEP_REMAINDERS, Tag.TAG_COMPOUND), registries)
         );
     }
 

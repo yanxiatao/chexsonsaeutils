@@ -100,7 +100,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
      */
     private final CustomPatternProviderLogic logic = createLogic();
 
-    /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxFramePatternPages()]。 */
+    /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxCustomPatternPages()]。 */
     private int pages = 1;
 
     public CustomPatternProviderPart(IPartItem<?> partItem) {
@@ -118,7 +118,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
      */
     protected CustomPatternProviderLogic createLogic() {
         return new CustomPatternProviderLogic(this.getMainNode(), this,
-                ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages() * PATTERN_SLOTS_PER_PAGE);
+                ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages() * PATTERN_SLOTS_PER_PAGE);
     }
 
     @Override
@@ -283,7 +283,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     }
 
     /**
-     * @return 已解锁样板页数（默认 1，clamp 到 [1, maxFramePatternPages()]）
+     * @return 已解锁样板页数（默认 1，clamp 到 [1, maxCustomPatternPages()]）
      */
     @Override
     public int getPages() {
@@ -291,7 +291,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     }
 
     /**
-     * 设置已解锁样板页数（clamp 到 [1, maxFramePatternPages()]，越界值收敛并告警）。
+     * 设置已解锁样板页数（clamp 到 [1, maxCustomPatternPages()]，越界值收敛并告警）。
      * <p>
      * 注意：readFromNBT 路径不调用本方法（加载期间 saveChanges 会触发过早写盘），直接赋值字段。
      */
@@ -315,13 +315,13 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     }
 
     /**
-     * 页数收敛到 [1, maxFramePatternPages()]；发生截断时输出告警日志（readFromNBT/setPages 共用）。
+     * 页数收敛到 [1, maxCustomPatternPages()]；发生截断时输出告警日志（readFromNBT/setPages 共用）。
      *
      * @param rawPages 待收敛的原始页数
      * @return 收敛后的页数
      */
     private int clampPages(int rawPages) {
-        int max = ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages();
+        int max = ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages();
         int clamped = Math.max(1, Math.min(rawPages, max));
         if (clamped != rawPages) {
             LOGGER.warn("样板页数截断：old={}, new={}, maxPages={}", rawPages, clamped, max);

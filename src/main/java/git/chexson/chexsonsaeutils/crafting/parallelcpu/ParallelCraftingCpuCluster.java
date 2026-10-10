@@ -18,6 +18,7 @@ import appeng.menu.me.crafting.CraftingStatus;
 import appeng.menu.me.crafting.CraftingStatusEntry;
 import com.google.common.collect.ImmutableSet;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -39,7 +40,12 @@ public final class ParallelCraftingCpuCluster {
     private final AE2ParallelCpuToolBlockEntity owner;
     private final MachineSource source;
     private final ParallelCraftingCPU remainingCapacityCpu = new ParallelCraftingCPU(this, null);
-    private final ParallelCpuProviderBackoff providerBackoff = new ParallelCpuProviderBackoff();
+    private final ParallelCpuProviderBackoff providerBackoff = new ParallelCpuProviderBackoff(
+            ChexsonsaeutilsCompatibilityConfig.intValue(
+                    ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_BASE_TICKS),
+            ChexsonsaeutilsCompatibilityConfig.intValue(
+                    ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_MAX_TICKS)
+    );
     private final Map<UUID, ParallelCraftingLaneState> lanes = new LinkedHashMap<>();
     private final Map<ICraftingPlan, ParallelCraftingLaneState> lanesByPlan = new IdentityHashMap<>();
     @Nullable

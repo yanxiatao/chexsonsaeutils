@@ -64,6 +64,12 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     );
     private static final Set<String> PARALLEL_CPU_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceParallelCpuMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCalculationFastPausingMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeInvoker",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessFastAccessor",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeFastBatchMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeFastAccessor",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.DyeablePatternCraftingCalculationFastPausingMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingStatusMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CPUSelectionListParallelCpuMixin",
@@ -93,6 +99,10 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     );
     private static final Set<String> AEA_FTB_ULTIMINE_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ftbultimine.RightClickDispatcherMemoryCardMixin"
+    );
+    private static final Set<String> MATTER_MASS_ONLY_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.ae2.blockentity.IOPortBlockEntityMatterMassMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.parts.encoding.PatternEncodingLogicMatterMassMixin"
     );
     private static final Set<String> AE2CT_COMPAT_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CraftingPlanSummaryCompatMixin",
@@ -145,6 +155,9 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         if (AEA_FTB_ULTIMINE_MIXINS.contains(mixinClassName)) {
             return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FTB_ULTIMINE_MEMORY_CARD_ENABLED, "ftbUltimineMemoryCardEnabled")
                     && isLoadedDuringMixinScan(FTB_ULTIMINE_MOD_ID, mixinClassName);
+        }
+        if (MATTER_MASS_ONLY_MIXINS.contains(mixinClassName)) {
+            return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED, "matterMassPatternProviderEnabled");
         }
         if (AE2CT_COMPAT_MIXINS.contains(mixinClassName)) {
             return isLoadedDuringMixinScan(AE2CT_MOD_ID, mixinClassName);

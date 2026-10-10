@@ -22,9 +22,9 @@ import appeng.crafting.pattern.AEProcessingPattern;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
- * 框架样板的样板详情实现（IPatternDetails）。
+ * 定制样板的样板详情实现（IPatternDetails）。
  * <p>
- * 动机：框架样板供应器需要把稀疏输入按 slotMapping 强制写入私有维度机器的指定槽位，
+ * 动机：定制样板供应器需要把稀疏输入按 slotMapping 强制写入相邻机器的指定槽位，
  * 并在完成后按 extractSlots 强制抽取输出。本类在 AEProcessingPattern 的稀疏输入/输出
  * 语义之上，额外暴露槽位映射与抽取槽位，供 CustomPatternProviderLogic 的
  * pushCustomPattern / pullFromMachine 使用。
@@ -71,7 +71,7 @@ public class CustomProcessingPattern implements IPatternDetails {
     }
 
     /**
-     * 把框架样板数据写入物品的 ENCODED_CUSTOM_PATTERN 组件。
+     * 把定制样板数据写入物品的 ENCODED_CUSTOM_PATTERN 组件。
      *
      * @param stack        目标物品（必须是 CustomPatternItem）
      * @param sparseInputs 稀疏输入列表（至少一个非 null）
@@ -150,7 +150,7 @@ public class CustomProcessingPattern implements IPatternDetails {
      * 转换为等价的 AE2 原生处理样板详情（照 advancedae AdvProcessingPattern.getAEProcessingPattern）。
      * <p>
      * 动机：AE2 原生编码终端的样板回填逻辑（PatternEncodingLogic.loadEncodedPattern）
-     * 纯 instanceof 四分支只认 AE 原生四类样板，框架样板放入不会被解析。配套 mixin
+     * 纯 instanceof 四分支只认 AE 原生四类样板，定制样板放入不会被解析。配套 mixin
      * 拦截后经本方法得到等价 AEProcessingPattern，再调用原生 loadProcessingPattern
      * 完成输入/输出格回填。
      *

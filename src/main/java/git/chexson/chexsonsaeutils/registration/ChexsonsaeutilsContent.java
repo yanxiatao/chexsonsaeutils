@@ -15,17 +15,27 @@ import git.chexson.chexsonsaeutils.block.crafting.AE2ParallelCpuToolBlock;
 import git.chexson.chexsonsaeutils.block.crafting.HighCapacityCraftingMachineBlock;
 import git.chexson.chexsonsaeutils.block.debug.AutoItemGenBlock;
 import git.chexson.chexsonsaeutils.block.custompatternprovider.CustomPatternProviderBlock;
+import git.chexson.chexsonsaeutils.block.mattermassprovider.MatterMassPatternProviderBlock;
 import git.chexson.chexsonsaeutils.blockentity.debug.AutoItemGenBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.blockentity.mattermassprovider.MatterMassPatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
+import git.chexson.chexsonsaeutils.cell.MatterMassCellRegistration;
+import git.chexson.chexsonsaeutils.client.gui.mattermassprovider.MatterMassPatternProviderScreen;
+import git.chexson.chexsonsaeutils.crafting.mattermass.EncodedMatterMassPattern;
+import git.chexson.chexsonsaeutils.crafting.mattermass.MatterMassPatternItem;
 import git.chexson.chexsonsaeutils.item.custompatternprovider.CustomPatternProviderItem;
+import git.chexson.chexsonsaeutils.item.mattermass.MatterMassItem;
+import git.chexson.chexsonsaeutils.menu.mattermass.MatterMassViewMenuHost;
+import git.chexson.chexsonsaeutils.menu.mattermassprovider.MatterMassPatternProviderMenu;
 import git.chexson.chexsonsaeutils.client.gui.custompatternprovider.CustomPatternProviderScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.AEDirectProcessingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.HighCapacityCraftingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.ParallelCraftingCPUScreen;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMockRecipe;
 import git.chexson.chexsonsaeutils.crafting.custompattern.EncodedCustomPattern;
@@ -126,18 +136,41 @@ public final class ChexsonsaeutilsContent {
                     () -> new CustomPatternProviderPartItem(new Item.Properties()));
     public static final Supplier<CustomPatternItem> CUSTOM_PATTERN_ITEM =
             ITEMS.register("custom_pattern", CustomPatternItem::createItem);
+    public static final RegisteredBlock<MatterMassPatternProviderBlock> MATTER_MASS_PATTERN_PROVIDER =
+            registerBlockWithItem("matter_mass_pattern_provider", MatterMassPatternProviderBlock::new);
+    public static final Supplier<MatterMassPatternProviderBlock> MATTER_MASS_PATTERN_PROVIDER_BLOCK =
+            MATTER_MASS_PATTERN_PROVIDER.block();
+    public static final Supplier<Item> MATTER_MASS_PATTERN_PROVIDER_ITEM =
+            MATTER_MASS_PATTERN_PROVIDER.item();
+    public static final Supplier<MatterMassItem> MATTER_MASS_ITEM =
+            ITEMS.register("matter_mass", () -> new MatterMassItem(new Item.Properties().stacksTo(1)));
+    public static final Supplier<MatterMassPatternItem> MATTER_MASS_PATTERN_ITEM =
+            ITEMS.register("matter_mass_pattern", MatterMassPatternItem::createItem);
     public static final Supplier<DataComponentType<EncodedCustomPattern>> ENCODED_CUSTOM_PATTERN =
             DATA_COMPONENT_TYPES.register("encoded_custom_pattern",
                     () -> DataComponentType.<EncodedCustomPattern>builder()
                             .persistent(EncodedCustomPattern.CODEC)
                             .networkSynchronized(EncodedCustomPattern.STREAM_CODEC)
                             .build());
-    /** 框架样板供应器的已扩展样板页数（拆除保留闭环：BE NBT → 掉落物品组件 → 放置/捕获读回）。 */
+    /** 定制样板供应器的已扩展样板页数（拆除保留闭环：BE NBT → 掉落物品组件 → 放置/捕获读回）。 */
     public static final Supplier<DataComponentType<Integer>> CUSTOM_PATTERN_PAGES =
             DATA_COMPONENT_TYPES.register("custom_pattern_pages",
                     () -> DataComponentType.<Integer>builder()
                             .persistent(Codec.INT)
                             .networkSynchronized(ByteBufCodecs.VAR_INT)
+                            .build());
+    /** 物质团内容物外部存储索引（内容物不进组件，保证样板上报 key 与产物 key 一致）。 */
+    public static final Supplier<DataComponentType<java.util.UUID>> MATTER_MASS_UUID =
+            DATA_COMPONENT_TYPES.register("matter_mass_uuid",
+                    () -> DataComponentType.<java.util.UUID>builder()
+                            .persistent(net.minecraft.core.UUIDUtil.CODEC)
+                            .networkSynchronized(net.minecraft.core.UUIDUtil.STREAM_CODEC)
+                            .build());
+    public static final Supplier<DataComponentType<EncodedMatterMassPattern>> ENCODED_MATTER_MASS_PATTERN =
+            DATA_COMPONENT_TYPES.register("encoded_matter_mass_pattern",
+                    () -> DataComponentType.<EncodedMatterMassPattern>builder()
+                            .persistent(EncodedMatterMassPattern.CODEC)
+                            .networkSynchronized(EncodedMatterMassPattern.STREAM_CODEC)
                             .build());
     public static final Supplier<BlockEntityType<AutoItemGenBlockEntity>> AUTO_ITEM_GEN_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("auto_item_gen",
@@ -186,6 +219,15 @@ public final class ChexsonsaeutilsContent {
                     ).build(null)
             );
 
+    public static final Supplier<BlockEntityType<MatterMassPatternProviderBlockEntity>>
+            MATTER_MASS_PATTERN_PROVIDER_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
+                    "matter_mass_pattern_provider",
+                    () -> BlockEntityType.Builder.of(
+                            MatterMassPatternProviderBlockEntity::new,
+                            MATTER_MASS_PATTERN_PROVIDER_BLOCK.get()
+                    ).build(null)
+            );
+
     public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAPACITY_CRAFTING_MACHINE_MENU =
             MENU_TYPES.register("high_capacity_crafting_machine", () -> HighCapacityCraftingMachineMenu.TYPE);
     public static final Supplier<MenuType<AEDirectProcessingMachineMenu>> AE_DIRECT_PROCESSING_MACHINE_MENU =
@@ -198,6 +240,10 @@ public final class ChexsonsaeutilsContent {
             MENU_TYPES.register("custom_pattern_encoder", () -> CustomPatternEncoderMenu.TYPE);
     public static final Supplier<MenuType<CustomPatternUpgradeMenu>> CUSTOM_PATTERN_UPGRADE_MENU =
             MENU_TYPES.register("custom_pattern_upgrade", () -> CustomPatternUpgradeMenu.TYPE);
+    public static final Supplier<MenuType<MatterMassPatternProviderMenu>> MATTER_MASS_PATTERN_PROVIDER_MENU =
+            MENU_TYPES.register("matter_mass_pattern_provider", () -> MatterMassPatternProviderMenu.TYPE);
+    public static final Supplier<MenuType<appeng.menu.me.common.MEStorageMenu>> MATTER_MASS_VIEW_MENU =
+            MENU_TYPES.register("matter_mass_view", () -> MatterMassViewMenuHost.TYPE);
     public static final Supplier<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> MULTI_LEVEL_EMITTER_MENU =
             MENU_TYPES.register(
                     MultiLevelEmitterMenu.registrationKey(),
@@ -217,6 +263,9 @@ public final class ChexsonsaeutilsContent {
                         output.accept(CUSTOM_PATTERN_PROVIDER_ITEM.get());
                         output.accept(CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
                         output.accept(INFINITY_CELL_ITEM.get());
+                        output.accept(MATTER_MASS_PATTERN_PROVIDER_ITEM.get());
+                        output.accept(MATTER_MASS_ITEM.get());
+                        output.accept(MATTER_MASS_PATTERN_ITEM.get());
                         if (!FMLLoader.isProduction()) {
                             output.accept(AUTO_ITEM_GEN_ITEM.get());
                         }
@@ -243,8 +292,16 @@ public final class ChexsonsaeutilsContent {
         registerAE2ParallelCpuToolBootstrap();
         registerAutoItemGenBootstrap();
         registerCustomPatternProviderBootstrap();
+        registerMatterMassPatternProviderBootstrap();
         registerMultiLevelEmitterBootstrap();
-        CellRegistration.bootstrap(INFINITY_CELL_ITEM);
+        if (ChexsonsaeutilsCompatibilityConfig.boolValue(
+                ChexsonsaeutilsCompatibilityConfig.INFINITY_CELL_ENABLED)) {
+            CellRegistration.bootstrap(INFINITY_CELL_ITEM);
+        }
+        if (ChexsonsaeutilsCompatibilityConfig.boolValue(
+                ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED)) {
+            MatterMassCellRegistration.bootstrap(MATTER_MASS_ITEM);
+        }
         // 面板模型注册（PartModels 冻结发生在客户端模型加载阶段，common setup 注册安全）
         PartModels.registerModels(CustomPatternProviderPart.MODELS);
     }
@@ -300,6 +357,12 @@ public final class ChexsonsaeutilsContent {
                 CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
                 (blockEntity, context) -> blockEntity
         );
+        // 物质团供应器：仅网格节点能力（无任何对外输入输出）
+        event.registerBlockEntity(
+                AECapabilities.IN_WORLD_GRID_NODE_HOST,
+                MATTER_MASS_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                (blockEntity, context) -> blockEntity
+        );
     }
 
     public static void registerClientScreens(RegisterMenuScreensEvent event) {
@@ -320,6 +383,12 @@ public final class ChexsonsaeutilsContent {
         event.register(CUSTOM_PATTERN_ENCODER_MENU.get(), CustomPatternEncoderScreen::new);
         event.register(CUSTOM_PATTERN_UPGRADE_MENU.get(), CustomPatternUpgradeScreen::new);
         event.register(CUSTOM_PATTERN_PROVIDER_MENU.get(), CustomPatternProviderScreen::new);
+        event.register(MATTER_MASS_PATTERN_PROVIDER_MENU.get(), MatterMassPatternProviderScreen::new);
+        event.<appeng.menu.me.common.MEStorageMenu,
+                appeng.client.gui.me.common.MEStorageScreen<appeng.menu.me.common.MEStorageMenu>>register(
+                        MATTER_MASS_VIEW_MENU.get(),
+                        (menu, inv, title) -> new appeng.client.gui.me.common.MEStorageScreen<>(menu, inv, title,
+                                StyleManager.loadStyleDoc("/screens/terminals/portable_item_cell.json")));
     }
 
     public static String emitterRegistryPath() {
@@ -356,7 +425,6 @@ public final class ChexsonsaeutilsContent {
                 HIGH_CAPACITY_CRAFTING_MACHINE_BLOCK_ENTITY.get(),
                 HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get()
         );
-        Upgrades.add(AEItems.SPEED_CARD, HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get(), 5);
     }
 
     private static void registerAEDirectProcessingMachineBootstrap() {
@@ -405,7 +473,7 @@ public final class ChexsonsaeutilsContent {
 
     private static void registerCustomPatternProviderBootstrap() {
         CustomPatternProviderBlock block = CUSTOM_PATTERN_PROVIDER_BLOCK.get();
-        // 无 ticker：定制供应器无 serverTick 需求（无私有维度/隔离）
+        // 无方块级 ticker：推送/抽取由网格 Ticker 驱动
         block.setBlockEntity(
                 CustomPatternProviderBlockEntity.class,
                 CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
@@ -415,6 +483,21 @@ public final class ChexsonsaeutilsContent {
         AEBaseBlockEntity.registerBlockEntityItem(
                 CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
                 CUSTOM_PATTERN_PROVIDER_ITEM.get()
+        );
+    }
+
+    private static void registerMatterMassPatternProviderBootstrap() {
+        MatterMassPatternProviderBlock block = MATTER_MASS_PATTERN_PROVIDER_BLOCK.get();
+        // 无方块级 ticker：交付由网格 Ticker 驱动
+        block.setBlockEntity(
+                MatterMassPatternProviderBlockEntity.class,
+                MATTER_MASS_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                null,
+                null
+        );
+        AEBaseBlockEntity.registerBlockEntityItem(
+                MATTER_MASS_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                MATTER_MASS_PATTERN_PROVIDER_ITEM.get()
         );
     }
 

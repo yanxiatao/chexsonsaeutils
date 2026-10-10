@@ -16,7 +16,7 @@ import com.glodblock.github.appflux.common.me.key.type.EnergyType;
 import com.glodblock.github.appflux.config.AFConfig;
 import com.glodblock.github.appflux.util.AFUtil;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
-import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
+import git.chexson.chexsonsaeutils.integration.CustomPatternEnergyInjector;
 
 /**
  * appflux 感应卡灌电实现（需求 7）。
@@ -30,12 +30,11 @@ import git.chexson.chexsonsaeutils.integration.FrameEnergyInjector;
  * 单次上限受 {@code AFConfig.getFluxAccessorIO()} 约束（默认 Long.MAX_VALUE，
  * 即"强行灌满"）。
  * <p>
- * 阶段 1 共享层泛化：感应卡检测与能量目标经宿主接口解析（原 instanceof
- * FramePatternProviderBlockEntity 强转）——升级库存 {@code host.getUpgrades()}、
- * 能量 handler {@code host.getMachineEnergyHandler()}（无参版，框架语义：单 handler；
- * 定制样板供应器在 BE 层实现方向逻辑）。
+ * 阶段 1 共享层泛化：感应卡检测与能量目标经宿主接口解析——升级库存
+ * {@code host.getUpgrades()}、能量 handler {@code host.getMachineEnergyHandler()}
+ * （无参版：遍历方向取第一个可用能量 handler，全不可用时返回 null 即跳过灌电）。
  */
-public class AppFluxEnergyInjectorImpl implements FrameEnergyInjector {
+public class AppFluxEnergyInjectorImpl implements CustomPatternEnergyInjector {
 
     private final CustomPatternProviderLogicHost host;
     private final IManagedGridNode mainNode;
@@ -57,7 +56,7 @@ public class AppFluxEnergyInjectorImpl implements FrameEnergyInjector {
      * @return 注入器实例；appflux 未加载时返回 null
      */
     @Nullable
-    public static FrameEnergyInjector create(CustomPatternProviderLogicHost host, IManagedGridNode mainNode,
+    public static CustomPatternEnergyInjector create(CustomPatternProviderLogicHost host, IManagedGridNode mainNode,
             IActionSource actionSource) {
         if (!ModList.get().isLoaded("appflux")) {
             return null;

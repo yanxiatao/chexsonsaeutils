@@ -27,8 +27,13 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
 
     private final Map<Integer, Set<IPatternDetails>> patternsByColor = new HashMap<>();
     private final Map<Integer, DyeablePatternCompressedRing> compressedRingCache = new HashMap<>();
+    private final Map<RingKey, DyeablePatternCompressedRing> entryPointRingCache = new HashMap<>();
     private final Map<IGridNode, ProviderSnapshot> indexedNodeProviders = new HashMap<>();
     private final Map<ICraftingProvider, ProviderSnapshot> indexedGlobalProviders = new IdentityHashMap<>();
+
+    /** 按 (颜色, 入口物品) 缓存压缩环。仅依赖 {@link #patternsByColor}，重建索引时清空。 */
+    private record RingKey(int color, AEKey entryPoint) {
+    }
 
     @Override
     public void addProvider(IGridNode node) {
@@ -134,7 +139,17 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
         if (entryPoint == null) {
             return getOrCalculateCompressedRing(color);
         }
-        return DyeablePatternCompressedRing.calculate(collectConnectedPatterns(color, entryPoint));
+        RingKey key = new RingKey(color, entryPoint);
+        DyeablePatternCompressedRing cached = this.entryPointRingCache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        DyeablePatternCompressedRing ring = DyeablePatternCompressedRing.calculate(
+                collectConnectedPatterns(color, entryPoint));
+        if (ring != null) {
+            this.entryPointRingCache.put(key, ring);
+        }
+        return ring;
     }
 
     public List<IPatternDetails> getCraftingForByColor(AEKey whatToCraft, int color) {
@@ -321,6 +336,7 @@ public class DyeablePatternCraftingProviders extends NetworkCraftingProviders {
             indexPatterns(snapshot.patterns());
         }
         this.compressedRingCache.clear();
+        this.entryPointRingCache.clear();
     }
 
     private void indexPatterns(Collection<IPatternDetails> patterns) {

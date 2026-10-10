@@ -21,6 +21,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.capabilities.Capabilities;
 
 import appeng.blockentity.AEBaseBlockEntity;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 public class AutoItemGenBlockEntity extends AEBaseBlockEntity {
@@ -42,6 +43,10 @@ public class AutoItemGenBlockEntity extends AEBaseBlockEntity {
 
     private void tick() {
         if (level == null || level.isClientSide) return;
+        if (!ChexsonsaeutilsCompatibilityConfig.boolValue(
+                ChexsonsaeutilsCompatibilityConfig.AUTO_ITEM_GEN_ENABLED)) {
+            return;
+        }
 
         for (var dir : Direction.values()) {
             var targetPos = worldPosition.relative(dir);

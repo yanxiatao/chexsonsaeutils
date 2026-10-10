@@ -118,7 +118,7 @@ public class CustomPatternUpgradeMenu extends AEBaseMenu {
         if (!ExtendedAeCompat.isExPatternProvider(this.inputSlot.getItem())) {
             return false;
         }
-        return this.pages < ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages();
+        return this.pages < ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages();
     }
 
     /**
@@ -133,7 +133,7 @@ public class CustomPatternUpgradeMenu extends AEBaseMenu {
         }
         var holder = this.host.getPageHolder();
         int pages = Math.max(1, holder.getPages());
-        if (pages >= ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages()) {
+        if (pages >= ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages()) {
             return;
         }
         holder.setPages(pages + 1);
@@ -152,7 +152,7 @@ public class CustomPatternUpgradeMenu extends AEBaseMenu {
      * @return 配置允许的最大页数（客户端直接读配置，无需同步）
      */
     public int getMaxPages() {
-        return ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages();
+        return ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages();
     }
 
     /**

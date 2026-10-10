@@ -20,12 +20,12 @@ import appeng.crafting.pattern.EncodedPatternItem;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
- * 框架样板物品（EncodedPatternItem 子类）。
+ * 定制样板物品（EncodedPatternItem 子类）。
  * <p>
  * 动机：AE2 的 EncodedPatternItem 提供样板解码、tooltip、shift 清除等通用行为，
  * 本类只需接入 CustomProcessingPattern 的 decoder 与无效样板 tooltip 策略。
  * 转换 API（convertFromProcessingPattern）供 4b 阶段的 GUI 调用：把处理样板
- * 转换为携带槽位映射的框架样板。
+ * 转换为携带槽位映射的定制样板。
  */
 public class CustomPatternItem extends EncodedPatternItem<CustomProcessingPattern> {
 
@@ -46,17 +46,17 @@ public class CustomPatternItem extends EncodedPatternItem<CustomProcessingPatter
     }
 
     /**
-     * 转换 API：把处理样板转换为框架样板。
+     * 转换 API：把处理样板转换为定制样板。
      * <p>
      * 读取处理样板的 ENCODED_PROCESSING_PATTERN 组件（稀疏输入/输出），
-     * 写入新的框架样板物品并附加槽位映射。供 4b 阶段 GUI 在玩家配置
+     * 写入新的定制样板物品并附加槽位映射。供 4b 阶段 GUI 在玩家配置
      * 槽位映射后调用。
      *
      * @param processingPattern 处理样板物品（必须携带 ENCODED_PROCESSING_PATTERN 组件）
      * @param slotMapping       与稀疏输入对齐的槽位映射，-1 表示未指定
      * @param extractSlots      强制抽取槽位列表，空数组表示未配置
      * @param overflowStacks    是否允许指定槽位推送突破堆叠上限（随样板写入组件）
-     * @return 新的框架样板物品
+     * @return 新的定制样板物品
      * @throws IllegalArgumentException 输入不是处理样板时抛出
      */
     public static ItemStack convertFromProcessingPattern(ItemStack processingPattern, int[] slotMapping,
@@ -81,8 +81,8 @@ public class CustomPatternItem extends EncodedPatternItem<CustomProcessingPatter
     /**
      * 样板 tooltip 自绘（照 advancedae MixinEncodedPatternItem 的接管模式，本体直接覆写）。
      * <p>
-     * 动机：框架样板的输入行需附加指定机器槽位 id（如"物品 (0)"），并显示主动抽取
-     * 槽位配置行——AE2 原版 appendHoverText 无此信息。非框架样板/客户端无关卡/
+     * 动机：定制样板的输入行需附加指定机器槽位 id（如"物品 (0)"），并显示主动抽取
+     * 槽位配置行——AE2 原版 appendHoverText 无此信息。非定制样板/客户端无关卡/
      * 解码失败时回退父类原逻辑。
      */
     @Override

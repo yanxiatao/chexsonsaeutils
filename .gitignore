@@ -117,6 +117,9 @@ gradle-app.setting
 run/
 runs/
 
+# Runtime artifacts (crash reports, logs)
+crash-reports/
+
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
 
@@ -138,9 +141,9 @@ docs/
 reference-sources/
 appeng/
 
-# Local config backups
-config/
-config/*.bak
+# Local config backups (root directory only)
+/config/
+/config/*.bak
 
 # codemap auto-generated state and docs
 .slim/

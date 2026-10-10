@@ -59,24 +59,28 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
 
     private final T host;
 
-    /** 样板配置模式状态（需求 4b）：服务端翻转并同步，配置模式下点击处理样板槽位打开配置 GUI。 */
-    @GuiSync(2)
+    /**
+     * 样板配置模式状态（需求 4b）：服务端翻转并同步，配置模式下点击处理样板槽位打开配置 GUI。
+     * 注：同步 id 使用高位唯一段——ExtendedAE 系列会用 mixin 向基类 PatternProviderMenu
+     * 注入低位 @GuiSync 字段，低位 id 存在冲突风险。
+     */
+    @GuiSync(32500)
     public boolean configMode = false;
 
     /** 当前样板页（需求 5）：服务端权威，clamp 到 [0, pages-1]，翻页只切换槽位可见性。 */
-    @GuiSync(8)
+    @GuiSync(32501)
     public int page = 0;
 
     /** 已解锁样板页数（需求 5）：来自宿主，服务端广播。 */
-    @GuiSync(9)
+    @GuiSync(32502)
     public int pages = 1;
 
     /** 输入过滤开关（需求 6a）：服务端权威（Logic NBT 持久化），客户端按钮据此显示。 */
-    @GuiSync(10)
+    @GuiSync(32503)
     public boolean filteredImport = false;
 
     /** 主动抽取开关（需求 8 toggle）：服务端权威（Logic NBT 持久化），客户端按钮据此显示。 */
-    @GuiSync(11)
+    @GuiSync(32504)
     public boolean activeExtract = false;
 
     public CustomPatternProviderMenu(int id, Inventory playerInventory, T host) {
@@ -91,6 +95,7 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
                 () -> getHost().getLogic().setFilteredImport(!getHost().getLogic().isFilteredImport()));
         registerClientAction("toggle_active_extract",
                 () -> getHost().getLogic().setActiveExtract(!getHost().getLogic().isActiveExtract()));
+        registerClientAction("withdraw_return_slot", Integer.class, this::withdrawReturnSlot);
         // 父类构造器已建全部样板槽，此处按初始页启用槽位
         // 注意：构造器内 pages 字段默认 1，必须先读宿主真实页数再刷新槽位
         // （否则扩容后打开菜单，第二页槽位从未被 setSlotEnabled(true)）
@@ -270,7 +275,7 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
     }
 
     /**
-     * 服务端入口：配置模式下点击某槽位，若槽内是 AE2 处理样板或框架样板则打开编码 GUI
+     * 服务端入口：配置模式下点击某槽位，若槽内是 AE2 处理样板或定制样板则打开编码 GUI
      * （携带供应器位置 + 样板槽序号，直接编辑原样板，见 {@link CustomPatternConfigLocator}）。
      */
     private void openConfigForSlot(int slotIndex) {
@@ -287,14 +292,14 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
             return;
         }
         var stack = slot.getItem();
-        // 定制供应器接受两类样板：AE2 处理样板与框架样板（4b 需求扩展）
+        // 定制供应器接受两类样板：AE2 处理样板与定制样板（4b 需求扩展）
         if (stack.getItem() != AEItems.PROCESSING_PATTERN.asItem()
                 && !(stack.getItem() instanceof CustomPatternItem)) {
             return;
         }
         MenuOpener.open(CustomPatternEncoderMenu.TYPE, getPlayer(),
                 new CustomPatternConfigLocator(getHost().getBlockEntity().getBlockPos(),
-                        getHost().getBlockEntity().getLevel().dimension(), slot.getSlotIndex(), true));
+                        getHost().getBlockEntity().getLevel().dimension(), slot.getSlotIndex()));
     }
 
     /**
@@ -303,5 +308,43 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
      */
     public void openConfigForSlotClient(int slotIndex) {
         sendClientAction("open_config_for_slot", slotIndex);
+    }
+
+    /**
+     * 客户端槽位点击入口（Screen 拦截）：点击超过堆叠上限的返回栏槽位时请求服务端取回一栈。
+     */
+    public void withdrawReturnSlotClient(int slotIndex) {
+        sendClientAction("withdraw_return_slot", slotIndex);
+    }
+
+    /**
+     * 服务端入口：从返回栏指定槽取回一栈（不超过物品堆叠上限）给玩家。
+     * <p>
+     * 动机：返回栏单格允许超过物品堆叠上限后，该槽位在 AE2 菜单里以
+     * {@code WrappedGenericStack} 呈现，而 {@code AppEngSlot} 对 wrapper 禁拾取
+     * （mayPickup/remove 直接拒绝）——网络无空间时玩家没有任何手动清格手段。
+     * 交互防护：只接受 STORAGE 语义槽（返回栏），防止客户端伪造动作劫持其它槽位；
+     * 返回栏序号用 {@code indexOf} 反查——{@code AppEngSlot.getSlotIndex()} 已被
+     * {@code addSlot} 覆盖为菜单槽位序号，不可用作库存序号。
+     *
+     * @param slotIndex 客户端点击的菜单槽位序号
+     */
+    private void withdrawReturnSlot(int slotIndex) {
+        if (!isServerSide() || slotIndex < 0 || slotIndex >= slots.size()) {
+            return;
+        }
+        var slot = getSlot(slotIndex);
+        int returnSlot = getSlots(SlotSemantics.STORAGE).indexOf(slot);
+        if (returnSlot < 0) {
+            return;
+        }
+        var withdrawn = getHost().getLogic().getReturnInv().withdrawForPlayer(returnSlot, Integer.MAX_VALUE);
+        if (withdrawn.isEmpty()) {
+            return;
+        }
+        var player = getPlayer();
+        if (!player.getInventory().add(withdrawn)) {
+            player.drop(withdrawn, false);
+        }
     }
 }

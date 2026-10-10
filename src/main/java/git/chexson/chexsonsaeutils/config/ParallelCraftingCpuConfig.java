@@ -34,7 +34,7 @@ public final class ParallelCraftingCpuConfig {
         LOGGER.info(
                 "AE2 parallel CPU tool config active: enabled={}, lanesPerBlock={}, lanesPerGrid={}, "
                         + "submissionsPerTick={}, pushesPerTick={}, providerChecksPerTick={}, tickBudgetNanos={}, "
-                        +                 "laneShards={}",
+                        + "laneShards={}, extractInputsPerTick={}, reinjectInputsPerTick={}",
                 settings.enabled(),
                 settings.maxInternalLanesPerBlock(),
                 settings.maxInternalLanesPerGrid(),
@@ -42,7 +42,9 @@ public final class ParallelCraftingCpuConfig {
                 settings.maxPatternPushesPerTickPerGrid(),
                 settings.maxProviderChecksPerTickPerGrid(),
                 settings.tickBudgetNanosPerGrid(),
-                settings.laneShardCount()
+                settings.laneShardCount(),
+                settings.maxExtractPatternInputsPerTickPerGrid(),
+                settings.maxReinjectPatternInputsPerTickPerGrid()
         );
         return settings;
     }
@@ -98,6 +100,20 @@ public final class ParallelCraftingCpuConfig {
                         MIN_INT_BUDGET,
                         MAX_INT_BUDGET,
                         warn
+                ),
+                clampLong(
+                        "parallelCraftingCpuMaxExtractPatternInputsPerTickPerGrid",
+                        longValue(ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID),
+                        MIN_LONG_BUDGET,
+                        MAX_LONG_BUDGET,
+                        warn
+                ),
+                clampLong(
+                        "parallelCraftingCpuMaxReinjectPatternInputsPerTickPerGrid",
+                        longValue(ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_MAX_REINJECT_PATTERN_INPUTS_PER_TICK_PER_GRID),
+                        MIN_LONG_BUDGET,
+                        MAX_LONG_BUDGET,
+                        warn
                 )
         );
     }
@@ -147,7 +163,9 @@ public final class ParallelCraftingCpuConfig {
             long maxPatternPushesPerTickPerGrid,
             long maxProviderChecksPerTickPerGrid,
             long tickBudgetNanosPerGrid,
-            int laneShardCount
+            int laneShardCount,
+            long maxExtractPatternInputsPerTickPerGrid,
+            long maxReinjectPatternInputsPerTickPerGrid
     ) {
     }
 }

@@ -1,0 +1,35 @@
+{
+  "$schema": "schema.json",
+  "includes": ["common/common.json", "common/player_inventory.json"],
+  "background": {
+    "texture": "guis/matter_mass_pattern_provider.png",
+    "srcRect": [0, 0, 176, 245]
+  },
+  "slots": {
+    "ENCODED_PATTERN": {
+      "left": 8,
+      "top": 42,
+      "grid": "BREAK_AFTER_9COLS"
+    }
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.chexsonsaeutils.matter_mass_pattern_provider.title"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    },
+    "interface_config": {
+      "text": {
+        "translate": "gui.ae2.Patterns"
+      },
+      "position": {
+        "left": 8,
+        "top": 31
+      }
+    }
+  }
+}
