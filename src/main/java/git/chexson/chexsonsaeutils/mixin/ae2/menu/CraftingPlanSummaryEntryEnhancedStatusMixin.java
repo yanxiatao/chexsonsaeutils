@@ -17,27 +17,28 @@ import java.util.List;
 public abstract class CraftingPlanSummaryEntryEnhancedStatusMixin implements EnhancedCraftingPlanSummaryEntry {
 
     @Unique
-    private List<Long> chexsonsaeutils$patternTimes = List.of();
+    private List<java.math.BigInteger> chexsonsaeutils$patternTimes = List.of();
 
     @Override
-    public List<Long> chexsonsaeutils$patternTimes() {
+    public List<java.math.BigInteger> chexsonsaeutils$patternTimes() {
         return chexsonsaeutils$patternTimes;
     }
 
     @Override
-    public void chexsonsaeutils$setPatternTimes(List<Long> patternTimes) {
+    public void chexsonsaeutils$setPatternTimes(List<java.math.BigInteger> patternTimes) {
         if (patternTimes == null || patternTimes.isEmpty()) {
             this.chexsonsaeutils$patternTimes = List.of();
             return;
         }
-        this.chexsonsaeutils$patternTimes = List.copyOf(patternTimes);
+        this.chexsonsaeutils$patternTimes = git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer
+                .normalizePatternTimes(patternTimes);
     }
 
     @Inject(method = "write", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$writePatternTimes(RegistryFriendlyByteBuf buffer, CallbackInfo ci) {
         buffer.writeVarInt(chexsonsaeutils$patternTimes.size());
-        for (long patternTime : chexsonsaeutils$patternTimes) {
-            buffer.writeVarLong(patternTime);
+        for (java.math.BigInteger patternTime : chexsonsaeutils$patternTimes) {
+            buffer.writeByteArray(patternTime.toByteArray());
         }
     }
 
@@ -47,9 +48,12 @@ public abstract class CraftingPlanSummaryEntryEnhancedStatusMixin implements Enh
             CallbackInfoReturnable<CraftingPlanSummaryEntry> cir
     ) {
         int size = buffer.readVarInt();
-        List<Long> patternTimes = new ArrayList<>(size);
+        if (size < 0 || size > 100000) throw new IllegalArgumentException("样板次数条目数量无效");
+        List<java.math.BigInteger> patternTimes = new ArrayList<>(size);
         for (int index = 0; index < size; index++) {
-            patternTimes.add(buffer.readVarLong());
+            var amount = new java.math.BigInteger(buffer.readByteArray(4096));
+            if (amount.signum() < 0) throw new IllegalArgumentException("样板次数不得为负");
+            patternTimes.add(amount);
         }
         if (cir.getReturnValue() instanceof EnhancedCraftingPlanSummaryEntry enhancedEntry) {
             enhancedEntry.chexsonsaeutils$setPatternTimes(patternTimes);

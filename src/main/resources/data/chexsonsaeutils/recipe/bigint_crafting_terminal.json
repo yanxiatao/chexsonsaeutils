@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [{"item": "ae2:crafting_terminal"}, {"item": "ae2:calculation_processor"}, {"item": "ae2:capacity_card"}],
+  "result": {"id": "chexsonsaeutils:bigint_crafting_terminal", "count": 1}
+}

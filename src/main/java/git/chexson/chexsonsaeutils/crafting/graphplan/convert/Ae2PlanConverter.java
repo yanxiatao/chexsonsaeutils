@@ -88,9 +88,10 @@ public final class Ae2PlanConverter {
         // 无环分支同样是我们的图规划出口（实机 ae2:creative_storage_cell x 1000000 的
         // lava 1.6e19 缺料就出自这条），有溢出键、超界份数或无限源键才套一层不含执行契约的透明载体：
         // 它不命中 RecursivePlanContract 的任何判据，规划/提交语义与直接返回 base 一致。
-        return wideLedgers.isEmpty() && wideCrafts.isEmpty() && unboundedKeys.isEmpty()
+        return result.exactFinalAmount().isFast() && wideLedgers.isEmpty() && wideCrafts.isEmpty() && unboundedKeys.isEmpty()
                 ? base
-                : new WideAmountCraftingPlan(base, wideLedgers, wideCrafts, unboundedKeys);
+                : new WideAmountCraftingPlan(base, wideLedgers, wideCrafts, unboundedKeys,
+                        result.exactFinalAmount().isFast() ? null : result.exactFinalAmount());
     }
 
     /**
@@ -177,10 +178,11 @@ public final class Ae2PlanConverter {
         // 同一趟账还分出封套那一本（模糊槽首位候选的许可上界）：它照样在下发的表里，
         // 但执行侧的 hole= 读数要拿它当减数，配额夹照旧读整本，所以必须随契约一起出门。
         var materialBill = MaterialClosureGate.buildMaterialPlan(
-                state, graph, result.finalAmount());
+                state, graph, result.exactFinalAmount());
         return new RecursiveCraftingPlan(merged, recursiveInitialItems, internalItems,
                 result.finalAmount(), selected, materialBill.assigned(), wideLedgers, wideCrafts,
-                unboundedKeys, materialBill.envelopes());
+                unboundedKeys, materialBill.envelopes(),
+                result.exactFinalAmount().isFast() ? null : result.exactFinalAmount());
     }
 
     /**

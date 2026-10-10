@@ -109,6 +109,20 @@ public final class WideAmountCraftConfirmScreen extends CraftConfirmScreen imple
     }
 
     @Override
+    protected void renderTooltip(net.minecraft.client.gui.GuiGraphics graphics, int mouseX, int mouseY) {
+        super.renderTooltip(graphics, mouseX, mouseY);
+        if (getMenu() instanceof git.chexson.chexsonsaeutils.menu.crafting.WideCraftConfirmMenu exact
+                && !exact.requestedAmount.isEmpty() && mouseX >= leftPos && mouseX < leftPos + imageWidth
+                && mouseY >= topPos && mouseY < topPos + 17) {
+            var lines = new java.util.ArrayList<Component>();
+            lines.add(Component.translatable("gui.chexsonsaeutils.wide_request.order_amount", exact.requestedAmount));
+            if (!exact.deliveryAmount.isEmpty())
+                lines.add(Component.translatable("gui.chexsonsaeutils.wide_request.delivery_amount", exact.deliveryAmount));
+            graphics.renderComponentTooltip(font, lines, mouseX, mouseY);
+        }
+    }
+
+    @Override
     @Nullable
     public WideLedgerSnapshot chexsonsaeutils$wideSnapshot() {
         return cachedSnapshot == null || cachedSnapshot.isEmpty() ? null : cachedSnapshot;

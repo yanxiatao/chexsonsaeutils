@@ -141,6 +141,22 @@ final class ParallelExecutingCraftingJob {
     final Map<IPatternDetails, Set<AEKey>> materialBackoffMissing = new HashMap<>();
     GenericStack finalOutput;
     long remainingAmount;
+    /** 明确提交的宽域根订单与其剩余交付量；long 字段只供 AE2 状态界面读取。 */
+    @Nullable PlanAmount exactFinalOutputAmount;
+    @Nullable PlanAmount exactRemainingAmount;
+
+    /** 只按真实接收数量扣除宽域余额，防止达到 long 代表值后提前结束。 */
+    void recordFinalOutputAccepted(long accepted) {
+        if (accepted < 0) throw new IllegalArgumentException("交付量不得为负");
+        recordFinalOutputAccepted(PlanAmount.of(accepted));
+    }
+
+    private void recordFinalOutputAccepted(PlanAmount accepted) {
+        if (exactRemainingAmount != null) {
+            exactRemainingAmount = exactRemainingAmount.subtract(accepted).max(PlanAmount.ZERO);
+            remainingAmount = git.chexson.chexsonsaeutils.bigint.Ae2Amounts.toLong(exactRemainingAmount);
+        } else remainingAmount = PlanAmount.of(remainingAmount).subtract(accepted).max(PlanAmount.ZERO).fastValue();
+    }
     @Nullable
     Integer playerId;
     boolean suspended;
@@ -421,6 +437,9 @@ final class ParallelExecutingCraftingJob {
         for (var entry : pendingDelivery.entrySet()) {
             if (entry.getKey() != null && entry.getValue() != null && entry.getValue().signum() > 0L) {
                 declaredNetworkDelivered.add(entry.getKey(), entry.getValue());
+                if (!dyeableRecursivePlan && isFinalOutputKey(entry.getKey())) {
+                    recordFinalOutputAccepted(PlanAmount.of(entry.getValue()));
+                }
             }
         }
         if (clamped) {
@@ -643,6 +662,7 @@ final class ParallelExecutingCraftingJob {
      */
     @Nullable
     PlanAmount finalOutputOrderAmount() {
+        if (exactFinalOutputAmount != null) return exactFinalOutputAmount;
         long readout = dyeableRecursiveFinalOutputAmount > 0L
                 ? dyeableRecursiveFinalOutputAmount
                 : finalOutput == null ? 0L : finalOutput.amount();
@@ -919,6 +939,11 @@ final class ParallelExecutingCraftingJob {
     ) {
         this.finalOutput = plan.finalOutput();
         this.remainingAmount = this.finalOutput == null ? 0L : this.finalOutput.amount();
+        var rootAmount = this.finalOutput == null ? PlanAmount.ZERO : WideAmountPlanCarrier.resolveFinalOutput(plan);
+        if (!rootAmount.isFast()) {
+            this.exactFinalOutputAmount = rootAmount;
+            this.exactRemainingAmount = rootAmount;
+        }
         this.planClass = plan.getClass().getSimpleName();
         this.unboundedSupplyKeys = mutableKeys(WideAmountPlanCarrier.resolveUnboundedKeys(plan));
         this.waitingFor = new WideCraftingInventory(postCraftingDifference::onCraftingDifference);
@@ -1014,6 +1039,19 @@ final class ParallelExecutingCraftingJob {
         this.link = new CraftingLink(data.getCompound(NBT_LINK), lane.linkCpu());
         this.finalOutput = GenericStack.readTag(registries, data.getCompound(NBT_FINAL_OUTPUT));
         this.remainingAmount = data.getLong(NBT_REMAINING_AMOUNT);
+        if (data.contains("exactFinalOutputAmount", Tag.TAG_BYTE_ARRAY)) {
+            this.exactFinalOutputAmount = PlanAmount.of(new BigInteger(data.getByteArray("exactFinalOutputAmount")));
+            this.exactRemainingAmount = PlanAmount.of(new BigInteger(data.getByteArray("exactRemainingAmount")));
+            if (exactFinalOutputAmount.signum() <= 0 || exactRemainingAmount.signum() < 0
+                    || exactRemainingAmount.compareTo(exactFinalOutputAmount) > 0)
+                throw new IllegalArgumentException("宽域根订单存档数量无效");
+            this.remainingAmount = git.chexson.chexsonsaeutils.bigint.Ae2Amounts.toLong(exactRemainingAmount);
+            if (data.contains("exactFinalOutputDelivered", Tag.TAG_BYTE_ARRAY)) {
+                var delivered = new BigInteger(data.getByteArray("exactFinalOutputDelivered"));
+                if (delivered.signum() < 0) throw new IllegalArgumentException("宽域根订单交付量无效");
+                this.finalOutputDelivered.add(this.finalOutput.what(), delivered);
+            }
+        }
         this.unboundedSupplyKeys = mutableKeys(Set.of());
         this.waitingFor = new WideCraftingInventory(postCraftingDifference::onCraftingDifference);
         this.waitingFor.readFromNBT(data.getList(NBT_WAITING_FOR, Tag.TAG_COMPOUND), registries);
@@ -1102,6 +1140,11 @@ final class ParallelExecutingCraftingJob {
         // 硬摊到样板头上会把不存在的键记到别人名下。它是流水账，与 account* 同侧。
         writeExpectedNetworkOutputs(data, registries, outputsExpectedToNetwork);
         data.putLong(NBT_REMAINING_AMOUNT, remainingAmount);
+        if (exactFinalOutputAmount != null) {
+            data.putByteArray("exactFinalOutputAmount", exactFinalOutputAmount.exactValue().toByteArray());
+            data.putByteArray("exactRemainingAmount", exactRemainingAmount.exactValue().toByteArray());
+            data.putByteArray("exactFinalOutputDelivered", finalOutputDeliveredAmount().exactValue().toByteArray());
+        }
         if (playerId != null) {
             data.putInt(NBT_PLAYER_ID, playerId);
         }

@@ -100,6 +100,16 @@ public class Chexsonsaeutils {
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
+        event.enqueueWork(() -> {
+            if (net.neoforged.fml.ModList.get().isLoaded("neoecoae")) {
+                git.chexson.chexsonsaeutils.integration.craftingdisplay.neoecoae.NeoEcoCraftingDisplay.register();
+                if (FMLEnvironment.dist.isClient())
+                    git.chexson.chexsonsaeutils.integration.craftingdisplay.neoecoae.NeoEcoCraftingDisplay.registerClient();
+                git.chexson.chexsonsaeutils.bootstrap.terminal.NativeTerminalSubscriptions.register();
+                if (FMLEnvironment.dist.isClient())
+                    git.chexson.chexsonsaeutils.client.integration.neoecoae.NeoEcoTerminalClientCompat.register();
+            }
+        });
         event.enqueueWork(ChexsonsaeutilsContent::registerCommonContent);
         // 启动期一次自报构建指纹（B-2）：六轮日志读不出"这一轮装的是哪个构建"——jar 名与版本串
         // 逐字相同时，路径/字节数/lastModified/内容摘要这四格能当场把两次实机分诊成不同构建。

@@ -187,6 +187,7 @@ public final class ChexsonsaeutilsContent {
                         output.accept(CustomPatternRegistration.CUSTOM_PATTERN_ITEM.get());
                         output.accept(CustomPatternProviderRegistration.CUSTOM_PATTERN_PROVIDER_ITEM.get());
                         output.accept(CustomPatternProviderPartRegistration.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
+                        output.accept(git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.ITEM.get());
                         output.accept(INFINITY_CELL_ITEM.get());
                         output.accept(MATTER_MASS_PATTERN_PROVIDER_ITEM.get());
                         output.accept(MatterMassRegistration.MATTER_MASS_ITEM.get());
@@ -223,9 +224,11 @@ public final class ChexsonsaeutilsContent {
         MatterMassPatternProviderMenuRegistration.register(modEventBus);
         // 物质团物品／查看菜单／UUID 三枚把手自持在 item.mattermass 宿主（M2-A），本处只 dispatch 一次
         MatterMassRegistration.register(modEventBus);
+        git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.register(modEventBus);
     }
 
     public static void registerCommonContent() {
+        git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.bootstrap();
         registerExtremeAssemblerBootstrap();
         registerAEDirectProcessingMachineBootstrap();
         registerAE2ParallelCpuToolBootstrap();
@@ -236,7 +239,9 @@ public final class ChexsonsaeutilsContent {
         git.chexson.chexsonsaeutils.bootstrap.playersimulation.PlayerSimulationRegistration.bootstrap(PLAYER_SIMULATION_PLANE_ITEM.get());
         if (ChexsonsaeutilsCompatibilityConfig.boolValue(
                 ChexsonsaeutilsCompatibilityConfig.INFINITY_CELL_ENABLED)) {
-            CellRegistration.bootstrap(INFINITY_CELL_ITEM);
+            CellRegistration.bootstrap(INFINITY_CELL_ITEM, net.neoforged.fml.ModList.get().isLoaded("neoecoae")
+                    ? git.chexson.chexsonsaeutils.integration.terminalstorage.neoecoae.NeoEcoInfinityCellInventory::new
+                    : git.chexson.chexsonsaeutils.cell.InfinityCellInventory::new);
         }
         if (ChexsonsaeutilsCompatibilityConfig.boolValue(
                 ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED)) {

@@ -9,7 +9,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-public final class ParallelCraftingCPU implements ICraftingCPU, git.chexson.chexsonsaeutils.crafting.contract.NativePartialSubmitPolicy {
+public final class ParallelCraftingCPU implements ICraftingCPU, git.chexson.chexsonsaeutils.crafting.contract.WideRootCraftingCpu, git.chexson.chexsonsaeutils.crafting.contract.NativePartialSubmitPolicy {
 
     private final ParallelCraftingCpuCluster cluster;
     @Nullable
@@ -98,6 +98,18 @@ public final class ParallelCraftingCPU implements ICraftingCPU, git.chexson.chex
     public CraftingStatus createMenuStatus() {
         ParallelCraftingLaneState lane = lane();
         return lane == null ? CraftingStatus.EMPTY : cluster.createMenuStatus(lane);
+    }
+
+    /** 显示适配读取真值，不通过 AE2 状态表的 long 投影反推。 */
+    public git.chexson.chexsonsaeutils.crafting.contract.CraftingCpuAmounts exactMenuAmounts() {
+        var lane = lane();
+        return lane == null ? ParallelCraftingCpuLogic.exactMenuAmounts(null, null) : lane.logic().exactMenuAmounts();
+    }
+
+    /** CPU 选择列表读取根订单剩余量，不显示 GenericStack 的饱和值。 */
+    public java.math.BigInteger exactOrderRemaining() {
+        var lane = lane();
+        return lane == null ? java.math.BigInteger.ZERO : lane.logic().exactOrderRemaining();
     }
 
     public boolean isSuspended() {

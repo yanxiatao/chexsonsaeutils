@@ -26,6 +26,11 @@ tasks.withType(ProcessResources).configureEach {
 repositories {
     mavenCentral()
     maven {
+        name = 'SleepingTown'
+        url = 'https://repo.sleeping.town/'
+        content { includeGroup 'dev.emi' }
+    }
+    maven {
         name = 'ModMaven'
         url = 'https://modmaven.dev/'
     }
@@ -112,6 +117,8 @@ dependencies {
     implementation 'org.spongepowered:mixin:0.8.5'
 
     compileOnly "org.appliedenergistics:appliedenergistics2:${ae2_version}"
+    // 下单可选桥：以测试实例的实际公开 SDK 为基线。
+    compileOnly files("reference-sources/data_energistics-1.21.1-3.1.3.jar", "reference-sources/ae2lt-2.1.1.jar")
     // neoecoae：软依赖（万象/直连机的快路径批量供应，运行时按 ModLoaded 检测，仅编译期引用）。
     // 21.2.0-beta4 起 api.me.ECOBatchCapacityProvider 的 eco$getBatchCapacity/eco$pushBatch 被删，
     // 换成 api.me.provider.ECOFastPathDispatchProvider 的单次 eco$prepareFastPath(ctx) 申报；
@@ -133,6 +140,7 @@ dependencies {
     compileOnly "maven.modrinth:justenoughcharacters:XPKoy65e"
     testImplementation "maven.modrinth:justenoughcharacters:XPKoy65e"
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
+    compileOnly "dev.emi:emi-neoforge:1.1.22+1.21.1:api"
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
     compileOnly "curse.maven:applied-mekanistics-574300:${appmek_file_id}"
     compileOnly "curse.maven:building-gadgets-298187:${building_gadgets2_file_id}"
@@ -141,10 +149,9 @@ dependencies {
     // advancedae/appflux：软依赖（运行时按 ModLoaded 检测，仅编译期引用）
     compileOnly "maven.modrinth:advancedae:1.6.11-1.21.1"
     compileOnly "maven.modrinth:appflux:1.21-2.1.5-neoforge"
-    // ExtendedAE_Plus：软依赖（频道卡注册，运行时按 ModLoaded 检测）。
-    // 无公开 maven 坐标，jar 由 reference-sources/ExtendedAE_Plus/bin/main 编译产物打包
-    // （本仓库参考源码对应版本，仅编译期引用）。
-    compileOnly files('libs/extendedae_plus-1.21.1.jar')
+    // ExtendedAE_Plus 1.6.3：频道卡和活动库存双表精确计数，仅编译期引用。
+    // 官方下载 https://modrinth.com/mod/extendedae-plus/version/AtuOmKkV
+    compileOnly files('reference-sources/extendedae_plus-1.6.3.jar')
     // ExtendedAE：必需前置（定制样板供应器 GUI 纹理与扩容物品来源）。
     // 无公开可用 maven 坐标（modrinth 镜像解析失败），jar 复制自 run/mods
     // （用户 dev 环境实际使用的有效 mod 文件），dev/测试运行时加载；
@@ -164,6 +171,7 @@ dependencies {
     testImplementation "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     testRuntimeOnly files('libs/extendedae-1.21.1.jar')
     testRuntimeOnly files('libs/glodium-1.21.1.jar')
+    testCompileOnly files("reference-sources/neoecoae-${neoecoae_version}.jar")
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -258,5 +266,21 @@ idea {
     module {
         downloadSources = true
         downloadJavadoc = true
+    }
+}
+
+// 将真实 SDK 字节码放入测试模组，使其与 AE2 使用同一转换类加载器。
+// 不包含 NeoEco 元数据，也不将这些类打进发布 JAR。
+tasks.named('compileTestJava', JavaCompile).configure {
+    inputs.file("reference-sources/neoecoae-${neoecoae_version}.jar")
+    doLast {
+        copy {
+            from(zipTree("reference-sources/neoecoae-${neoecoae_version}.jar")) {
+                include 'cn/dancingsnow/neoecoae/crafting/amount/ExactAmount*.class'
+                include 'cn/dancingsnow/neoecoae/crafting/display/terminal/ExactAmountSource.class'
+                include 'cn/dancingsnow/neoecoae/crafting/display/terminal/ExactAmountCollector*.class'
+            }
+            into destinationDirectory
+        }
     }
 }

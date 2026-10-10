@@ -237,7 +237,8 @@ public final class InfinityCellStore {
             for (int i = 0; i < entries.size(); i++) {
                 var entry = entries.getCompound(i);
                 var oldKeyId = entry.getInt("keyId");
-                var keyId = remap.getOrDefault(oldKeyId, oldKeyId);
+                var keyId = java.util.Objects.requireNonNull(remap.get(oldKeyId),
+                        "单元条目引用不存在的存档键: " + oldKeyId);
                 data.loadAmount(keyId, readAmount(entry));
             }
             data.markClean();
@@ -263,18 +264,13 @@ public final class InfinityCellStore {
 
     @Nullable
     private AEKey decodeKey(CompoundTag keyEntry, RegistryAccess registries) {
-        var type = keyEntry.getString("type");
-        var keyTag = keyEntry.getCompound("tag");
-        if (type.equals(AEKeyType.items().getId().toString())) {
-            return AEKeyType.items().loadKeyFromTag(registries, keyTag);
-        }
-        if (type.equals(AEKeyType.fluids().getId().toString())) {
-            return AEKeyType.fluids().loadKeyFromTag(registries, keyTag);
-        }
         if (keyEntry.contains("generic", Tag.TAG_COMPOUND)) {
             return AEKey.fromTagGeneric(registries, keyEntry.getCompound("generic"));
         }
-        return null;
+        // 旧版 type+tag 转为 AE2 通用格式；未知类型由 AE2 missing-content 保留原始数据并记录日志。
+        var generic = keyEntry.getCompound("tag").copy();
+        generic.putString(AEKey.TYPE_FIELD, keyEntry.getString("type"));
+        return AEKey.fromTagGeneric(registries, generic);
     }
 
     private CompoundTag buildTag(CellData data, RegistryAccess registries) throws IOException {
@@ -294,12 +290,8 @@ public final class InfinityCellStore {
             }
             var keyTag = new CompoundTag();
             keyTag.putInt("id", keyId);
-            keyTag.putString("type", key.getType().getId().toString());
-            keyTag.put("tag", key.toTag(registries));
-            // item/fluid 类型解码只读 type+tag，generic 仅是其他类型的后备，跳过以减小存档
-            if (!(key instanceof AEItemKey) && !(key instanceof AEFluidKey)) {
-                keyTag.put("generic", key.toTagGeneric(registries));
-            }
+            // 统一交给类型注册表；missing-content 的原始类型数据也通过此编码无损保留。
+            keyTag.put("generic", key.toTagGeneric(registries));
             keys.add(keyTag);
         }
         return keys;
@@ -400,6 +392,7 @@ public final class InfinityCellStore {
         private boolean dirty;
         @Nullable
         private Snapshot cachedSnapshot;
+        private git.chexson.chexsonsaeutils.api.storage.ExactCellSnapshot cachedExactSnapshot;
 
         private CellData(KeyDictionary keyDictionary) {
             this.keyDictionary = keyDictionary;
@@ -445,6 +438,21 @@ public final class InfinityCellStore {
         public synchronized boolean hasOverflow(AEKey key) {
             var keyId = keyDictionary.existingIdFor(key);
             return keyId != 0 && overflowAmounts.containsKey(keyId);
+        }
+
+        /** 在同一锁内冻结完整真值；相同修订复用不可变快照，不复用可变 long 快照数组。 */
+        public synchronized git.chexson.chexsonsaeutils.api.storage.ExactCellSnapshot readExactSnapshot(UUID identity) {
+            if (cachedExactSnapshot != null && cachedExactSnapshot.revision() == version
+                    && cachedExactSnapshot.identity().equals(identity)) {
+                return cachedExactSnapshot;
+            }
+            var exact = new java.util.HashMap<AEKey, BigInteger>(amounts.size());
+            for (var entry : amounts.int2LongEntrySet()) {
+                int id = entry.getIntKey();
+                exact.put(java.util.Objects.requireNonNull(keyDictionary.keyFor(id), "库存键缺失"), exactAmount(id));
+            }
+            cachedExactSnapshot = new git.chexson.chexsonsaeutils.api.storage.ExactCellSnapshot(identity, version, exact);
+            return cachedExactSnapshot;
         }
 
         public synchronized Snapshot snapshot() {

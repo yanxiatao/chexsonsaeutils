@@ -152,6 +152,10 @@ appeng/
 /config/
 /config/*.bak
 
+# 本地 KubeJS 运行配置，仅忽略仓库根目录
+/kubejs/
+/local/
+
 # codemap auto-generated state and docs
 .slim/
 .slim/deepwork/

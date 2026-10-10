@@ -43,6 +43,87 @@ final class InfinityCellStoreTest {
     private static final AEItemKey ITEM_COPPER = AEItemKey.of(Items.COPPER_INGOT);
 
     @Test
+    void fluidKeysPersistAndReloadThroughGenericCodec() throws Exception {
+        var root = Files.createTempDirectory("infinity-fluid-codec");
+        var store = new InfinityCellStore(); var id = UUID.randomUUID();
+        var fluid = appeng.api.stacks.AEFluidKey.of(net.minecraft.world.level.material.Fluids.WATER);
+        var huge = BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.TWO);
+        store.cell(id).insert(fluid, Long.MAX_VALUE, Actionable.MODULATE);
+        store.cell(id).insert(fluid, Long.MAX_VALUE, Actionable.MODULATE);
+        store.save(root); InfinityCellStore.awaitPendingWrites();
+        var loaded = new InfinityCellStore(); loaded.load(root);
+        assertEquals(huge, loaded.cell(id).readExactSnapshot(id).amount(fluid));
+    }
+
+    @Test
+    void oldUnknownTypeRetainsAe2MissingContentAndDoesNotPoisonKnownKeys() throws Exception {
+        var root = Files.createTempDirectory("infinity-unknown-codec"); var id = UUID.randomUUID();
+        var registries = net.minecraft.core.RegistryAccess.fromRegistryOfRegistries(
+                net.minecraft.core.registries.BuiltInRegistries.REGISTRY);
+        var keys = new net.minecraft.nbt.ListTag();
+        var known = new CompoundTag(); known.putInt("id", 1);
+        known.putString("type", ITEM_COPPER.getType().getId().toString());
+        known.put("tag", ITEM_COPPER.toTag(registries)); keys.add(known);
+        var unknown = new CompoundTag(); unknown.putInt("id", 2590); unknown.putString("type", "absentmod:chemical");
+        var raw = new CompoundTag(); raw.putString("id", "absentmod:hydrogen"); unknown.put("tag", raw); keys.add(unknown);
+        var entries = new net.minecraft.nbt.ListTag();
+        var a = new CompoundTag(); a.putInt("keyId", 1); a.putLong("amount", 64); entries.add(a);
+        var b = new CompoundTag(); b.putInt("keyId", 2590); b.putByteArray("bigAmount", BigInteger.TEN.pow(100).toByteArray()); entries.add(b);
+        var fileTag = new CompoundTag(); fileTag.putInt("version", 1); fileTag.put("keys", keys); fileTag.put("entries", entries);
+        var file = CellStoragePaths.getNbtFile(root, id); Files.createDirectories(file.getParent()); NbtIo.writeCompressed(fileTag, file);
+        var store = new InfinityCellStore(); store.load(root); var cell = store.cell(id);
+        var snapshot = cell.readExactSnapshot(id);
+        assertEquals(BigInteger.valueOf(64), snapshot.amount(ITEM_COPPER));
+        assertEquals(2, snapshot.amounts().size());
+        var missing = snapshot.amounts().keySet().stream().filter(k -> !k.equals(ITEM_COPPER)).findFirst().orElseThrow();
+        assertTrue(appeng.core.definitions.AEItems.MISSING_CONTENT.is(missing));
+        assertEquals(BigInteger.TEN.pow(100), snapshot.amount(missing));
+        assertEquals("absentmod:chemical", missing.toTagGeneric(registries).getString(AEKey.TYPE_FIELD));
+        cell.insert(ITEM_COPPER, 1, Actionable.MODULATE); store.save(root); InfinityCellStore.awaitPendingWrites();
+        var loaded = new InfinityCellStore(); loaded.load(root);
+        var restored = loaded.cell(id).readExactSnapshot(id);
+        var restoredMissing = restored.amounts().keySet().stream().filter(k -> !k.equals(ITEM_COPPER)).findFirst().orElseThrow();
+        assertEquals(snapshot.amount(missing), restored.amount(restoredMissing));
+        assertEquals("absentmod:chemical", restoredMissing.toTagGeneric(registries).getString(AEKey.TYPE_FIELD));
+        assertEquals("absentmod:hydrogen", restoredMissing.toTagGeneric(registries).getString("id"));
+    }
+
+    @Test
+    void exactPublicSnapshotIsAtomicImmutableAndRevisionCached() {
+        var store = new InfinityCellStore();
+        var id = UUID.randomUUID();
+        var cell = store.cell(id);
+        var huge = BigInteger.TEN.pow(100);
+        cell.loadAmount(store.keyDictionary().idFor(COPPER), huge);
+        cell.markClean();
+        var first = cell.readExactSnapshot(id);
+        assertEquals(huge, first.amount(COPPER));
+        assertEquals(BigInteger.ZERO, first.amount(TIN));
+        assertSame(first, cell.readExactSnapshot(id));
+        assertFalse(cell.isDirty());
+        org.junit.jupiter.api.Assertions.assertThrows(UnsupportedOperationException.class,
+                () -> first.amounts().put(TIN, BigInteger.ONE));
+        cell.extract(COPPER, 64, Actionable.MODULATE);
+        var second = cell.readExactSnapshot(id);
+        assertEquals(huge.subtract(BigInteger.valueOf(64)), second.amount(COPPER));
+        assertEquals(huge, first.amount(COPPER));
+        assertNotEquals(first.revision(), second.revision());
+    }
+
+    @Test
+    void exactSnapshotTracksSameTotalDifferentKeysAndRemoval() {
+        var store = new InfinityCellStore(); var id = UUID.randomUUID(); var cell = store.cell(id);
+        cell.insert(COPPER, 64, Actionable.MODULATE);
+        var first = cell.readExactSnapshot(id);
+        cell.extract(COPPER, 64, Actionable.MODULATE); cell.insert(TIN, 64, Actionable.MODULATE);
+        var second = cell.readExactSnapshot(id);
+        assertEquals(BigInteger.ZERO, second.amount(COPPER));
+        assertEquals(BigInteger.valueOf(64), second.amount(TIN));
+        assertEquals(BigInteger.valueOf(64), first.amount(COPPER));
+        assertNotEquals(first.revision(), second.revision());
+    }
+
+    @Test
     void reusesCellDataAndGlobalKeyIdsAcrossHandles() {
         var store = new InfinityCellStore();
         var cellId = UUID.randomUUID();

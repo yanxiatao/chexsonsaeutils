@@ -55,7 +55,7 @@ final class RegistrationRuntimeContractTest {
     private record RegistryContract(Registry<?> registry, List<String> paths) {
     }
 
-    /** 八类真实注册值共 40 个；顺序按当前各注册器的挂接顺序及其条目顺序展开。 */
+    /** 八类真实注册值；顺序按当前各注册器的挂接顺序及其条目顺序展开。 */
     private static final List<RegistryContract> CONTRACTS = List.of(
             new RegistryContract(BuiltInRegistries.BLOCK, List.of(
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool",
@@ -64,7 +64,7 @@ final class RegistrationRuntimeContractTest {
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool",
                     "multi_level_emitter", "player_simulation_plane", "infinity_cell", "auto_item_gen", "matter_mass_pattern_provider",
                     "custom_pattern", "custom_pattern_provider_part", "custom_pattern_provider",
-                    "matter_mass_pattern", "matter_mass")),
+                    "matter_mass_pattern", "matter_mass", "bigint_crafting_terminal")),
             new RegistryContract(BuiltInRegistries.BLOCK_ENTITY_TYPE, List.of(
                     "auto_item_gen", "extreme_assembler", "ae_direct_processing_machine",
                     "ae2_parallel_cpu_tool", "matter_mass_pattern_provider", "custom_pattern_provider")),
@@ -72,7 +72,7 @@ final class RegistrationRuntimeContractTest {
                     "simulation_amount", "player_simulation_plane",
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool_cpu",
                     "custom_pattern_provider", "custom_pattern_encoder", "custom_pattern_upgrade",
-                    "multi_level_emitter_menu", "matter_mass_pattern_provider", "matter_mass_view")),
+                    "multi_level_emitter_menu", "matter_mass_pattern_provider", "matter_mass_view", "bigint_crafting_terminal", "wide_craft_confirm")),
             new RegistryContract(BuiltInRegistries.CREATIVE_MODE_TAB, List.of("chexsonsaeutils")),
             new RegistryContract(BuiltInRegistries.DATA_COMPONENT_TYPE, List.of(
                     "encoded_custom_pattern", "custom_pattern_pages",
@@ -164,7 +164,23 @@ final class RegistrationRuntimeContractTest {
         assertMenu("matter_mass_pattern_provider",
                 MatterMassPatternProviderMenuRegistration.MATTER_MASS_PATTERN_PROVIDER_MENU,
                 MatterMassPatternProviderMenu.TYPE);
+        assertMenu("wide_craft_confirm",
+                git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.WIDE_CONFIRM,
+                git.chexson.chexsonsaeutils.menu.crafting.WideCraftConfirmMenu.TYPE);
+        assertMenu("bigint_crafting_terminal",
+                git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.MENU,
+                git.chexson.chexsonsaeutils.menu.terminal.BigIntCraftingTerminalMenu.TYPE);
         assertMenu("matter_mass_view", MatterMassRegistration.MATTER_MASS_VIEW_MENU, MatterMassViewMenuHost.TYPE);
+    }
+
+    @Test
+    void bigintTerminalPartItemCreatesRegisteredCraftingTerminalPart() {
+        requireLoadedMod();
+        var item = assertInstanceOf(appeng.api.parts.IPartItem.class,
+                BuiltInRegistries.ITEM.get(id("bigint_crafting_terminal")));
+        var part = assertInstanceOf(git.chexson.chexsonsaeutils.parts.terminal.BigIntCraftingTerminalPart.class,
+                item.createPart());
+        assertSame(git.chexson.chexsonsaeutils.menu.terminal.BigIntCraftingTerminalMenu.TYPE, part.getMenuType(null));
     }
 
     /** 必须由既有 NeoForge 测试启动加载 mod；此处只验证前提，不自行注册或吞掉失败。 */
@@ -187,7 +203,9 @@ final class RegistrationRuntimeContractTest {
                 CustomPatternProviderBlockEntityRegistration.BLOCK_ENTITY_TYPES,
                 MatterMassPatternRegistration.ITEMS, MatterMassPatternRegistration.DATA_COMPONENT_TYPES,
                 MatterMassPatternProviderMenuRegistration.MENU_TYPES,
-                MatterMassRegistration.ITEMS, MatterMassRegistration.MENU_TYPES, MatterMassRegistration.DATA_COMPONENT_TYPES
+                MatterMassRegistration.ITEMS, MatterMassRegistration.MENU_TYPES, MatterMassRegistration.DATA_COMPONENT_TYPES,
+                git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.ITEMS,
+                git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.MENUS
         );
     }
 

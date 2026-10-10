@@ -205,7 +205,17 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
         if (isClientSide()) {
             return;
         }
-        WideLedgerSnapshot snapshot = WideAmountPlanCarrier.resolveWideLedgers(this.result);
+        if (this.plan != null && this.result != null) {
+            if (net.neoforged.fml.ModList.get().isLoaded("neoecoae"))
+                git.chexson.chexsonsaeutils.integration.craftingdisplay.neoecoae.NeoEcoCraftingPreview.apply(this.plan, this.result);
+            git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer.attachPatternTimes(this.plan, this.result);
+        }
+        boolean ownWidePlan = this.result instanceof WideAmountPlanCarrier
+                || !WideAmountPlanCarrier.resolveWideLedgers(this.result).isEmpty()
+                || !WideAmountPlanCarrier.resolveWideCrafts(this.result).isEmpty();
+        WideLedgerSnapshot snapshot = ownWidePlan
+                ? git.chexson.chexsonsaeutils.crafting.status.PlanSummaryAmounts.fromPlan(this.result).displaySnapshot()
+                : WideLedgerSnapshot.empty();
         if (snapshot.isEmpty()) {
             this.chexsonsaeutils$wideAmounts = "";
             return;

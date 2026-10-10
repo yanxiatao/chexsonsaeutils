@@ -31,7 +31,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-public final class InfinityCellInventory implements StorageCell, WideSupplySource {
+public class InfinityCellInventory implements StorageCell, WideSupplySource,
+        git.chexson.chexsonsaeutils.api.storage.ExactCellSnapshotSource {
     /** 套娃检查决策缓存上限；满即整体清空（决策是 AEKey 的纯函数，重建只损失命中率）。 */
     private static final int FIT_CACHE_LIMIT = 4096;
     private static final Object2BooleanOpenHashMap<AEKey> FIT_CACHE = new Object2BooleanOpenHashMap<>();
@@ -94,6 +95,12 @@ public final class InfinityCellInventory implements StorageCell, WideSupplySourc
     @Override
     public BigInteger exactAmount(AEKey key) {
         return cellData.exactAmount(key);
+    }
+
+    /** 终端和外部显示共用的只读原子快照，不改变盘内容或持久化状态。 */
+    @Override
+    public git.chexson.chexsonsaeutils.api.storage.ExactCellSnapshot readExactSnapshot() {
+        return cellData.readExactSnapshot(cellUuid);
     }
 
     /** 本单元对网络报出的那份 {@code long} 读数（{@code getAvailableStacks} 写的就是它）。 */

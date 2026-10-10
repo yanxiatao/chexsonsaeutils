@@ -91,3 +91,32 @@ type = "optional"
 versionRange = "[2101.7.2,)"
 ordering = "AFTER"
 side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "emi"
+type = "optional"
+versionRange = "[1.1.22,)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.${mod_id}]]
+modId = "extendedae_plus"
+type = "optional"
+# 精确库存桥依赖 1.6.3 公开活动双表及只读 getCell。
+versionRange = "[1.6.3,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "data_energistics"
+type = "optional"
+versionRange = "[3.1.3,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "ae2lt"
+type = "optional"
+versionRange = "[2.1.1,)"
+ordering = "AFTER"
+side = "BOTH"

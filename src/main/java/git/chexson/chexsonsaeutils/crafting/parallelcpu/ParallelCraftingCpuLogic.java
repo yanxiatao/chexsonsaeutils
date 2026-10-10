@@ -389,6 +389,9 @@ final class ParallelCraftingCpuLogic {
             return true;
         }
 
+        drainStandaloneFinalOutput();
+        if (job == null) return false;
+
         long pushedPatterns = 0L;
 
         // CPU 不再按协处理器数、三 tick usedOps 或任务数限制样板份数。
@@ -420,6 +423,7 @@ final class ParallelCraftingCpuLogic {
         // 卡在池里（下一条 lane 的环因此饿死）。
         // 判据两臂与三本账一字未动：这里改的只是「什么时候问」——由「只有实物到账才问」扩到「每 tick 也问」。
         finishDyeableRecursiveJobIfComplete();
+        if (isDeclaredNetworkJobComplete(job)) finishJob(true);
         return pushedPatterns <= 0L;
     }
 
@@ -4560,6 +4564,10 @@ final class ParallelCraftingCpuLogic {
         return insertInternal(what, amount, type).insertedAmount();
     }
 
+    InsertResult insertAndGetResult(AEKey what, long amount, Actionable mode) {
+        return insertInternal(what, amount, mode);
+    }
+
     long insertAndGetAccountedAmount(
             @Nullable AEKey what,
             long amount,
@@ -4640,12 +4648,15 @@ final class ParallelCraftingCpuLogic {
      * ⇒ 作业永不收工，池里那份实物（含环起步借的那颗种）跟着卡住。判据形状（{@code <= 0} 即
      * {@code EMPTY}、超出欠量的部分夹回、三本流水账仍按交来的那一枚记）一字未动。
      */
+    /** 手动订单转交网络时，禁止同一 CPU 再拦截自己的输出。 */
+    private boolean routingStandaloneOutput;
+
     private InsertResult insertInternal(
             @Nullable AEKey what,
             long amount,
             Actionable type
     ) {
-        if (what == null || job == null) {
+        if (what == null || job == null || routingStandaloneOutput) {
             return InsertResult.EMPTY;
         }
 
@@ -4656,6 +4667,28 @@ final class ParallelCraftingCpuLogic {
         }
         if (amount > waitingFor) {
             amount = waitingFor;
+        }
+
+        if (!job.dyeableRecursivePlan && what.matches(job.finalOutput)) {
+            boolean standalone = job.link.isStandalone();
+            var remaining = job.exactRemainingAmount == null ? BigInteger.valueOf(job.remainingAmount)
+                    : job.exactRemainingAmount.exactValue();
+            if (standalone) {
+                var bufferedKey = ParallelBatchExtraction.resolvePoolKey(inventory, what);
+                remaining = remaining.subtract(WideCraftingInventory.amount(inventory, bufferedKey)).max(BigInteger.ZERO);
+            }
+            amount = Math.min(amount, remaining.min(WideCeilings.LONG_ACCOUNT).longValueExact());
+            long accepted = standalone ? amount : job.link.insert(what, amount, type);
+            if (type == Actionable.MODULATE && accepted > 0) {
+                if (standalone) inventory.insert(what, accepted, Actionable.MODULATE);
+                job.waitingFor.extract(owedKey, accepted, Actionable.MODULATE);
+                ParallelExecutingCraftingJob.decrementItems(job.timeTracker, accepted, what.getType());
+                job.accountReturned.add(what, accepted);
+                if (!standalone) job.recordFinalOutputAccepted(accepted);
+                postChange(what);
+                if (job.remainingAmount == 0) finishJob(true);
+            }
+            return new InsertResult(accepted, accepted);
         }
 
         if (type == Actionable.MODULATE) {
@@ -4680,10 +4713,11 @@ final class ParallelCraftingCpuLogic {
                         // 递归计划这一支交到入账口就是交出去一笔：先记账再判收工。原先它只调
                         // finishDyeableRecursiveJobIfComplete()，而那条判据只看任务表清没清空——
                         // 尾巴排不下去的作业于是永远不 finishJob，库存连补种那颗种一起卡在 CPU 里。
-                        job.addFinalOutputDelivered(what, amount);
+                        job.addFinalOutputDelivered(what, inserted);
+                        job.recordFinalOutputAccepted(inserted);
                         finishDyeableRecursiveJobIfComplete();
                     } else {
-                        job.remainingAmount = Math.max(0L, job.remainingAmount - amount);
+                        job.recordFinalOutputAccepted(inserted);
                         if (job.remainingAmount <= 0L) {
                             finishJob(true);
                         }
@@ -4726,6 +4760,31 @@ final class ParallelCraftingCpuLogic {
         return amount;
     }
 
+    /** 在网络插入回调之外排出手动订单缓冲；AE2 网络禁止嵌套 insert。 */
+    void drainStandaloneFinalOutput() {
+        var current = job;
+        if (current == null || current.dyeableRecursivePlan || !current.link.isStandalone()) return;
+        var grid = lane.cluster().grid();
+        if (grid == null || current.finalOutput == null) return;
+        var what = ParallelBatchExtraction.resolvePoolKey(inventory, current.finalOutput.what());
+        routingStandaloneOutput = true;
+        try {
+            for (int chunk = 0; chunk < 64 && job == current; chunk++) {
+                long offered = inventory.extract(what, current.remainingAmount, Actionable.SIMULATE);
+                if (offered <= 0) return;
+                long accepted = grid.getStorageService().getInventory().insert(what, offered, Actionable.MODULATE, lane.cluster().source());
+                if (accepted <= 0) return;
+                inventory.extract(what, accepted, Actionable.MODULATE);
+                current.recordFinalOutputAccepted(accepted);
+                postChange(what);
+                if (current.remainingAmount == 0) { finishJob(true); return; }
+                if (accepted < offered) return;
+            }
+        } finally {
+            routingStandaloneOutput = false;
+        }
+    }
+
     private void finishDyeableRecursiveJobIfComplete() {
         if (!isDyeableRecursiveJobComplete(job)) {
             return;
@@ -4740,6 +4799,14 @@ final class ParallelCraftingCpuLogic {
                 && (finalOutputFullyDelivered(job)
                         || (job.tasks.isEmpty() && job.waitingFor.list.isEmpty()
                                 && declaredNetworkDeliveriesSettled(job)));
+    }
+
+    /** 非递归直投订单只在真实交割完成、任务和所有待交付账清空后结束。 */
+    static boolean isDeclaredNetworkJobComplete(@Nullable ParallelExecutingCraftingJob job) {
+        return job != null && !job.dyeableRecursivePlan && job.remainingAmount == 0
+                && job.tasks.isEmpty() && job.waitingFor.list.isEmpty()
+                && job.initialItemsRemaining.list.isEmpty() && !job.batchObligations.hasAnyPending()
+                && declaredNetworkDeliveriesSettled(job);
     }
 
     /**
@@ -5243,6 +5310,33 @@ final class ParallelCraftingCpuLogic {
             return;
         }
         totals.merge(key, amount, BigInteger::add);
+    }
+
+    /** 使用与原生状态条目一致的分量，先精确乘加，再交给可选显示层。 */
+    static git.chexson.chexsonsaeutils.crafting.contract.CraftingCpuAmounts exactMenuAmounts(
+            @Nullable ListCraftingInventory pool, @Nullable ParallelExecutingCraftingJob job) {
+        var stored = new java.util.HashMap<AEKey, BigInteger>();
+        var active = new java.util.HashMap<AEKey, BigInteger>();
+        var pending = new java.util.HashMap<AEKey, BigInteger>();
+        if (pool != null) for (var entry : pool.list)
+            mergeExact(stored, entry.getKey(), WideCraftingInventory.amount(pool, entry.getKey()));
+        if (job != null) {
+            for (var entry : job.waitingFor.list)
+                mergeExact(active, entry.getKey(), WideCraftingInventory.amount(job.waitingFor, entry.getKey()));
+            for (var task : job.tasks.entrySet()) for (var output : task.getKey().getOutputs())
+                mergeExact(pending, output.what(), PlanAmount.of(output.amount())
+                        .multiply(task.getValue().exactRemaining()).exactValue());
+        }
+        return new git.chexson.chexsonsaeutils.crafting.contract.CraftingCpuAmounts(stored, active, pending);
+    }
+
+    git.chexson.chexsonsaeutils.crafting.contract.CraftingCpuAmounts exactMenuAmounts() {
+        return exactMenuAmounts(inventory, job);
+    }
+
+    BigInteger exactOrderRemaining() {
+        return job == null ? BigInteger.ZERO : job.exactRemainingAmount == null
+                ? BigInteger.valueOf(job.remainingAmount) : job.exactRemainingAmount.exactValue();
     }
 
     private static void writeSaturated(KeyCounter out, java.util.Map<AEKey, BigInteger> totals) {

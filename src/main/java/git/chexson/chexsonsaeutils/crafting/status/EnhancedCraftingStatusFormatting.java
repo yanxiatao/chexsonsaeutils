@@ -57,7 +57,8 @@ public final class EnhancedCraftingStatusFormatting {
         }
         return switch (format) {
             case FULL -> NumberFormat.getIntegerInstance(Locale.getDefault()).format(amount);
-            case SLOT -> formatSlotAmount(amount);
+            case SLOT -> amount >= 1_000_000_000_000L || amount <= -1_000_000_000_000L
+                    ? formatWideSlot(BigDecimal.valueOf(amount)) : formatSlotAmount(amount);
             default -> Long.toString(amount);
         };
     }

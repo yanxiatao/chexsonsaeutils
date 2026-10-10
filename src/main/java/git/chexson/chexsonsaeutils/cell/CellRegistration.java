@@ -16,8 +16,9 @@ import java.util.function.Supplier;
 public final class CellRegistration {
     public static final String CELL_ITEM_ID = "infinity_cell";
 
-    public static void bootstrap(Supplier<InfinityCellItem> cellItem) {
-        StorageCells.addCellHandler(new InfinityCellHandler());
+    public static void bootstrap(Supplier<InfinityCellItem> cellItem,
+            java.util.function.BiFunction<ItemStack, ISaveProvider, ? extends StorageCell> inventoryFactory) {
+        StorageCells.addCellHandler(new InfinityCellHandler(inventoryFactory));
 
         var item = cellItem.get();
         StorageCellModels.registerModel(item,
@@ -32,6 +33,12 @@ public final class CellRegistration {
     }
 
     private static class InfinityCellHandler implements ICellHandler {
+        /** 装配层选择可选模组适配；单元核心只依赖 AE2 存储契约。 */
+        private final java.util.function.BiFunction<ItemStack, ISaveProvider, ? extends StorageCell> factory;
+
+        private InfinityCellHandler(java.util.function.BiFunction<ItemStack, ISaveProvider, ? extends StorageCell> factory) {
+            this.factory = java.util.Objects.requireNonNull(factory);
+        }
         @Override
         public boolean isCell(ItemStack is) {
             return is.getItem() instanceof InfinityCellItem;
@@ -41,7 +48,7 @@ public final class CellRegistration {
         @Nullable
         public StorageCell getCellInventory(ItemStack is, @Nullable ISaveProvider host) {
             if (!isCell(is)) return null;
-            return new InfinityCellInventory(is, host);
+            return factory.apply(is, host);
         }
     }
 }

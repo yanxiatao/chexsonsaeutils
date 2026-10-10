@@ -18,6 +18,12 @@ public final class ChexsonsaeutilsJeiPlugin implements IModPlugin {
     }
 
     @Override
+    public void registerRecipeTransferHandlers(mezz.jei.api.registration.IRecipeTransferRegistration registration) {
+        registration.addRecipeTransferHandler(new BigIntTerminalRecipeTransfer(registration.getTransferHelper()),
+                mezz.jei.api.constants.RecipeTypes.CRAFTING);
+    }
+
+    @Override
     public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
         JeiRuntimeHolder.setRuntime(jeiRuntime);
     }

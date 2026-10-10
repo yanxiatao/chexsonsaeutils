@@ -360,5 +360,21 @@
   "gui.chexsonsaeutils.matrix.search_mode.output": "Output",
   "gui.chexsonsaeutils.matrix.search_mode.input_output": "Both",
   "gui.chexsonsaeutils.ae_direct_processing_machine.import_failed": "Recipe import failed. See the log for details.",
-  "gui.chexsonsaeutils.ae_direct_processing_machine.reason.pack_rule_disabled": "Disabled by modpack rules"
+  "gui.chexsonsaeutils.ae_direct_processing_machine.reason.pack_rule_disabled": "Disabled by modpack rules",
+  "item.chexsonsaeutils.bigint_crafting_terminal": "Big Integer Crafting Terminal",
+  "gui.chexsonsaeutils.bigint.title": "Exact Terminal",
+  "gui.chexsonsaeutils.bigint.search": "Search",
+  "gui.chexsonsaeutils.bigint.unavailable": "Reading inventory or network unavailable",
+  "gui.chexsonsaeutils.bigint.partial": "Unverified sources are shown separately in the tooltip",
+  "gui.chexsonsaeutils.bigint.confirmed": "Confirmed inventory: %s",
+  "gui.chexsonsaeutils.bigint.unverified": "Unverified AE2 reading: %s",
+  "gui.chexsonsaeutils.bigint.detail_hint": "Ctrl+C to copy the full exact amount",
+  "gui.chexsonsaeutils.bigint.loading": "Reading exact inventory",
+  "gui.chexsonsaeutils.bigint.read_failed": "Exact inventory read failed; see server log",
+  "gui.chexsonsaeutils.bigint.tooltip_scroll": "Scroll for the full amount (lines %s–%s of %s)",
+  "gui.chexsonsaeutils.wide_request.requires_cpu": "Orders above long require graph planning and a parallel crafting CPU from this mod",
+  "gui.chexsonsaeutils.wide_request.failed": "Exact crafting request failed: %s",
+  "gui.chexsonsaeutils.wide_request.exact_amount": "Exact count (smallest unit): %s",
+  "gui.chexsonsaeutils.wide_request.order_amount": "Requested count (smallest unit): %s",
+  "gui.chexsonsaeutils.wide_request.delivery_amount": "Planned delivery (smallest unit): %s"
 }

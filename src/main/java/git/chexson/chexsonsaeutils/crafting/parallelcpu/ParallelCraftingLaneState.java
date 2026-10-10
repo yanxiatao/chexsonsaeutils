@@ -158,13 +158,8 @@ final class ParallelCraftingLaneState implements ParallelCraftingLane {
 
     @Override
     public WaitingInsertResult insertIntoWaitingAndGetResult(AEKey what, long amount, Actionable mode) {
-        long waitingBefore = mode == Actionable.MODULATE ? logic.getWaitingFor(what) : 0L;
-        long physicalInserted = logic.insert(what, amount, mode);
-        if (mode != Actionable.MODULATE) {
-            return new WaitingInsertResult(physicalInserted, physicalInserted);
-        }
-        long accounted = Math.max(0L, waitingBefore - logic.getWaitingFor(what));
-        return new WaitingInsertResult(physicalInserted, accounted);
+        var result = logic.insertAndGetResult(what, amount, mode);
+        return new WaitingInsertResult(result.insertedAmount(), result.accountedAmount());
     }
 
     @Nullable

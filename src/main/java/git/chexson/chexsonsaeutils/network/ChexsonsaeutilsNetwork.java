@@ -26,11 +26,30 @@ public final class ChexsonsaeutilsNetwork {
     }
 
     /**
-     * 把 11 枚载荷注册到服务端/客户端通道。
+     * 把自定义载荷注册到服务端/客户端通道，包含精确终端会话与分片。
      *
      * @param event NeoForge 载荷注册事件
      */
     public static void registerPayloadHandlers(RegisterPayloadHandlersEvent event) {
+        var terminalRegistrar = event.registrar("1");
+        terminalRegistrar.playToClient(git.chexson.chexsonsaeutils.network.crafting.ExactCraftingCpuPayload.TYPE,
+                git.chexson.chexsonsaeutils.network.crafting.ExactCraftingCpuPayload.STREAM_CODEC,
+                git.chexson.chexsonsaeutils.network.crafting.ExactCraftingCpuPayload::handle);
+        terminalRegistrar.playToServer(git.chexson.chexsonsaeutils.network.crafting.WideCraftRequestPayload.TYPE,
+                git.chexson.chexsonsaeutils.network.crafting.WideCraftRequestPayload.STREAM_CODEC,
+                git.chexson.chexsonsaeutils.network.crafting.WideCraftRequestPayload::handle);
+        terminalRegistrar.playToClient(git.chexson.chexsonsaeutils.network.crafting.CraftingAmountRestorePayload.TYPE,
+                git.chexson.chexsonsaeutils.network.crafting.CraftingAmountRestorePayload.STREAM_CODEC,
+                git.chexson.chexsonsaeutils.network.crafting.CraftingAmountRestorePayload::handle);
+        terminalRegistrar.playToClient(git.chexson.chexsonsaeutils.network.terminal.TerminalChunkPayload.TYPE,
+                git.chexson.chexsonsaeutils.network.terminal.TerminalChunkPayload.STREAM_CODEC,
+                git.chexson.chexsonsaeutils.network.terminal.TerminalChunkPayload::handle);
+        terminalRegistrar.playToServer(git.chexson.chexsonsaeutils.network.terminal.TerminalRequestPayload.TYPE,
+                git.chexson.chexsonsaeutils.network.terminal.TerminalRequestPayload.STREAM_CODEC,
+                git.chexson.chexsonsaeutils.network.terminal.TerminalRequestPayload::handle);
+        terminalRegistrar.playToServer(git.chexson.chexsonsaeutils.network.terminal.TerminalInteractionPayload.TYPE,
+                git.chexson.chexsonsaeutils.network.terminal.TerminalInteractionPayload.STREAM_CODEC,
+                git.chexson.chexsonsaeutils.network.terminal.TerminalInteractionPayload::handle);
         event.registrar("1").playToServer(
                 DirectProcessingJeiImportPayload.TYPE,
                 DirectProcessingJeiImportPayload.STREAM_CODEC,

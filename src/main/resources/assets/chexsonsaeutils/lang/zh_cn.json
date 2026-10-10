@@ -360,5 +360,21 @@
   "gui.chexsonsaeutils.matrix.search_mode.output": "输出",
   "gui.chexsonsaeutils.matrix.search_mode.input_output": "输入输出",
   "gui.chexsonsaeutils.ae_direct_processing_machine.import_failed": "配方导入失败，详情见日志。",
-  "gui.chexsonsaeutils.ae_direct_processing_machine.reason.pack_rule_disabled": "整合包规则禁用"
+  "gui.chexsonsaeutils.ae_direct_processing_machine.reason.pack_rule_disabled": "整合包规则禁用",
+  "item.chexsonsaeutils.bigint_crafting_terminal": "大数量合成终端",
+  "gui.chexsonsaeutils.bigint.title": "精确终端",
+  "gui.chexsonsaeutils.bigint.search": "搜索",
+  "gui.chexsonsaeutils.bigint.unavailable": "正在读取库存或网络不可用",
+  "gui.chexsonsaeutils.bigint.partial": "含未确认来源，tooltip 中分开展示",
+  "gui.chexsonsaeutils.bigint.confirmed": "已确认库存：%s",
+  "gui.chexsonsaeutils.bigint.unverified": "AE2 未确认读数：%s",
+  "gui.chexsonsaeutils.bigint.detail_hint": "Ctrl+C 复制完整实际数量",
+  "gui.chexsonsaeutils.bigint.loading": "正在读取精确库存",
+  "gui.chexsonsaeutils.bigint.read_failed": "精确库存读取失败，请查看服务端日志",
+  "gui.chexsonsaeutils.bigint.tooltip_scroll": "滚轮查看完整数量（第 %s–%s 行，共 %s 行）",
+  "gui.chexsonsaeutils.wide_request.requires_cpu": "超过 long 的订单需要启用图规划并连接本模组的并行合成 CPU",
+  "gui.chexsonsaeutils.wide_request.failed": "精确下单失败：%s",
+  "gui.chexsonsaeutils.wide_request.exact_amount": "精确计数（最小单位）：%s",
+  "gui.chexsonsaeutils.wide_request.order_amount": "请求数量（最小单位）：%s",
+  "gui.chexsonsaeutils.wide_request.delivery_amount": "计划交付（最小单位）：%s"
 }

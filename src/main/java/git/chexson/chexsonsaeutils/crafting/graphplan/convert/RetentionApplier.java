@@ -38,6 +38,12 @@ public final class RetentionApplier {
     /** 核对每个环催化物的留种量，返回 null（本阶段不再拒规划、不再改账）。 */
     @Nullable
     public static String apply(GraphPlanningState state, CraftGraph graph, long finalAmount) {
+        return apply(state, graph, PlanAmount.of(finalAmount));
+    }
+
+    /** 超 long 根订单与普通订单使用同一留种投影。 */
+    @Nullable
+    public static String apply(GraphPlanningState state, CraftGraph graph, PlanAmount finalAmount) {
         var verdicts = new StringBuilder();
         Map<AEKey, CompressedRing> retainingRings = graph.retainingRingsByCatalyst();
         // 份数读宽账：留种投影按"发数 × 每发流量"算，截断的发数会把投影算少（假 SHORT）
@@ -142,13 +148,13 @@ public final class RetentionApplier {
         }
 
         static long projectedNetworkAmount(WideCraftCounter crafts, CraftGraph graph,
-                AEKey target, long finalAmount, AEKey key) {
+                AEKey target, PlanAmount finalAmount, AEKey key) {
             // long 快路径：单键流量在 long 域内精确时零分配；溢出回落宽路径。
             // 饱和只在单键流量超 9e18 时触发（实机总量 1e12 级），常态逐位一致。
             // 发数本身超界的样板直接整程走宽路径——截断的发数会把投影算少（假 SHORT）。
             long projected = graph.stock().getOrDefault(key, 0L);
-            boolean wide = false;
-            PlanAmount wideProjected = null;
+            boolean wide = !finalAmount.isFast();
+            PlanAmount wideProjected = wide ? PlanAmount.of(projected) : null;
             for (IPatternDetails details : crafts.keys()) {
                 PlanAmount times = crafts.getAmount(details);
                 if (details == null || times.signum() <= 0L) {
@@ -176,12 +182,12 @@ public final class RetentionApplier {
             }
             if (wide) {
                 if (key.equals(target)) {
-                    wideProjected = wideProjected.subtract(PlanAmount.of(finalAmount));
+                    wideProjected = wideProjected.subtract(finalAmount);
                 }
                 return Math.max(0L, Ae2Amounts.toLong(wideProjected));
             }
             if (key.equals(target)) {
-                projected -= finalAmount;
+                projected -= finalAmount.fastValue();
             }
             return Math.max(0L, projected);
         }

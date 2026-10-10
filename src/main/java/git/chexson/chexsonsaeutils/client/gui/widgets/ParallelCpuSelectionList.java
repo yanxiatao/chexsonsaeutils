@@ -110,7 +110,10 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
 
         var currentJob = cpu.currentJob();
         if (currentJob != null) {
-            tooltipLines.add(ButtonToolTips.CpuStatusCrafting.text(Tooltips.ofAmount(currentJob))
+            tooltipLines.add(ButtonToolTips.CpuStatusCrafting.text(
+                    git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusFormatting.formatAmount(
+                            currentJob.what(), cpu.exactRemaining(), AmountFormat.FULL,
+                            git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusFormatting.currentStyle()))
                     .append(" ")
                     .append(currentJob.what().getDisplayName()));
             tooltipLines.add(ButtonToolTips.CpuStatusCraftedIn.text(
@@ -189,7 +192,9 @@ public class ParallelCpuSelectionList implements ICompositeWidget {
             var currentJob = cpu.currentJob();
             if (currentJob != null) {
                 infoBar.add(Icon.S_CRAFT, 1f, x + 2, y + 9);
-                var craftAmt = currentJob.what().formatAmount(currentJob.amount(), AmountFormat.SLOT);
+                var craftAmt = git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusFormatting.formatAmount(
+                        currentJob.what(), cpu.exactRemaining(), AmountFormat.SLOT,
+                        git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingStatusFormatting.currentStyle());
                 infoBar.add(craftAmt, textColor.toARGB(), 0.666f, x + 14, y + 13);
                 infoBar.add(currentJob.what(), 0.666f, x + 55, y + 9);
 

@@ -75,7 +75,7 @@ public final class MaterialClosureGate {
      * @return null 表示守恒闭合；否则返回违规键描述，调用方 DECLINE。
      */
     public static @Nullable String validate(GraphPlanningState state, CraftGraph graph, long finalAmount) {
-        return validate(state, graph, finalAmount, null, null, null);
+        return validate(state, graph, PlanAmount.of(finalAmount), null, null, null);
     }
 
     /**
@@ -90,12 +90,24 @@ public final class MaterialClosureGate {
      */
     public static @Nullable String validate(GraphPlanningState state, CraftGraph graph, long finalAmount,
             @Nullable Map<AEKey, PlanAmount> shortageSink) {
+        return validate(state, graph, PlanAmount.of(finalAmount), null, null, shortageSink);
+    }
+
+    /** 宽域根需求参与同一份守恒对账，不允许先饱和再判缺口。 */
+    public static @Nullable String validate(GraphPlanningState state, CraftGraph graph, PlanAmount finalAmount,
+            @Nullable Map<AEKey, PlanAmount> shortageSink) {
         return validate(state, graph, finalAmount, null, null, shortageSink);
     }
 
         // 理由与台账出处见 MATERIAL_CLOSURE_RULES.md#buildmaterialplan-封套另记一本与两本账 —— 台账 196/219
     public static MaterialPlanBill buildMaterialPlan(
             GraphPlanningState state, CraftGraph graph, long finalAmount) {
+        return buildMaterialPlan(state, graph, PlanAmount.of(finalAmount));
+    }
+
+    /** 生成宽域根订单的完整配给账。 */
+    public static MaterialPlanBill buildMaterialPlan(
+            GraphPlanningState state, CraftGraph graph, PlanAmount finalAmount) {
         var plan = new java.util.IdentityHashMap<IPatternDetails, WideKeyCounter>();
         // 封套账本（按样板 → 键 → 量，与下发的表同一形状）：只累计 billReachKeySlot 补记的那
         // 几笔（许可上界，不是排水实记）。表照旧把它们写进 materialPlan（下发内容逐字不变），
@@ -127,7 +139,7 @@ public final class MaterialClosureGate {
             Map<IPatternDetails, WideKeyCounter> envelopes) {
     }
 
-    private static @Nullable String validate(GraphPlanningState state, CraftGraph graph, long finalAmount,
+    private static @Nullable String validate(GraphPlanningState state, CraftGraph graph, PlanAmount finalAmount,
             @Nullable java.util.IdentityHashMap<IPatternDetails, WideKeyCounter> materialPlan,
             @Nullable Map<IPatternDetails, WideKeyCounter> envelopes,
             @Nullable Map<AEKey, PlanAmount> shortageSink) {

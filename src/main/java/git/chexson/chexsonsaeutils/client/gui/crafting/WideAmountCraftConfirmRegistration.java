@@ -12,7 +12,7 @@ import org.slf4j.Logger;
  *
  * <p>必须在 {@code FMLClientSetupEvent} 的 {@code enqueueWork} 里跑（此时
  * {@code RegisterMenuScreensEvent} 已把 AE2 的注册应用到 {@code MenuScreens} 表），
- * 直接覆盖同键。仅在合成续投功能开启时装载——关闭时保持 AE2 原生屏，足迹最小。
+ * 数量输入始终覆盖同键；原生确认页的宽域显示仅在合成续投功能开启时装载。
  */
 public final class WideAmountCraftConfirmRegistration {
 
@@ -22,6 +22,12 @@ public final class WideAmountCraftConfirmRegistration {
     }
 
     public static void register() {
+        MenuScreens.ScreenConstructor<appeng.menu.me.crafting.CraftAmountMenu, WideCraftAmountScreen> amountConstructor = WideCraftAmountScreen::new;
+        MenuScreensAccessor.chexsonsaeutils$getScreens().put(appeng.menu.me.crafting.CraftAmountMenu.TYPE, amountConstructor);
+        git.chexson.chexsonsaeutils.network.crafting.CraftingAmountRestorePayload.bind(value -> {
+            if (net.minecraft.client.Minecraft.getInstance().screen instanceof WideCraftAmountScreen screen)
+                screen.restore(value.amount(), value.missing());
+        });
         if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(
                 ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled")) {
             return;

@@ -14,7 +14,6 @@ import git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer;
 import git.chexson.chexsonsaeutils.crafting.status.WideAmountConfirmLines;
 import git.chexson.chexsonsaeutils.mixin.ae2.client.gui.AbstractTableRendererAccessor;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -58,24 +57,23 @@ public abstract class CraftConfirmTableRendererEnhancedStatusMixin {
             return;
         }
 
-        List<Long> patternTimes = enhancedEntry.chexsonsaeutils$patternTimes();
+        List<java.math.BigInteger> patternTimes = enhancedEntry.chexsonsaeutils$patternTimes();
         if (patternTimes.isEmpty()) {
             return;
         }
 
-        MutableComponent text = Component.empty();
-        List<Long> displayedTimes = CraftingStatusEnhancer.sortedPatternTimes(patternTimes, maxEntries);
+        StringBuilder text = new StringBuilder();
+        List<java.math.BigInteger> displayedTimes = CraftingStatusEnhancer.displayedPatternTimes(patternTimes, maxEntries);
         for (int index = 0; index < displayedTimes.size(); index++) {
             if (index > 0) {
                 text.append(", ");
             }
-            text.append(Component.literal(EnhancedCraftingStatusFormatting.formatAmount(displayedTimes.get(index),
-                    format, style)));
+            text.append(EnhancedCraftingStatusFormatting.formatAmount(displayedTimes.get(index), format, style));
         }
         if (patternTimes.size() > displayedTimes.size()) {
-            text.append("...");
+            text.append(" … (+").append(patternTimes.size() - displayedTimes.size()).append(')');
         }
-        lines.add(Component.translatable("gui.chexsonsaeutils.crafting_status.pattern_times", text));
+        lines.add(Component.translatable("gui.chexsonsaeutils.crafting_status.pattern_times", text.toString()));
     }
 
     /**

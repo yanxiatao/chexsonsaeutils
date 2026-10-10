@@ -13,7 +13,7 @@ import appeng.api.stacks.AEKey;
  * 的 {@code visibleAmount}）。
  * 那是 AE2 接口的既有事实，动它等于改所有 mod 看到的网络读数，影响面太大，本 mod 不动。
  *
- * <p>真正需要 "> long 那一截" 的只有规划侧的供给判据，所以真值由本接口<b>旁路</b>供给：
+ * <p>规划侧供给判据与终端精确显示需要 "> long 那一截"，所以真值由本接口<b>旁路</b>供给：
  * 纯读、零副作用，不改写入/提取/网络聚合的任何口径，也不改变网络对其他 mod 的读数。
  * 实现方必须保证：{@link #reportedAmount(AEKey)} 就是它对网络报出的那份 {@code long} 读数，
  * 调用方据此把「网络读数里属于本供给源的一截」换成 {@link #exactAmount(AEKey)} 真值。

@@ -2,7 +2,7 @@
 
 [English README](README_EN.md)
 
-`Chexson's AE Utils` 是一个面向 Applied Energistics 2 的实用扩展模组，当前目标平台为 `Minecraft 1.21.1 + NeoForge 21.1.222 + AE2 19.2.17 + Java 21`。它补充了多槽发信器、处理样板替换规则、缺料时继续合成，以及 AEA 迁移的染色样板、增强合成状态、Building Gadgets 2 集成、FTB Ultimine 记忆卡兼容能力。
+`Chexson's AE Utils` 是一个面向 Applied Energistics 2 的实用扩展模组，当前目标平台为 `Minecraft 1.21.1 + NeoForge 21.1.238 + AE2 19.2.17 + Java 21`。它补充了多槽发信器、处理样板替换规则、缺料时继续合成，以及 AEA 迁移的染色样板、增强合成状态、Building Gadgets 2 集成、FTB Ultimine 记忆卡兼容能力。
 
 本仓库是迁移到 `Minecraft 1.21.1 + NeoForge` 的分支，不是旧版 `1.20.1 + Forge` 分支的直接发布说明。发布前请以实际构建产物、变更日志和测试结果为准。
 
@@ -13,7 +13,7 @@
 ## 版本与依赖
 
 - Minecraft: `1.21.1`
-- NeoForge: `21.1.222` 或更高的兼容 `21.1.x` 版本
+- NeoForge: `21.1.238` 或更高的兼容 `21.1.x` 版本
 - Applied Energistics 2: `19.2.17` 或更高的兼容 `19.2.x` 版本
 - Java: `21`
 - Mod ID: `chexsonsaeutils`
@@ -156,7 +156,7 @@ genericDiscoveryEnabled = true
 
 ## 安装说明
 
-1. 安装 Minecraft `1.21.1`、NeoForge `21.1.222+` 与 Java `21`。
+1. 安装 Minecraft `1.21.1`、NeoForge `21.1.238+` 与 Java `21`。
 2. 安装 Applied Energistics 2 `19.2.17+`。
 3. 将本模组 jar 放入 `mods` 目录。
 4. 首次启动后检查 `config/chexsonsaeutils-common.toml`。

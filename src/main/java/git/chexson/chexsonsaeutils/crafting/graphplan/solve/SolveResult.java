@@ -22,10 +22,21 @@ public record SolveResult(
         long finalAmount,
         boolean simulation,
         @Nullable String declineReason,
-        @Nullable Map<AEKey, PlanAmount> shortage) {
+        @Nullable Map<AEKey, PlanAmount> shortage,
+        PlanAmount exactFinalAmount) {
+
+    public SolveResult(GraphPlanningState state, long finalAmount, boolean simulation, String declineReason,
+            Map<AEKey, PlanAmount> shortage) {
+        this(state, finalAmount, simulation, declineReason, shortage, PlanAmount.of(finalAmount));
+    }
 
     public static SolveResult success(GraphPlanningState state, long finalAmount, boolean simulation) {
         return new SolveResult(state, finalAmount, simulation, null, null);
+    }
+    /** 根请求使用宽域真值；long 分量仅供 AE2 的显示接口使用。 */
+    public static SolveResult success(GraphPlanningState state, PlanAmount finalAmount, boolean simulation) {
+        return new SolveResult(state, git.chexson.chexsonsaeutils.bigint.Ae2Amounts.toLong(finalAmount),
+                simulation, null, null, finalAmount);
     }
 
     public static SolveResult declined(String reason) {
@@ -49,7 +60,7 @@ public record SolveResult(
     }
 
     public SolveResult withSimulation(boolean value) {
-        return new SolveResult(state, finalAmount, value, declineReason, shortage);
+        return new SolveResult(state, finalAmount, value, declineReason, shortage, exactFinalAmount);
     }
 
     public boolean hasDeclined() {

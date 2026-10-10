@@ -1,0 +1,10 @@
+// 真实化学类型注册与任意 AEKey 编解码验证，复用项目现有版本坐标。
+gradle.afterProject { project ->
+    if (project != project.rootProject) return
+    project.dependencies.add('testImplementation', "mekanism:Mekanism:${project.property('mekanism_version')}")
+    project.dependencies.add('testImplementation', "curse.maven:applied-mekanistics-574300:${project.property('appmek_file_id')}")
+    project.sourceSets.test.java.srcDir(project.file('tools/integration-tests/terminalstorage/chemical-src'))
+    project.tasks.withType(Test).configureEach {
+        if (project.hasProperty('terminalWorldRoot')) systemProperty 'terminal.worldRoot', project.file(project.property('terminalWorldRoot')).absolutePath
+    }
+}

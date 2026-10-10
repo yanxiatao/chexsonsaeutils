@@ -133,6 +133,8 @@ public abstract class CraftingCPUMenuParallelCpuMixin {
             boolean force
     ) {
         CraftingStatus status = parallelCpu.createMenuStatus();
+        if (net.neoforged.fml.ModList.get().isLoaded("neoecoae"))
+            git.chexson.chexsonsaeutils.integration.craftingdisplay.neoecoae.NeoEcoCraftingDisplay.send(menu, parallelCpu, force);
         long signature = chexsonsaeutils$statusSignature(status);
         if (!force && signature == this.chexsonsaeutils$lastParallelStatusSignature) {
             return;

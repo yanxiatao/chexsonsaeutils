@@ -6,6 +6,7 @@ import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.crafting.graphplan.convert.RetentionApplier;
 import git.chexson.chexsonsaeutils.crafting.graphplan.diag.GraphDiagnostics;
@@ -167,7 +168,7 @@ public final class GraphPlanningSession {
      * 见 {@code graphplan/GraphPlanningEquivalenceTest} 与
      * {@code MaterialClosureGateSelfProducedReachDemandTest} 的字节水位臂。
      */
-    private SolveResult solveLedger(CraftGraph graph, long requestedAmount, boolean enforceBudget) {
+    private SolveResult solveLedger(CraftGraph graph, PlanAmount requestedAmount, boolean enforceBudget) {
         boolean lexicographic = ChexsonsaeutilsCompatibilityConfig.featureEnabled(
                 ChexsonsaeutilsCompatibilityConfig.GRAPH_PLANNING_LEXICOGRAPHIC,
                 "graphPlanningLexicographic");
@@ -195,6 +196,11 @@ public final class GraphPlanningSession {
      * 读数漂移一次就是凭空多料。
      */
     public PlanningAttemptResult solve(long requestedAmount, BudgetPolicy policy) {
+        return planOnce(PlanAmount.of(requestedAmount), policy);
+    }
+
+    /** 精确根请求入口，复用编译、对账、留种与转换，不投影为 long。 */
+    public PlanningAttemptResult solve(PlanAmount requestedAmount, BudgetPolicy policy) {
         return planOnce(requestedAmount, policy);
     }
 
@@ -207,9 +213,10 @@ public final class GraphPlanningSession {
      * <p>{@code policy} 只决定<b>计不计预算</b>（会话层策略），不再决定用哪个求解器：
      * 聚合与独立残量搜索那两档都已摘，环场景的免预算再解因此留在会话层。
      */
-    private PlanningAttemptResult planOnce(long requestedAmount, BudgetPolicy policy) {
+    private PlanningAttemptResult planOnce(PlanAmount requestedAmount, BudgetPolicy policy) {
         if (this.capture != null) {
-            this.capture.writeAsync(requestedAmount);
+            if (requestedAmount.isFast()) this.capture.writeAsync(requestedAmount.fastValue());
+            else LOGGER.warn("当前回放文件仅支持 long 根请求，跳过捕获宽域订单 {}", requestedAmount);
         }
         boolean enforceBudget = policy == BudgetPolicy.ENFORCED;
         CraftGraph planGraph = this.graph;
@@ -251,7 +258,7 @@ public final class GraphPlanningSession {
             }
             String conversionDecline = GraphPlanPostProcessor.conversionDecline(result);
             if (conversionDecline != null) {
-                GraphDiagnostics.log("graph.negativeExit decline amount=%d", requestedAmount);
+                GraphDiagnostics.log("graph.negativeExit decline amount=%s", requestedAmount);
                 return PlanningAttemptResult.declined(conversionDecline);
             }
             ICraftingPlan plan = GraphPlanPostProcessor.convert(result, planGraph);
@@ -283,7 +290,7 @@ public final class GraphPlanningSession {
     }
 
     /** 规划链逐段毛账：同一口径在每段出口量一次，缺口在哪段现形就算在谁头上。 */
-    private void logStageGross(String stage, BudgetPolicy policy, long requestedAmount,
+    private void logStageGross(String stage, BudgetPolicy policy, PlanAmount requestedAmount,
             CraftGraph planGraph, @Nullable GraphPlanningState state) {
         if (state == null) {
             return;

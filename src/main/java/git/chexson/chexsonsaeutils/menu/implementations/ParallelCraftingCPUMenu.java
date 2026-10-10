@@ -36,11 +36,22 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
             .thenComparingInt(CraftingCpuListEntry::serial);
 
     public static final MenuType<ParallelCraftingCPUMenu> TYPE = MenuTypeBuilder
-            .create(ParallelCraftingCPUMenu::new, AE2ParallelCpuToolBlockEntity.class)
+            .create(ParallelCraftingCPUMenu::create, AE2ParallelCpuToolBlockEntity.class)
             .withMenuTitle(ignored -> Component.translatable("block.chexsonsaeutils.ae2_parallel_cpu_tool"))
             .buildUnregistered(Objects.requireNonNull(
                     ResourceLocation.tryParse(ModIds.MODID + ":ae2_parallel_cpu_tool_cpu")
             ));
+
+    /** 装配层选择可选显示宿主，基础菜单不加载第三方接口。 */
+    public interface Factory {
+        /** 创建同一菜单类型的实例；host 保留服务端 CPU 选择和权限边界。 */
+        ParallelCraftingCPUMenu create(int id, Inventory inventory, AE2ParallelCpuToolBlockEntity host);
+    }
+    private static Factory factory = ParallelCraftingCPUMenu::new;
+    private static ParallelCraftingCPUMenu create(int id, Inventory inventory, AE2ParallelCpuToolBlockEntity host) {
+        return factory.create(id, inventory, host);
+    }
+    public static void bindFactory(Factory value) { factory = Objects.requireNonNull(value); }
 
     private final WeakHashMap<ICraftingCPU, Integer> cpuSerialMap = new WeakHashMap<>();
     private int nextCpuSerial = 1;
@@ -189,6 +200,7 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
                     cpu.getName(),
                     cpu.getSelectionMode(),
                     status != null ? status.crafting() : null,
+                    cpu.exactOrderRemaining(),
                     progress,
                     status != null ? status.elapsedTimeNanos() : 0L
             ));
@@ -234,6 +246,7 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
             @Nullable Component name,
             CpuSelectionMode mode,
             @Nullable GenericStack currentJob,
+            java.math.BigInteger exactRemaining,
             float progress,
             long elapsedTimeNanos
     ) {
@@ -245,6 +258,7 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
                     data.readBoolean() ? ComponentSerialization.TRUSTED_STREAM_CODEC.decode(data) : null,
                     data.readEnum(CpuSelectionMode.class),
                     GenericStack.readBuffer(data),
+                    new java.math.BigInteger(data.readByteArray(4096)),
                     data.readFloat(),
                     data.readVarLong());
         }
@@ -259,6 +273,7 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
             }
             data.writeEnum(mode);
             GenericStack.writeBuffer(currentJob, data);
+            data.writeByteArray(exactRemaining.toByteArray());
             data.writeFloat(progress);
             data.writeVarLong(elapsedTimeNanos);
         }

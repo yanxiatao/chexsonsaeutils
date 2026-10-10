@@ -79,6 +79,48 @@ public final class LinearPlanner {
     private LinearPlanner() {
     }
 
+    /** 宽域根请求沿用同一站点、材料账和守恒闸门；窄量保持原有搜索路径。 */
+    public static SolveResult solve(CraftGraph graph, CalculationStrategy strategy, PlanAmount amount,
+            boolean lexicographicRoutes, @Nullable GraphPlanningBudget budget) {
+        if (amount.isFast()) return solve(graph, strategy, amount.fastValue(), lexicographicRoutes, budget);
+        if (graph.hasDeclined()) return SolveResult.declined(graph.declineReason());
+        if (amount.signum() <= 0 || !WideMath.wideEnabled()) return SolveResult.declined("wide request disabled or non-positive");
+        var sites = new SiteTree(graph, lexicographicRoutes, budget, new CapacityUpperBound(graph));
+        try {
+            var full = sites.attempt(false, amount);
+            if (full != null) return finishWide(graph, full, amount, false);
+            if (strategy == CalculationStrategy.CRAFT_LESS) {
+                var success = PlanAmount.ZERO;
+                GraphPlanningState best = null;
+                for (var increment = java.math.BigInteger.ONE.shiftLeft(amount.exactValue().bitLength() - 1);
+                        increment.signum() > 0; increment = increment.shiftRight(1)) {
+                    var probe = success.add(PlanAmount.of(increment));
+                    if (probe.compareTo(amount) >= 0) continue;
+                    var candidate = sites.attempt(false, probe);
+                    if (candidate != null) { success = probe; best = candidate; }
+                }
+                if (best != null) return finishWide(graph, best, success, false);
+            }
+            return finishWide(graph, sites.attempt(true, amount), amount, true);
+        } catch (PlanningOverflowException failure) {
+            return SolveResult.declined(failure.getMessage());
+        } catch (RecursionTooDeepException failure) {
+            return SolveResult.declined("planning recursion deeper than " + MAX_DEPTH);
+        }
+    }
+
+    private static SolveResult finishWide(CraftGraph graph, GraphPlanningState state, PlanAmount amount,
+            boolean simulation) {
+        if (state == null) return SolveResult.declined("wide request produced no ledger");
+        var shortage = new LinkedHashMap<AEKey, PlanAmount>();
+        String violation = ChexsonsaeutilsCompatibilityConfig.graphPlanningClosureGateEnabled()
+                ? MaterialClosureGate.validate(state, graph, amount, shortage) : null;
+        if (violation != null) return new SolveResult(state,
+                git.chexson.chexsonsaeutils.bigint.Ae2Amounts.toLong(amount), true,
+                violation, Map.copyOf(shortage), amount);
+        return SolveResult.success(state, amount, simulation);
+    }
+
     public static SolveResult solve(CraftGraph graph, CalculationStrategy strategy, long requestedAmount) {
         return solve(graph, strategy, requestedAmount, false, null);
     }
@@ -431,6 +473,14 @@ public final class LinearPlanner {
 
         @Nullable
         private GraphPlanningState attempt(boolean simulate, long amount) {
+            return attempt(simulate, PlanAmount.of(amount));
+        }
+
+        @Nullable
+        private boolean wideRootRequest;
+
+        private GraphPlanningState attempt(boolean simulate, PlanAmount amount) {
+            this.wideRootRequest = !amount.isFast();
             this.state = new GraphPlanningState(root.graph.stock(), root.graph.classVariants(),
                     this.journalArena, this.keyIndex,
                     this.denseKeyView == null ? null : this.denseKeyView.classMemberIdsByKeyId(),
@@ -521,8 +571,8 @@ public final class LinearPlanner {
         }
 
         /**
-         * 仅合并整模板与产出对齐的确定单输入链。
-         * 每层模板量都是每发产出的整数倍，生产无零头；没有副产、共享输入或环的跨轮补料。
+         * 仅合并无环、唯一生产路线、无副产或退料的确定链。
+         * 宽根的余量写入原库存账；窄根保持原有分轮及共享输入竞争语义。
          * 只检查结构，不建立槽位节点，库存满足的后续节点仍不收节点费。
          */
         private boolean canBatchWide(Site site) {
@@ -532,6 +582,10 @@ public final class LinearPlanner {
             if (site.templates != null || site.graph.cycleKind() != CraftGraph.CycleKind.NONE) {
                 site.wideBatchable = false;
                 return false;
+            }
+            if (site == root && wideRootRequest) {
+                site.wideBatchable = batchableRootRoutes(site.what, site.amount, site.routes, 0);
+                return site.wideBatchable;
             }
             var routes = site.routes;
             AEKey key = site.what;
@@ -565,6 +619,28 @@ public final class LinearPlanner {
             return false;
         }
 
+        /** 仅宽根请求允许整体向上取整；子站点保留既有整模板与单输入批量约束。 */
+        private boolean batchableRootRoutes(AEKey key, long template, List<RouteOrdering.Route> routes, int depth) {
+            checkBudget();
+            if (depth >= MAX_DEPTH) return false;
+            if (routes.isEmpty() || root.graph.emittable().contains(key)) return true;
+            if (routes.size() != 1 || !(routes.getFirst() instanceof RouteOrdering.Route.Pattern route)) return false;
+            var pattern = route.pattern();
+            if (pattern.allOutputs().size() != 1 || !pattern.allOutputs().getFirst().what().equals(key)
+                    || pattern.outputPerCraft() <= 0) return false;
+            if (depth > 0 && (pattern.inputs().size() != 1 || template % pattern.outputPerCraft() != 0)) return false;
+            var bundles = slotBundlesFor(pattern);
+            for (int index = 0; index < pattern.inputs().size(); index++) {
+                var input = pattern.inputs().get(index);
+                if (input.mode() != GraphInput.Mode.NORMAL || input.extractCandidates() != null
+                        || input.remainderKey() != null || input.selfBlocked()
+                        || input.amountPerCraft() <= 0 || input.multiplier() <= 0
+                        || !batchableRootRoutes(input.key(), input.amountPerCraft(), bundles[index].routes(), depth + 1))
+                    return false;
+            }
+            return true;
+        }
+
         /** 已证明无跨轮竞争的宽需求一次结算；仍使用原有宽账和回滚日志。 */
         private void requestLinearWide(Site site, PlanAmount requestedAmount) {
             if (++depth > MAX_DEPTH) {
@@ -585,12 +661,15 @@ public final class LinearPlanner {
                 var route = (RouteOrdering.Route.Pattern) site.routes.getFirst();
                 var pattern = route.pattern();
                 var demand = WideMath.mul(site.amount, remaining);
-                var times = demand.divide(PlanAmount.of(pattern.outputPerCraft()));
+                var times = demand.ceilDiv(PlanAmount.of(pattern.outputPerCraft()));
                 int mark = state.journal();
                 try {
-                    var input = pattern.inputs().getFirst();
-                    request(site.slotsFor(route)[0], WideMath.mul(input.multiplier(), times));
-                    state.insertByIdWide(site.what, site.keyId(), demand);
+                    var slots = site.slotsFor(route);
+                    for (int index = 0; index < pattern.inputs().size(); index++) {
+                        var input = pattern.inputs().get(index);
+                        request(slots[index], WideMath.mul(input.multiplier(), times));
+                    }
+                    state.insertByIdWide(site.what, site.keyId(), WideMath.mul(pattern.outputPerCraft(), times));
                     state.addCrafting(pattern.source(), times);
                     state.addBytes(times.exactValue().doubleValue());
                 } catch (BranchFailure failure) {

@@ -24,10 +24,9 @@ import java.util.List;
  * 还原出块起点与块长，不需要解析 MC 的 chat contents（那套类名在小版本间改过名）。
  * 形状对不上就一行都不动，宁缺勿误伤。
  *
- * <p><b>口径边界（诚实交代）</b>：AE2 的 FromStorage 行是 {@code used + missing + emitted}
- * 之和、ToCraft 行是 {@code emitted + Σ(样板产出×发数)} 之和，而快照按类各记各的账。
- * 因此被替换的那一行显示的是<b>该类自己的宽域真值</b>；同一键若还有能塞 long 的别类量，
- * 那一行不再包含它们（原来那一行在溢出时本来就是饱和假数）。没命中的行连对象引用都不换。
+ * <p>显示快照由 {@link PlanSummaryAmounts} 汇总：FromStorage 为 {@code used + emitted}，
+ * Missing 独立，ToCraft 为 {@code emitted + Σ(样板产出×精确发数)}。
+ * 快照复用三类账的编码槽，但值已经是完整行合计；没命中的行连对象引用都不换。
  *
  * <p>选了指数计数法（{@link AmountNumberStyle#SCIENTIFIC}）时，紧凑列里<b>没溢出的行也重新装配</b>：
  * 用的仍是 AE2 自己那三个 {@code long} 读数，只换写法，同一列不出现两种计数方式。

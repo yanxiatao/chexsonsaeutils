@@ -70,16 +70,16 @@ public final class CraftingStatusEnhancer {
     }
 
     public static CraftingPlanSummary attachPatternTimes(CraftingPlanSummary summary, ICraftingPlan plan) {
-        if (summary == null || plan == null || plan.patternTimes().isEmpty()) {
+        if (summary == null || plan == null) {
             return summary;
         }
 
-        Map<AEKey, List<Long>> timesByOutput = collectPatternTimes(plan);
+        Map<AEKey, List<java.math.BigInteger>> timesByOutput = collectPatternTimes(plan);
         for (CraftingPlanSummaryEntry entry : summary.getEntries()) {
             if (!(entry instanceof EnhancedCraftingPlanSummaryEntry enhancedEntry)) {
                 continue;
             }
-            List<Long> patternTimes = timesByOutput.get(entry.getWhat());
+            List<java.math.BigInteger> patternTimes = timesByOutput.get(entry.getWhat());
             if (patternTimes == null || patternTimes.isEmpty()) {
                 enhancedEntry.chexsonsaeutils$setPatternTimes(List.of());
                 continue;
@@ -89,22 +89,29 @@ public final class CraftingStatusEnhancer {
         return summary;
     }
 
-    public static List<Long> sortedPatternTimes(List<Long> patternTimes, int limit) {
+    /** 在同步写入时排序一次，渲染时只取前几项，避免每帧全量排序。 */
+    public static List<java.math.BigInteger> normalizePatternTimes(List<java.math.BigInteger> patternTimes) {
+        if (patternTimes == null) return List.of();
+        if (patternTimes.size() > 100000) throw new IllegalArgumentException("样板次数条目数量无效");
+        for (var times : patternTimes)
+            if (times == null || times.signum() < 0 || times.toByteArray().length > 4096)
+                throw new IllegalArgumentException("样板次数无效");
+        return patternTimes.stream().sorted(Comparator.reverseOrder()).toList();
+    }
+
+    public static List<java.math.BigInteger> displayedPatternTimes(List<java.math.BigInteger> patternTimes, int limit) {
         if (patternTimes == null || patternTimes.isEmpty() || limit <= 0) {
             return List.of();
         }
 
-        return patternTimes.stream()
-                .sorted(Comparator.reverseOrder())
-                .limit(limit)
-                .toList();
+        return patternTimes.subList(0, Math.min(limit, patternTimes.size()));
     }
 
-    private static Map<AEKey, List<Long>> collectPatternTimes(ICraftingPlan plan) {
-        Map<AEKey, List<Long>> timesByOutput = new HashMap<>();
-        for (var entry : plan.patternTimes().entrySet()) {
-            long times = entry.getValue();
-            if (times <= 0L) {
+    private static Map<AEKey, List<java.math.BigInteger>> collectPatternTimes(ICraftingPlan plan) {
+        Map<AEKey, List<java.math.BigInteger>> timesByOutput = new HashMap<>();
+        for (var entry : git.chexson.chexsonsaeutils.crafting.plan.PatternRosterReadout.universeAndTimes(plan).entrySet()) {
+            java.math.BigInteger times = entry.getValue().exactValue();
+            if (times.signum() <= 0) {
                 continue;
             }
             IPatternDetails pattern = entry.getKey();

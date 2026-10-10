@@ -14,8 +14,8 @@ import org.jetbrains.annotations.Nullable;
  * 自己的分量带出去，就不需要"按对象身份建表 + 上限淘汰 + 陈旧清理"那一整套——那套东西的每个
  * 分支都只是为了让旁路表和计划保持同一份账而存在，账在对象上时全部是冗余。
  *
- * <p><b>纯内存、纯显示</b>：本载体不参与任何规划/提交判定，也绝不进 NBT 与存档
- * （计划侧的读写方法不碰它）。
+ * <p>计划载体本身是内存对象；宽域发数、供给与精确根请求由执行侧消费，
+ * 根交付量和剩余量由执行中的作业持久化，不能从饱和的 long 值恢复。
  *
  * <p>实现者两类：{@link RecursiveCraftingPlan}（递归计划，账是它的第 7 个分量）、
  * {@link WideAmountCraftingPlan}（非环图计划的透明载体，只在真有溢出时套）。
@@ -23,6 +23,15 @@ import org.jetbrains.annotations.Nullable;
  * 界面原样显示 AE2 的 long。
  */
 public interface WideAmountPlanCarrier {
+
+    /** 超 long 根订单的精确交付量；null 表示原计划的 finalOutput long 本身就是真值。 */
+    default @Nullable git.chexson.chexsonsaeutils.bigint.PlanAmount chexsonsaeutils$exactFinalOutput() { return null; }
+
+    /** 按既有解壳规则读取根订单真值，普通 AE2 计划直接使用它的有限 long 数量。 */
+    static git.chexson.chexsonsaeutils.bigint.PlanAmount resolveFinalOutput(ICraftingPlan plan) {
+        var amount = readThrough(plan, WideAmountPlanCarrier::chexsonsaeutils$exactFinalOutput);
+        return amount != null ? amount : git.chexson.chexsonsaeutils.bigint.PlanAmount.of(plan.finalOutput().amount());
+    }
 
     /** 本计划的宽域溢出账（只含绝对值超过 {@code long} 的键）；无溢出时为空快照，永不为 {@code null}。 */
     WideLedgerSnapshot chexsonsaeutils$wideLedgers();

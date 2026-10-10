@@ -502,7 +502,7 @@ final class ParallelRecursiveFinalOutputDeliveryTest {
         return new ParallelCraftingCpuCluster(owner, factory);
     }
 
-    private static ParallelCraftingCpuCluster offlineCluster(MEStorage network) {
+    static ParallelCraftingCpuCluster offlineCluster(MEStorage network) {
         var owner = new TestOwner();
         ((TestManagedNode) owner.getMainNode()).grid = new TestGrid(network);
         return new ParallelCraftingCpuCluster(owner, new ProviderBatchCapabilitiesFactoryImpl());

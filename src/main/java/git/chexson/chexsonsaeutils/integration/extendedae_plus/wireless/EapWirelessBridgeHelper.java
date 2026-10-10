@@ -1,7 +1,7 @@
 package git.chexson.chexsonsaeutils.integration.extendedae_plus.wireless;
 
 import appeng.helpers.patternprovider.PatternProviderLogic;
-import com.extendedae_plus.bridge.InterfaceWirelessLinkBridge;
+import com.extendedae_plus.api.bridge.InterfaceWirelessLinkBridge;
 
 /**
  * EAP 无线链接桥接辅助类（类加载隔离）。
@@ -30,11 +30,8 @@ public final class EapWirelessBridgeHelper {
     /**
      * 延迟初始化（服务端，EAP 加载时由调用方门控保证）。
      * <p>
-     * 防御：EAP 版本漂移容错——ModList.isLoaded 为 true 但接口类可能不存在于该
-     * 版本（用户装的实际版本 1.4.3 是 {@code com.extendedae_plus.bridge} 包，
-     * reference-sources 版本是 {@code com.extendedae_plus.api.bridge} 包，
-     * 均以此处引用的版本为准）；捕获 NoClassDefFoundError 后记录错误，停止本次无线更新
-     * 不崩溃（跨 mod 集成容错，AGENTS.md 例外）。
+     * 当前编译及运行基线为 Plus 1.6.3，桥接口位于 api.bridge。
+     * 缺失可选依赖时保持类加载隔离；运行时链接错误记录日志。
      *
      * @param logic 样板供应逻辑实例（EAP mixin 已把接口实现到 PatternProviderLogic）
      */

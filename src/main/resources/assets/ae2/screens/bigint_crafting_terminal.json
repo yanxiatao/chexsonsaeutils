@@ -1,0 +1,10 @@
+{
+  "$schema": "schema.json",
+  "includes": ["terminals/crafting_terminal.json"],
+  "text": {
+    "dialog_title": {
+      "text": {"translate": "gui.chexsonsaeutils.bigint.title"},
+      "position": {"left": 8, "top": 6}
+    }
+  }
+}

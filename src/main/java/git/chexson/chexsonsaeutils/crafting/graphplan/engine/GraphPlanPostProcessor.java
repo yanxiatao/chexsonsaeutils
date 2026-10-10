@@ -142,6 +142,10 @@ public final class GraphPlanPostProcessor {
     public static String applyRetention(SolveResult result, CraftGraph graph, long requestedAmount) {
         return RetentionApplier.apply(result.state(), graph, requestedAmount);
     }
+    /** 留种投影使用宽域根交付量。 */
+    public static String applyRetention(SolveResult result, CraftGraph graph, PlanAmount requestedAmount) {
+        return RetentionApplier.apply(result.state(), graph, requestedAmount);
+    }
 
     @Nullable
     public static String conversionDecline(SolveResult result) {
@@ -216,7 +220,7 @@ public final class GraphPlanPostProcessor {
         var base = new CraftingPlan(new GenericStack(graph.target(), declined.finalAmount()),
                 0L, true, false, new KeyCounter(), new KeyCounter(), missing, Map.of());
         return new WideAmountCraftingPlan(base, WideLedgerSnapshot.capture(missingWide, null, null),
-                null, Set.of());
+                null, Set.of(), declined.exactFinalAmount().isFast() ? null : declined.exactFinalAmount());
     }
 
     /**
