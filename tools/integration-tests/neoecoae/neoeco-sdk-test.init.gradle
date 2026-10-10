@@ -4,15 +4,17 @@ gradle.afterProject { project ->
         return
     }
     def integrationJars = [
-        project.file('reference-sources/neoecoae-21.2.0-beta4.jar'),
-        project.file('reference-sources/ldlib2-neoforge-1.21.1-2.2.8-all.jar')
+        project.file("reference-sources/neoecoae-${project.neoecoae_version}.jar"),
+        project.file('reference-sources/ldlib2-neoforge-1.21.1-2.2.40-all.jar')
     ]
     integrationJars.each { jar ->
         if (!jar.isFile()) {
             throw new GradleException("真实 NeoEco 验证所需模组不存在：${jar}")
         }
     }
+    project.ext.neoecoSdk = true
     project.dependencies.add('testImplementation', project.files(integrationJars))
+    project.dependencies.add('testCompileOnly', project.files('libs/extendedae-1.21.1.jar'))
     project.sourceSets.test.java.srcDir(project.file('tools/integration-tests/neoecoae/src'))
     project.tasks.register('reportNeoEcoTestClasspath') {
         doLast {

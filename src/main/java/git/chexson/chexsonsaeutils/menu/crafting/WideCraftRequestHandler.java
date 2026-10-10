@@ -28,16 +28,14 @@ public final class WideCraftRequestHandler {
         try {
             compatibility.finalTotal(menu, request.finalTotal());
             var amount = request.amount();
-            if (request.missing() && !request.finalTotal()) {
+            if (request.missing() || request.finalTotal()) {
                 amount = missing(menu, server, amount);
                 if (amount.signum() == 0) { menu.getHost().returnToMainMenu(player, menu); return; }
             }
-            if (compatibility.submit(menu, amount, false, request.autoStart())) return;
-            if (request.finalTotal()) {
-                amount = missing(menu, server, amount);
-                if (amount.signum() == 0) { menu.getHost().returnToMainMenu(player, menu); return; }
-            }
-            if (amount.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) <= 0) {
+            // 最终总量已换算为净新增，不再进入第三方会重新解释数量模式的确认入口。
+            // 自有确认菜单仍保留原输入及模式，返回数量页时可以重新按当时库存换算。
+            if (!request.finalTotal() && compatibility.submit(menu, amount, false, request.autoStart())) return;
+            if (!request.finalTotal() && amount.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) <= 0) {
                 menu.confirm(amount.intValueExact(), false, request.autoStart());
                 return;
             }
@@ -60,6 +58,6 @@ public final class WideCraftRequestHandler {
         var snapshot = TerminalInventoryAccess.reader().read(grid, player.server);
         if (snapshot.unverified().containsKey(key)) throw new IllegalStateException("目标库存读数未确认，不能计算最终总数");
         var stock = snapshot.amounts().getOrDefault(key, StorageAmount.ZERO);
-        return stock.unbounded() ? BigInteger.ZERO : amount.subtract(stock.value()).max(BigInteger.ZERO);
+        return WideCraftRequestAmounts.resolve(amount, true, false, stock);
     }
 }

@@ -4,6 +4,8 @@ import appeng.api.config.Actionable;
 import appeng.api.networking.IGrid;
 import appeng.api.stacks.AEKey;
 import git.chexson.chexsonsaeutils.bigint.ClampedMath;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.bigint.Ae2Amounts;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import org.jetbrains.annotations.Nullable;
 
@@ -20,7 +22,8 @@ import java.util.Set;
 
 public final class ParallelCpuWaitingIndex {
 
-    private final Map<AEKey, Long> requestedAmounts = new HashMap<>();
+    // 多条产线的窄读数合计也会越过 long；保存精确合计，移除一条时才不会误清其他等待者。
+    private final Map<AEKey, PlanAmount> requestedAmounts = new HashMap<>();
     private final Map<AEKey, Set<ParallelCraftingLane>> lanesByKey = new HashMap<>();
     private final Map<ParallelCraftingLane, Map<AEKey, Long>> waitingByLane = new IdentityHashMap<>();
     private final Set<AEKey> changedKeys = new HashSet<>();
@@ -85,7 +88,9 @@ public final class ParallelCpuWaitingIndex {
         BigInteger remaining = available;
         for (var candidate : List.copyOf(candidates)) {
             if (candidate instanceof ParallelCraftingLaneState lane
-                    && lane.cluster().grid() == sourceGrid) {
+                    && lane.cluster().grid() == sourceGrid
+                    && lane.cluster().gridContext() != null
+                    && lane.cluster().gridContext().grid() == sourceGrid) {
                 remaining = remaining.subtract(lane.logic().claimDeclaredOutput(what, remaining));
                 lane.cluster().wakeLane(lane);
                 refreshLane(lane);
@@ -188,7 +193,7 @@ public final class ParallelCpuWaitingIndex {
         if (what == null) {
             return 0L;
         }
-        return requestedAmounts.getOrDefault(what, 0L);
+        return Ae2Amounts.toLong(requestedAmounts.getOrDefault(what, PlanAmount.ZERO));
     }
 
     public boolean isRequesting(@Nullable AEKey what) {
@@ -333,18 +338,16 @@ public final class ParallelCpuWaitingIndex {
         if (key == null || delta == 0L) {
             return;
         }
-        long previous = requestedAmounts.getOrDefault(key, 0L);
-        long next = delta > 0L
-                ? ClampedMath.addUp(previous, delta)
-                : previous <= -delta ? 0L : previous + delta;
-        if (next <= 0L) {
+        PlanAmount previous = requestedAmounts.getOrDefault(key, PlanAmount.ZERO);
+        PlanAmount next = previous.add(PlanAmount.of(delta));
+        if (next.signum() <= 0) {
             requestedAmounts.remove(key);
         } else {
             requestedAmounts.put(key, next);
         }
-        if (previous != next) {
+        if (!previous.equals(next)) {
             changedKeys.add(key);
-            if ((previous > 0L) != (next > 0L)) {
+            if ((previous.signum() > 0) != (next.signum() > 0)) {
                 changedPresenceKeys.add(key);
             }
         }

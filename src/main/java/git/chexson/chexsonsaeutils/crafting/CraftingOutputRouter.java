@@ -1,19 +1,60 @@
 package git.chexson.chexsonsaeutils.crafting;
 
 import appeng.api.config.Actionable;
+import appeng.api.networking.IGrid;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.storage.IStorageService;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import git.chexson.chexsonsaeutils.bigint.ClampedMath;
+import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchOutputReceiver;
 import org.jetbrains.annotations.Nullable;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class CraftingOutputRouter {
 
     private CraftingOutputRouter() {
+    }
+
+    /** 先把真实缓冲按同网 CPU 的精确欠量转移，余量仍留给 AE2 的 long 存储接口。 */
+    public static void claimBufferedOutputs(WideKeyCounter buffer, IGrid sourceGrid,
+            DeclaredBatchOutputReceiver receiver) {
+        // 接收器会唤醒任务并刷新等待索引；这里只交出缓冲实物，不使用样板计划数。
+        var keys = new ArrayList<AEKey>(buffer.size());
+        buffer.keys().forEach(keys::add);
+        for (var key : keys) {
+            BigInteger available = buffer.getExact(key);
+            if (available.signum() <= 0) continue;
+            BigInteger accepted = receiver.receive(sourceGrid, key, available);
+            buffer.add(key, accepted.negate());
+        }
+    }
+
+    /** 向同网公开精确接收能力的执行器交付，每个执行器只认领自己实际等待的份额。 */
+    public static void claimBufferedCpuOutputs(WideKeyCounter buffer, IGrid grid) {
+        for (var cpu : grid.getCraftingService().getCpus()) {
+            if (buffer.isEmpty()) return;
+            if (cpu instanceof DeclaredBatchOutputReceiver receiver) claimBufferedOutputs(buffer, grid, receiver);
+        }
+    }
+
+    /** 无 CPU 等待该键时，将剩余实物经精确存储能力回网，避免抢走未回流的中间产物。 */
+    public static void storeUnrequestedBufferedOutputs(WideKeyCounter buffer,
+            appeng.api.storage.MEStorage storage, IActionSource source,
+            java.util.function.Predicate<AEKey> requesting) {
+        if (!(storage instanceof git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion)) return;
+        var keys = new ArrayList<AEKey>(buffer.size());
+        buffer.keys().forEach(keys::add);
+        for (var key : keys) {
+            if (requesting.test(key)) continue;
+            BigInteger accepted = git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion.insert(
+                    storage, key, buffer.getExact(key), Actionable.MODULATE, source);
+            buffer.add(key, accepted.negate());
+        }
     }
 
     public static RoutingResult routePayload(

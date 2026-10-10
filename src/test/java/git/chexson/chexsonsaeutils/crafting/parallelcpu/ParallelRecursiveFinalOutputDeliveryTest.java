@@ -55,9 +55,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>钉两件事：
  * <ul>
  *   <li><b>判据</b>：交付量（宽域真值，<b>只认实物</b>——宿主自报的 planned 量不算交付）对得上订单量就
- *       收工，任务表留着排不下去的尾巴也算收工；差一口气不收，<b>产出终点键的那几张样板</b>申报出去而
- *       没交割完的材料义务也不收（FIX-F 把这一臂的"谁"收窄到终点键的产出方：欠账挂在毫不相干的那张
- *       样板上时，终点已经交齐就是已经交齐）；</li>
+ *       收工，任务表留着排不下去的尾巴也算收工；差一口气不收，任一已接单批次的材料义务未结清也不收；</li>
  *   <li><b>真收尾</b>：从 AE2 交进来的那一句 {@code insert} 起，走产线同一条链
  *       （{@code insertInternal} → 交付判据 → {@code finishJob(true)} → flush 交给 requester →
  *       {@code markDone}）到作业出表、库存清干净。</li>
@@ -82,6 +80,50 @@ final class ParallelRecursiveFinalOutputDeliveryTest {
     private static final AEKey TAIL_MATERIAL = AEItemKey.of(new ItemStack(Items.IRON_INGOT));
     /** 环起步借的那颗种：它不是可花库存，也不算交付量。 */
     private static final AEKey SEED = AEItemKey.of(new ItemStack(Items.BUCKET));
+
+    /** 最终产物先到时，已接单的中间批次仍必须付清超过 long 的材料，才能退回真正余料。 */
+    @Test
+    void finalDeliveryCannotReturnUnpaidIntermediateBatchMaterials() {
+        BigInteger firings = BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.valueOf(3)).add(BigInteger.valueOf(17));
+        var intermediate = new FakePattern(AEItemKey.of(Items.GLOWSTONE),
+                new GenericStack(TAIL_MATERIAL, 1), new GenericStack(SEED, 4));
+        var job = newRecursiveJob(intermediate, 1, null);
+        job.tasks.get(intermediate).addFirings(git.chexson.chexsonsaeutils.bigint.PlanAmount.of(firings.subtract(BigInteger.ONE)));
+        var pool = new git.chexson.chexsonsaeutils.bigint.WideCraftingInventory(ignored -> {});
+        BigInteger realSurplus = BigInteger.valueOf(17);
+        pool.insertExact(SEED, firings.multiply(BigInteger.valueOf(4)).add(realSurplus), Actionable.MODULATE);
+        var reservation = ParallelPlanReservation.build(job.tasks.entrySet(), Map.of(), job.materialAllocation);
+        var host = new git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchHost() {
+            @Override public boolean supportsDeclaredBatch(IPatternDetails pattern) { return pattern == intermediate; }
+            @Override public boolean declaredBatchFiringsUnbounded() { return true; }
+            @Override public BigInteger pushDeclaredBatch(IPatternDetails pattern, KeyCounter[] prototype, BigInteger count) {
+                assertEquals(4L, prototype[0].get(SEED));
+                return count;
+            }
+            @Override public List<IPatternDetails> getAvailablePatterns() { return List.of(intermediate); }
+            @Override public boolean pushPattern(IPatternDetails pattern, KeyCounter[] inputs) {
+                throw new AssertionError("本测试必须经过整批声明");
+            }
+            @Override public boolean isBusy() { return false; }
+        };
+        var push = ParallelCraftingCpuLogic.attemptDeclaredBatch(host, intermediate, job, job.tasks.entrySet(),
+                pool, null, reservation, new ParallelPoolLedger(), new KeyCounter(), new KeyCounter(),
+                Long.MAX_VALUE, Long.MAX_VALUE, null, null, null, null, 1);
+        assertTrue(push != null && push.accepted() > 0);
+        assertEquals(firings.subtract(BigInteger.ONE), job.batchObligations.pendingFirings(intermediate));
+        deliver(job, PRODUCT, ORDER);
+        assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
+                "中间批次已经生产但材料尚未扣完，不能将待付款的库存作为余料退网");
+        for (int batch = 0; batch < 20 && job.batchObligations.hasAnyPending(); batch++) {
+            long payable = ParallelBatchExtraction.obligationBatchFirings(intermediate,
+                    job.batchObligations.pendingFirings(intermediate));
+            assertTrue(ParallelCraftingCpuLogic.payObligationBatch(job, intermediate, payable, pool, null,
+                    reservation, new ParallelPoolLedger(), null, null) > 0);
+        }
+        assertFalse(job.batchObligations.hasAnyPending());
+        assertEquals(realSurplus, pool.amount(SEED), "整批发数乘四必须全部实扣，只留下真实余量");
+        assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
+    }
 
     /** 真实提交与 tick 入口验证：同一个原生声明+fold 提供者先读原生声明，再读 holder 上限。
      * 没有材料使执行在探测后停止；适配壳若被提前探测，网格供应口计数就会从 0 增长。 */
@@ -207,17 +249,13 @@ final class ParallelRecursiveFinalOutputDeliveryTest {
         assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
                 "99/100 不收工：交付判据不许四舍五入");
 
-        // FIX-F：欠账挂在<b>不产终点键</b>的那一张（tail 交的是 TAIL_MATERIAL）上——终点已经交齐，
-        // 这一臂就不许再被作业级 hasAnyPending() 拦住收工（实机症状"交齐了不收工"）。
-        // 反向半边（终点键自己的欠账未清 ⇒ 不许收工）钉在
-        // #pendingObligationOnATerminalProducerStillBlocksTheDeliveryArm()。
+        // 中间批次已经接单，也必须交割材料后才算完成。
         job.batchObligations.incur(tail, BigInteger.ONE);
         deliver(job, PRODUCT, 1L);
         assertEquals(ORDER, job.finalOutputDeliveredAmount().exactValue().longValueExact(),
                 "交付账按宽域真值累计到订单量");
-        assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
-                "终点产物已按订单量交齐、欠账那一发挂在毫不相干的那张样板上：这一单的实物已经到手，"
-                        + "不相干的欠账不许把收尾拦成挂死（尾巴仍挂在任务表上，收工走既有 finishJob 成功腿）");
+        assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
+                "终点产物已齐，但已接单的中间批次仍欠材料，不能提前退料");
         job.batchObligations.settle(tail, 1L);
         assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
                 "义务交割干净 + 交付量到订单量 ⇒ 收工，且尾巴仍挂在任务表上："
@@ -254,6 +292,31 @@ final class ParallelRecursiveFinalOutputDeliveryTest {
                         + "本刀不许在作业还挂着的时候把料留在池里");
     }
 
+    /** 退出前已到账 40 枚，重进后再到 60 枚：累计到齐即收尾，并真实交付全部 100 枚。 */
+    @Test
+    void partialDeliveryBeforeReloadCountsTowardActualFinalDeliveryAfterReload() {
+        var job = newRecursiveJob(Map.of(), newCpuLink());
+        job.addFinalOutputDelivered(PRODUCT, 40L);
+        job.waitingFor.insert(PRODUCT, 60L, Actionable.MODULATE);
+        job.waitingFor.insert(TAIL_MATERIAL, 7L, Actionable.MODULATE);
+        var pool = new appeng.crafting.inv.ListCraftingInventory(ignored -> {});
+        pool.insert(PRODUCT, 40L, Actionable.MODULATE);
+        var saved = new CompoundTag();
+        saved.put("job", job.writeToNBT(REGISTRIES));
+        saved.put("inventory", pool.writeToNBT(REGISTRIES));
+        var lane = new ParallelCraftingLaneState(null, UUID.randomUUID(), 0L);
+        lane.logic().readFromNBT(saved, REGISTRIES);
+        var link = (CraftingLink) lane.getLastLink();
+        var requester = new RecordingRequester();
+        tieLinkToRequester(link, requester);
+        assertTrue(lane.isLaneActive());
+        assertEquals(60L, lane.logic().insert(PRODUCT, 60L, Actionable.MODULATE));
+        assertTrue(link.isDone());
+        assertFalse(lane.isLaneActive());
+        assertEquals(List.of(PRODUCT + "x" + ORDER), requesteeDeliveries(requester));
+        assertEquals(0L, lane.getRequestedAmount(TAIL_MATERIAL));
+    }
+
     /**
      * FIX-F 的反向半边（不许把收窄做成新的提前收工）：欠账挂在<b>产出终点键的那张样板</b>上时，
      * 终点量凑齐也不许收工——那一发的材料还欠着宿主，收工等于让宿主白多产（#92 那一型）。
@@ -286,8 +349,10 @@ final class ParallelRecursiveFinalOutputDeliveryTest {
 
         job.batchObligations.incur(tail, BigInteger.ONE);
         job.batchObligations.settle(terminalProducer, 1L);
-        assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
-                "终点键自己的欠账清了 ⇒ 交齐即收工，哪怕不相干那张（tail）的欠账还挂着");
+        assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
+                "中间批次欠账未清仍不能收工");
+        job.batchObligations.settle(tail, 1L);
+        assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
     }
 
     /**
@@ -529,7 +594,7 @@ final class ParallelRecursiveFinalOutputDeliveryTest {
         public Iterable<IGridNode> getMachineNodes(Class<?> machineClass) { throw unused(); }
         public <T> java.util.Set<T> getMachines(Class<T> machineClass) { throw unused(); }
         public <T> java.util.Set<T> getActiveMachines(Class<T> machineClass) { throw unused(); }
-        public Iterable<IGridNode> getNodes() { throw unused(); }
+        public Iterable<IGridNode> getNodes() { return List.of(); }
         public boolean isEmpty() { throw unused(); }
         public IGridNode getPivot() { throw unused(); }
         public int size() { throw unused(); }

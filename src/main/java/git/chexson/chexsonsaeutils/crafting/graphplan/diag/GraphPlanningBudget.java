@@ -41,6 +41,8 @@ public final class GraphPlanningBudget {
         long now = System.nanoTime();
         this.phaseNanos[this.phase.ordinal()] += now - this.phaseStart;
         this.phase = nextPhase;
+        var progress = git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressContext.current();
+        if (progress != null) progress.phase(nextPhase.name());
         this.phaseStart = now;
     }
 

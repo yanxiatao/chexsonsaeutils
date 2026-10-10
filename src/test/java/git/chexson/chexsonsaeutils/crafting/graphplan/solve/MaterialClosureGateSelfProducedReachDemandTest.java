@@ -433,7 +433,7 @@ class MaterialClosureGateSelfProducedReachDemandTest {
      * <p>字节水位的锚点是<b>同一张图上的 AE2 原生树</b>，不是我方求解器：先在离线参照
      * （{@code Ae2TreePlanReference}，AE2 自己的 {@code CraftingTreeNode} + 沙盒）上量一次，
      * 再把 {@code bytes} 钉成等于它那一份，并同时钉住它那一侧的字面数值
-     * （{@code bytes=2.771431E7}、{@code exactBytes=23857143}）。
+     * （{@code bytes=2.771431E7}、{@code exactBytes=27714310}）。
      * 换引擎后要是与原生树不再相等，那就是真丢功能，不是"重基线"能盖过去的。
      *
      * <p>{@code journal} 是我方 undo 日志的计次（原生树没有这一格），留作绝对水位钉住
@@ -471,8 +471,8 @@ class MaterialClosureGateSelfProducedReachDemandTest {
                 "AE2 原生树自己那一侧的字节水位（AE2 改了口径这条就红）");
         assertEquals(treePlan.bytes(), result.state().bytes(), 0.0,
                 "字节水位必须逐字等于 AE2 树：换了求解引擎也不许改这份对外读数");
-        assertEquals(new BigInteger("23857143"), result.state().byteAccount().exactValue().exactValue(),
-                "精确字节读数逐字不变（与上面那份 double 同源的那一本整数账）");
+        assertEquals(new BigInteger("27714310"), result.state().byteAccount().exactValue().exactValue(),
+                "完整字节包含物料费 23857143 与节点费 3857167，与 AE2 字节水位一致");
         assertEquals(20, result.state().journal(), "journal mark 逐字不变（一次分配都不许多）");
         assertEquals(BigInteger.valueOf(longRequest),
                 result.state().craftsWide().getAmount(consumer).exactValue(), "消费者发数逐字不变：1e6");

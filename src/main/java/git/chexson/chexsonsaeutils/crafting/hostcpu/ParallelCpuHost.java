@@ -12,6 +12,9 @@ import org.jetbrains.annotations.Nullable;
  * 继承 AE2 安全宿主以保留 MachineSource 的设备身份；规划活跃条件复用 ParallelCpuProvider。
  */
 public interface ParallelCpuHost extends IActionHost, ParallelCpuProvider {
+    /** 执行状态改变时标记宿主存档需要保存，覆盖提交、进度、暂停与收尾。 */
+    void saveChanges();
+
     /** 当前连接的网格；设备未入网时为空，执行层每次读取当前环境。 */
     @Nullable IGrid getGrid();
 

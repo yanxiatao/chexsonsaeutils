@@ -23,6 +23,7 @@ public final class ByteAccount {
     private static final double EXACT_DOUBLE_LIMIT = 9_007_199_254_740_992.0;
 
     private double ae2Bytes;
+    private java.math.BigDecimal plainBytes = java.math.BigDecimal.ZERO;
     /**
      * apb 桶用平铺小数组而不是哈希表：{@code amountPerByte} 全网只有物品与流体
      * 两三个取值，线性扫两格远快于哈希（{@code addStackBytes} 在求解热路径上
@@ -42,7 +43,21 @@ public final class ByteAccount {
 
     public void addBytes(double bytes) {
         this.ae2Bytes += bytes;
+        this.plainBytes = this.plainBytes.add(java.math.BigDecimal.valueOf(bytes));
     }
+
+    /** 节点费用本身超过 long 时直接保存整数真值。 */
+    public void addBytes(PlanAmount bytes) {
+        this.ae2Bytes += bytes.exactValue().doubleValue();
+        this.plainBytes = this.plainBytes.add(new java.math.BigDecimal(bytes.exactValue()));
+    }
+
+    /** 物料费已经记入 apb 桶，仅维护 AE2 诊断累加器，避免重复计费。 */
+    public void addAe2Bytes(double bytes) { this.ae2Bytes += bytes; }
+
+    /** 日志保存节点费旧值，以便浮点与整数账共同撤销。 */
+    public java.math.BigDecimal plainBytes() { return this.plainBytes; }
+    public void restorePlainBytes(java.math.BigDecimal bytes) { this.plainBytes = bytes; }
 
     private void addExact(long apb, long amount, long multiplier) {
         long product = amount * multiplier;
@@ -139,18 +154,8 @@ public final class ByteAccount {
         return exactValue();
     }
 
-    /** 精确值：Σ_b ceil 通分，全程整数。 */
+    /** 精确值：节点费与物料桶通分后统一向上取整，不遗漏任何费用。 */
     public PlanAmount exactValue() {
-        boolean empty = true;
-        for (int i = 0; i < this.bucketCount; i++) {
-            if (this.bucketFast[i] != 0L || (this.bucketWide != null && this.bucketWide[i] != null)) {
-                empty = false;
-                break;
-            }
-        }
-        if (empty) {
-            return PlanAmount.of((long) Math.ceil(this.ae2Bytes));
-        }
         long lcm = 1L;
         for (int i = 0; i < this.bucketCount; i++) {
             lcm = lcm / gcd(lcm, this.bucketApb[i]) * this.bucketApb[i];
@@ -162,7 +167,9 @@ public final class ByteAccount {
             numerator = numerator.add(bucket.multiply(PlanAmount.of(lcm / this.bucketApb[i])));
         }
         // AE2 公式末尾 ×8：分子统一带上 8
-        return numerator.multiply(PlanAmount.of(8L)).ceilDiv(PlanAmount.of(lcm));
+        return PlanAmount.of(new java.math.BigDecimal(numerator.multiply(PlanAmount.of(8L)).exactValue())
+                .add(this.plainBytes.multiply(java.math.BigDecimal.valueOf(lcm)))
+                .divide(java.math.BigDecimal.valueOf(lcm), 0, java.math.RoundingMode.CEILING).toBigIntegerExact());
     }
 
     private static long gcd(long a, long b) {
@@ -177,6 +184,7 @@ public final class ByteAccount {
     public ByteAccount copy() {
         var copy = new ByteAccount();
         copy.ae2Bytes = this.ae2Bytes;
+        copy.plainBytes = this.plainBytes;
         copy.bucketCount = this.bucketCount;
         copy.bucketApb = this.bucketApb.clone();
         copy.bucketFast = this.bucketFast.clone();
@@ -186,6 +194,7 @@ public final class ByteAccount {
 
     public void restore(ByteAccount snapshot) {
         this.ae2Bytes = snapshot.ae2Bytes;
+        this.plainBytes = snapshot.plainBytes;
         this.bucketCount = snapshot.bucketCount;
         this.bucketApb = snapshot.bucketApb.clone();
         this.bucketFast = snapshot.bucketFast.clone();

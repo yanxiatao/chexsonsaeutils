@@ -18,7 +18,12 @@ import net.minecraft.world.level.Level;
 import java.util.List;
 
 /** A single AE2 calculation whose constructor freezes and executes configured algorithm order. */
-public final class OrderedPlanningCalculation extends CraftingCalculation {
+public final class OrderedPlanningCalculation extends CraftingCalculation
+        implements git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressSource {
+    private final git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressImpl progress =
+            new git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressImpl();
+
+    @Override public git.chexson.chexsonsaeutils.crafting.progress.PlanningProgress planningProgress() { return progress; }
     private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
 
     private final Level level;
@@ -108,6 +113,12 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
 
     @Override
     public ICraftingPlan run() {
+        try (var scope = git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressContext.open(progress)) {
+            return runTracked();
+        }
+    }
+
+    private ICraftingPlan runTracked() {
         OrderedPlanningSelector.Selection<ICraftingPlan> selected = OrderedPlanningSelector.select(
                 this.order,
                 this::isEligible,
@@ -258,6 +269,7 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
 
     /** AE2 原生树回落腿：AE2 自己的节流计算，逐字不动。 */
     private ICraftingPlan runAe2Native() {
+        progress.phase("NATIVE");
         return new CraftingCalculation(
                 this.level, this.grid, this.requester, this.output, this.strategy).run();
     }

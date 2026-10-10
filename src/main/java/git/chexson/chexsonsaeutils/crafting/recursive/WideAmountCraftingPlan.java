@@ -33,11 +33,22 @@ public record WideAmountCraftingPlan(
         WideLedgerSnapshot wideLedgers,
         WideCraftSnapshot wideCrafts,
         java.util.Set<AEKey> unboundedKeys,
-        git.chexson.chexsonsaeutils.bigint.PlanAmount exactFinalOutput) implements ICraftingPlan, WideAmountPlanCarrier {
+        git.chexson.chexsonsaeutils.bigint.PlanAmount exactFinalOutput,
+        git.chexson.chexsonsaeutils.bigint.PlanAmount exactBytes) implements ICraftingPlan, WideAmountPlanCarrier {
 
     public WideAmountCraftingPlan(CraftingPlan delegate, WideLedgerSnapshot wideLedgers,
             WideCraftSnapshot wideCrafts, java.util.Set<AEKey> unboundedKeys) {
         this(delegate, wideLedgers, wideCrafts, unboundedKeys, null);
+    }
+
+    public WideAmountCraftingPlan(CraftingPlan delegate, WideLedgerSnapshot wideLedgers,
+            WideCraftSnapshot wideCrafts, java.util.Set<AEKey> unboundedKeys,
+            git.chexson.chexsonsaeutils.bigint.PlanAmount exactFinalOutput) {
+        this(delegate, wideLedgers, wideCrafts, unboundedKeys, exactFinalOutput, null);
+    }
+
+    @Override public git.chexson.chexsonsaeutils.bigint.PlanAmount chexsonsaeutils$exactBytes() {
+        return exactBytes;
     }
 
     @Override public git.chexson.chexsonsaeutils.bigint.PlanAmount chexsonsaeutils$exactFinalOutput() {
@@ -110,12 +121,13 @@ public record WideAmountCraftingPlan(
     @Override
     public boolean equals(Object other) {
         return other instanceof WideAmountCraftingPlan plan && delegate.equals(plan.delegate)
-                && Objects.equals(exactFinalOutput, plan.exactFinalOutput);
+                && Objects.equals(exactFinalOutput, plan.exactFinalOutput)
+                && Objects.equals(exactBytes, plan.exactBytes);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(delegate, exactFinalOutput);
+        return Objects.hash(delegate, exactFinalOutput, exactBytes);
     }
 
     @Override

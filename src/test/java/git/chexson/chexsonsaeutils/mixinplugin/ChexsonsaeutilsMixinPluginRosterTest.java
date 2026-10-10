@@ -59,7 +59,9 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
     }
 
     private enum Shape { KEY, ANY_OF, ALWAYS, KEY_AND_MOD, MOD_ONLY }
-    private record Row(String entry, Shape shape, List<String> keys) {}
+    private record Row(String entry, Shape shape, List<String> keys, String modId) {
+        Row(String entry, Shape shape, List<String> keys) { this(entry, shape, keys, null); }
+    }
     private static Row ofKey(String entry, String key) {
         return new Row(entry, Shape.KEY, List.of(key));
     }
@@ -175,7 +177,25 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
             rows.add(ofModOnly(entry));
         }
 
-        rows.add(ofModOnly("neoecoae.ExtremeAssemblerNeoEcoBatchProviderMixin"));
+        rows.add(new Row("extendedae.InfinityCellSupplyMixin", Shape.MOD_ONLY, List.of(), "extendedae"));
+        rows.add(new Row("cell4.InfinityStorageSupplyMixin", Shape.MOD_ONLY, List.of(), "cell4"));
+
+        for (String entry : List.of(
+                "neoecoae.ExtremeAssemblerNeoEcoBatchProviderMixin",
+                "neoecoae.NeoEcoInfiniteCpuStorageDisplayMixin",
+                "neoecoae.NeoEcoNetworkStorageMixin",
+                "neoecoae.NeoEcoInventoryHandlerMixin",
+                "neoecoae.NeoEcoDriveWatcherMixin",
+                "neoecoae.NeoEcoWideCraftingCpuMixin",
+                "neoecoae.NeoEcoCraftingBusBatchMixin",
+                "neoecoae.NeoEcoExternalCpuOutputMixin",
+                "neoecoae.NeoEcoParallelPlanAdmissionMixin",
+                "neoecoae.NeoEcoJobOutputAccessor",
+                "neoecoae.NeoEcoExactProgressMixin",
+                "neoecoae.NeoEcoExactCpuOutputMixin",
+                "neoecoae.NeoEcoOwnPlanPreviewMixin")) {
+            rows.add(ofModOnly(entry));
+        }
 
         for (String entry : List.of(
                 "useless.SmartDoublingPlansFoldSkipMixin",
@@ -185,8 +205,13 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
         }
 
         for (String entry : List.of(
+                "ae2.storage.CreativeCellSupplyMixin",
+                "ae2.storage.NetworkExactStorageMixin",
+                "ae2.storage.InventoryExactStorageMixin",
+                "ae2.storage.DriveExactStorageMixin",
                 "ae2.automation.StorageLevelEmitterPartAccessor",
                 "ae2.menu.CraftConfirmMenuRemoteAccessor",
+                "ae2.menu.CraftConfirmMenuPlanningProgressMixin",
                 "ae2.crafting.CraftingTreeNodeNativeLimitQtyBatchMixin",
                 "ae2.crafting.CraftingSimulationStateFastResetMixin",
                 "ae2.crafting.ChildCraftingSimulationStateFastMixin",
@@ -240,8 +265,9 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
                     case KEY -> column.get(row.keys().getFirst());
                     case ANY_OF -> column.values().stream().anyMatch(Boolean::booleanValue);
                     case ALWAYS -> true;
-                    // 此单元测试运行环境未加载这五个可选模组。
-                    case KEY_AND_MOD, MOD_ONLY -> false;
+                    // 默认单元测试环境未加载这些可选模组。
+                    case KEY_AND_MOD -> false;
+                    case MOD_ONLY -> row.modId() != null && net.neoforged.fml.ModList.get().isLoaded(row.modId());
                 };
                 for (boolean otherKeys : List.of(false, true)) {
                     CONFIG.forEach((key, value) -> value.set(column.getOrDefault(key, otherKeys)));

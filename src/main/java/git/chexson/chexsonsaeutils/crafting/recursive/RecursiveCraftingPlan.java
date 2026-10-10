@@ -54,7 +54,8 @@ public record RecursiveCraftingPlan(
         WideCraftSnapshot wideCrafts,
         Set<AEKey> unboundedKeys,
         Map<IPatternDetails, WideKeyCounter> planMaterialEnvelopes,
-        git.chexson.chexsonsaeutils.bigint.PlanAmount exactFinalOutput)
+        git.chexson.chexsonsaeutils.bigint.PlanAmount exactFinalOutput,
+        git.chexson.chexsonsaeutils.bigint.PlanAmount exactBytes)
         implements ICraftingPlan, RecursivePlanContract, SelectedInputsPlan, WideAmountPlanCarrier {
 
     public RecursiveCraftingPlan(CraftingPlan delegate, KeyCounter recursiveInitialItems,
@@ -66,6 +67,22 @@ public record RecursiveCraftingPlan(
         this(delegate, recursiveInitialItems, recursiveInternalItems, recursiveFinalOutputAmount,
                 selectedPatternInputs, planMaterialPlan, wideLedgers, wideCrafts, unboundedKeys,
                 planMaterialEnvelopes, null);
+    }
+
+    public RecursiveCraftingPlan(CraftingPlan delegate, KeyCounter recursiveInitialItems,
+            KeyCounter recursiveInternalItems, long recursiveFinalOutputAmount,
+            Map<AEItemKey, Map<AEKey, Long>> selectedPatternInputs,
+            Map<IPatternDetails, WideKeyCounter> planMaterialPlan, WideLedgerSnapshot wideLedgers,
+            WideCraftSnapshot wideCrafts, Set<AEKey> unboundedKeys,
+            Map<IPatternDetails, WideKeyCounter> planMaterialEnvelopes,
+            git.chexson.chexsonsaeutils.bigint.PlanAmount exactFinalOutput) {
+        this(delegate, recursiveInitialItems, recursiveInternalItems, recursiveFinalOutputAmount,
+                selectedPatternInputs, planMaterialPlan, wideLedgers, wideCrafts, unboundedKeys,
+                planMaterialEnvelopes, exactFinalOutput, null);
+    }
+
+    @Override public git.chexson.chexsonsaeutils.bigint.PlanAmount chexsonsaeutils$exactBytes() {
+        return exactBytes;
     }
 
     @Override public git.chexson.chexsonsaeutils.bigint.PlanAmount chexsonsaeutils$exactFinalOutput() {

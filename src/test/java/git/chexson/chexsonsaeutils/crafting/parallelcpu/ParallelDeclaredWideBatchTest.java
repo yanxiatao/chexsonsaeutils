@@ -29,7 +29,7 @@ final class ParallelDeclaredWideBatchTest {
     private static final AEKey MATERIAL = AEItemKey.of(Items.IRON_ORE);
 
     @Test
-    void loggedHundredUnitFiniteDebtClearsInElevenRoundsAndKeepsExactAccounts() {
+    void loggedHundredUnitFiniteDebtClearsInOneRoundAndKeepsExactAccounts() {
         BigInteger firings = new BigInteger("101457092405402533877");
         var details = pattern(Items.FURNACE, new GenericStack(MATERIAL, 100L), new GenericStack(PRODUCT, 1L));
         var job = newJob();
@@ -52,7 +52,7 @@ final class ParallelDeclaredWideBatchTest {
         org.junit.jupiter.api.Assertions.assertNotNull(pushed);
         assertEquals(firings, host.accepted);
         var probe = new ParallelBatchExtraction.Probe();
-        for (int tick = 0; tick < 11; tick++) {
+        for (int tick = 0; tick < 1; tick++) {
             ParallelCraftingCpuLogic.payObligationBatches(job, pool, null, reservation,
                     ledger, null, probe, () -> true);
         }
@@ -60,9 +60,9 @@ final class ParallelDeclaredWideBatchTest {
         assertEquals(BigInteger.ZERO, pool.amount(MATERIAL));
         assertEquals(stock, job.accountTaken.getExact(MATERIAL));
         assertEquals(BigInteger.ZERO, reservation.quotaExact(MATERIAL, details, details.getInputs()[0]).exactValue());
-        assertEquals(11L, probe.obligationBatches);
+        assertEquals(1L, probe.obligationBatches);
         assertTrue(ParallelCraftingCpuLogic.taskMayLeaveTable(details, task, job.batchObligations));
-        assertEquals(13, changes.get(), "一次入库、一发原型、十一笔宽域扣料，不按材料量拆循环");
+        assertEquals(3, changes.get(), "一次入库、一发原型、一笔宽域扣料，不按材料量或发数拆循环");
     }
 
     @Test
@@ -316,6 +316,118 @@ final class ParallelDeclaredWideBatchTest {
         assertEquals(MAX, ParallelCraftingCpuLogic.declaredPrototypeQuota(details,
                 new ParallelBatchExtraction.Batch(new KeyCounter[]{prototype, prototype}, 1L),
                 reservation, MAX.multiply(BigInteger.valueOf(3L))));
+    }
+
+    @Test
+    void sharedSlotsPayOnlyWholeWideFiringsAvailableInPool() {
+        var details = new FakePattern(AEItemKey.of(Items.FURNACE),
+                new GenericStack[]{new GenericStack(PRODUCT, 1L)},
+                new IPatternDetails.IInput[]{new FakeInput(new GenericStack(MATERIAL, 2L)),
+                        new FakeInput(new GenericStack(MATERIAL, 3L))});
+        BigInteger payable = MAX.multiply(BigInteger.TWO).add(BigInteger.valueOf(13L));
+        BigInteger owed = payable.add(BigInteger.TEN);
+        BigInteger stock = payable.multiply(BigInteger.valueOf(5L)).add(BigInteger.valueOf(4L));
+        var job = newJob();
+        job.tasks.put(details, progress(0L));
+        job.batchObligations.incur(details, owed);
+        var pool = new WideCraftingInventory(ignored -> {});
+        pool.insertExact(MATERIAL, stock, Actionable.MODULATE);
+        var reservation = ParallelPlanReservation.build(job.tasks.entrySet(), Map.of(), job.materialAllocation);
+        var probe = new ParallelBatchExtraction.Probe();
+        ParallelCraftingCpuLogic.payObligationBatches(job, pool, null, reservation,
+                new ParallelPoolLedger(), null, probe, () -> true);
+        assertEquals(BigInteger.TEN, job.batchObligations.pendingFirings(details));
+        assertEquals(BigInteger.valueOf(4L), pool.amount(MATERIAL), "不足一发的零头留在库存");
+        assertEquals(payable.multiply(BigInteger.valueOf(5L)), job.accountTaken.getExact(MATERIAL));
+        assertEquals(2L, probe.paidChunks, "两槽各按大数扣一次，无按 long 分段循环");
+    }
+
+    @Test
+    void wideQuotaLimitsSettlementEvenWhenPoolHasMoreMaterial() {
+        var details = pattern(Items.FURNACE, new GenericStack(MATERIAL, 7L), new GenericStack(PRODUCT, 1L));
+        BigInteger payable = MAX.multiply(BigInteger.TWO).add(BigInteger.valueOf(13L));
+        BigInteger owed = payable.add(BigInteger.TEN);
+        BigInteger units = payable.multiply(BigInteger.valueOf(7L));
+        var job = newJob();
+        job.tasks.put(details, progress(0L));
+        job.batchObligations.incur(details, owed);
+        var quota = new git.chexson.chexsonsaeutils.bigint.WideKeyCounter();
+        quota.add(MATERIAL, units.add(BigInteger.valueOf(6L)));
+        MaterialAllocationFixtures.assign(job, details, quota);
+        var pool = new WideCraftingInventory(ignored -> {});
+        pool.insertExact(MATERIAL, owed.multiply(BigInteger.valueOf(7L)), Actionable.MODULATE);
+        var reservation = ParallelPlanReservation.build(job.tasks.entrySet(), Map.of(), job.materialAllocation);
+        for (int tick = 0; tick < 2; tick++) {
+            ParallelCraftingCpuLogic.payObligationBatches(job, pool, null, reservation,
+                    new ParallelPoolLedger(), null, new ParallelBatchExtraction.Probe(), () -> true);
+        }
+        assertEquals(BigInteger.TEN, job.batchObligations.pendingFirings(details));
+        assertEquals(BigInteger.valueOf(70L), pool.amount(MATERIAL));
+        assertEquals(units, job.accountTaken.getExact(MATERIAL));
+        assertEquals(BigInteger.valueOf(6L), reservation.quotaExact(MATERIAL, details, details.getInputs()[0]).exactValue());
+    }
+
+    @Test
+    void mixedInfiniteAndFiniteDebtAlsoSettlesBeyondLongInOnePass() {
+        var infinite = AEItemKey.of(Items.COAL);
+        var details = new FakePattern(AEItemKey.of(Items.FURNACE),
+                new GenericStack[]{new GenericStack(PRODUCT, 1L)},
+                new IPatternDetails.IInput[]{new FakeInput(new GenericStack(infinite, Long.MAX_VALUE)),
+                        new FakeInput(new GenericStack(MATERIAL, 8L))});
+        BigInteger owed = MAX.multiply(BigInteger.valueOf(1000L));
+        var job = newJob();
+        job.tasks.put(details, progress(0L));
+        job.batchObligations.incur(details, owed);
+        var pool = new WideCraftingInventory(ignored -> {});
+        BigInteger stock = owed.multiply(BigInteger.valueOf(8L));
+        pool.insertExact(MATERIAL, stock.add(BigInteger.valueOf(17L)), Actionable.MODULATE);
+        var reservation = ParallelPlanReservation.build(job.tasks.entrySet(), Map.of(), job.materialAllocation,
+                java.util.Set.of(infinite));
+        ParallelCraftingCpuLogic.payObligationBatches(job, pool, null, reservation,
+                new ParallelPoolLedger(), null, new ParallelBatchExtraction.Probe(), () -> true);
+        assertEquals(BigInteger.ZERO, job.batchObligations.pendingFirings(details));
+        assertEquals(BigInteger.valueOf(17L), pool.amount(MATERIAL));
+        assertEquals(stock, job.accountTaken.getExact(MATERIAL));
+        assertEquals(BigInteger.ZERO, pool.amount(infinite));
+        assertEquals(BigInteger.ZERO, job.accountTaken.getExact(infinite));
+    }
+
+    @Test
+    void shortWideExtractionRollsBackAllFiniteSlotsWithoutMintingInfiniteStock() {
+        var second = AEItemKey.of(Items.GOLD_ORE);
+        var infinite = AEItemKey.of(Items.COAL);
+        var details = new FakePattern(AEItemKey.of(Items.FURNACE),
+                new GenericStack[]{new GenericStack(PRODUCT, 1L)},
+                new IPatternDetails.IInput[]{new FakeInput(new GenericStack(infinite, Long.MAX_VALUE)),
+                        new FakeInput(new GenericStack(MATERIAL, 2L)),
+                        new FakeInput(new GenericStack(second, 3L))});
+        BigInteger owed = MAX.multiply(BigInteger.TWO);
+        var job = newJob();
+        job.tasks.put(details, progress(0L));
+        job.batchObligations.incur(details, owed);
+        var pool = new WideCraftingInventory(ignored -> {}) {
+            @Override
+            public BigInteger extractExact(AEKey key, BigInteger amount, Actionable mode) {
+                return super.extractExact(key, key.equals(second) && mode == Actionable.MODULATE
+                        ? amount.subtract(BigInteger.ONE) : amount, mode);
+            }
+        };
+        BigInteger firstStock = owed.multiply(BigInteger.TWO);
+        BigInteger secondStock = owed.multiply(BigInteger.valueOf(3L));
+        pool.insertExact(MATERIAL, firstStock, Actionable.MODULATE);
+        pool.insertExact(second, secondStock, Actionable.MODULATE);
+        var reservation = ParallelPlanReservation.build(job.tasks.entrySet(), Map.of(), job.materialAllocation,
+                java.util.Set.of(infinite));
+        var probe = new ParallelBatchExtraction.Probe();
+        ParallelCraftingCpuLogic.payObligationBatches(job, pool, null, reservation,
+                new ParallelPoolLedger(), null, probe, () -> true);
+        assertEquals(owed, job.batchObligations.pendingFirings(details));
+        assertEquals(firstStock, pool.amount(MATERIAL));
+        assertEquals(secondStock, pool.amount(second));
+        assertEquals(BigInteger.ZERO, pool.amount(infinite));
+        assertEquals(BigInteger.ZERO, job.accountTaken.getExact(MATERIAL));
+        assertEquals(BigInteger.ZERO, job.accountTaken.getExact(second));
+        assertEquals(1L, probe.takenMismatch);
     }
 
     private static final class WideHost implements git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchHost,

@@ -142,4 +142,19 @@ public record RingMacro(
         net.values().removeIf(value -> value.signum() == 0);
         return net;
     }
+
+    /**
+     * 独立向上取整可能把循环内部原本平衡的材料变成净缺口。
+     * 此时按完整整数周期发射，保证内部供料由环自身产生；真正的外部净输入仍由求解器请求。
+     */
+    public java.util.Map<IPatternDetails, PlanAmount> internallyBalancedFirings(
+            java.util.Map<IPatternDetails, PlanAmount> rounded, PlanAmount planned) {
+        boolean internalShortfall = netFlowOf(rounded).entrySet().stream()
+                .anyMatch(entry -> entry.getValue().signum() < 0 && netInputs.get(entry.getKey()) <= 0L);
+        if (!internalShortfall) return rounded;
+        PlanAmount cycles = planned.ceilDiv(PlanAmount.of(entryOutputPerCycle()));
+        var balanced = new java.util.LinkedHashMap<IPatternDetails, PlanAmount>();
+        executionRatio.forEach((pattern, ratio) -> balanced.put(pattern, cycles.multiply(PlanAmount.of(ratio))));
+        return balanced;
+    }
 }

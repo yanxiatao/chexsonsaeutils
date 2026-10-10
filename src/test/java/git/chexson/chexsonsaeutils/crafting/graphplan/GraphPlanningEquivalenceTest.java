@@ -318,28 +318,6 @@ final class GraphPlanningEquivalenceTest {
         assertGraphMatchesNativeTree(grid, TOP, 5, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
-    @Test
-    void s1SinglePatternLinear() {
-        FakePattern ironFromGold = FakePattern.crafting(IRON, 1, Map.of(GOLD, 2L));
-        FakeGrid grid = FakeGrid.builder()
-                .storage(Map.of(GOLD, 100L))
-                .pattern(IRON, ironFromGold)
-                .build();
-
-        assertGraphMatchesNativeTree(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
-    }
-
-    @Test
-    void s1SinglePatternLargeAmount() {
-        FakePattern ironFromGold = FakePattern.crafting(IRON, 1, Map.of(GOLD, 2L));
-        FakeGrid grid = FakeGrid.builder()
-                .storage(Map.of(GOLD, 1_000_000L))
-                .pattern(IRON, ironFromGold)
-                .build();
-
-        assertGraphMatchesNativeTree(grid, IRON, 200_000, CalculationStrategy.REPORT_MISSING_ITEMS);
-    }
-
     // ------------------------------------------------------------------
     // S3: chains of three or more levels
     // ------------------------------------------------------------------

@@ -165,7 +165,8 @@ public final class PlanningLevelRouter {
             return "null";
         }
         var output = plan.finalOutput();
-        return "bytes=" + plan.bytes()
+        return "bytes=" + git.chexson.chexsonsaeutils.crafting.recursive.WideAmountPlanCarrier.resolveBytes(plan).exactValue()
+                + ", ae2Bytes=" + plan.bytes()
                 + ", simulate=" + plan.simulation()
                 + ", multiplePaths=" + plan.multiplePaths()
                 + ", finalOutput=" + (output == null ? "null" : output.what() + " x " + output.amount())

@@ -128,6 +128,40 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 final class ParallelRingSeedReserveAtExtractionTest {
 
+    @Test
+    void wideBatchSubtractsRingReserveFromExactStockBeforeDividingMaterialDemand() {
+        for (long units : new long[]{4L, 100L}) {
+            for (long quotaDivisor : new long[]{1L, 2L}) {
+                BigInteger stock = BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.valueOf(100));
+                var consumer = new FakePattern(AEItemKey.of(Items.FURNACE),
+                        new FakeInput[]{new FakeInput(new GenericStack[]{new GenericStack(SEED, units)},
+                                1, null, Set.of(SEED))}, List.of(new GenericStack(OUTSIDE_PRODUCT, 1)));
+                var job = new ParallelExecutingCraftingJob(emptyPlan(), ignored -> {}, (CraftingLink) null, null);
+                job.tasks.put(RING_DOUBLER, progress(5));
+                var remaining = new ParallelExecutingCraftingJob.TaskProgress();
+                remaining.addFirings(PlanAmount.of(stock));
+                job.tasks.put(consumer, remaining);
+                BigInteger allocated = stock.divide(BigInteger.valueOf(quotaDivisor));
+                var quota = new WideKeyCounter(); quota.add(SEED, allocated);
+                MaterialAllocationFixtures.assign(job, consumer, quota);
+                var pool = new WideCraftingInventory(ignored -> {});
+                pool.insertExact(SEED, stock, Actionable.MODULATE);
+                var reservation = reservationOf(job, Map.of(SEED, Long.MAX_VALUE));
+                BigInteger expected = stock.subtract(BigInteger.valueOf(5)).min(allocated)
+                        .divide(BigInteger.valueOf(units));
+                assertEquals(expected, ParallelBatchExtraction.declaredPayableCeiling(
+                        consumer, pool, null, reservation, stock));
+                var batch = ParallelBatchExtraction.payDeclaredObligation(consumer, pool, null,
+                        Long.MAX_VALUE, reservation, null);
+                assertNotNull(batch);
+                long paidFirings = expected.min(BigInteger.valueOf(Long.MAX_VALUE)).longValueExact();
+                assertEquals(paidFirings, batch.executions());
+                assertEquals(stock.subtract(BigInteger.valueOf(paidFirings).multiply(BigInteger.valueOf(units))),
+                        pool.amount(SEED));
+            }
+        }
+    }
+
     /** 环种：增殖样板每发吃 1 枚、产 2 枚（净 +1），旁人吃掉就不回来。 */
     private static final AEItemKey SEED = AEItemKey.of(Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE);
     /** 旁人的产物：不回种、也不喂给环上的任何待办 producer。 */

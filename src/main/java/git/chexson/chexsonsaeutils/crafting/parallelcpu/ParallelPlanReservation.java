@@ -139,14 +139,8 @@ final class ParallelPlanReservation {
     private final Set<AEKey> unrepresentableProduction;
     /** 与作业共享的实时材料账；成功消费无需重建 reservation 即可减少剩余配额。 */
     private final MaterialAllocation materialAllocation;
-    /**
-     * 规划侧认下的<b>无限源</b>键的<b>物品本体族</b>：岩浆的同族变体不能只放过精确键。
-     *
-     * <p>族内任何键既不受配额封顶、也不被占料锁预留（{@link #usableFor} 一条早退、
-     * {@link #remainingQuota} 交回"没有配额口径"）——它们表达的是"没有数值上界"，
-     * 在 {@code long} 域里夹出来的任何数都是假数。
-     */
-    private final Set<Object> unboundedFamilies;
+    /** 明确来源能够生成的精确键；不扩展到未配置的数据变体。 */
+    private final Set<AEKey> unboundedKeys;
     /**
      * 环种留底：环<b>分量自己还没跑完</b>的那一截种子，按物品本体族<b>查表</b>、按精确种键<b>记账</b>。
      *
@@ -258,7 +252,7 @@ final class ParallelPlanReservation {
             Set<AEKey> unrepresentableProduction,
             Map<AEKey, Long> pool,
             MaterialAllocation materialAllocation,
-            Set<Object> unboundedFamilies,
+            Set<AEKey> unboundedKeys,
             Map<Object, RingSeedReserve> ringSeedReserves
     ) {
         this.firstCandidateNeed = firstCandidateNeed;
@@ -267,7 +261,7 @@ final class ParallelPlanReservation {
         this.unrepresentableProduction = unrepresentableProduction;
         this.pool = pool;
         this.materialAllocation = materialAllocation;
-        this.unboundedFamilies = unboundedFamilies;
+        this.unboundedKeys = unboundedKeys;
         this.ringSeedReserves = ringSeedReserves;
     }
 
@@ -361,16 +355,16 @@ final class ParallelPlanReservation {
             accumulateFirstCandidateNeed(need, revokedNeed, demand, revokedDemand,
                     details, firings);
         }
-        Set<Object> unboundedFamilies = new HashSet<>();
+        Set<AEKey> exactUnboundedKeys = new HashSet<>();
         if (unboundedKeys != null) {
             for (AEKey key : unboundedKeys) {
                 if (key != null) {
-                    unboundedFamilies.add(key.getPrimaryKey());
+                    exactUnboundedKeys.add(key);
                 }
             }
         }
         return new ParallelPlanReservation(need, demand, production, unrepresentableProduction,
-                pool, materialAllocation, unboundedFamilies,
+                pool, materialAllocation, exactUnboundedKeys,
                 buildRingSeedReserve(taskEntries, ringSeedDemands, obligations));
     }
 
@@ -544,10 +538,9 @@ final class ParallelPlanReservation {
         return progress == null ? PlanAmount.ZERO : progress.exactRemaining();
     }
 
-    /** 这一键是否属于规划认下的无限源：按<b>物品本体族</b>判，同族变体一起豁免。 */
+    /** 这一精确键是否具有明确的无限供给来源。 */
     boolean isUnboundedSupply(@Nullable AEKey key) {
-        return key != null && !unboundedFamilies.isEmpty()
-                && unboundedFamilies.contains(key.getPrimaryKey());
+        return key != null && unboundedKeys.contains(key);
     }
 
     /**
@@ -580,9 +573,20 @@ final class ParallelPlanReservation {
      */
     long usableFor(AEKey key, long stored, @Nullable IPatternDetails self, long selfFirings,
             @Nullable IPatternDetails.IInput slot, boolean fallbackOnSite) {
-        if (stored <= 0L) {
-            return 0L;
-        }
+        return Ae2Amounts.toLong(PlanAmount.of(usableForExact(key, BigInteger.valueOf(stored),
+                self, selfFirings, slot, fallbackOnSite)));
+    }
+
+    /** 先在实际库存上扣留底、配额及占料，宽域批量不得从饱和的 long 投影反推可花量。 */
+    BigInteger usableForExact(AEKey key, BigInteger stored, @Nullable IPatternDetails self,
+            long selfFirings, @Nullable IPatternDetails.IInput slot, boolean fallbackOnSite) {
+        return usableForExact(key, stored, self, BigInteger.valueOf(selfFirings), slot, fallbackOnSite);
+    }
+
+    /** 精确批量上限用于归还自身占料，避免先把发数截断成 long。 */
+    BigInteger usableForExact(AEKey key, BigInteger stored, @Nullable IPatternDetails self,
+            BigInteger selfFirings, @Nullable IPatternDetails.IInput slot, boolean fallbackOnSite) {
+        if (stored.signum() <= 0) return BigInteger.ZERO;
         // 无限源没有数值上界：配额与占料两道夹子给它夹出来的都是假数（实机
         // locked=[minecraft:lava stored=9223372036854775807 usable=0] 即此）。
         if (isUnboundedSupply(key)) {
@@ -590,15 +594,16 @@ final class ParallelPlanReservation {
         }
         // 环种留底：先扣掉环自己还没跑完的那一截，两条分支共用这一份 spendable
         // （唯一读口 spendableAfterRingSeedReserve；交回 null = 这一枚键对这一张没有要扣的留底）
-        var clampedPool = spendableAfterRingSeedReserve(key, BigInteger.valueOf(stored), self);
-        long spendable = clampedPool == null ? stored : clampedPool.longValue();
+        var clampedPool = spendableAfterRingSeedReserve(key, stored, self);
+        BigInteger spendable = clampedPool == null ? stored : clampedPool;
         // 有配额口径就硬封顶：判据与 quotaFor 同源一条，不再两处各写一遍
         // （两处口径分叉过一回，写的是同一格的账对不上）。
-        long quota = quotaFor(key, self, slot);
-        if (quota >= 0L) {
-            return Math.min(spendable, quota);
+        PlanAmount quota = self == null || (slot != null && SlotAccount.selfRepaying(slot, key))
+                ? null : quotaExact(key, self, null);
+        if (quota != null) {
+            return spendable.min(quota.exactValue().max(BigInteger.ZERO));
         }
-        long usable = spendable;
+        BigInteger usable = spendable;
         long locked = firstCandidateNeed.getOrDefault(key, 0L);
         // 产出这本贷方账放不下可信口径 ⇒ 这一键<b>不下悲观锁</b>（不是"少一笔贷方"把锁收紧）：
         // 见 {@link #unrepresentableProduction}。此处只处理未来计划的 long 投影；
@@ -606,10 +611,10 @@ final class ParallelPlanReservation {
         boolean productionUntrusted = productionHasNoTrustworthyReading(key);
         if (locked > 0L && !productionUntrusted
                 && (fallbackOnSite || canAvoidThisKey(slot, key))) {
-            usable = saturatingSubtract(usable,
-                    reservedForExclusiveConsumers(key, locked, self, selfFirings));
+            usable = usable.subtract(BigInteger.valueOf(
+                    reservedForExclusiveConsumers(key, locked, self, selfFirings)));
         }
-        return Math.max(0L, usable);
+        return usable.max(BigInteger.ZERO);
     }
 
     /**
@@ -981,7 +986,7 @@ final class ParallelPlanReservation {
 
     /** 别人唯一吃得下的这一格要留在池子里的量：先拿未派发产出抵，再还回锁主自己那份。 */
     private long reservedForExclusiveConsumers(AEKey key, long locked,
-            @Nullable IPatternDetails self, long selfFirings) {
+            @Nullable IPatternDetails self, BigInteger selfFirings) {
         long ownClaim = ownFirstCandidateNeed(self, selfFirings, key, false);
         long claimedByOthers = saturatingSubtract(
                 firstCandidateDemand.getOrDefault(key, 0L), ownClaim);
@@ -998,9 +1003,9 @@ final class ParallelPlanReservation {
      * @param lockedOnly true 只数无退路的槽（归还占料锁），false 数全部首位候选为该键的槽（归还认领）
      */
     private long ownFirstCandidateNeed(
-            @Nullable IPatternDetails self, long firings, AEKey key, boolean lockedOnly
+            @Nullable IPatternDetails self, BigInteger firings, AEKey key, boolean lockedOnly
     ) {
-        if (self == null || firings <= 0L || self.getInputs() == null) {
+        if (self == null || firings.signum() <= 0 || self.getInputs() == null) {
             return 0L;
         }
         long total = 0L;
@@ -1012,12 +1017,12 @@ final class ParallelPlanReservation {
             if (lockedOnly && hasSiblingKey(slot, key)) {
                 continue;
             }
-            long units = SlotAccount.chargedUnits(slot, first, firings);
-            if (isSaturatingSentinel(units)) {
+            BigInteger exactUnits = SlotAccount.chargedUnitsWide(slot, first, firings);
+            if (exactUnits.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) >= 0) {
                 // 归还账也是锁那一腿：同一张样板的贷方量在 pendingProductionExact 那个出口一分不少
                 continue;
             }
-            total = ClampedMath.addUp(total, units);
+            total = ClampedMath.addUp(total, exactUnits.longValueExact());
         }
         return total;
     }

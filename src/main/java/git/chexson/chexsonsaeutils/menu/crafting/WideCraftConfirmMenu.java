@@ -62,20 +62,26 @@ public final class WideCraftConfirmMenu extends CraftConfirmMenu {
         if (calculation != null) calculation.cancel(true);
         var grid = grid();
         if (grid == null) { setValidMenu(false); return; }
-        if (effective.bitLength() < 64) {
-            calculation = grid.getCraftingService().beginCraftingCalculation(getLevel(), this::getActionSource, target,
+        if (!requiresExactCpu()) {
+            var requestSource = CraftingRequestCompatibilityAccess.get().netNew(getActionSource());
+            calculation = grid.getCraftingService().beginCraftingCalculation(getLevel(), () -> requestSource, target,
                     effective.longValueExact(), strategy);
         } else {
             var stock = new KeyCounter();
             stock.addAll(grid.getStorageService().getCachedInventory());
             long started = System.nanoTime();
-            var session = GraphPlanningEngine.createSession(grid.getCraftingService(), stock, target, strategy,
-                    PlanningLevelRouter.graphBudgetMillis(), getLevel(), true, grid.getStorageService().getInventory(), grid);
-            calculation = Util.backgroundExecutor().submit(() -> {
-                var result = session.solve(PlanAmount.of(effective), GraphPlanningSession.BudgetPolicy.ENFORCED);
+            // 编译也放进后台任务，避免确认菜单打开前在服务端线程等待。
+            AEKey requestTarget = target;
+            PlanAmount requestAmount = PlanAmount.of(effective);
+            var level = getLevel();
+            var source = getActionSource();
+            calculation = git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressFuture.submit(Util.backgroundExecutor(), () -> {
+                var session = GraphPlanningEngine.createSession(grid.getCraftingService(), stock, requestTarget, strategy,
+                        PlanningLevelRouter.graphBudgetMillis(), level, true, grid.getStorageService().getInventory(), grid);
+                var result = session.solve(requestAmount, GraphPlanningSession.BudgetPolicy.ENFORCED);
                 if (result.handled()) {
                     git.chexson.chexsonsaeutils.crafting.solve.PlanningProvenance.tag(result.plan(),
-                            git.chexson.chexsonsaeutils.crafting.solve.PlanningProvenance.GRAPH, started, this::getActionSource);
+                            git.chexson.chexsonsaeutils.crafting.solve.PlanningProvenance.GRAPH, started, () -> source);
                     return result.plan();
                 }
                 var shortage = GraphPlanPostProcessor.shortagePlan(result, session.graph());
@@ -105,7 +111,7 @@ public final class WideCraftConfirmMenu extends CraftConfirmMenu {
     @Override public void cycleSelectedCPU(boolean next) {
         if (isClientSide()) sendClientAction("cycleCpu", next);
         else {
-            int lower = effective.bitLength() < 64 ? -1 : 0;
+            int lower = !requiresExactCpu() ? -1 : 0;
             if (!cpus.isEmpty()) {
                 selectedIndex += next ? 1 : -1;
                 if (selectedIndex < lower) selectedIndex = cpus.size() - 1;
@@ -114,11 +120,17 @@ public final class WideCraftConfirmMenu extends CraftConfirmMenu {
             syncCpuSelection();
         }
     }
+    /** 超 long 根数量或字节占用都要求执行器能接收精确计划。 */
+    private boolean requiresExactCpu() {
+        return effective.bitLength() >= 64 || (exactPlan != null
+                && !git.chexson.chexsonsaeutils.crafting.recursive.WideAmountPlanCarrier.resolveBytes(exactPlan).isFast());
+    }
+
     private void refreshCpus(IGrid grid) {
         cpus.clear();
         for (var cpu : grid.getCraftingService().getCpus()) {
-            if ((effective.bitLength() < 64 || cpu instanceof WideRootCraftingCpu)
-                    && !cpu.isBusy() && (exactPlan == null || cpu.getAvailableStorage() >= exactPlan.bytes())) cpus.add(cpu);
+            if ((!requiresExactCpu() || cpu instanceof WideRootCraftingCpu)
+                    && !cpu.isBusy() && (exactPlan == null || (requiresExactCpu() && cpu instanceof WideRootCraftingCpu wide ? wide.canSubmitWideJob(exactPlan) : cpu.getAvailableStorage() >= exactPlan.bytes()))) cpus.add(cpu);
         }
         cpus.sort(java.util.Comparator.comparingInt(ICraftingCPU::getCoProcessors)
                 .thenComparingLong(ICraftingCPU::getAvailableStorage).reversed());
@@ -126,7 +138,7 @@ public final class WideCraftConfirmMenu extends CraftConfirmMenu {
     }
     private void syncCpuSelection() {
         if (selectedIndex >= cpus.size()) selectedIndex = -1;
-        if (effective.bitLength() >= 64 && selectedIndex == -1 && !cpus.isEmpty()) selectedIndex = 0;
+        if (requiresExactCpu() && selectedIndex == -1 && !cpus.isEmpty()) selectedIndex = 0;
         selected = selectedIndex < 0 || cpus.isEmpty() ? null : cpus.get(selectedIndex);
         noCPU = cpus.isEmpty();
         cpuBytesAvail = selected == null ? 0 : selected.getAvailableStorage();
@@ -141,9 +153,11 @@ public final class WideCraftConfirmMenu extends CraftConfirmMenu {
         if (!stillValid(getPlayer()) || grid() == null || exactPlan == null) return;
         var mode = CraftingContinuationSubmitBridge.getConfirmMode(this);
         if (exactPlan.simulation() && !mode.allowsSimulationStart()) return;
-        if (selected == null && effective.bitLength() >= 64) { submitError = new SyncableSubmitResult(CraftingSubmitResult.NO_CPU_FOUND); setAutoStart(false); return; }
+        if (selected == null && requiresExactCpu()) { submitError = new SyncableSubmitResult(CraftingSubmitResult.NO_CPU_FOUND); setAutoStart(false); return; }
         var result = CraftingContinuationSubmitBridge.withContinuationMode(mode,
-                () -> grid().getCraftingService().submitJob(exactPlan, null, selected, true, getActionSource()));
+                () -> selected instanceof WideRootCraftingCpu wide && requiresExactCpu()
+                        ? wide.submitWideJob(grid(), exactPlan, getActionSource())
+                        : grid().getCraftingService().submitJob(exactPlan, null, selected, true, getActionSource()));
         setAutoStart(false);
         if (result.successful()) getHost().returnToMainMenu(getPlayer(), this);
         else {

@@ -2,6 +2,8 @@ package git.chexson.chexsonsaeutils.crafting.parallelcpu;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
 import git.chexson.chexsonsaeutils.bigint.PlanAmount;
 import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
 import org.jetbrains.annotations.Nullable;
@@ -17,9 +19,16 @@ import java.util.Map;
  */
 interface MaterialAllocation {
 
+    /** 保存指定任务的配给、封套和已消费真值，零值在册必须保留以维持硬配额语义。 */
+    CompoundTag writePatternToNBT(IPatternDetails pattern, HolderLookup.Provider registries);
+
+    /** 恢复账本并绑定到本次解码的样板身份，不按剩余任务量重新分配材料。 */
+    void readPatternFromNBT(IPatternDetails pattern, CompoundTag data,
+            HolderLookup.Provider registries);
+
     /** 配给的实际来源，用于诊断 src；仅记录来源，不作为阶段或重复调用保护开关。 */
     enum Source {
-        /** 作业尚未建立提交配给；NBT 恢复保持该状态。 */
+        /** 作业尚未建立提交配给。 */
         NONE,
         /** 提交时复制规划契约提供的配给。 */
         PLAN,

@@ -69,12 +69,6 @@ class ByteAccountTest {
     }
 
     @Test
-    void emptyAccountIsZero() {
-        var account = new ByteAccount();
-        assertEquals(0L, account.value().fastValue());
-    }
-
-    @Test
     void copyAndRestoreRoundTrip() {
         var account = new ByteAccount();
         account.add(paper(), 100L, 3L);
@@ -86,5 +80,32 @@ class ByteAccountTest {
         double expected = (double) 100L * 3L / paper().getAmountPerByte() * 8;
         assertEquals(expected, account.ae2Bytes());
         assertEquals((long) Math.ceil(expected), account.value().fastValue());
+    }
+    @Test
+    void wideNodeFeesAndMaterialFeesAreBothCountedExactly() {
+        var account = new ByteAccount();
+        var nodes = BigInteger.TEN.pow(400).add(BigInteger.ONE);
+        account.addBytes(git.chexson.chexsonsaeutils.bigint.PlanAmount.of(nodes));
+        account.add(paper(), Long.MAX_VALUE, 16);
+        var expected = nodes.add(BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.valueOf(16)));
+        assertEquals(expected, account.value().exactValue());
+        var saved = account.copy();
+        account.addBytes(1234.5);
+        account.restore(saved);
+        assertEquals(expected, account.value().exactValue());
+    }
+
+    @Test
+    void journalUndoRestoresWideNodeFeesAndMixedMaterialFees() {
+        var state = new git.chexson.chexsonsaeutils.crafting.graphplan.solve.GraphPlanningState(java.util.Map.of(), java.util.Map.of());
+        state.addBytes(5.5);
+        int mark = state.journal();
+        state.addBytes(git.chexson.chexsonsaeutils.bigint.PlanAmount.of(BigInteger.TEN.pow(40)));
+        state.addStackBytesWide(paper(), 7, git.chexson.chexsonsaeutils.bigint.PlanAmount.of(BigInteger.TEN.pow(35)));
+        assertEquals(BigInteger.TEN.pow(40).add(BigInteger.TEN.pow(35).multiply(BigInteger.valueOf(7))).add(BigInteger.valueOf(6)),
+                state.byteAccount().value().exactValue());
+        state.undoTo(mark);
+        assertEquals(6L, state.byteAccount().value().fastValue());
+        assertEquals(5.5, state.byteAccount().ae2Bytes());
     }
 }

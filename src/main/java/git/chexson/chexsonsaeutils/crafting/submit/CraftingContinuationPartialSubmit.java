@@ -129,6 +129,13 @@ public final class CraftingContinuationPartialSubmit {
             IActionSource src,
             @Nullable FamilyArrivalLedger familyArrivals
     ) {
+        return extractAvailableInitialItemsFromStorage(plan, grid.getStorageService().getInventory(),
+                cpuInventory, src, familyArrivals);
+    }
+
+    /** 存储提料逻辑只依赖公开库存接口；网络装配与精确账本计算分开。 */
+    static KeyCounter extractAvailableInitialItemsFromStorage(ICraftingPlan plan, appeng.api.storage.MEStorage storage,
+            ListCraftingInventory cpuInventory, IActionSource src, @Nullable FamilyArrivalLedger familyArrivals) {
         KeyCounter requiredInitialItems = new KeyCounter();
         requiredInitialItems.addAll(plan.usedItems());
         // 计划自己声明"做不出来"的那一截（AE2 的缺口账）与"在途会回 CPU 的那一截"（usedItems）
@@ -148,7 +155,6 @@ public final class CraftingContinuationPartialSubmit {
         }
         requiredInitialItems.addAll(plan.missingItems());
         KeyCounter missingInitialItems = new KeyCounter();
-        var storage = grid.getStorageService().getInventory();
         var wideLedgers = WideAmountPlanCarrier.resolveWideLedgers(plan);
 
         for (var entry : requiredInitialItems) {
@@ -160,16 +166,21 @@ public final class CraftingContinuationPartialSubmit {
             // 需求真值：宽域账有则用真值（可 >long，且只含真越界的键），否则那份 long 读数就是真值
             var overflowed = wideLedgers.get(WideAmountKind.USED, what);
             var remaining = overflowed != null ? overflowed : java.math.BigInteger.valueOf(toExtract);
-            // 与主提交腿同一条口径：一次只喂一个 ≤long 的 chunk，超出一刀的那一截不在这里搬
+            // 精确盘可一次交完整需求；普通盘仍只交一个 long 窗口
             boolean beyondOneChunk = remaining.compareTo(WideCeilings.LONG_ACCOUNT) > 0;
             long chunk = remaining.min(WideCeilings.LONG_ACCOUNT).longValue();
-            long extracted = storage.extract(what, chunk, Actionable.MODULATE, src);
-            var gap = remaining.subtract(java.math.BigInteger.valueOf(extracted));
-            if (extracted > 0L) {
+            var wanted = cpuInventory instanceof git.chexson.chexsonsaeutils.bigint.WideCraftingInventory
+                    ? remaining : java.math.BigInteger.valueOf(chunk);
+            var extracted = git.chexson.chexsonsaeutils.api.storage.ExactStorageExtraction.extract(
+                    storage, what, wanted, Actionable.MODULATE, src);
+            var gap = remaining.subtract(extracted);
+            if (extracted.signum() > 0) {
                 // 0 量插入会在池子里留下 0 行（底层 KeyCounter 走 fastutil addTo，建行不加值），
                 // 而 list.isEmpty() 恒假会把 cantStoreItems 与 isActive() 一起点亮：
                 // 这条 lane 再也回收不掉、每 tick 空转。
-                cpuInventory.insert(what, extracted, Actionable.MODULATE);
+                if (cpuInventory instanceof git.chexson.chexsonsaeutils.bigint.WideCraftingInventory wide)
+                    wide.insertExact(what, extracted, Actionable.MODULATE);
+                else cpuInventory.insert(what, extracted.longValueExact(), Actionable.MODULATE);
             }
             if (familyArrivals != null) {
                 // 到账一律记在族这根轴上，全到账（下面 gap<=0）那一档也记：封顶读的是族合计
@@ -185,7 +196,7 @@ public final class CraftingContinuationPartialSubmit {
                 // 需求本来就超出一刀：没喂满的那一截（无论装不装得进 long）是"提交这一步本来
                 // 就不搬"的量，不是谁欠着的活。挂进 waitingFor 就是界面那个永远不降的"正在合成
                 // 9.2E"，而 waitingFor 不清空作业连完成都判不了；按批常态续取才是它的去处。
-                if (extracted == chunk && familyArrivals != null) {
+                if (extracted.compareTo(java.math.BigInteger.valueOf(chunk)) >= 0 && familyArrivals != null) {
                     // 连一整刀都喂满了：短掉的这一截 {@code = remaining - chunk} 压根不在到账轴上，
                     // 由执行侧按批续取 ⇒ 把它照<b>量</b>并进这一族的兜底池（台账 #133）。
                     // 没喂满整刀（extracted < chunk）时不记这一笔：网络此刻就给不起按批续取，
@@ -226,7 +237,11 @@ public final class CraftingContinuationPartialSubmit {
      * 十进制原文（宽域真值）；需要交回 {@code long} 的出口（挂账的 {@code missingInitialItems}）
      * 走的仍是同一份饱和口径，本行不参与任何判据。
      */
-    static String describeShortfallRow(String reason, AEKey what, long extracted,
+    static String describeShortfallRow(String reason, AEKey what, long extracted, java.math.BigInteger gap) {
+        return describeShortfallRow(reason, what, java.math.BigInteger.valueOf(extracted), gap);
+    }
+
+    static String describeShortfallRow(String reason, AEKey what, java.math.BigInteger extracted,
             java.math.BigInteger gap) {
         return "[chexsonsaeutils-submit] " + reason + ":"
                 + " key=" + what + " 已抽=" + extracted + " 短交=" + gap;
@@ -269,13 +284,14 @@ public final class CraftingContinuationPartialSubmit {
          * "这一族真到账 0" 本身就是要份额夹到 0 的那一笔（#117 的形状），不是一条没话说。
          */
         public void noteExtracted(@Nullable AEKey what, long extracted) {
-            if (what == null) {
-                return;
-            }
+            noteExtracted(what, java.math.BigInteger.valueOf(extracted));
+        }
+
+        /** 精确到账入口；与普通到账共用族账，不截断大数实物。 */
+        public void noteExtracted(@Nullable AEKey what, java.math.BigInteger extracted) {
+            if (what == null) return;
             FamilyArrival arrival = entryOf(what);
-            if (extracted > 0L) {
-                arrival.arrived = arrival.arrived.add(PlanAmount.of(extracted));
-            }
+            if (extracted.signum() > 0) arrival.arrived = arrival.arrived.add(PlanAmount.of(extracted));
         }
 
         /**

@@ -2,10 +2,13 @@ package git.chexson.chexsonsaeutils.crafting.parallelcpu;
 
 import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.AEKeyTypes;
-import it.unimi.dsi.fastutil.objects.Reference2LongMap;
-import it.unimi.dsi.fastutil.objects.Reference2LongOpenHashMap;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import java.math.BigDecimal;
+import java.math.MathContext;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.util.Mth;
+import net.minecraft.nbt.Tag;
 
 final class ParallelElapsedTimeTracker {
 
@@ -15,9 +18,9 @@ final class ParallelElapsedTimeTracker {
 
     private long lastTime = System.nanoTime();
     private long elapsedTime;
-    private final Reference2LongMap<AEKeyType> startedWorkByType = new Reference2LongOpenHashMap<>(
+    private final Reference2ObjectMap<AEKeyType, PlanAmount> startedWorkByType = new Reference2ObjectOpenHashMap<>(
             AEKeyTypes.getAll().size());
-    private final Reference2LongMap<AEKeyType> completedWorkByType = new Reference2LongOpenHashMap<>(
+    private final Reference2ObjectMap<AEKeyType, PlanAmount> completedWorkByType = new Reference2ObjectOpenHashMap<>(
             AEKeyTypes.getAll().size());
 
     ParallelElapsedTimeTracker() {
@@ -25,32 +28,38 @@ final class ParallelElapsedTimeTracker {
 
     ParallelElapsedTimeTracker(CompoundTag data) {
         this.elapsedTime = data.getLong(NBT_ELAPSED_TIME);
-        readLongByTypeMap(data.getCompound(NBT_STARTED_WORK), startedWorkByType);
-        readLongByTypeMap(data.getCompound(NBT_COMPLETED_WORK), completedWorkByType);
+        readByTypeMap(data.getCompound(NBT_STARTED_WORK), startedWorkByType);
+        readByTypeMap(data.getCompound(NBT_COMPLETED_WORK), completedWorkByType);
     }
 
     CompoundTag writeToNBT() {
         CompoundTag data = new CompoundTag();
         data.putLong(NBT_ELAPSED_TIME, elapsedTime);
-        data.put(NBT_STARTED_WORK, writeLongByTypeMap(startedWorkByType));
-        data.put(NBT_COMPLETED_WORK, writeLongByTypeMap(completedWorkByType));
+        data.put(NBT_STARTED_WORK, writeByTypeMap(startedWorkByType));
+        data.put(NBT_COMPLETED_WORK, writeByTypeMap(completedWorkByType));
         return data;
     }
 
     void addMaxItems(long itemDiff, AEKeyType keyType) {
-        if (itemDiff <= 0L || keyType == null) {
-            return;
-        }
+        addMaxItems(PlanAmount.of(itemDiff), keyType);
+    }
+
+    /** 计划总工作量保留精确值，跨 long 后也不能截断分母。 */
+    void addMaxItems(PlanAmount itemDiff, AEKeyType keyType) {
+        if (itemDiff.signum() <= 0 || keyType == null) return;
         updateTime();
-        startedWorkByType.put(keyType, saturatedSum(startedWorkByType.getLong(keyType), itemDiff));
+        startedWorkByType.put(keyType, startedWorkByType.getOrDefault(keyType, PlanAmount.ZERO).add(itemDiff));
     }
 
     void decrementItems(long itemDiff, AEKeyType keyType) {
-        if (itemDiff <= 0L || keyType == null) {
-            return;
-        }
+        decrementItems(PlanAmount.of(itemDiff), keyType);
+    }
+
+    /** 只有实际回交或真实直投交割才推进已完成量，单批保持宽域。 */
+    void decrementItems(PlanAmount itemDiff, AEKeyType keyType) {
+        if (itemDiff.signum() <= 0 || keyType == null) return;
         updateTime();
-        completedWorkByType.put(keyType, saturatedSum(completedWorkByType.getLong(keyType), itemDiff));
+        completedWorkByType.put(keyType, completedWorkByType.getOrDefault(keyType, PlanAmount.ZERO).add(itemDiff));
     }
 
     long getElapsedTime() {
@@ -58,36 +67,49 @@ final class ParallelElapsedTimeTracker {
     }
 
     float getProgress() {
-        double startedUnits = getStartedUnits();
-        if (startedUnits <= 0.0d) {
-            return 0.0f;
-        }
-        return Mth.clamp((float) (getCompletedUnits() / startedUnits), 0.0f, 1.0f);
+        var total = getScaledUnits(startedWorkByType);
+        if (total.signum() <= 0) return 0.0f;
+        var completed = getScaledUnits(completedWorkByType);
+        if (completed.compareTo(total) >= 0) return 1.0f;
+        return Math.max(0.0f, Math.min(Math.nextDown(1.0f),
+                new BigDecimal(completed).divide(new BigDecimal(total), MathContext.DECIMAL128).floatValue()));
     }
 
     long getRemainingItemCount() {
-        return getStartItemCount() <= 0L
-                ? 0L
-                : Math.max(0L, (long) (Integer.MAX_VALUE - (double) getProgress() * Integer.MAX_VALUE));
+        var total = getScaledUnits(startedWorkByType);
+        if (total.signum() <= 0) return 0;
+        var remaining = total.subtract(getScaledUnits(completedWorkByType)).max(java.math.BigInteger.ZERO);
+        if (remaining.signum() == 0) return 0;
+        return Math.max(1, remaining.min(total).multiply(java.math.BigInteger.valueOf(Integer.MAX_VALUE))
+                .divide(total).longValueExact());
     }
 
     long getStartItemCount() {
-        return getStartedUnits() > 0.0d ? Integer.MAX_VALUE : 0L;
+        return getScaledUnits(startedWorkByType).signum() > 0 ? Integer.MAX_VALUE : 0L;
     }
 
-    double getStartedUnits() {
-        return getUnits(startedWorkByType);
+    /** 单位通分为整数权重，最后一份未完成工作也不能在浮点除法中消失。 */
+    private java.math.BigInteger getScaledUnits(Reference2ObjectMap<AEKeyType, PlanAmount> byType) {
+        java.math.BigInteger denominator = java.math.BigInteger.ONE;
+        for (var keyType : AEKeyTypes.getAll()) {
+            var unit = java.math.BigInteger.valueOf(keyType.getAmountPerUnit());
+            denominator = denominator.divide(denominator.gcd(unit)).multiply(unit);
+        }
+        java.math.BigInteger units = java.math.BigInteger.ZERO;
+        for (var keyType : AEKeyTypes.getAll()) {
+            units = units.add(byType.getOrDefault(keyType, PlanAmount.ZERO).exactValue()
+                    .multiply(denominator.divide(java.math.BigInteger.valueOf(keyType.getAmountPerUnit()))));
+        }
+        return units;
     }
 
-    double getCompletedUnits() {
-        return getUnits(completedWorkByType);
-    }
+    double getStartedUnits() { return getUnits(startedWorkByType).doubleValue(); }
+    double getCompletedUnits() { return getUnits(completedWorkByType).doubleValue(); }
 
     private boolean isAllDone() {
         for (var keyType : AEKeyTypes.getAll()) {
-            if (completedWorkByType.getLong(keyType) < startedWorkByType.getLong(keyType)) {
-                return false;
-            }
+            if (completedWorkByType.getOrDefault(keyType, PlanAmount.ZERO)
+                    .compareTo(startedWorkByType.getOrDefault(keyType, PlanAmount.ZERO)) < 0) return false;
         }
         return true;
     }
@@ -98,29 +120,31 @@ final class ParallelElapsedTimeTracker {
         lastTime = currentTime;
     }
 
-    private double getUnits(Reference2LongMap<AEKeyType> byType) {
-        double units = 0.0d;
+    /** 按 AE2 各资源的单位归一化；先算精确比例，再转换为界面浮点数。 */
+    private BigDecimal getUnits(Reference2ObjectMap<AEKeyType, PlanAmount> byType) {
+        BigDecimal units = BigDecimal.ZERO;
         for (var keyType : AEKeyTypes.getAll()) {
-            units += byType.getLong(keyType) / (double) keyType.getAmountPerUnit();
+            units = units.add(new BigDecimal(byType.getOrDefault(keyType, PlanAmount.ZERO).exactValue())
+                    .divide(BigDecimal.valueOf(keyType.getAmountPerUnit()), MathContext.DECIMAL128));
         }
         return units;
     }
 
-    private long saturatedSum(long left, long right) {
-        long result = left + right;
-        return result < 0L ? Long.MAX_VALUE : result;
-    }
-
-    private static void readLongByTypeMap(CompoundTag tag, Reference2LongMap<AEKeyType> output) {
+    private static void readByTypeMap(CompoundTag tag, Reference2ObjectMap<AEKeyType, PlanAmount> output) {
         for (var keyType : AEKeyTypes.getAll()) {
-            output.put(keyType, tag.getLong(keyType.getId().toString()));
+            String key = keyType.getId().toString();
+            output.put(keyType, tag.contains(key, Tag.TAG_BYTE_ARRAY)
+                    ? PlanAmount.of(new java.math.BigInteger(tag.getByteArray(key))) : PlanAmount.of(tag.getLong(key)));
         }
     }
 
-    private static CompoundTag writeLongByTypeMap(Reference2LongMap<AEKeyType> input) {
+    private static CompoundTag writeByTypeMap(Reference2ObjectMap<AEKeyType, PlanAmount> input) {
         CompoundTag result = new CompoundTag();
-        for (var entry : input.reference2LongEntrySet()) {
-            result.putLong(entry.getKey().getId().toString(), entry.getLongValue());
+        for (var entry : input.reference2ObjectEntrySet()) {
+            String key = entry.getKey().getId().toString();
+            PlanAmount amount = entry.getValue();
+            if (amount.isFast()) result.putLong(key, amount.fastValue());
+            else result.putByteArray(key, amount.exactValue().toByteArray());
         }
         return result;
     }

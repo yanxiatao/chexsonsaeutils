@@ -1,4 +1,14 @@
 {
+  "gui.chexsonsaeutils.planning.indeterminate": "Calculating · %s · %s ms",
+  "gui.chexsonsaeutils.planning.progress": "Calculating · %s · %s steps · %s ms",
+  "gui.chexsonsaeutils.planning.phase.queued": "Queued",
+  "gui.chexsonsaeutils.planning.phase.compile": "Compiling",
+  "gui.chexsonsaeutils.planning.phase.solve": "Solving",
+  "gui.chexsonsaeutils.planning.phase.retention": "Checking retention",
+  "gui.chexsonsaeutils.planning.phase.convert": "Building plan",
+  "gui.chexsonsaeutils.planning.phase.native": "Native solver",
+  "gui.chexsonsaeutils.planning.phase.external": "External solver",
+
   "block.chexsonsaeutils.matter_mass_pattern_provider": "Matter Mass Pattern Provider",
   "item.chexsonsaeutils.matter_mass": "Matter Mass",
   "item.chexsonsaeutils.matter_mass_pattern": "Matter Mass Pattern",

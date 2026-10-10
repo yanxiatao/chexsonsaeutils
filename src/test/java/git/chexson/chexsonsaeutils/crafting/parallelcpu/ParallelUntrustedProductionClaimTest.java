@@ -92,15 +92,19 @@ final class ParallelUntrustedProductionClaimTest {
         var fifth = job.batchObligations.pendingPatterns().get(4);
         var reservation = ParallelPlanReservation.build(job.tasks.entrySet(),
                 Map.of(CUBE, Long.MAX_VALUE), job.materialAllocation);
-        for (int round = 0; round < 2; round++) {
-            assertEquals(Long.MAX_VALUE, ParallelCraftingCpuLogic.payObligationBatches(job, pool, null,
-                    reservation, new ParallelPoolLedger(), null, new ParallelBatchExtraction.Probe(),
-                    () -> true));
-        }
-        assertEquals(BIG_LONG.multiply(BigInteger.valueOf(19L)), job.batchObligations.pendingFirings(fifth),
-                "每轮限四批时，第五张必须在下一轮取得交割机会");
-        assertEquals(BIG_LONG.multiply(BigInteger.valueOf(92L)), job.batchObligations.totalPending());
-        assertEquals(BIG_LONG.multiply(BIG_LONG).multiply(BigInteger.valueOf(92L)), pool.amount(CUBE));
+        var probe = new ParallelBatchExtraction.Probe();
+        assertEquals(Long.MAX_VALUE, ParallelCraftingCpuLogic.payObligationBatches(job, pool, null,
+                reservation, new ParallelPoolLedger(), null, probe, () -> true));
+        assertEquals(4L, probe.obligationBatches, "每轮四批预算保持不变，单批可以整笔扣清大数库存");
+        assertEquals(BIG_LONG.multiply(BigInteger.valueOf(20L)), job.batchObligations.pendingFirings(fifth));
+        assertEquals(BIG_LONG.multiply(BigInteger.valueOf(20L)), job.batchObligations.totalPending());
+        assertEquals(BIG_LONG.multiply(BIG_LONG).multiply(BigInteger.valueOf(20L)), pool.amount(CUBE));
+        assertEquals(Long.MAX_VALUE, ParallelCraftingCpuLogic.payObligationBatches(job, pool, null,
+                reservation, new ParallelPoolLedger(), null, probe, () -> true));
+        assertEquals(BigInteger.ZERO, job.batchObligations.pendingFirings(fifth),
+                "第五张在下一轮取得交割机会，一次付清");
+        assertEquals(BigInteger.ZERO, job.batchObligations.totalPending());
+        assertEquals(BigInteger.ZERO, pool.amount(CUBE));
     }
 
     @Test

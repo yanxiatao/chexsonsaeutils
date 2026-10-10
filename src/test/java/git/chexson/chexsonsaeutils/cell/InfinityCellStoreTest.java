@@ -43,6 +43,50 @@ final class InfinityCellStoreTest {
     private static final AEItemKey ITEM_COPPER = AEItemKey.of(Items.COPPER_INGOT);
 
     @Test
+    void exactExtractionPreservesSimulationDowngradeSnapshotsAndPersistence() throws Exception {
+        var root = Files.createTempDirectory("infinity-exact-extract");
+        var store = new InfinityCellStore(); var id = UUID.randomUUID(); var cell = store.cell(id);
+        var huge = BigInteger.TEN.pow(100);
+        cell.insertExact(ITEM_COPPER, huge.add(BigInteger.valueOf(9)), Actionable.MODULATE);
+        var before = cell.readExactSnapshot(id);
+        assertEquals(huge, cell.extractExact(ITEM_COPPER, huge, Actionable.SIMULATE));
+        assertEquals(before.revision(), cell.readExactSnapshot(id).revision());
+        assertEquals(huge.add(BigInteger.valueOf(9)), cell.totalAmount());
+        assertEquals(huge, cell.extractExact(ITEM_COPPER, huge, Actionable.MODULATE));
+        assertEquals(9L, cell.visibleAmount(ITEM_COPPER));
+        assertEquals(BigInteger.valueOf(9), cell.totalAmount());
+        assertTrue(cell.readExactSnapshot(id).revision() > before.revision());
+        store.save(root); InfinityCellStore.awaitPendingWrites();
+        var loaded = new InfinityCellStore(); loaded.load(root);
+        assertEquals(BigInteger.valueOf(9), loaded.cell(id).extractExact(ITEM_COPPER, huge, Actionable.MODULATE));
+        assertEquals(0, loaded.cell(id).typeCount());
+        assertEquals(BigInteger.ZERO, loaded.cell(id).totalAmount());
+        assertEquals(BigInteger.ZERO, loaded.cell(id).extractExact(ITEM_COPPER, huge, Actionable.MODULATE));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> cell.extractExact(ITEM_COPPER, BigInteger.valueOf(-1), Actionable.MODULATE));
+    }
+
+    @Test
+    void exactSingleInsertionPreservesSimulationTotalsAndPersistedQuantity() throws Exception {
+        var root = Files.createTempDirectory("infinity-exact-insert");
+        var store = new InfinityCellStore(); var id = UUID.randomUUID(); var cell = store.cell(id);
+        var huge = BigInteger.TEN.pow(100).add(BigInteger.valueOf(23));
+        assertEquals(huge, cell.insertExact(ITEM_COPPER, huge, Actionable.SIMULATE));
+        assertEquals(0, cell.typeCount()); assertEquals(BigInteger.ZERO, cell.totalAmount());
+        var initial = cell.readExactSnapshot(id);
+        cell.insertExact(ITEM_COPPER, huge, Actionable.MODULATE);
+        cell.insertExact(ITEM_COPPER, BigInteger.valueOf(7), Actionable.MODULATE);
+        assertEquals(1, cell.typeCount());
+        assertEquals(huge.add(BigInteger.valueOf(7)), cell.totalAmount());
+        assertTrue(cell.readExactSnapshot(id).revision() > initial.revision());
+        store.save(root); InfinityCellStore.awaitPendingWrites();
+        var loaded = new InfinityCellStore(); loaded.load(root);
+        assertEquals(huge.add(BigInteger.valueOf(7)), loaded.cell(id).exactAmount(ITEM_COPPER));
+        assertEquals(11L, loaded.cell(id).extract(ITEM_COPPER, 11L, Actionable.MODULATE));
+        assertEquals(huge.subtract(BigInteger.valueOf(4)), loaded.cell(id).totalAmount());
+    }
+
+    @Test
     void fluidKeysPersistAndReloadThroughGenericCodec() throws Exception {
         var root = Files.createTempDirectory("infinity-fluid-codec");
         var store = new InfinityCellStore(); var id = UUID.randomUUID();

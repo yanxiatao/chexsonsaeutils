@@ -56,6 +56,10 @@ public final class ParallelCraftingCpuCluster {
     @Nullable
     private ParallelCraftingCpuGrid gridContext;
     private long lastModifiedOnTick;
+    @Nullable
+    private CompoundTag pendingRestore;
+    @Nullable
+    private HolderLookup.Provider pendingRegistries;
     private int nextTickLaneStartIndex;
 
     public ParallelCraftingCpuCluster(ParallelCpuHost host,
@@ -76,6 +80,7 @@ public final class ParallelCraftingCpuCluster {
     }
 
     public void attachGridContext(ParallelCraftingCpuGrid gridContext) {
+        restorePendingJobs();
         this.gridContext = gridContext;
     }
 
@@ -373,7 +378,22 @@ public final class ParallelCraftingCpuCluster {
         }
     }
 
+    /** 世界尚未绑定时保留原始任务，避免配方样板在缺少世界上下文时被丢弃。 */
     public void readFromNBT(CompoundTag data, HolderLookup.Provider registries) {
+        pendingRestore = data.copy();
+        pendingRegistries = registries;
+        restorePendingJobs();
+    }
+
+    /** 宿主绑定世界后、节点入网前恢复任务，保证入网时能登记原有链接和等待索引。 */
+    public void restorePendingJobs() {
+        if (pendingRestore == null || level() == null) return;
+        restoreJobs(pendingRestore, pendingRegistries);
+        pendingRestore = null;
+        pendingRegistries = null;
+    }
+
+    private void restoreJobs(CompoundTag data, HolderLookup.Provider registries) {
         lanes.clear();
         lanesByPlan.clear();
         providerBackoff.clear();
@@ -398,6 +418,10 @@ public final class ParallelCraftingCpuCluster {
     }
 
     public void writeToNBT(CompoundTag data, HolderLookup.Provider registries) {
+        if (pendingRestore != null) {
+            data.put("parallelCpuLanes", pendingRestore.getList("parallelCpuLanes", Tag.TAG_COMPOUND).copy());
+            return;
+        }
         ListTag laneTags = new ListTag();
         for (ParallelCraftingLaneState lane : lanes.values()) {
             if (lane != null && lane.isLaneActive()) {
@@ -641,6 +665,7 @@ public final class ParallelCraftingCpuCluster {
         if (lane == null || lanes.remove(lane.laneId()) == null) {
             return;
         }
+        host.saveChanges();
         lanesByPlan.values().removeIf(existing -> existing == lane);
         providerBackoff.clear();
         if (lanes.isEmpty()) {
@@ -657,6 +682,7 @@ public final class ParallelCraftingCpuCluster {
         if (lane == null) {
             return;
         }
+        host.saveChanges();
         lastModifiedOnTick = Math.max(lastModifiedOnTick, lane.getLastModifiedOnTick());
         if (gridContext != null) {
             gridContext.refreshLane(lane);

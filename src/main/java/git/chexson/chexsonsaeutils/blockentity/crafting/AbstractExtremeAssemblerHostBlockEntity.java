@@ -5,6 +5,7 @@ import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.crafting.ICraftingProvider;
+import appeng.api.networking.IGrid;
 import appeng.api.networking.storage.IStorageService;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
@@ -22,6 +23,7 @@ import git.chexson.chexsonsaeutils.bigint.WideCeilings;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.CraftingOutputRouter;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchHost;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchOutputReceiver;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DelegatingPatternDetails;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchProvider;
@@ -60,7 +62,7 @@ import java.util.Set;
  */
 public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworkedBlockEntity
         implements PatternContainer, ICraftingProvider, InternalInventoryHost,
-        HostBatchProvider, DeclaredBatchHost, NeoEcoBatchHost, PatternMatrixSource {
+        HostBatchProvider, DeclaredBatchHost, git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoExactBatchHost, PatternMatrixSource {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -313,6 +315,14 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
             java.util.UUID craftingJobId,
             long count
     ) {
+        return chexsonsaeutils$pushNeoEcoExactBatch(pattern, inputs, outputs, remainders,
+                craftingJobId, BigInteger.valueOf(count));
+    }
+
+    @Override
+    public boolean chexsonsaeutils$pushNeoEcoExactBatch(IPatternDetails pattern,
+            List<GenericStack> inputs, List<GenericStack> outputs, List<GenericStack> remainders,
+            java.util.UUID craftingJobId, BigInteger count) {
         if (chexsonsaeutils$getNeoEcoBatchCapacity(pattern) <= 0L
                 || !NeoEcoBatchOutputBuffer.append(pendingVirtualOutputs, outputs, remainders, count)) {
             return false;
@@ -760,6 +770,12 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
         return payload;
     }
 
+    static BigInteger pendingVirtualOutputAmount(WideKeyCounter buffer) {
+        BigInteger total = BigInteger.ZERO;
+        for (var key : buffer.keys()) total = total.add(buffer.getExact(key));
+        return total;
+    }
+
     private void flushPendingVirtualOutputs() {
         if (pendingVirtualOutputs.isEmpty()) {
             if (virtualReturnStalled) {
@@ -770,7 +786,14 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
         if (!getMainNode().isActive() || getGrid() == null) {
             return;
         }
-        IStorageService storageService = getGrid().getStorageService();
+        IGrid currentGrid = getGrid();
+        if (currentGrid.getCraftingService() instanceof DeclaredBatchOutputReceiver receiver) {
+            CraftingOutputRouter.claimBufferedOutputs(pendingVirtualOutputs, currentGrid, receiver);
+            saveChanges();
+        }
+        CraftingOutputRouter.claimBufferedCpuOutputs(pendingVirtualOutputs, currentGrid);
+        saveChanges();
+        IStorageService storageService = currentGrid.getStorageService();
         if (storageService == null) {
             return;
         }
@@ -778,26 +801,21 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
         var routing = CraftingOutputRouter.routePayload(storageService, actionSource, payload, null);
         List<GenericStack> remaining = routing.remainingPayload();
         accountVirtualDelivery(pendingVirtualOutputs, payload, remaining);
-        boolean stalled = !remaining.isEmpty();
+        CraftingOutputRouter.storeUnrequestedBufferedOutputs(pendingVirtualOutputs,
+                storageService.getInventory(), actionSource, currentGrid.getCraftingService()::isRequesting);
+        boolean stalled = !pendingVirtualOutputs.isEmpty();
         virtualReturnStalled = stalled;
         if (stalled) {
             // 产出回不去的唯一出口日志：网络 insert 未全收（存储满或
             // waitingFor 不匹配 → 剩余滞留缓冲、机器 isBusy 拒收新批）。
-            long stalledAmount = 0L;
+            BigInteger stalledAmount = pendingVirtualOutputAmount(pendingVirtualOutputs);
             StringBuilder stalledKeys = new StringBuilder();
-            for (GenericStack stack : remaining) {
-                if (stack != null && stack.what() != null && stack.amount() > 0L) {
-                    stalledAmount = stalledAmount >= Long.MAX_VALUE - stack.amount()
-                            ? Long.MAX_VALUE
-                            : stalledAmount + stack.amount();
-                    if (stalledKeys.length() > 0) {
-                        stalledKeys.append(", ");
-                    }
-                    stalledKeys.append(stack.what()).append(" x ").append(stack.amount());
-                    if (stalledKeys.length() > 400) {
-                        stalledKeys.append("...(more)");
-                        break;
-                    }
+            for (var key : pendingVirtualOutputs.keys()) {
+                if (stalledKeys.length() > 0) stalledKeys.append(", ");
+                stalledKeys.append(key).append(" x ").append(pendingVirtualOutputs.getExact(key));
+                if (stalledKeys.length() > 400) {
+                    stalledKeys.append("...(more)");
+                    break;
                 }
             }
             LOGGER.warn(

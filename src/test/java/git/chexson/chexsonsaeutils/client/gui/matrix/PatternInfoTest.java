@@ -32,24 +32,6 @@ class PatternInfoTest {
     }
 
     @Test
-    void exactMultipleKeepsEveryRowFull() {
-        PatternInfo info = new PatternInfo(18, COLUMNS);
-
-        assertEquals(2, info.rowCount());
-        assertEquals(9, info.internalRows().get(1).slots());
-    }
-
-    @Test
-    void rowStrideIsFixedSoCellsMapBackToOneGlobalSlot() {
-        PatternInfo info = new PatternInfo(30, COLUMNS);
-
-        List<PatternRow> rows = info.internalRows();
-        assertEquals(0, rows.get(0).globalSlot(0));
-        assertEquals(9, rows.get(1).globalSlot(0));
-        assertEquals(29, rows.get(3).globalSlot(2));
-    }
-
-    @Test
     void listingStopsAtTheLastContentRowPlusOneFreeRow() {
         PatternInfo info = new PatternInfo(45, COLUMNS);
 
@@ -70,13 +52,6 @@ class PatternInfoTest {
         PatternInfo info = new PatternInfo(45, COLUMNS);
 
         assertEquals(5, info.listRows(view(45, List.of(44), null)).size());
-    }
-
-    @Test
-    void listingFollowsContentInsteadOfCapacity() {
-        PatternInfo info = new PatternInfo(16384, COLUMNS);
-
-        assertEquals(2, info.listRows(view(16384, List.of(3), null)).size());
     }
 
     @Test

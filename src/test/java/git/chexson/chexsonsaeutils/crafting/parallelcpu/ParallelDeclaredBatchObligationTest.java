@@ -464,6 +464,8 @@ final class ParallelDeclaredBatchObligationTest {
     @Test
     void obligationBatchIsCappedByWhatThisRoundCanActuallyPay() {
         var job = newJob();
+        job.timeTracker.addMaxItems(100L, PRODUCT.getType());
+        float beforeProgress = job.timeTracker.getProgress();
         var pool = variantPool(5_000L, 0L); // 只够 5 发
         var owed = new BigInteger("447389208773083");
         job.batchObligations.incur(THOUSAND_A_FIRING, owed);
@@ -474,6 +476,7 @@ final class ParallelDeclaredBatchObligationTest {
         long paid = ParallelCraftingCpuLogic.payObligationBatch(job, THOUSAND_A_FIRING, payable,
                 pool, null, RESERVATION_FREE, new ParallelPoolLedger(), null, null);
 
+        assertEquals(beforeProgress, job.timeTracker.getProgress(), "实际扣料只结材料义务，不能冒充产物已合成");
         assertEquals(5L, paid, "一批只付这一轮真付得起的 5 发，而不是整批归位报 0");
         assertEquals(owed.subtract(BigInteger.valueOf(5L)),
                 job.batchObligations.pendingFirings(THOUSAND_A_FIRING), "剩下的欠账照旧挂着等下轮");
@@ -988,19 +991,9 @@ final class ParallelDeclaredBatchObligationTest {
         assertEquals(BigInteger.ZERO, BatchObligationLedger.readEntry(bare));
     }
 
-    /**
-     * 「网络对同一笔请求 SIMULATE 答应、MODULATE 一枚都交不出」这一型：实机是
-     * {@code minecraft:lava} 与 {@code ae2:matter_ball} —— stall 行
-     * {@code alloc=[… left=Long.MAX taken=0 stored=0 toMake=0 src=NONE]}，全员等一份
-     * 永远不会从网络来的料。无限元件在计划出门时看不见（它不在任何单元里），只能在真取
-     * 那一次按<b>行为</b>认下来。
-     *
-     * <p>认下之后这一条腿<b>收手</b>：不向网络空抽、也不把需要量注进池子。注进池子那一写法
-     * 会留下"本批没吃完的那一截"，而它唯一的去处是 {@code storeItems()} 投回网络 = 凭空多一份料
-     * （本仓已因此回退过一次）。键交回作业后，下一 tick 的配给表认得它，取料点就地认量。
-     */
+    /** 模拟答应但实际拒绝的未声明来源仍是缺料，不能被就地豁免或注入池子。 */
     @Test
-    void refillYieldsToTheTakePointInsteadOfMintingIntoThePool() {
+    void simulationPromiseWithoutDeclaredIdentityNeverCreatesInfiniteSupply() {
         var buffer = variantPool(0L, 0L);
         var network = new KeyCounter();
         var claims = new KeyCounter();
@@ -1013,7 +1006,7 @@ final class ParallelDeclaredBatchObligationTest {
         assertEquals(0L, pulled, "认下即收手：这一格一枚都不搬");
         assertEquals(0L, buffer.extract(V1, Long.MAX_VALUE, Actionable.SIMULATE),
                 "凭空的量不许进池子：进池即被 storeItems() 当残池投回网络");
-        assertEquals(Set.of(V1), lying.noted, "认中的键要交回作业，下一批取料点就地认量");
+        assertTrue(lying.noted.isEmpty(), "模拟成功与实际拒绝不能证明无限供给");
     }
 
     /**
@@ -1040,7 +1033,7 @@ final class ParallelDeclaredBatchObligationTest {
         assertTrue(finite.noted.isEmpty(), "真交得出料的键不能被认成无限源");
     }
 
-    /** 就地认下的无限源按物品本体族放行：岩浆的同族变体也不能再走网络提取。 */
+    /** 已核对的来源只放行实际提供的精确资源键。 */
     @Test
     void runtimeDiscoveryMakesTheKeyUnboundedForTheRestOfTheJob() {
         var job = newJob();
@@ -1049,7 +1042,7 @@ final class ParallelDeclaredBatchObligationTest {
         job.noteUnboundedSupply(V1);
 
         assertTrue(job.isUnboundedSupply(V1));
-        assertTrue(job.isUnboundedSupply(V2), "与规划侧同一把尺子：按本体族判");
+        assertFalse(job.isUnboundedSupply(V2), "未配置的同物品变体仍是有限资源");
     }
 
     // ==================================================================================

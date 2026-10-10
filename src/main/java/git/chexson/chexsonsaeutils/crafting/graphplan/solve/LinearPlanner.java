@@ -460,15 +460,22 @@ public final class LinearPlanner {
         private static final int BUDGET_CHECK_STRIDE = 1024;
         private int budgetCheckCountdown;
 
+        private long progressSteps;
+
         private void checkBudget() {
-            if (this.budget == null) {
-                return;
-            }
-            if (--this.budgetCheckCountdown > 0) {
-                return;
-            }
+            progressSteps++;
+            if (--this.budgetCheckCountdown > 0) return;
             this.budgetCheckCountdown = BUDGET_CHECK_STRIDE;
-            this.budget.check();
+            publishProgress();
+            this.state.checkMemoryPressure();
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Planning cancelled");
+            if (this.budget != null) this.budget.check();
+        }
+
+        private void publishProgress() {
+            var progress = git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressContext.current();
+            if (progress != null) progress.advance(progressSteps);
+            progressSteps = 0;
         }
 
         @Nullable
@@ -485,36 +492,41 @@ public final class LinearPlanner {
                     this.journalArena, this.keyIndex,
                     this.denseKeyView == null ? null : this.denseKeyView.classMemberIdsByKeyId(),
                     root.graph.denseStock(), root.graph.supplyTruth());
-            // 留种那条规则落在这里：要留在网络里的那一份不是可花库存（宽域真值账，#218）。
-            state.holdBackRetainedSeedsWide(root.graph.retainedSeedsWide());
-            this.simulate = simulate;
-            this.traceSites = GraphDiagnostics.traceActive();
-            this.budgetCheckCountdown = 1;
-            this.requestCount = 0;
-            this.branchFailureCount = 0;
-            this.prunedBatchCount = 0;
-            this.missingSiteCount = 0;
-            this.ringMacroFailureCount = 0;
-            this.ringMacroProbeCount = 0;
-            this.ringMacroFireCount = 0;
-            this.ringMacroNanos = 0;
-            this.state.ignore(root.what);
             try {
-                request(root, amount);
-            } catch (BranchFailure failure) {
-                return null;
+                // 留种那条规则落在这里：要留在网络里的那一份不是可花库存（宽域真值账，#218）。
+                state.holdBackRetainedSeedsWide(root.graph.retainedSeedsWide());
+                this.simulate = simulate;
+                this.traceSites = GraphDiagnostics.traceActive();
+                this.budgetCheckCountdown = 1;
+                this.requestCount = 0;
+                this.branchFailureCount = 0;
+                this.prunedBatchCount = 0;
+                this.missingSiteCount = 0;
+                this.ringMacroFailureCount = 0;
+                this.ringMacroProbeCount = 0;
+                this.ringMacroFireCount = 0;
+                this.ringMacroNanos = 0;
+                this.state.ignore(root.what);
+                try {
+                    request(root, amount);
+                } catch (BranchFailure failure) {
+                    return null;
+                }
+                // Add bytes for the tree size.
+                this.state.addBytes(materializedNodes * 8L);
+                if (GraphDiagnostics.active()) {
+                    GraphDiagnostics.log(
+                            "solve.attempt nodes=%d requests=%d branchFails=%d prunedBatches=%d missingSites=%d ringMacroFails=%d"
+                                    + " ringProbes=%d ringFires=%d ringMs=%d nodeBytes=%s stackBytes=%s",
+                            materializedNodes, requestCount, branchFailureCount, prunedBatchCount, missingSiteCount,
+                            ringMacroFailureCount, ringMacroProbeCount, ringMacroFireCount,
+                            ringMacroNanos / 1_000_000L, this.state.nodeBytesAccum(), this.state.stackBytesAccum());
+                }
+                return this.state;
+            } finally {
+                publishProgress();
+                this.state.releaseRollback();
             }
-            // Add bytes for the tree size.
-            this.state.addBytes(materializedNodes * 8L);
-            if (GraphDiagnostics.active()) {
-                GraphDiagnostics.log(
-                        "solve.attempt nodes=%d requests=%d branchFails=%d prunedBatches=%d missingSites=%d ringMacroFails=%d"
-                                + " ringProbes=%d ringFires=%d ringMs=%d nodeBytes=%s stackBytes=%s",
-                        materializedNodes, requestCount, branchFailureCount, prunedBatchCount, missingSiteCount,
-                        ringMacroFailureCount, ringMacroProbeCount, ringMacroFireCount,
-                        ringMacroNanos / 1_000_000L, this.state.nodeBytesAccum(), this.state.stackBytesAccum());
-            }
-            return this.state;
         }
 
         /**
@@ -671,7 +683,7 @@ public final class LinearPlanner {
                     }
                     state.insertByIdWide(site.what, site.keyId(), WideMath.mul(pattern.outputPerCraft(), times));
                     state.addCrafting(pattern.source(), times);
-                    state.addBytes(times.exactValue().doubleValue());
+                    state.addBytes(times);
                 } catch (BranchFailure failure) {
                     branchFailureCount++;
                     state.undoTo(mark);
@@ -954,32 +966,35 @@ public final class LinearPlanner {
                 // #218：起步预留量全程 PlanAmount——预留账读宽域真值、可留量读供给真值，
                 // 减法与比较都不许先把操作数窄化。旧写法拿回绕/饱和的 long 读数相减，
                 // 顶格那一族"既不留种也不报缺"：预留 0、缺口被沙盒就地吸收。
-                for (var seed : macro.startupSeeds().entrySet()) {
-                    AEKey key = seed.getKey();
-                    PlanAmount amountNeeded = seed.getValue();
-                    PlanAmount already = state.ringExtractions().getAmount(key);
-                    PlanAmount requiredAmount = amountNeeded.subtract(already).max(PlanAmount.ZERO);
-                    if (requiredAmount.signum() <= 0) {
-                        continue;
+                if (!state.hasRingStarted(macro.ringId())) {
+                    for (var seed : macro.startupSeeds().entrySet()) {
+                        AEKey key = seed.getKey();
+                        PlanAmount amountNeeded = seed.getValue();
+                        PlanAmount already = state.ringExtractions().getAmount(key);
+                        PlanAmount requiredAmount = amountNeeded.subtract(already).max(PlanAmount.ZERO);
+                        if (requiredAmount.signum() <= 0) {
+                            continue;
+                        }
+                        PlanAmount reservable = reservableStock(site.graph, key)
+                                .subtract(already).max(PlanAmount.ZERO);
+                        PlanAmount extracted = requiredAmount.min(reservable);
+                        if (extracted.signum() > 0L) {
+                            state.recordRingExtraction(key, extracted);
+                            state.insert(key, extracted);
+                            // The reservation enters the CPU inventory at submit
+                            // time and stays there for the whole job — charge its
+                            // bytes like any other extraction.
+                            state.addStackBytesWide(key, 1L, extracted);
+                            // 起步预留只是把这颗种提进 CPU（提交时按 usedItems 物理提取），
+                            // 它不能变成主链可花的料：留种那份立刻扣回可花账，
+                            // 否则后面任何同键需求都会把它吃掉，还种的那一发被聚合需求吸收。
+                            state.holdBackRetainedSeed(key, extracted);
+                        }
+                        if (extracted.compareTo(requiredAmount) < 0) {
+                            request(site.ringSlot(key), requiredAmount.subtract(extracted));
+                        }
                     }
-                    PlanAmount reservable = reservableStock(site.graph, key)
-                            .subtract(already).max(PlanAmount.ZERO);
-                    PlanAmount extracted = requiredAmount.min(reservable);
-                    if (extracted.signum() > 0L) {
-                        state.recordRingExtraction(key, extracted);
-                        state.insert(key, extracted);
-                        // The reservation enters the CPU inventory at submit
-                        // time and stays there for the whole job — charge its
-                        // bytes like any other extraction.
-                        state.addStackBytesWide(key, 1L, extracted);
-                        // 起步预留只是把这颗种提进 CPU（提交时按 usedItems 物理提取），
-                        // 它不能变成主链可花的料：留种那份立刻扣回可花账，
-                        // 否则后面任何同键需求都会把它吃掉，还种的那一发被聚合需求吸收。
-                        state.holdBackRetainedSeed(key, extracted);
-                    }
-                    if (extracted.compareTo(requiredAmount) < 0) {
-                        request(site.ringSlot(key), requiredAmount.subtract(extracted));
-                    }
+                    state.markRingStarted(macro.ringId());
                 }
                 // 留种那一发：起步预留之后才算发射向量——判据是这一趟从网络起步预留里
                 // 实际借走了几枚留种催化物（ringExtractions 随 journal 回滚），去重按 ringId
@@ -1006,9 +1021,10 @@ public final class LinearPlanner {
                             : PlanAmount.of((long) Math.ceil(entry.getValue() * scale));
                     if (times.signum() > 0) {
                         firings.put(entry.getKey(), times);
-                        state.addCrafting(entry.getKey(), times);
                     }
                 }
+                firings = macro.internallyBalancedFirings(firings, planned);
+                firings.forEach(state::addCrafting);
                 // unpackRingOperations, on the shipped vector: the ring's true
                 // net per key is what the sandbox must absorb or feed. Booking
                 // netInputs × ceil / netOutputs × floor instead leaves the
@@ -1091,9 +1107,8 @@ public final class LinearPlanner {
          * 定序兜底仍是最后一档的 {@code index}，语义没动。
          *
          * <p>第一档（剩余需求）与最后一档（下标）本来就是 {@code long} 精确量，
-         * 装箱进同一只数组只为让一次比较走一把尺。bytes 那一档保持 AE2 的 double
-         * 累加器读数（{@code bytes()}）不动：它没有天花板，也不是本条的判据；
-         * 换算法会在窄计划上改路由 tie-break，那是另一件事。
+         * 装箱进同一只数组只为让一次比较走一把尺。字节仍在 double 精确域时沿用
+         * 原差值取整顺序；越出该域后读取节点费与物料费的精确账，避免 long 饱和改变选路。
          */
         private long fireRoutesLexicographic(Site site, List<RouteOrdering.Route> routes,
                 long totalRequested, boolean multiBranch) {
@@ -1104,6 +1119,7 @@ public final class LinearPlanner {
             PlanAmount baseEmitted = totalOf(saved.emitted());
             PlanAmount baseCrafts = totalCrafts(saved);
             double baseBytes = saved.bytes();
+            PlanAmount exactBaseBytes = saved.byteAccount().value();
             long bestFulfilled = 0;
             PlanAmount[] bestMetric = null;
             long bestLeftover = 0L;
@@ -1144,8 +1160,10 @@ public final class LinearPlanner {
                         totalOf(saved.used()).subtract(baseUsed),
                         totalOf(saved.emitted()).subtract(baseEmitted),
                         totalCrafts(saved).subtract(baseCrafts),
-                        // bytes 那一档：AE2 double 累加器的读数，见方法抬头最后一段
-                        PlanAmount.of((long) Math.ceil(saved.bytes() - baseBytes)),
+                        // 字节差值：常态保留 AE2 顺序，大数使用精确账
+                        Math.abs(saved.bytes()) < 9_007_199_254_740_992.0 && Math.abs(baseBytes) < 9_007_199_254_740_992.0
+                                ? PlanAmount.of((long) Math.ceil(saved.bytes() - baseBytes))
+                                : saved.byteAccount().value().subtract(exactBaseBytes),
                         PlanAmount.of(index)
                 };
                 if (bestMetric == null || lexicographicCompare(metric, bestMetric) < 0) {

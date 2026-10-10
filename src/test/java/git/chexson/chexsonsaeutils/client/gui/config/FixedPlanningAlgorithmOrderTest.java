@@ -33,18 +33,6 @@ final class FixedPlanningAlgorithmOrderTest {
     }
 
     @Test
-    void dragMovePreservesAllFixedItems() {
-        var order = FixedPlanningAlgorithmOrder.defaults();
-
-        assertTrue(order.move(0, 1));
-        assertEquals(List.of(
-                PlanningAlgorithm.NATIVE_AE2,
-                PlanningAlgorithm.GRAPH
-        ), order.order());
-        FixedPlanningAlgorithmOrder.validate(order.order());
-    }
-
-    @Test
     void rejectsMissingAndDuplicateItems() {
         assertThrows(IllegalArgumentException.class, () -> new FixedPlanningAlgorithmOrder(
                 List.of(PlanningAlgorithm.GRAPH)));

@@ -6,6 +6,10 @@ import java.util.Optional;
 
 /** 可选下单模组的公开入口；数量始终以 AEKey 最小单位传递。 */
 public interface CraftingRequestCompatibility {
+    /** 已换算为净新增的请求显式携带语义，防止第三方默认配置再扣一次库存。 */
+    default appeng.api.networking.security.IActionSource netNew(appeng.api.networking.security.IActionSource source) {
+        return source;
+    }
     /** 已安装的数量模式；空值表示当前菜单没有模式扩展。 */
     Optional<Boolean> finalTotal(CraftAmountMenu menu);
     /** 设置模式；没有模式扩展时不允许设置最终总数模式。 */

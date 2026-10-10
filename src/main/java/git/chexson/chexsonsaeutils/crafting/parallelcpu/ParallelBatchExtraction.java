@@ -52,8 +52,8 @@ import java.util.function.Supplier;
  * 还没跑完的那一截不许被旁人从这一格抽走。
  *
  * <p><b>某一格一发真需 {@code >long} 枚</b>（倍率 × 模板量越出 {@code long}）时，这一发按
- * {@link #payInChunks} 分几刀从池子里累付：每刀 ≤{@code long}（AE2 的 {@code extract} 只能吃
- * {@code long}），而池子是宽域的（{@code WideCraftingInventory}），装得下这一发的真值也就给得出。
+ * {@link #payInChunks} 在宽域池子里按 BigInteger 一次扣除；仅有限库存接口需要 long 分段。
+ * 义务交割的发数也保留精确值，已有大数库存不再按 Long.MAX_VALUE 发分轮消费。
  * 凑不齐整发即整批归位、这批一枚不付——半份料不算一发，绝不交出一个"看着像一发"的批量；
  * 交出去的那一份真值记在 {@link Batch#exactPaid()}，销账按它出（见
  * {@code ParallelCraftingCpuLogic#recordTakenInputs}），{@code holder} 上的长读数只给宿主与诊断看。
@@ -91,9 +91,17 @@ final class ParallelBatchExtraction {
      * <p>为什么记到<b>键</b>而不是记"这一格"：单发混取那一腿上，同一格可以先真抽走一段有限候选、
      * 再退到无限候选把剩下的补齐。按格跳过会把同格里<b>真从池子抽走</b>的那一段永久丢在池外；
      * 按键相减才既留住真料、又不还凭空的量。归位出口只认这份账，不另起第二道判据。
+     *
+     * <p>{@code exactExecutions} 用于义务销账；{@code executions} 仅供有限宿主及诊断读取，
+     * 不能从其饱和值反推精确次数。
      */
     record Batch(KeyCounter[] holder, long executions, @Nullable WideKeyCounter[] exactPaid,
-            @Nullable WideKeyCounter[] mintedUnits) {
+            @Nullable WideKeyCounter[] mintedUnits, BigInteger exactExecutions) {
+
+        Batch(KeyCounter[] holder, long executions, @Nullable WideKeyCounter[] exactPaid,
+                @Nullable WideKeyCounter[] mintedUnits) {
+            this(holder, executions, exactPaid, mintedUnits, BigInteger.valueOf(executions));
+        }
 
         Batch(KeyCounter[] holder, long executions) {
             this(holder, executions, null, null);
@@ -1036,6 +1044,21 @@ final class ParallelBatchExtraction {
             boolean widePayment,
             Probe.MinCellScope minCellScope
     ) {
+        return prepareUniform(details, inventory, level, BigInteger.valueOf(requestedExecutions),
+                expectedContainerItems, reservation, probe, widePayment, minCellScope);
+    }
+
+    private static Batch prepareUniform(
+            IPatternDetails details,
+            ListCraftingInventory inventory,
+            Level level,
+            BigInteger requestedExecutions,
+            KeyCounter expectedContainerItems,
+            @Nullable ParallelPlanReservation reservation,
+            @Nullable Probe probe,
+            boolean widePayment,
+            Probe.MinCellScope minCellScope
+    ) {
         var inputs = details.getInputs();
         // 某个键"每发合计吃几件"：跨槽同键要累加，否则第二槽按第一槽那次的份数
         // 被整笔记账，本来撑得住的批量会被误判成 0 发。
@@ -1048,7 +1071,7 @@ final class ParallelBatchExtraction {
         // 付得起的两发夹成一发，也可能把付不起的一发放行成两发。
         var familyDemandPerFiring = new HashMap<Object, PlanAmount>();
         var chosen = new Candidate[inputs.length];
-        long executions = requestedExecutions;
+        BigInteger executions = requestedExecutions;
         if (probe != null) {
             // 一次提取一轮账：本轮的"第一格"只留本轮那一张样板的（别把上一张的那一格串过来）；
             // 按样板存的那本表不清——它要能回答"本轮里<b>这一张</b>的首格"，跨这一轮的多次提取。
@@ -1064,7 +1087,7 @@ final class ParallelBatchExtraction {
                     familyDemandPerFiring, executions,
                     reservation, details, requestedExecutions, probe, widePayment, slot,
                     minCellScope);
-            if (choice == null || choice.executions() <= 0L) {
+            if (choice == null || choice.executions().signum() <= 0) {
                 if (probe != null) {
                     probe.noCandidate++;
                     // 只说"挑不出候选"定不了因：现场没料、被配给夹到 0、还是压根没有配额口径，
@@ -1073,9 +1096,9 @@ final class ParallelBatchExtraction {
                 }
                 return null;
             }
-            executions = Math.min(executions, choice.executions());
+            executions = executions.min(choice.executions());
             // 无限格不是钉住份数的那一格（它交得出任意多发），别把它的读数报成 binding
-            if (choice.executions() <= executions && !choice.unboundedSource() && probe != null) {
+            if (choice.executions().compareTo(executions) <= 0 && !choice.unboundedSource() && probe != null) {
                 probe.lastBindKey = choice.key();
                 probe.lastBindStored = choice.stored();
                 probe.lastBindDemand = choice.demandPerExecution();
@@ -1099,9 +1122,9 @@ final class ParallelBatchExtraction {
         WideKeyCounter[] mintedUnits = null;
         for (int slot = 0; slot < inputs.length; slot++) {
             var choice = chosen[slot];
-            BigInteger exactNeed = choice.exactUnitsPerFiring().multiply(BigInteger.valueOf(executions));
+            BigInteger exactNeed = choice.exactUnitsPerFiring().multiply(executions);
             holder[slot] = new KeyCounter();
-            long items = multiplyOrMax(choice.unitsPerExecution(), executions);
+            long items = saturate(exactNeed);
             // 两者不等即这一发的真值装不进一个 KeyCounter 格子：items 那份是钉在天花板上的读数，
             // exactNeed 才是真值。
             boolean beyondHolder = items <= 0L || exactNeed.compareTo(BigInteger.valueOf(items)) != 0;
@@ -1140,7 +1163,7 @@ final class ParallelBatchExtraction {
                 reinjectTaken(inventory, holder, exactPaidUnits, mintedUnits);
                 return null;
             } else if (beyondHolder) {
-                // 这一格一刀付不完：分几刀从（宽域）池子里累付，凑不齐就整批归位。
+                // 宽域库存按真值一次扣除；有限接口分段累计，凑不齐就整批归位。
                 BigInteger paid = payInChunks(inventory, holder[slot], choice.key(), exactNeed, probe);
                 if (exactPaidUnits == null) {
                     exactPaidUnits = new BigInteger[inputs.length];
@@ -1168,16 +1191,15 @@ final class ParallelBatchExtraction {
             AEKey remaining = inputs[slot].getRemainingKey(choice.key());
             if (remaining != null) {
                 expectedContainerItems.add(remaining,
-                        multiplyOrMax(inputs[slot].getMultiplier(), executions));
+                        saturate(BigInteger.valueOf(inputs[slot].getMultiplier()).multiply(executions)));
             }
         }
-        return new Batch(holder, executions, exactPaidUnits == null
-                ? null : toExactPaidHolder(holder, exactPaidUnits), mintedUnits);
+        return new Batch(holder, saturate(executions), exactPaidUnits == null
+                ? null : toExactPaidHolder(holder, exactPaidUnits), mintedUnits, executions);
     }
 
     /**
-     * 把这一格的<b>真值</b>从池子里分几刀付出去：每刀 ≤{@code long}（AE2 的 {@code extract}
-     * 只能吃 {@code long}），而池子是宽域的（{@link WideCraftingInventory}），装得下真值也就给得出真值。
+     * 把这一格的真值付出：宽域库存直接扣除 BigInteger，有限库存接口才按 long 分段提取。
      *
      * <p>凑不齐 {@code exactNeed} 时返回已付出去的那一截（可能为 0），由调用方整批归位——
      * <b>半份料不算一发</b>，绝不交出一个"看着像一发"的批量。
@@ -1432,7 +1454,7 @@ final class ParallelBatchExtraction {
      *                        跳过它——那些枚数从未离开池子。这个标记就是回滚出口认的那一条信息，
      *                        不在那里再判一次 {@code isUnboundedSupply}
      */
-    private record Candidate(AEKey key, long unitsPerExecution, long executions,
+    private record Candidate(AEKey key, long unitsPerExecution, BigInteger executions,
             long stored, long demandPerExecution, BigInteger exactUnitsPerFiring,
             boolean unboundedSource) {
     }
@@ -1555,7 +1577,19 @@ final class ParallelBatchExtraction {
             ParallelPlanReservation reservation,
             @Nullable Probe probe
     ) {
-        if (payableFirings <= 0L || details.getInputs() == null || details.getInputs().length == 0) {
+        return payDeclaredObligation(details, inventory, level, BigInteger.valueOf(payableFirings),
+                reservation, probe);
+    }
+
+    static Batch payDeclaredObligation(
+            IPatternDetails details,
+            ListCraftingInventory inventory,
+            Level level,
+            BigInteger payableFirings,
+            ParallelPlanReservation reservation,
+            @Nullable Probe probe
+    ) {
+        if (payableFirings.signum() <= 0 || details.getInputs() == null || details.getInputs().length == 0) {
             return null;
         }
         if (probe != null) {
@@ -1654,22 +1688,7 @@ final class ParallelBatchExtraction {
      * 再把它搬进缓冲就是把同一份量记两次，而取料点不再向池子伸手 ⇒ 搬进来的那一截留在池子里，
      * 下一刻被 {@code storeItems()} 当残池投回网络 = 凭空多一份料。
      *
-     * <p>还留在这条腿上的只有一种：<b>这一批现场认下的</b>——网络对同一笔请求 SIMULATE 答应、
-     * MODULATE 一枚交不出（KubeJS／ExtendedAE 那类注册成无限的岩浆与物质球：不在任何单元里，
-     * 规划时看不见）。这一张 {@link ParallelPlanReservation} 还不认它，取料点不会就地认量，
-     * 于是它的 want 就是本批缺口（配额口径对它不成立），先按 ≤{@code long} 向网络真取一次；
-     * <b>一枚都没取到就认下、然后收手</b>：这一格凭空的量一枚都不注进缓冲（不变式：认量绝不进池，
-     * 注进去的残池下一刻会被 {@code storeItems()} 投回网络 = 凭空多一份料），键经
-     * {@link ObligationRefill#noteUnboundedSupply} 交回本作业，下一 tick 配给表认得它之后
-     * 由取料点就地认量。
-     *
-     * <p>这一句"多等一 tick"只对<b>义务交割</b>这一条腿成立：{@code payDeclaredBatchObligations}
-     * 每 tick 都会再试一次，欠账原样挂着，很快就补得上（一轮最多
-     * {@code DECLARED_OBLIGATION_BATCHES_PER_TICK} 批、还要过 tick 预算闸，所以"下一批"未必就是下一 tick）。走<b>任务提取</b>那条腿
-     * （{@code refillTaskInputsFromNetwork}）时认中之后仍然拿不到料，调用方按提取失败登记
-     * {@code MATERIAL_BACKOFF_TICKS}＝20 tick 的材料退避，于是要多等的是那 20 tick，
-     * 直到料真到（{@code wakeMaterialBackoff} 按缺口键精准唤醒）或退避到期。两条腿的口径不是一句
-     * "一 tick"，别看错了等的是哪一段。
+     * <p>其余来源只按实际交付量减少缺口；模拟读数用于诊断拒收，不会补录无限身份。
      */
     static long refillObligationBatch(
             IPatternDetails details,
@@ -1834,15 +1853,11 @@ final class ParallelBatchExtraction {
                 // （exactStored，与销账／占料那几处同一把尺，不造第三把尺），差值才是"真落池"的那一截。
                 // 只印，不参与这里任何一次夹取、退让或早退——room 仍按 got 收，与拆档之前逐字相同。
                 BigInteger landedSoFar = BigInteger.ZERO;
-                boolean latchedUnbounded = false;
                 boolean ranDry = false;
                 long lastWant = 0L;
                 while (room.signum() > 0L) {
                     long want = room.min(WideCeilings.LONG_ACCOUNT).longValue();
-                    // 记住伸出去的那一笔（夹过配额的 room，不是原始 exactShort）：下面认无限源
-                    // 只许问<b>同一笔请求</b>——若拿 exactShort 去 probe，一旦 room<exactShort
-                    // （配额夹掉了尾段）就在"room 交不出、exactShort 却有货"的形状上误认无限源，
-                    // 这一格此后走 isUnboundedSupply 早退 + 取料点就地认量 = 凭空造料。
+                    // 拒收诊断记录同一笔实际请求，避免把未请求的数量混入读数。
                     lastWant = want;
                     long got = refill.pull(key, want);
                     if (got > 0L) {
@@ -1865,36 +1880,11 @@ final class ParallelBatchExtraction {
                     }
                 }
                 if (gotSoFar == 0L) {
-                    // 判据一字未动：同一笔请求的 SIMULATE 仍只在 gotSoFar==0 时问一次、仍是
-                    // ">0 即认无限源"。这里只是把那一问的答案<b>连同同族读数</b>拼进 obWhy 那一格。
+                    // 模拟读数仅用于拒收诊断，不能据此声明无限来源。
                     long sameKeySim = refill.probe(key, lastWant);
-                    noteRefillNetworkReadout(probe, details, slotIndex, key, refill, lastWant,
-                            sameKeySim);
-                    if (sameKeySim > 0L) {
-                        // 同一笔请求，网络 SIMULATE 答应、MODULATE 一枚都交不出——这才是"报得出取不出"
-                        // 的无限元件（实机 minecraft:lava、ae2:matter_ball：alloc 三键 left=Long.MAX
-                        // taken=0 stored=0 toMake=0，全员等一份永远不会来的料）。判据是行为不是报量：
-                        // 巨大有限盘（实机 mekanism:redstone 网络 1.47e20）真交得出 got>0，
-                        // 一次也进不到这一支，照旧按 long 分批真取。
-                        refill.noteUnboundedSupply(key);
-                        latchedUnbounded = true;
-                        // 认下即收手，这一格一枚都不搬：作业那份集合是<b>下一 tick</b> 配给表的输入
-                        // （{@code ParallelCraftingCpuLogic} 每 tick 重建它），于是同一批付不出、欠账原样
-                        // 留在义务账上，下一批由取料点就地认量（{@code prepareUniform} 的
-                        // unboundedSource 那一支）。
-                        //
-                        // 这里<b>没有</b>"把缺口注进缓冲、让同一批伸手取走"的第二条路：注进来的量不是
-                        // 网络交出的，它留在池里唯一的去处就是 {@code storeItems()} 投回网络 = 凭空多
-                        // 一份料（本仓已因此回退过一次）。代价是这一键多等一 tick，换"认量绝不进池"
-                        // 这条不变式无条件成立——NeoEco 那条快路径的销账（按池子真少的那一截记）正是
-                        // 建在它上面。
-                        break;
-                    }
+                    noteRefillNetworkReadout(probe, details, slotIndex, key, refill, lastWant, sameKeySim);
                 }
-                if (latchedUnbounded || room.signum() <= 0L) {
-                    // 认下无限源即收手；这一格本批撑满了也不退后续候选（"多一枚都不要"）
-                    break;
-                }
+                if (room.signum() <= 0L) break;
                 if (ranDry && exactShort.compareTo(WideCeilings.LONG_ACCOUNT) > 0) {
                     // 缺口本身就装不进一刀：首候选这一刀交不满即停手，不退到后续候选——
                     // 那样等于把该槽下一批才该凑的那一截提前堆进池子（定数口径被吃穿）。
@@ -2195,19 +2185,11 @@ final class ParallelBatchExtraction {
                     exactAvailable = exactAvailable
                             .subtract(poolClaims.getExact(template.key())).max(BigInteger.ZERO);
                 }
-                long stored = inventory.extract(template.key(), Long.MAX_VALUE, Actionable.SIMULATE);
                 if (reservation != null) {
-                    PlanAmount quota = reservation.quotaExact(template.key(), details, input);
-                    if (quota != null) {
-                        exactAvailable = exactAvailable.min(quota.exactValue().max(BigInteger.ZERO));
-                    }
-                    long usable = reservation.usableFor(template.key(), stored, details,
+                    exactAvailable = reservation.usableForExact(template.key(), exactAvailable, details,
                             readout, input, countDistinctKeys(templates) > 1);
-                    // 同 primaryCandidate：读数的天花板不是一道真夹子，不许拿它剪掉池子的真值
-                    if (usable < Long.MAX_VALUE) {
-                        exactAvailable = exactAvailable.min(BigInteger.valueOf(Math.max(0L, usable)));
-                    }
-                    stored = Math.min(stored, usable);
+                    PlanAmount quota = reservation.quotaExact(template.key(), details, input);
+                    if (quota != null) exactAvailable = exactAvailable.min(quota.exactValue().max(BigInteger.ZERO));
                 }
                 if (exactAvailable.signum() > 0L) {
                     slotFirings = slotFirings.add(exactAvailable.divide(exactUnits));
@@ -2285,9 +2267,9 @@ final class ParallelBatchExtraction {
     private static Candidate primaryCandidate(IPatternDetails.IInput input,
             ListCraftingInventory inventory, @Nullable Level level,
             Map<AEKey, Long> demandPerFiring, Map<AEKey, BigInteger> exactDemandPerFiring,
-            Map<Object, PlanAmount> familyDemandPerFiring, long cap,
+            Map<Object, PlanAmount> familyDemandPerFiring, BigInteger cap,
             @Nullable ParallelPlanReservation reservation,
-            IPatternDetails details, long batchLimit,
+            IPatternDetails details, BigInteger batchLimit,
             @Nullable Probe probe, boolean widePayment, int slotIndex,
             Probe.MinCellScope minCellScope) {
         long multiplier = input.getMultiplier();
@@ -2314,18 +2296,11 @@ final class ParallelBatchExtraction {
             long stored = inventory.extract(template.key(), Long.MAX_VALUE, Actionable.SIMULATE);
             long usableReadout = stored;
             if (reservation != null) {
-                long usableNow = reservation.usableFor(template.key(), stored, details, batchLimit,
-                        input, substitutable);
-                usableReadout = usableNow;
-                if (usableNow < stored && probe != null) {
-                    probe.resClamp++;
-                }
-                // usableNow == Long.MAX 是配额读数的天花板（"宁高估"那道出口），不是一道真夹子：
-                // 拿它去夹池子的真值就是把还能付的那一截剪掉，>long 的一发永远凑不齐。
-                if (usableNow < Long.MAX_VALUE) {
-                    exactAvailable = exactAvailable.min(BigInteger.valueOf(Math.max(0L, usableNow)));
-                }
-                stored = Math.min(stored, usableNow);
+                exactAvailable = reservation.usableForExact(template.key(), exactAvailable, details,
+                        batchLimit, input, substitutable);
+                usableReadout = saturate(exactAvailable);
+                if (usableReadout < stored && probe != null) probe.resClamp++;
+                stored = Math.min(stored, usableReadout);
             }
             // 同一键被多个槽吃时，可行份数由"每发合计需求"这个线性约束决定：
             // E × (前面槽的每发件数 + 本槽每发件数) ≤ 现场量。
@@ -2333,7 +2308,7 @@ final class ParallelBatchExtraction {
             // （extract MAX SIMULATE），两个哨兵相除把还能付的那一截夹小一次；紧贴的下一句已经在
             // 宽域上算出真商，widePayment=true 时让位给那一份，窄域商不再二次夹。widePayment=false 走原路，一位不动。
             long demand = addOrMax(demandPerFiring.getOrDefault(template.key(), 0L), unitsPerExecution);
-            long executions = widePayment ? cap : Math.min(cap, stored / demand);
+            BigInteger executions = widePayment ? cap : cap.min(BigInteger.valueOf(stored / demand));
             // 该键与它所在族"每发合计吃几枚"的<b>终值</b>口径，与回补侧、停滞行共用同一个
             // cellPayableFirings（全仓一处）：旧那把"保守上界"尺产出过"可花=yes 而这一格付 0"的
             // 自相矛盾读数，已删。
@@ -2350,7 +2325,7 @@ final class ParallelBatchExtraction {
                     quota == null ? null : quota.exactValue(), exactFamilyAsk);
             if (widePayment) {
                 if (batchScopePayable != null) {
-                    executions = Math.min(executions, saturate(batchScopePayable));
+                    executions = executions.min(batchScopePayable);
                 }
             } else {
                 // 现场量约束按精确键算，配额约束却按族给：同族两个变体各吃一个槽时，
@@ -2359,13 +2334,13 @@ final class ParallelBatchExtraction {
                 // 同一个线性约束换到族上：E × (本批该族每发合计件数) ≤ 该族剩余份额。
                 long familyLimited = executionsInsideFamilyQuota(
                         reservation, details, input, template.key(), familyDemandPerFiring,
-                        PlanAmount.of(exactUnits), executions);
-                if (familyLimited < executions && probe != null) {
+                        PlanAmount.of(exactUnits), executions.longValueExact());
+                if (BigInteger.valueOf(familyLimited).compareTo(executions) < 0 && probe != null) {
                     probe.familyClamp++;
                 }
-                executions = familyLimited;
+                executions = BigInteger.valueOf(familyLimited);
             }
-            if (executions >= 1L) {
+            if (executions.signum() > 0) {
                 if (probe != null) {
                     // 纯读数：这一格算得出几发就记几发，本趟取料腿最紧的那一格由 Probe#noteMinCell
                     // 按 scope 留着（原型趟的份数写死 1，别让它冒充批处理上限）。
@@ -2373,7 +2348,7 @@ final class ParallelBatchExtraction {
                     // blockedCell 点不到它。判据一字未动（仍是上面那一句 executions >= 1）。
                     probe.noteMinCell(minCellScope, slotIndex, template.key(), exactUnits,
                             exactAvailable, quota,
-                            usableReadout, exactKeyAsk, exactFamilyAsk, cap, executions);
+                            usableReadout, exactKeyAsk, exactFamilyAsk, saturate(cap), saturate(executions));
                 }
                 return new Candidate(template.key(), unitsPerExecution, executions, stored, demand,
                         exactUnits, false);
@@ -2381,7 +2356,7 @@ final class ParallelBatchExtraction {
             if (probe != null) {
                 // 这一格算不出<b>一发</b>：把现场原样留下（纯读数，判据就是上面那一句的否分支）
                 probe.noteFailingCell(details, slotIndex, template.key(), exactUnits, exactAvailable,
-                        quota, usableReadout, exactKeyAsk, exactFamilyAsk, cap, batchScopePayable);
+                        quota, usableReadout, exactKeyAsk, exactFamilyAsk, saturate(cap), batchScopePayable);
             }
         }
         return null;

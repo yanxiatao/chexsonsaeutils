@@ -10,6 +10,7 @@ import appeng.api.stacks.KeyCounter;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.CraftingPlan;
 import git.chexson.chexsonsaeutils.bigint.WideCraftingInventory;
+import git.chexson.chexsonsaeutils.crafting.CraftingOutputRouter;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -26,6 +27,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class ExtremeAssemblerBatchCountTest {
     private static final AEKey MATERIAL = AEItemKey.of(Items.IRON_ORE);
     private static final AEKey OUTPUT = AEItemKey.of(Items.IRON_INGOT);
+
+    @Test
+    void stalledLogAmountRetainsAllDigitsAndAllKeys() {
+        var buffer = new git.chexson.chexsonsaeutils.bigint.WideKeyCounter();
+        BigInteger huge = BigInteger.TEN.pow(100);
+        buffer.add(MATERIAL, huge);
+        buffer.add(OUTPUT, huge.add(BigInteger.ONE));
+        assertEquals(huge.multiply(BigInteger.TWO).add(BigInteger.ONE),
+                AbstractExtremeAssemblerHostBlockEntity.pendingVirtualOutputAmount(buffer));
+        assertEquals(huge, buffer.getExact(MATERIAL));
+    }
 
     @Test
     void longMaxIsARealBatchRatherThanTheUninitializedMarker() {
@@ -75,6 +87,41 @@ final class ExtremeAssemblerBatchCountTest {
                 List.of(new GenericStack(OUTPUT, 7L)));
         assertEquals(total.subtract(BigInteger.valueOf(Long.MAX_VALUE)).add(BigInteger.valueOf(7L)),
                 restored.getExact(OUTPUT));
+    }
+
+    @Test
+    void restoredAssemblerOutputCanBeClaimedWithoutLongSegmentation() {
+        var pattern = pattern(Items.FURNACE, new GenericStack(MATERIAL, 1L), new GenericStack(OUTPUT, 80L));
+        var prototype = new KeyCounter();
+        prototype.add(MATERIAL, 1L);
+        var firings = BigInteger.TEN.pow(30).add(BigInteger.valueOf(17));
+        var total = firings.multiply(BigInteger.valueOf(80));
+        var buffer = AbstractExtremeAssemblerHostBlockEntity.virtualOutputs(pattern,
+                new KeyCounter[]{prototype}, firings, true);
+        var registries = net.minecraft.core.RegistryAccess.fromRegistryOfRegistries(
+                net.minecraft.core.registries.BuiltInRegistries.REGISTRY);
+        var saved = AbstractExtremeAssemblerHostBlockEntity.writeVirtualOutputs(buffer, registries);
+        var restored = new git.chexson.chexsonsaeutils.bigint.WideKeyCounter();
+        AbstractExtremeAssemblerHostBlockEntity.readVirtualOutputs(restored, saved, registries);
+        var grid = git.chexson.chexsonsaeutils.crafting.solve.FakePlanGrid.FakeGrid.builder().build();
+        var delivered = new WideCraftingInventory(ignored -> {});
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        CraftingOutputRouter.claimBufferedOutputs(restored, grid, (sourceGrid, what, available) -> {
+            assertEquals(grid, sourceGrid);
+            assertEquals(OUTPUT, what);
+            assertEquals(total, available);
+            calls.incrementAndGet();
+            var accepted = available.subtract(BigInteger.valueOf(7));
+            delivered.insertExact(what, accepted, Actionable.MODULATE);
+            return accepted;
+        });
+        assertEquals(1, calls.get(), "回流操作次数只由产物键数决定，不随总量增加");
+        assertEquals(total.subtract(BigInteger.valueOf(7)), delivered.amount(OUTPUT));
+        assertEquals(BigInteger.valueOf(7), restored.getExact(OUTPUT));
+        var payload = AbstractExtremeAssemblerHostBlockEntity.virtualOutputPayload(restored);
+        assertEquals(List.of(new GenericStack(OUTPUT, 7L)), payload);
+        AbstractExtremeAssemblerHostBlockEntity.accountVirtualDelivery(restored, payload, List.of());
+        assertTrue(restored.isEmpty());
     }
 
     @Test

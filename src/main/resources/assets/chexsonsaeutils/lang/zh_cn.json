@@ -1,4 +1,14 @@
 {
+  "gui.chexsonsaeutils.planning.indeterminate": "计算中 · %s · %s ms",
+  "gui.chexsonsaeutils.planning.progress": "计算中 · %s · 已处理 %s 步 · %s ms",
+  "gui.chexsonsaeutils.planning.phase.queued": "等待计算",
+  "gui.chexsonsaeutils.planning.phase.compile": "编译图",
+  "gui.chexsonsaeutils.planning.phase.solve": "求解",
+  "gui.chexsonsaeutils.planning.phase.retention": "留种校验",
+  "gui.chexsonsaeutils.planning.phase.convert": "生成计划",
+  "gui.chexsonsaeutils.planning.phase.native": "原生求解",
+  "gui.chexsonsaeutils.planning.phase.external": "外部求解",
+
   "block.chexsonsaeutils.matter_mass_pattern_provider": "物质团供应器",
   "item.chexsonsaeutils.matter_mass": "物质团",
   "item.chexsonsaeutils.matter_mass_pattern": "物质团样板",

@@ -48,6 +48,11 @@ public final class GraphCompiler {
         for (var entry : networkStock) {
             stockSnapshot.put(entry.getKey(), entry.getLongValue());
         }
+        if (git.chexson.chexsonsaeutils.config.PlanningServerConfig.lowMemory()
+                || git.chexson.chexsonsaeutils.crafting.memory.HeapPressure.configured().sample().needsSpill(0L)) {
+            releaseCache();
+            return compileUncached(craftingService, stockSnapshot, target, level);
+        }
         var cacheKey = cacheKey(craftingService, stockSnapshot.keySet(), target);
         if (cacheKey != null) {
             synchronized (GRAPH_CACHE) {
@@ -75,6 +80,11 @@ public final class GraphCompiler {
         }
     };
 
+    /** 堆压力触发时释放跨请求的强引用拓扑缓存；进行中的图由请求自己持有。 */
+    public static void releaseCache() {
+        synchronized (GRAPH_CACHE) { GRAPH_CACHE.clear(); }
+    }
+
     record CacheKey(
             ICraftingService craftingService,
             long providersTick,
@@ -101,7 +111,7 @@ public final class GraphCompiler {
         long providersTick = ((git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceProvidersTickAccessor) service)
                 .chexsonsaeutils$getCraftingProviders()
                 .getLastModifiedOnTick();
-        return new CacheKey(service, providersTick, target, Set.copyOf(stockKeys));
+        return new CacheKey(service, providersTick, target, stockKeys);
     }
 
     private static CraftGraph compileUncached(ICraftingService craftingService,
@@ -109,7 +119,12 @@ public final class GraphCompiler {
             @Nullable Level level) {
         var compilation = new Compilation(craftingService, networkStock, level);
         long expandStart = System.nanoTime();
-        String decline = compilation.expand(target, new LinkedHashSet<>(), true, null);
+        String decline;
+        try {
+            decline = compilation.expand(target, new LinkedHashSet<>(), true, null);
+        } finally {
+            compilation.publishProgress();
+        }
         compilation.expandNanos = System.nanoTime() - expandStart;
         return compilation.build(target, decline);
     }
@@ -137,6 +152,13 @@ public final class GraphCompiler {
         /** Raw pattern inputs aligned by index with each compiled pattern's inputs. */
         private final Map<GraphPattern, IPatternDetails.IInput[]> rawPatternInputs = new java.util.IdentityHashMap<>();
         private final Set<AEKey> visited = new HashSet<>();
+        private final git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressImpl progress =
+                git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressContext.current();
+        private int unpublishedProgress;
+        private void publishProgress() {
+            if (progress != null) progress.advance(unpublishedProgress);
+            unpublishedProgress = 0;
+        }
         private final Set<AEKey> emittable = new LinkedHashSet<>();
         /** Raw {@code getCraftingFor(root)} size captured during expand (index-layer probe). */
         private int rootCraftingForCount = -1;
@@ -299,10 +321,12 @@ public final class GraphCompiler {
         @Nullable
         private String expand(AEKey rawKey, LinkedHashSet<AEKey> pathKeys, boolean topLevel,
                 @Nullable IPatternDetails.IInput parentInput) {
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Planning compilation cancelled");
             AEKey key = topLevel ? rawKey : resolveNodeKey(rawKey, parentInput);
             if (!visited.add(key)) {
                 return null;
             }
+            if (++unpublishedProgress >= 256) publishProgress();
             if (visited.size() > MAX_KEYS) {
                 return "graph too large (more than " + MAX_KEYS + " keys)";
             }

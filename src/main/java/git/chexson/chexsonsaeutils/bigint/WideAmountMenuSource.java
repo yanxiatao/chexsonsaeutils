@@ -7,6 +7,9 @@ package git.chexson.chexsonsaeutils.bigint;
  */
 public interface WideAmountMenuSource {
 
+    /** 确认页所需字节的十进制精确值，空串表示尚无计划。 */
+    String chexsonsaeutils$syncedExactBytes();
+
     /** M1 同步过来的宽域账编码串（可能为空串，表示无溢出键）。 */
     String chexsonsaeutils$syncedWideAmounts();
 }

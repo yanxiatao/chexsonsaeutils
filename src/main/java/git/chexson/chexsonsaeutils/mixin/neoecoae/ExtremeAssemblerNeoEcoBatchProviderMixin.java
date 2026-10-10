@@ -66,6 +66,14 @@ public abstract class ExtremeAssemblerNeoEcoBatchProviderMixin
         );
     }
 
+    /** 21.2.1 的精确事务先限制材料额度，派发成功后才登记 CPU 等待量。 */
+    @Override
+    public @Nullable ExactPreparation eco$prepareExactFastPath(ECOBatchDispatchContext context,
+            java.math.BigInteger requested) {
+        return git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoExactBatchPreparation.prepare(
+                chexsonsaeutils$host(), context, requested);
+    }
+
     @Nullable
     @Override
     public PreparedBatch prepareBatch(

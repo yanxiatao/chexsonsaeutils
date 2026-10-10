@@ -45,6 +45,7 @@ public class AE2ParallelCpuToolBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public void onReady() {
+        parallelCpuCluster.restorePendingJobs();
         super.onReady();
         this.getMainNode().setVisualRepresentation(getMainMenuIcon());
         postCpuListChange();

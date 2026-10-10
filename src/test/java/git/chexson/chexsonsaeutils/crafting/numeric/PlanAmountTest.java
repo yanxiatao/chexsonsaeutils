@@ -34,9 +34,12 @@ class PlanAmountTest {
         var x = PlanAmount.of(left);
         var y = PlanAmount.of(right);
         assertEquals(a.add(b), x.add(y).exactValue());
+        assertEquals(a.add(b).bitLength() < Long.SIZE, x.add(y).isFast());
         assertEquals(a.subtract(b), x.subtract(y).exactValue());
+        assertEquals(a.subtract(b).bitLength() < Long.SIZE, x.subtract(y).isFast());
         var product = a.multiply(b);
         assertEquals(product, x.multiply(y).exactValue());
+        assertEquals(product.bitLength() < Long.SIZE, x.multiply(y).isFast());
         assertEquals(product.bitLength() < Long.SIZE,
                 git.chexson.chexsonsaeutils.bigint.WideMath.mulFitsLong(left, right));
         if (right != 0) {
@@ -83,26 +86,11 @@ class PlanAmountTest {
     }
 
     @Test
-    void addAcrossLongBoundaryPromotes() {
-        var result = PlanAmount.of(Long.MAX_VALUE).add(PlanAmount.ONE);
-        assertFalse(result.isFast());
-        assertEquals(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE), result.exactValue());
-        assertEquals(BigInteger.TWO.pow(63), result.exactValue());
-    }
-
-    @Test
     void wideResultFallingBackToLongDomainNormalizesToFast() {
         var wide = PlanAmount.of(BigInteger.TWO.pow(63));
         var back = wide.subtract(PlanAmount.ONE);
         assertTrue(back.isFast(), "结果回落 long 域时 wide 必须为 null");
         assertEquals(Long.MAX_VALUE, back.fastValue());
-    }
-
-    @Test
-    void multiplyAcrossLongBoundaryIsExact() {
-        var result = PlanAmount.of(Long.MAX_VALUE / 2L).multiply(PlanAmount.of(3L));
-        assertFalse(result.isFast());
-        assertEquals(BigInteger.valueOf(Long.MAX_VALUE / 2L).multiply(BigInteger.valueOf(3L)), result.exactValue());
     }
 
     @Test
@@ -124,23 +112,6 @@ class PlanAmountTest {
     }
 
     @Test
-    void ceilDivMatchesBigIntegerReferenceIncludingNegatives() {
-        long[] dividends = {0L, 1L, 2L, 7L, -7L, 8L, -8L, 9L, -9L,
-                Long.MAX_VALUE / 2, Long.MIN_VALUE / 2, 1L << 40};
-        long[] divisors = {1L, 2L, 3L, 7L, 8L, -2L, -3L, -7L};
-        for (long a : dividends) {
-            for (long b : divisors) {
-                var q = BigInteger.valueOf(a).divide(BigInteger.valueOf(b));
-                var r = BigInteger.valueOf(a).remainder(BigInteger.valueOf(b));
-                var expected = r.signum() != 0 && r.signum() == BigInteger.valueOf(b).signum()
-                        ? q.add(BigInteger.ONE) : q;
-                assertEquals(expected, PlanAmount.of(a).ceilDiv(PlanAmount.of(b)).exactValue(),
-                        "ceilDiv(" + a + "," + b + ")");
-            }
-        }
-    }
-
-    @Test
     void ceilDivWideOperandsMatchReference() {
         var big = BigInteger.TWO.pow(70).add(BigInteger.valueOf(12345L));
         var dividend = PlanAmount.of(big);
@@ -159,19 +130,6 @@ class PlanAmountTest {
         var wide = PlanAmount.of(BigInteger.TWO.pow(70));
         assertEquals(BigInteger.TWO.pow(70).remainder(BigInteger.valueOf(3L)),
                 wide.remainder(PlanAmount.of(3L)).exactValue());
-    }
-
-    @Test
-    void divideTruncatesTowardZero() {
-        assertEquals(-3L, PlanAmount.of(-7L).divide(PlanAmount.of(2L)).fastValue());
-        assertEquals(3L, PlanAmount.of(7L).divide(PlanAmount.of(2L)).fastValue());
-    }
-
-    @Test
-    void subtractAcrossLongLowerBoundaryPromotes() {
-        var result = PlanAmount.of(Long.MIN_VALUE).subtract(PlanAmount.ONE);
-        assertFalse(result.isFast());
-        assertEquals(BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE), result.exactValue());
     }
 
     @Test

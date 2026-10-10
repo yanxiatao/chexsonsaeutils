@@ -17,6 +17,9 @@ import java.util.List;
  */
 public record RingId(@Nullable AEKey entryPoint, int memberFingerprint) {
 
+    /** 起步池属于整组环成员；同一环的多个净输出入口共用这份身份。 */
+    public RingId startupIdentity() { return new RingId(null, memberFingerprint); }
+
     public static RingId of(
             @Nullable AEKey entryPoint,
             @Nullable Collection<? extends IPatternDetails> members

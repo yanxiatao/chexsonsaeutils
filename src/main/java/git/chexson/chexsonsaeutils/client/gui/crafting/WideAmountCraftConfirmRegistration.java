@@ -1,7 +1,6 @@
 package git.chexson.chexsonsaeutils.client.gui.crafting;
 
 import appeng.menu.me.crafting.CraftConfirmMenu;
-import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.mixin.minecraft.client.MenuScreensAccessor;
 import net.minecraft.client.gui.screens.MenuScreens;
 import org.slf4j.Logger;
@@ -12,7 +11,7 @@ import org.slf4j.Logger;
  *
  * <p>必须在 {@code FMLClientSetupEvent} 的 {@code enqueueWork} 里跑（此时
  * {@code RegisterMenuScreensEvent} 已把 AE2 的注册应用到 {@code MenuScreens} 表），
- * 数量输入始终覆盖同键；原生确认页的宽域显示仅在合成续投功能开启时装载。
+ * 数量输入始终覆盖同键；原生确认页始终使用我们的预览屏，计算进度不依赖合成续投开关。
  */
 public final class WideAmountCraftConfirmRegistration {
 
@@ -28,10 +27,6 @@ public final class WideAmountCraftConfirmRegistration {
             if (net.minecraft.client.Minecraft.getInstance().screen instanceof WideCraftAmountScreen screen)
                 screen.restore(value.amount(), value.missing());
         });
-        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(
-                ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled")) {
-            return;
-        }
         try {
             MenuScreens.ScreenConstructor<CraftConfirmMenu, WideAmountCraftConfirmScreen> constructor =
                     WideAmountCraftConfirmScreen::new;

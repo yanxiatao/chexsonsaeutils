@@ -88,10 +88,10 @@ public final class Ae2PlanConverter {
         // 无环分支同样是我们的图规划出口（实机 ae2:creative_storage_cell x 1000000 的
         // lava 1.6e19 缺料就出自这条），有溢出键、超界份数或无限源键才套一层不含执行契约的透明载体：
         // 它不命中 RecursivePlanContract 的任何判据，规划/提交语义与直接返回 base 一致。
-        return result.exactFinalAmount().isFast() && wideLedgers.isEmpty() && wideCrafts.isEmpty() && unboundedKeys.isEmpty()
+        return state.byteAccount().value().isFast() && result.exactFinalAmount().isFast() && wideLedgers.isEmpty() && wideCrafts.isEmpty() && unboundedKeys.isEmpty()
                 ? base
                 : new WideAmountCraftingPlan(base, wideLedgers, wideCrafts, unboundedKeys,
-                        result.exactFinalAmount().isFast() ? null : result.exactFinalAmount());
+                        result.exactFinalAmount().isFast() ? null : result.exactFinalAmount(), state.byteAccount().value());
     }
 
     /**
@@ -182,7 +182,7 @@ public final class Ae2PlanConverter {
         return new RecursiveCraftingPlan(merged, recursiveInitialItems, internalItems,
                 result.finalAmount(), selected, materialBill.assigned(), wideLedgers, wideCrafts,
                 unboundedKeys, materialBill.envelopes(),
-                result.exactFinalAmount().isFast() ? null : result.exactFinalAmount());
+                result.exactFinalAmount().isFast() ? null : result.exactFinalAmount(), state.byteAccount().value());
     }
 
     /**

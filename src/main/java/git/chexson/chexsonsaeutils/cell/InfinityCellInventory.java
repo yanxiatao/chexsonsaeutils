@@ -32,7 +32,9 @@ import java.util.List;
 import java.util.UUID;
 
 public class InfinityCellInventory implements StorageCell, WideSupplySource,
-        git.chexson.chexsonsaeutils.api.storage.ExactCellSnapshotSource {
+        git.chexson.chexsonsaeutils.api.storage.ExactCellSnapshotSource,
+        git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion,
+        git.chexson.chexsonsaeutils.api.storage.ExactStorageExtraction {
     /** 套娃检查决策缓存上限；满即整体清空（决策是 AEKey 的纯函数，重建只损失命中率）。 */
     private static final int FIT_CACHE_LIMIT = 4096;
     private static final Object2BooleanOpenHashMap<AEKey> FIT_CACHE = new Object2BooleanOpenHashMap<>();
@@ -77,12 +79,33 @@ public class InfinityCellInventory implements StorageCell, WideSupplySource,
         return inserted;
     }
 
+    /** 精确口与 long 口共用过滤、嵌套单元检查和销毁卡规则。 */
+    @Override
+    public BigInteger insertExact(AEKey what, BigInteger amount, Actionable mode, IActionSource source) {
+        if (amount.signum() < 0) throw new IllegalArgumentException("存储插入量不得为负");
+        if (amount.signum() == 0 || !canInsert(what)) return BigInteger.ZERO;
+        BigInteger inserted = BigInteger.ZERO;
+        if (!(what instanceof AEItemKey itemKey) || fitsInsideCells(itemKey)) {
+            inserted = cellData.insertExact(what, amount, mode);
+            if (inserted.signum() > 0 && mode == Actionable.MODULATE) markChanged();
+        }
+        return hasVoidUpgrade ? amount : inserted;
+    }
+
     @Override
     public long extract(AEKey what, long amount, Actionable mode, IActionSource source) {
         var extracted = cellData.extract(what, amount, mode);
         if (extracted > 0 && mode == Actionable.MODULATE) {
             markChanged();
         }
+        return extracted;
+    }
+
+    /** 直接从同一份盘账扣除精确数量，保留宿主保存通知。 */
+    @Override
+    public BigInteger extractExact(AEKey what, BigInteger amount, Actionable mode, IActionSource source) {
+        BigInteger extracted = cellData.extractExact(what, amount, mode);
+        if (extracted.signum() > 0 && mode == Actionable.MODULATE) markChanged();
         return extracted;
     }
 

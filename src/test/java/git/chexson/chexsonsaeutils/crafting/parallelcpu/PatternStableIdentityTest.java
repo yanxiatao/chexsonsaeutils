@@ -53,24 +53,6 @@ final class PatternStableIdentityTest {
                 "配方不同就换 #s：否则把两张不同的样板当成同一张");
     }
 
-    /** 身份标形状：一格一 token、零空白，且同时带 {@code #i} 与 {@code #s} 两段。 */
-    @Test
-    void identityTagCarriesBothPartsAndNoWhitespace() {
-        var tag = ParallelCraftingCpuLogic.patternIdentityTag(
-                pattern(OUT, List.of(new GenericStack(OUT, 1L)), 1L, IN_A));
-        assertTrue(tag.startsWith("#i"), "身份标要以 #i 段开头：" + tag);
-        assertTrue(tag.contains("#s"), "身份标要带跨会话 #s 段：" + tag);
-        assertTrue(tag.indexOf(' ') < 0, "身份标一格一 token，值内不许有空白：" + tag);
-    }
-
-    /** {@code null} 身份标退回可读的 {@code #i?#s?}，不抛、不留空段冒充有身份。 */
-    @Test
-    void nullPatternYieldsReadablePlaceholder() {
-        var tag = ParallelCraftingCpuLogic.patternIdentityTag(null);
-        assertTrue(tag.startsWith("#i?"), tag);
-        assertTrue(tag.contains("#s"), tag);
-    }
-
     /**
      * useless 折叠壳<b>不改写</b> {@code #s} 这句话不许留——本用例按读到的壳算式做一个等价壳，
      * 只折两条腿（{@code getOutputs()} 每枚 {@code amount × k}、

@@ -517,7 +517,7 @@ final class ParallelBatchExtractionTest {
 
     /**
      * 规划侧认下的<b>无限源</b>键不挨任何一道 {@code long} 域夹子：配给封顶与占料锁两条路径
-     * 都退回现场量，而且按<b>物品本体族</b>一起豁免（只登记 {@code V1}，同物品的 {@code V2} 照样放过）。
+     * 都退回现场量，仅豁免明确登记的精确键（V1 登记不代表 V2 也能生成）。
      *
      * <p>实机形态是 1e8 份订单卡死时的 {@code locked=[minecraft:lava stored=9223372036854775807
      * usable=0]}：池子里躺着 9.2E 枚岩浆，是<b>我们自己</b>那份配额/占料账把它判成取不动，
@@ -566,15 +566,15 @@ final class ParallelBatchExtractionTest {
         assertEquals(100L, unbounded.usableFor(ORE, 100L, FUZZY_ORDER2, 6L,
                 FUZZY_ORDER2.getInputs()[0], true), "无限键不许被预留任何量");
 
-        // 三、族豁免：登记的是 V1，同物品的 V2 也不挨夹
+        // 三、精确来源豁免：V1 放行，未登记的 V2 仍受有限库存约束
         assertEquals(0L, control.usableFor(V1, 100L, TWIN_VARIANTS, 4L,
                 TWIN_VARIANTS.getInputs()[0], false));
         assertEquals(100L, unbounded.usableFor(V1, 100L, TWIN_VARIANTS, 4L,
                 TWIN_VARIANTS.getInputs()[0], false));
         assertEquals(0L, control.usableFor(V2, 100L, TWIN_VARIANTS, 4L,
                 TWIN_VARIANTS.getInputs()[1], false), "族配额 5 枚已销完");
-        assertEquals(100L, unbounded.usableFor(V2, 100L, TWIN_VARIANTS, 4L,
-                TWIN_VARIANTS.getInputs()[1], false), "同族变体不能只放过精确键");
+        assertEquals(0L, unbounded.usableFor(V2, 100L, TWIN_VARIANTS, 4L,
+                TWIN_VARIANTS.getInputs()[1], false), "未配置的同族变体不能凭空生成");
 
         // 四、非无限键逐字不变：规划没把这一格配在铜上，铜就照样是 0 份额
         assertEquals(0L, control.usableFor(COPPER, 100L, FUZZY_ORDER, 6L,

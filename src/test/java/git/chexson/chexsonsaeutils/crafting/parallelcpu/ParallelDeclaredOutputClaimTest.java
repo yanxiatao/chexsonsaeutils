@@ -10,6 +10,8 @@ import appeng.crafting.CraftingLink;
 import appeng.crafting.CraftingPlan;
 import appeng.crafting.execution.CraftingCpuHelper;
 import git.chexson.chexsonsaeutils.bigint.WideCraftingInventory;
+import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
+import git.chexson.chexsonsaeutils.crafting.CraftingOutputRouter;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchOutputClaim;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchOutputReceiver;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchTerminalCallback;
@@ -25,6 +27,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 实际宽域交付的数量守恒、网络边界与多个任务分配；不使用计划回报代替实物到账。 */
@@ -35,6 +38,19 @@ final class ParallelDeclaredOutputClaimTest {
     private static final BigInteger HUGE = BigInteger.TEN.pow(40).add(BigInteger.valueOf(17));
     private static final RegistryAccess REGISTRIES =
             RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
+
+    @Test
+    void actualWideReturnAdvancesOnlyItsExactShareOfWork() {
+        var job = job();
+        var pool = new WideCraftingInventory(ignored -> {});
+        ((WideCraftingInventory) job.waitingFor).insertExact(MATERIAL, HUGE, Actionable.MODULATE);
+        job.timeTracker.addMaxItems(git.chexson.chexsonsaeutils.bigint.PlanAmount.of(HUGE.multiply(BigInteger.valueOf(4))), MATERIAL.getType());
+        assertEquals(0.0f, job.timeTracker.getProgress());
+        assertEquals(HUGE, ParallelCraftingCpuLogic.claimDeclaredIntermediateOutput(job, pool, MATERIAL, HUGE, ignored -> {}));
+        assertEquals(0.25f, job.timeTracker.getProgress(), 0.000001f);
+        assertEquals(BigInteger.ZERO, ParallelCraftingCpuLogic.claimDeclaredIntermediateOutput(job, pool, MATERIAL, HUGE, ignored -> {}));
+        assertEquals(0.25f, job.timeTracker.getProgress(), 0.000001f);
+    }
 
     @Test
     void hugeActualOutputMovesIntoPoolWithoutLongSegments() {
@@ -157,6 +173,68 @@ final class ParallelDeclaredOutputClaimTest {
         assertEquals(HUGE.subtract(BigInteger.valueOf(narrow)), grid.claimDeclaredOutputs(MATERIAL, HUGE));
         assertEquals(HUGE, pool(lane).amount(MATERIAL));
         assertEquals(BigInteger.ZERO, grid.claimDeclaredOutputs(MATERIAL, HUGE));
+    }
+
+    /** 装配机用同一真实缓冲路由入口；一次转移超过 long 的量，并保留另一产线的等待索引。 */
+    @Test
+    void bufferedAssemblerOutputFeedsMultipleCpuLanesAcrossPartialFlushes() {
+        var cluster = ParallelRecursiveFinalOutputDeliveryTest.diagnosticCluster();
+        var grid = new ParallelCraftingCpuGrid(cluster.grid());
+        grid.setClusters(java.util.List.of(cluster));
+        var first = lane(cluster, HUGE);
+        var second = lane(cluster, HUGE.multiply(BigInteger.TWO));
+        grid.refreshLane(first);
+        grid.refreshLane(second);
+        var buffer = new WideKeyCounter();
+        buffer.add(MATERIAL, HUGE);
+        CraftingOutputRouter.claimBufferedOutputs(buffer, cluster.grid(), grid);
+        assertTrue(buffer.isEmpty());
+        assertEquals(HUGE, pool(first).amount(MATERIAL));
+        assertEquals(BigInteger.ZERO, pool(second).amount(MATERIAL));
+        assertEquals(Long.MAX_VALUE, grid.getRequestedAmount(MATERIAL),
+                "第一条产线清账后，第二条大数等待不能从索引消失");
+        buffer.add(MATERIAL, HUGE.multiply(BigInteger.valueOf(3)));
+        buffer.add(SIDE, HUGE);
+        CraftingOutputRouter.claimBufferedOutputs(buffer, cluster.grid(), grid);
+        assertEquals(HUGE.multiply(BigInteger.TWO), pool(second).amount(MATERIAL));
+        assertEquals(HUGE, buffer.getExact(MATERIAL), "超出实际欠量的实物仍留在装配机");
+        assertEquals(HUGE, buffer.getExact(SIDE), "没有 CPU 需要的副产物留给网络交付");
+        assertEquals(0L, grid.getRequestedAmount(MATERIAL));
+        CraftingOutputRouter.claimBufferedOutputs(buffer, cluster.grid(), grid);
+        assertEquals(HUGE, buffer.getExact(MATERIAL), "重复回流不能重复认账");
+    }
+
+    @Test
+    void currentGridOutputReceiverWorksForRestoredJobsWithoutBatchCallbacks() {
+        var cluster = ParallelRecursiveFinalOutputDeliveryTest.diagnosticCluster();
+        var grid = new ParallelCraftingCpuGrid(cluster.grid());
+        grid.setClusters(java.util.List.of(cluster));
+        // lane() 经真实作业 NBT 恢复，既没有 receipt，也没有重新声明批次。
+        var restored = lane(cluster, HUGE);
+        grid.refreshLane(restored);
+        var buffer = new WideKeyCounter();
+        buffer.add(MATERIAL, HUGE);
+        IGrid foreign = ParallelRecursiveFinalOutputDeliveryTest.diagnosticCluster().grid();
+        CraftingOutputRouter.claimBufferedOutputs(buffer, foreign, grid);
+        assertEquals(HUGE, buffer.getExact(MATERIAL));
+        cluster.detachGridContext();
+        CraftingOutputRouter.claimBufferedOutputs(buffer, cluster.grid(), grid);
+        assertEquals(HUGE, buffer.getExact(MATERIAL), "CPU 拆网后不得按旧索引交付");
+        cluster.attachGridContext(grid);
+        CraftingOutputRouter.claimBufferedOutputs(buffer, cluster.grid(), grid);
+        assertTrue(buffer.isEmpty());
+        assertEquals(HUGE, pool(restored).amount(MATERIAL));
+    }
+
+    @Test
+    void actualCraftingServiceExposesWideReceiverAndRejectsForeignGrid() {
+        var cluster = ParallelRecursiveFinalOutputDeliveryTest.diagnosticCluster();
+        var service = new appeng.me.service.CraftingService(
+                cluster.grid(), cluster.grid().getStorageService(), null);
+        var receiver = assertInstanceOf(DeclaredBatchOutputReceiver.class, service,
+                "实际 AE2 网格服务必须经过 Mixin 提供宽域回流入口");
+        IGrid foreign = ParallelRecursiveFinalOutputDeliveryTest.diagnosticCluster().grid();
+        assertEquals(BigInteger.ZERO, receiver.receive(foreign, MATERIAL, HUGE));
     }
 
     private static ParallelExecutingCraftingJob job() {

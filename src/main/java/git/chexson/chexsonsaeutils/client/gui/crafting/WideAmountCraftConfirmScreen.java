@@ -64,9 +64,21 @@ public final class WideAmountCraftConfirmScreen extends CraftConfirmScreen imple
      */
     private void chexsonsaeutils$refreshTitle() {
         CraftingPlanSummary plan = getMenu().getPlan();
-        if (plan == null) {
+        if (getMenu() instanceof git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressMenu progress
+                && !progress.planningPhase().isEmpty()) {
+            Component phase = Component.translatable("gui.chexsonsaeutils.planning.phase." + progress.planningPhase().toLowerCase(java.util.Locale.ROOT));
+            Component status = progress.planningPhase().equals("EXTERNAL") || progress.planningPhase().equals("NATIVE")
+                    ? Component.translatable("gui.chexsonsaeutils.planning.indeterminate", phase,
+                            NumberFormat.getInstance().format(progress.planningElapsedMillis()))
+                    : Component.translatable("gui.chexsonsaeutils.planning.progress", phase,
+                            NumberFormat.getInstance().format(progress.planningSteps()),
+                            NumberFormat.getInstance().format(progress.planningElapsedMillis()));
+            setTextContent(AEBaseScreen.TEXT_ID_DIALOG_TITLE, GuiText.CraftingPlan.text(status));
             return;
         }
+        if (plan == null) return;
+        java.math.BigInteger exactBytes = git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.resolve(plan,
+                getMenu() instanceof WideAmountMenuSource source ? source.chexsonsaeutils$syncedExactBytes() : "");
         long millis = -1L;
         String solverId = "";
         if (getMenu() instanceof MenuProvenanceHost host
@@ -83,29 +95,32 @@ public final class WideAmountCraftConfirmScreen extends CraftConfirmScreen imple
                 loggedMissingProvenance = true;
                 LOGGER.debug("Craft confirm summary carries no planning provenance; keeping AE2 title");
             }
+            if (!exactBytes.equals(java.math.BigInteger.valueOf(plan.getUsedBytes()))) {
+                setTextContent(AEBaseScreen.TEXT_ID_DIALOG_TITLE, GuiText.CraftingPlan.text(
+                        GuiText.BytesUsed.text(NumberFormat.getInstance().format(
+                                exactBytes))));
+            }
             return;
         }
         Component solver = Component.translatable(PlanningProvenance.solverTranslationKey(solverId));
         Component provenance = Component.translatable(
                 "gui.chexsonsaeutils.crafting_plan.provenance",
                 NumberFormat.getInstance().format(Math.max(0L, millis)),
-                chexsonsaeutils$formatBytes(plan.getUsedBytes()),
+                chexsonsaeutils$formatBytes(exactBytes),
                 solver);
         setTextContent(AEBaseScreen.TEXT_ID_DIALOG_TITLE, GuiText.CraftingPlan.text(provenance));
     }
 
-    private static String chexsonsaeutils$formatBytes(long bytes) {
-        if (bytes < 1000L) {
-            return bytes + " B";
-        }
-        String[] units = { "K", "M", "G", "T", "P" };
-        double value = bytes;
-        int unit = -1;
-        while (value >= 1000.0 && unit < units.length - 1) {
-            value /= 1000.0;
+    private static String chexsonsaeutils$formatBytes(java.math.BigInteger bytes) {
+        String[] units = { "", "K", "M", "G", "T", "P", "E", "Z", "Y", "R", "Q" };
+        java.math.BigDecimal value = new java.math.BigDecimal(bytes);
+        int unit = 0;
+        while (value.compareTo(java.math.BigDecimal.valueOf(1000)) >= 0 && unit < units.length - 1) {
+            value = value.movePointLeft(3);
             unit++;
         }
-        return String.format(java.util.Locale.ROOT, "%.1f%s B", value, units[unit]);
+        return (unit == 0 ? bytes.toString()
+                : value.round(new java.math.MathContext(4)).toString()) + units[unit] + " B";
     }
 
     @Override

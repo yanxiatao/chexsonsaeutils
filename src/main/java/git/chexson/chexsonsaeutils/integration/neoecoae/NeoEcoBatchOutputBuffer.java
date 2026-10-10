@@ -26,15 +26,19 @@ public final class NeoEcoBatchOutputBuffer {
     /** 宽域装配器缓冲；整批输出与余料不受单段 long 容量限制。 */
     public static boolean append(git.chexson.chexsonsaeutils.bigint.WideKeyCounter target,
             List<GenericStack> outputs, List<GenericStack> remainders, long count) {
-        if (count <= 0L) {
-            return false;
-        }
+        return append(target, outputs, remainders, java.math.BigInteger.valueOf(count));
+    }
+
+    /** 精确批次数由 NeoEco 扣料事务确定，输出和余料仅乘一次。 */
+    public static boolean append(git.chexson.chexsonsaeutils.bigint.WideKeyCounter target,
+            List<GenericStack> outputs, List<GenericStack> remainders, java.math.BigInteger count) {
+        if (count.signum() <= 0) return false;
         boolean appended = false;
         for (var stacks : List.of(outputs, remainders)) {
             for (var stack : stacks) {
                 if (stack != null && stack.what() != null && stack.amount() > 0L) {
                     target.add(stack.what(), java.math.BigInteger.valueOf(stack.amount())
-                            .multiply(java.math.BigInteger.valueOf(count)));
+                            .multiply(count));
                     appended = true;
                 }
             }

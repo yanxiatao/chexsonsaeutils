@@ -150,6 +150,8 @@ final class ParallelCpuHostContractTest {
 
     /** 尚未入世界/接网的测试宿主；运行状态由场景独立驱动，不依赖方块构造副作用。 */
     private static final class HostImpl implements ParallelCpuHost {
+        private int saves;
+        @Override public void saveChanges() { saves++; }
         private CpuSelectionMode mode = CpuSelectionMode.ANY;
         private boolean active = true;
         private boolean processing;

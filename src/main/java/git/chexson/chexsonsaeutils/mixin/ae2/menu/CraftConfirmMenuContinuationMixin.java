@@ -47,6 +47,9 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
     @Shadow
     private ICraftingPlan result;
 
+    @Unique private ICraftingPlan chexsonsaeutils$publishedPlan;
+    @Unique private CraftingPlanSummary chexsonsaeutils$publishedSummary;
+
     @Unique
     private CraftingContinuationMode chexsonsaeutils$continuationMode = CraftingContinuationMode.defaultMode();
 
@@ -78,6 +81,13 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
     @GuiSync(9212)
     public String chexsonsaeutils$wideAmounts = "";
 
+    /** 字节真值独立于数量账同步，不能从 summary 的饱和 long 恢复。 */
+    @GuiSync(9213)
+    public String chexsonsaeutils$exactBytes = "";
+
+    @Override
+    public String chexsonsaeutils$syncedExactBytes() { return chexsonsaeutils$exactBytes; }
+
     protected CraftConfirmMenuContinuationMixin(MenuType<?> menuType, int id, Inventory playerInventory, Object host) {
         super(menuType, id, playerInventory, host);
     }
@@ -106,6 +116,7 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
         if (isClientSide()) {
             return;
         }
+        chexsonsaeutils$syncWideAmounts();
         var provenance = this.result == null ? null : PlanningProvenance.peek(this.result);
         if (provenance == null) {
             return;
@@ -173,8 +184,10 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
             IActionSource actionSource,
             ICraftingPlan job
     ) {
-        return PartialPlanMissingSummary.revealDeclaredMissing(
+        var summary = PartialPlanMissingSummary.revealDeclaredMissing(
                 CraftingPlanSummary.fromJob(grid, actionSource, job), job);
+        git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.attach(summary, job);
+        return summary;
     }
 
     /**
@@ -193,6 +206,9 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
         this.chexsonsaeutils$provenanceMillis = -1L;
         this.chexsonsaeutils$provenanceSolver = "";
         this.chexsonsaeutils$wideAmounts = "";
+        this.chexsonsaeutils$exactBytes = "";
+        this.chexsonsaeutils$publishedPlan = null;
+        this.chexsonsaeutils$publishedSummary = null;
         ConfirmMenuProvenanceRegistry.register(getPlayer(), this);
     }
 
@@ -200,16 +216,27 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
      * 服务端：读本菜单当前计划自带的宽域载体，编码写进同步字段。无溢出键（含计划根本没有
      * 载体——AE2 原生计划、别的规划 mod 接管的计划）时置空串，客户端原样沿用 AE2 显示。
      */
+    @Inject(method = "broadcastChanges", at = @At("HEAD"), remap = false)
+    private void chexsonsaeutils$refreshCurrentPlanAmounts(CallbackInfo ci) {
+        chexsonsaeutils$syncWideAmounts();
+    }
+
     @Unique
     private void chexsonsaeutils$syncWideAmounts() {
         if (isClientSide()) {
             return;
         }
+        if (this.result == chexsonsaeutils$publishedPlan && this.plan == chexsonsaeutils$publishedSummary) return;
+        chexsonsaeutils$publishedPlan = this.result;
+        chexsonsaeutils$publishedSummary = this.plan;
         if (this.plan != null && this.result != null) {
+            git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.attach(this.plan, this.result);
             if (net.neoforged.fml.ModList.get().isLoaded("neoecoae"))
                 git.chexson.chexsonsaeutils.integration.craftingdisplay.neoecoae.NeoEcoCraftingPreview.apply(this.plan, this.result);
             git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer.attachPatternTimes(this.plan, this.result);
         }
+        this.chexsonsaeutils$exactBytes = this.result == null ? ""
+                : WideAmountPlanCarrier.resolveBytes(this.result).exactValue().toString();
         boolean ownWidePlan = this.result instanceof WideAmountPlanCarrier
                 || !WideAmountPlanCarrier.resolveWideLedgers(this.result).isEmpty()
                 || !WideAmountPlanCarrier.resolveWideCrafts(this.result).isEmpty();

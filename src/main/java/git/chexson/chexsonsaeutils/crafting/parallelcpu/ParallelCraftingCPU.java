@@ -47,6 +47,11 @@ public final class ParallelCraftingCPU implements ICraftingCPU, git.chexson.chex
     }
 
     @Override
+    public boolean canSubmitWideJob(appeng.api.networking.crafting.ICraftingPlan plan) {
+        return acceptsSubmissions();
+    }
+
+    @Override
     public boolean supportsNativePartialSubmit() {
         return false;
     }

@@ -140,7 +140,7 @@ QWEN.md
 .mcp.json
 .vscode/
 .codex/
-docs/
+/docs/*.local.md
 .lsp.json
 .jdtls-config/
 .jdtls-workspace/

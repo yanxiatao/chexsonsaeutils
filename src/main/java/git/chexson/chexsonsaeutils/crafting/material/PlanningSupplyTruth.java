@@ -122,38 +122,21 @@ public final class PlanningSupplyTruth {
         this.tallyKeyCount = tallyKeyCount;
     }
 
-    /**
-     * 这一格的报量与取货能力不一致，就是无限源：AE2 的
-     * {@code appeng.me.cells.CreativeCellInventory} 报 {@code Integer.MAX_VALUE} 枚，
-     * 但 {@code extract} 对配置过的键"要多少给多少"。
-     *
-     * <p>判别只花一次 SIMULATE，而且只在报量恰为 {@code Integer.MAX_VALUE} 时花——
-     * 那是创造盘的固定签名，普通单元一次都不探。这里不认 mod 名也不认类名：
-     * 认的是行为（取出 &gt; 报出），别家同形状的无限盘一样命中。
-     */
-    static java.util.@Nullable Collection<AEKey> overReportingKeys(StorageCell cell) {
-        java.util.Collection<AEKey> unbounded = null;
-        var reported = new KeyCounter();
-        try {
-            cell.getAvailableStacks(reported);
-        } catch (RuntimeException failure) {
-            return null;
+    /** 仅使用明确声明的生成能力；报量和提取量的差异不能证明无限供给。 */
+    public static java.util.Set<AEKey> unboundedKeysOf(MEStorage cell) {
+        if (!(cell instanceof git.chexson.chexsonsaeutils.api.storage.UnboundedStorageSupply source))
+            return java.util.Set.of();
+        var result = new java.util.HashSet<AEKey>();
+        for (AEKey key : source.unboundedSupplyKeys()) {
+            if (cell.extract(key, 1, appeng.api.config.Actionable.SIMULATE,
+                    appeng.api.networking.security.IActionSource.empty()) == 1) result.add(key);
         }
-        for (var entry : reported) {
-            AEKey key = entry.getKey();
-            long have = entry.getLongValue();
-            if (key == null || have != Integer.MAX_VALUE) {
-                continue;
-            }
-            if (cell.extract(key, have + 1L, appeng.api.config.Actionable.SIMULATE,
-                    appeng.api.networking.security.IActionSource.empty()) > have) {
-                if (unbounded == null) {
-                    unbounded = new java.util.ArrayList<>(4);
-                }
-                unbounded.add(key);
-            }
-        }
-        return unbounded;
+        return java.util.Set.copyOf(result);
+    }
+
+    /** 原生网络重载作业时重新核对实际在线单元及其可见挂载，不依赖聚合报量。 */
+    public static java.util.Set<AEKey> currentUnboundedSupplies(IGrid grid) {
+        return java.util.Set.copyOf(scanNetworkCells(grid).unbounded());
     }
 
     /**
@@ -188,11 +171,26 @@ public final class PlanningSupplyTruth {
      * @param networkStock 规划侧读到的逐键 {@code long} 库存快照（AE2 聚合口径，会回绕）
      */
     public static PlanningSupplyTruth capture(@Nullable IGrid grid, @Nullable KeyCounter networkStock) {
-        if (grid == null || networkStock == null || networkStock.isEmpty()) {
-            return EMPTY;
+        return capture(grid, networkStock, null);
+    }
+
+    /** 规划入口已握有实际网络库存时，优先使用完整精确挂载快照；原生库存沿用单元扫描。 */
+    public static PlanningSupplyTruth capture(@Nullable IGrid grid, @Nullable KeyCounter networkStock,
+            @Nullable MEStorage storage) {
+        if (networkStock == null) return EMPTY;
+        if (storage instanceof git.chexson.chexsonsaeutils.api.storage.ExactNetworkSupply exact) {
+            var snapshot = exact.readExactSupply();
+            var wide = new java.util.HashMap<AEKey, PlanAmount>();
+            snapshot.finite().forEach((key, amount) -> {
+                if (!amount.equals(BigInteger.valueOf(networkStock.get(key)))) wide.put(key, PlanAmount.of(amount));
+            });
+            snapshot.unbounded().forEach(key -> wide.put(key, UNBOUNDED));
+            return new PlanningSupplyTruth(Map.copyOf(wide), 1, snapshot.unbounded(), 0, 0,
+                    snapshot.finite().size() + snapshot.unbounded().size());
         }
+        if (grid == null || networkStock.isEmpty()) return EMPTY;
         // 无限源与"报没报满 Long.MAX"无关：AE2 创造盘只报 Integer.MAX_VALUE，读数正常得看不出问题，
-        // 唯一能认它的是行为（取出 > 报出）。必须先量它——否则需求 >long 时，一次 ≤long 的 SIMULATE
+        // 来源必须明确声明生成能力。先收集其配置键——否则需求 >long 时，一次 ≤long 的 SIMULATE
         // 探询永远答不够（无限源一次也最多给 Long.MAX），缺口清不掉，计划恒被判"材料不足"不许提交。
         // 同一趟扫描顺带把逐存储的网络可见读数按键加进宽域计数器（#197 的回绕判据要吃这份和）。
         var scan = scanNetworkCells(grid);
@@ -307,7 +305,7 @@ public final class PlanningSupplyTruth {
     }
 
     /**
-     * 走一遍网格节点的 owner（宿主只有驱动器与存储舱两种形态）：无限源按行为认、
+     * 走一遍网格节点的 owner（宿主只有驱动器与存储舱两种形态）：无限源按明确能力认、
      * 宽域单元按接口认，逐存储的网络可见读数（{@link IChestOrDrive#getCellInventory(int)}
      * 那份挂载视图，含配置过滤，与聚合读数同口径）按键加进 {@link WideKeyCounter}——
      * 它是 AEKey 账里现成的宽域计数器（long 快路径、越界自动进 BigInteger 侧表、绝不回绕），
@@ -331,13 +329,7 @@ public final class PlanningSupplyTruth {
                     continue;
                 }
                 cells++;
-                var keys = overReportingKeys(cell);
-                if (keys != null) {
-                    if (unbounded == null) {
-                        unbounded = new java.util.HashSet<>();
-                    }
-                    unbounded.addAll(keys);
-                }
+                var keys = unboundedKeysOf(cell);
                 if (cell instanceof WideSupplySource source) {
                     if (sources == null) {
                         sources = new ArrayList<>(4);
@@ -353,6 +345,13 @@ public final class PlanningSupplyTruth {
                 }
                 if (visible == null) {
                     continue; // 读不到网络可见视图就是这一份不计进逐存储和：和只会偏小，方向保守
+                }
+                for (AEKey key : keys) {
+                    if (visible.extract(key, 1, appeng.api.config.Actionable.SIMULATE,
+                            appeng.api.networking.security.IActionSource.empty()) == 1) {
+                        if (unbounded == null) unbounded = new java.util.HashSet<>();
+                        unbounded.add(key);
+                    }
                 }
                 try {
                     var reading = new KeyCounter();
@@ -405,13 +404,9 @@ public final class PlanningSupplyTruth {
     /**
      * 无限源键集的一次性快照（不可变）：随计划出门给执行侧，那里既不夹配额也不走提取。
      *
-     * <p>来源只有单元侧认出的那一型（AE2 创造盘：报 {@code Integer.MAX_VALUE}、取多少给多少），
-     * 在 {@link #capture} 里按 {@link #overReportingKeys} 收。注册在网络上的无限元件（KubeJS／
-     * ExtendedAE 的岩浆、水）<b>不并进这张表</b>：它与"存量 &gt;long 因而报满 long"的有限盘在读侧
-     * 同形，认中即 mint＝凭空造料；它们改走出口对账的延后判决（需求即供给记进 used，提交腿只认明
-     * 交不交得出满的一刀，剩下的由执行侧按批常态续取，
-     * 见 {@code GraphPlanPostProcessor#deferSaturatedMissingToSubmitLeg}）。
-     * 运行期"同一笔请求 SIMULATE 答应而 MODULATE 一枚不给"那一型仍由执行侧就地认量，不经这张表。
+     * <p>AE2 创造元件、ExtendedAE（含 KubeJS）和 Cell4 由来源能力声明生成键，
+     * NeoEco 精确来源也可明确声明无限供给。容量、饱和数值和提取量差异不参与身份判定。
+     * 当前挂载不可见或不能提取的资源不加入快照。
      */
     public java.util.Set<AEKey> unboundedSupplies() {
         return java.util.Set.copyOf(this.unboundedSupplies);

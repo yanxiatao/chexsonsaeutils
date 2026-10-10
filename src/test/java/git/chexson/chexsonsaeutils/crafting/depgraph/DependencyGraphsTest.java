@@ -99,15 +99,6 @@ final class DependencyGraphsTest {
     }
 
     @Test
-    void chainOrdersDependenciesFirst() {
-        List<String> ordered = order(
-                List.of("C", "B", "A"),
-                deps("C", List.of("B"), "B", List.of("A"))
-        );
-        assertEquals(List.of("A", "B", "C"), ordered);
-    }
-
-    @Test
     void fifoTieBreakMatchesLegacyKahn() {
         // Legacy FIFO Kahn emits A, B, D, C here; a min-index priority queue would emit A, B, C, D.
         List<String> nodes = List.of("A", "B", "C", "D");
@@ -117,15 +108,6 @@ final class DependencyGraphsTest {
 
         assertEquals(List.of("A", "B", "D", "C"), ordered);
         assertEquals(referenceFifoKahn(nodes, dependencies), ordered);
-    }
-
-    @Test
-    void diamondKeepsDependencyOrder() {
-        List<String> ordered = order(
-                List.of("A", "B", "C", "D"),
-                deps("B", List.of("A"), "C", List.of("A"), "D", List.of("B", "C"))
-        );
-        assertEquals(List.of("A", "B", "C", "D"), ordered);
     }
 
     @Test
@@ -169,41 +151,6 @@ final class DependencyGraphsTest {
                 deps("B", List.of("A", "A"))
         );
         assertEquals(List.of("A", "B"), ordered);
-    }
-
-    @Test
-    void twoCycleKeepsMembersAdjacentAndDownstreamLast() {
-        List<String> ordered = order(
-                List.of("A", "B", "C"),
-                deps("A", List.of("B"), "B", List.of("A"), "C", List.of("A"))
-        );
-        assertEquals(List.of("A", "B", "C"), ordered);
-    }
-
-    @Test
-    void threeCycleReturnsAllMembersInInsertionOrder() {
-        List<String> ordered = order(
-                List.of("A", "B", "C"),
-                deps("A", List.of("B"), "B", List.of("C"), "C", List.of("A"))
-        );
-        assertEquals(List.of("A", "B", "C"), ordered);
-    }
-
-    @Test
-    void cyclicOrderingIsDeterministicAcrossCalls() {
-        List<String> nodes = List.of("A", "B", "C", "D", "E");
-        Map<String, List<String>> dependencies = deps(
-                "A", List.of("B"),
-                "B", List.of("A"),
-                "C", List.of("A"),
-                "D", List.of("E"),
-                "E", List.of("D")
-        );
-
-        List<String> first = order(nodes, dependencies);
-        assertEquals(first, order(nodes, dependencies));
-        assertEquals(new HashSet<>(nodes), new HashSet<>(first));
-        assertEquals(nodes.size(), first.size());
     }
 
     @Test

@@ -79,8 +79,17 @@ final class ParallelExecutingCraftingJob {
     final ListCraftingInventory waitingFor;
     /** 提交计划的外部原材料剩余提取量，随作业保存，禁止从任务缺料反推额外需求。 */
     final WideCraftingInventory initialItemsRemaining = new WideCraftingInventory(ignored -> {});
+    /** 新接单或重载后核对一次真实网络无限供给，修复旧计划漏记的来源身份。 */
+    boolean unboundedSupplyRefreshPending = true;
     /** 分段提取轮转位置，避免大数量单键占完每轮预算，使其他原料永远抽不到。 */
     int initialItemsCursor;
+    /** 无法解码的任务保留原始条目并暂停，避免删除进度或使世界加载崩溃。 */
+    private final ListTag unresolvedTasks = new ListTag();
+
+    /** 无法解码的存档任务尚未恢复时，禁止手动解除暂停造成提前收工。 */
+    boolean hasUnresolvedTasks() {
+        return !unresolvedTasks.isEmpty();
+    }
     /**
      * 任务表：{@link LinkedHashMap}，它的插入序就是三条顺位共用的<b>底序</b>。
      *
@@ -151,7 +160,7 @@ final class ParallelExecutingCraftingJob {
         recordFinalOutputAccepted(PlanAmount.of(accepted));
     }
 
-    private void recordFinalOutputAccepted(PlanAmount accepted) {
+    void recordFinalOutputAccepted(PlanAmount accepted) {
         if (exactRemainingAmount != null) {
             exactRemainingAmount = exactRemainingAmount.subtract(accepted).max(PlanAmount.ZERO);
             remainingAmount = git.chexson.chexsonsaeutils.bigint.Ae2Amounts.toLong(exactRemainingAmount);
@@ -217,7 +226,7 @@ final class ParallelExecutingCraftingJob {
      * <p>仍是<b>提交瞬间的快照</b>（不是跨批复加的流水），仍不进 NBT、续传后从零起算。
      */
     final WideKeyCounter accountPlannedEmit = new WideKeyCounter();
-    /** 配给、封套与消费的唯一材料归属账；仅运行态，不随 NBT 保存。 */
+    /** 配给、封套与消费的唯一材料归属账；随任务保存并绑定到恢复后的样板身份。 */
     final MaterialAllocation materialAllocation = new MaterialAllocationImpl();
 
     /**
@@ -227,24 +236,22 @@ final class ParallelExecutingCraftingJob {
      * "从网络提取"那一步——取料点（{@code ParallelBatchExtraction#prepareUniform} 的
      * {@code unboundedSource} 那一支）就地认量，一份料都不经池子。
      *
-     * <p>纯运行态，不落 NBT：续传作业读不到就是空集 ⇒ 逐字退回今日口径。
+     * <p>随作业保存，恢复后仍按原有无限源语义取料。
      *
-     * <p>除规划侧带下来的那批，执行中还能<b>就地补录</b>（{@link #noteUnboundedSupply}）：
-     * 「网络 SIMULATE 答应、MODULATE 一枚交不出」这类元件在计划出门时看不见（它不在任何
-     * 单元里，只是网格上的一份谎报读数），只有在真正取料的那一次才暴露。集合会被逐 tick
-     * 重建的 {@code ParallelPlanReservation} 读到，故用并发集合。
+     * <p>提交及重载时重新核对实际来源能力与提取权限，补录漏记来源并撤销失效身份。
+     * 集合会被逐 tick 重建的 {@code ParallelPlanReservation} 读到，故用并发集合。
      */
     final Set<AEKey> unboundedSupplyKeys;
 
     /**
-     * 就地认下一枚「报得出取不出」的无限源键：只增不减，作业结束随对象一起消失。
+     * 补录一枚已核对来源能力和权限的无限源键。
      *
      * <p>逐 tick 重建的 {@code ParallelPlanReservation} 与 {@code ParallelExecutingCraftingJob
      * #isUnboundedSupply} 都读这份集合，所以认中之后配额封顶、占料锁与初始提料一律对它放行。
      *
      * <p>这里<b>不</b>顺手清 {@code waitingFor}：那一本账同时挂着 {@code emittedItems} 与在途
      * 申报的<b>真实</b>数量，按键族整体摘掉会把该回来的实物一起拒收（{@code insertInternal}
-     * 那道闸门）。谎报键的挂账在源头就不进账——见 {@code ParallelCraftingCpuLogic
+     * 那道闸门）。无限来源的初始材料等待在源头就不进账——见 {@code ParallelCraftingCpuLogic
      * #seedInitialWaitingFor}。
      */
     void noteUnboundedSupply(@Nullable AEKey key) {
@@ -253,29 +260,14 @@ final class ParallelExecutingCraftingJob {
         }
     }
 
-    /**
-     * 这一键是否属于规划认下的无限源：按<b>物品本体族</b>判（岩浆的同族变体不能只放过精确键，
-     * 与 {@code ParallelPlanReservation} 同一口径）。
-     */
+    /** 这一精确键是否具有已核对的无限供给来源。 */
     boolean isUnboundedSupply(@Nullable AEKey key) {
         return unboundedSupplyContains(unboundedSupplyKeys, key);
     }
 
-    /** 族口径的无限源判定，供作业之外的提交路径复用（同一把尺子，别写第二遍）。 */
+    /** 只匹配来源明确提供的精确键，不豁免同物品的其他数据变体。 */
     static boolean unboundedSupplyContains(Set<AEKey> keys, @Nullable AEKey key) {
-        if (key == null || keys.isEmpty()) {
-            return false;
-        }
-        if (keys.contains(key)) {
-            return true;
-        }
-        var family = key.getPrimaryKey();
-        for (AEKey known : keys) {
-            if (known != null && family.equals(known.getPrimaryKey())) {
-                return true;
-            }
-        }
-        return false;
+        return key != null && keys.contains(key);
     }
 
     /** 计划带下来的那份是不可变集合：换成可增的并发集合，供 {@link #noteUnboundedSupply} 补录。 */
@@ -437,6 +429,7 @@ final class ParallelExecutingCraftingJob {
         for (var entry : pendingDelivery.entrySet()) {
             if (entry.getKey() != null && entry.getValue() != null && entry.getValue().signum() > 0L) {
                 declaredNetworkDelivered.add(entry.getKey(), entry.getValue());
+                timeTracker.decrementItems(PlanAmount.of(entry.getValue()), entry.getKey().getType());
                 if (!dyeableRecursivePlan && isFinalOutputKey(entry.getKey())) {
                     recordFinalOutputAccepted(PlanAmount.of(entry.getValue()));
                 }
@@ -629,10 +622,8 @@ final class ParallelExecutingCraftingJob {
      * ⇒ 反推不出真值，只能"不判"。这一型与"真值恰好是 {@code Long.MAX_VALUE}"两型分开：后者这里
      * 是一个<b>数得出来的数</b>，照判。
      *
-     * <p><b>只在提交那一条构造路上算</b>：续传构造器读的是任务表里<b>还剩</b>几发，拿剩余份数反推
-     * 会把订单量报小（交齐之前就判成收工），所以续传作业这一格恒为 {@code null}。交付账本来也是运行态
-     * （{@link #finalOutputDelivered} 不落 NBT，续传即清零），两格同向：重启后的作业退回
-     * {@code isDyeableRecursiveJobComplete} 那条"任务表自己清空才收工"的老路。
+     * <p>提交时计算的原始产量与累计实际交付量一同保存，恢复时不使用剩余发数反推订单量。
+     * 这样退出重进后仍按退出前的累计交付进度判断收工。
      *
      * <p>这份产量是<b>毛</b>产量：递归环里终点键若还被环自己吃掉几发，这里会比订单量<b>大</b>，
      * 判据因此只会更严、不会提前收工（宁可这一型走老路，也不把没交齐的单子判成交齐）。
@@ -970,10 +961,13 @@ final class ParallelExecutingCraftingJob {
         PlanAmount terminalProduction = null;
         for (var entry : plan.emittedItems()) {
             waitingFor.insert(entry.getKey(), entry.getLongValue(), Actionable.MODULATE);
-            addMaxItems(timeTracker, entry.getLongValue(), entry.getKey().getType());
+            BigInteger exactEmitted = WideAmountPlanCarrier.resolveWideLedgers(plan)
+                    .get(git.chexson.chexsonsaeutils.bigint.WideAmountKind.EMIT, entry.getKey());
+            PlanAmount emittedAmount = exactEmitted == null ? PlanAmount.of(entry.getLongValue()) : PlanAmount.of(exactEmitted);
+            timeTracker.addMaxItems(emittedAmount, entry.getKey().getType());
             if (entry.getLongValue() > 0L && isFinalOutputKey(entry.getKey())) {
                 terminalProduction = (terminalProduction == null ? PlanAmount.ZERO : terminalProduction)
-                        .add(PlanAmount.of(entry.getLongValue()));
+                        .add(emittedAmount);
             }
         }
         // 份数一律取规划侧随计划出门的宽域真值：patternTimes() 是 AE2 那份会被饱和成
@@ -1001,10 +995,10 @@ final class ParallelExecutingCraftingJob {
             }
             tasks.computeIfAbsent(pattern, ignored -> new TaskProgress()).addFirings(executions);
             for (var output : pattern.getOutputs()) {
-                var amount = PlanAmount.of(output.amount())
-                        .multiply(executions)
-                        .multiply(PlanAmount.of(output.what().getAmountPerUnit()));
-                addMaxItems(timeTracker, Ae2Amounts.toLong(amount), output.what().getType());
+                // GenericStack 已使用回交接口的原始单位；流体不能再乘一次每单位数量。
+                // 进度跟踪器对计划量与实际回交量使用同一条单位归一化公式。
+                var amount = PlanAmount.of(output.amount()).multiply(executions);
+                timeTracker.addMaxItems(amount, output.what().getType());
                 // 终点产物的宽域产量＝终点份数（这一张样板在这份计划里跑几发，宽域真值）
                 // × 每发终点量。这份账是订单量越出 {@code long} 时唯一还完整的读数：AE2 的
                 // {@code GenericStack} 与契约定版量都是 {@code long}，越界那一刻只能长成
@@ -1053,6 +1047,16 @@ final class ParallelExecutingCraftingJob {
             }
         }
         this.unboundedSupplyKeys = mutableKeys(Set.of());
+        for (var key : RecursiveCounterNbt.read(data.getList("unboundedSupplyKeys", Tag.TAG_COMPOUND), registries)) {
+            unboundedSupplyKeys.add(key.getKey());
+        }
+        this.initialItemsCursor = data.getInt("initialItemsCursor");
+        if (data.contains("finalOutputDelivered", Tag.TAG_BYTE_ARRAY)) {
+            finalOutputDelivered.setExact(finalOutput.what(), new BigInteger(data.getByteArray("finalOutputDelivered")));
+        }
+        if (data.contains("finalOutputPlannedProduction", Tag.TAG_BYTE_ARRAY)) {
+            finalOutputPlannedProduction = PlanAmount.of(new BigInteger(data.getByteArray("finalOutputPlannedProduction")));
+        }
         this.waitingFor = new WideCraftingInventory(postCraftingDifference::onCraftingDifference);
         this.waitingFor.readFromNBT(data.getList(NBT_WAITING_FOR, Tag.TAG_COMPOUND), registries);
         this.initialItemsRemaining.readFromNBT(
@@ -1071,15 +1075,18 @@ final class ParallelExecutingCraftingJob {
             CompoundTag item = tasksTag.getCompound(index);
             AEItemKey pattern = AEItemKey.fromTag(registries, item);
             IPatternDetails details = PatternDetailsHelper.decodePattern(pattern, lane.cluster().level());
-            if (details != null) {
-                this.tasks.put(details, readTaskProgress(item));
-                // 声明批量的欠账跟着它所属的那条任务一起回来：换了 jar 也要把已声明出去的
-                // 份数的材料交割完，绝不因为续传就把义务抹掉。
-                this.batchObligations.incur(details, BatchObligationLedger.readEntry(item));
+            if (details == null) {
+                LOGGER.error("并行 CPU 恢复失败：无法解码任务样板 {}，暂停任务并保留原始存档条目", pattern);
+                unresolvedTasks.add(item.copy());
+                continue;
             }
+            this.tasks.put(details, readTaskProgress(item));
+            materialAllocation.readPatternFromNBT(details, item.getCompound("materialAllocation"), registries);
+            // 已声明出去的材料交割义务随对应任务恢复。
+            this.batchObligations.incur(details, BatchObligationLedger.readEntry(item));
         }
 
-        this.suspended = data.getBoolean(NBT_SUSPENDED);
+        this.suspended = data.getBoolean(NBT_SUSPENDED) || !unresolvedTasks.isEmpty();
         // 预期入网的产出账跟着作业回来，只为把它<b>原样退回</b>（#227 K2 的第二处退账，与负向终局
         // 走同一个 revoke 出口）：交回这一截枚数的凭据——那笔的在飞台账与它的 {@code batchId}——按
         // 既有口径<b>不落 NBT</b>（{@code batchId} 是 useless 侧现生成的内存态 UUID，重载后终局永不来），
@@ -1130,10 +1137,22 @@ final class ParallelExecutingCraftingJob {
         for (var entry : tasks.entrySet()) {
             CompoundTag item = entry.getKey().getDefinition().toTag(registries);
             writeTaskProgress(item, entry.getValue());
+            item.put("materialAllocation", materialAllocation.writePatternToNBT(entry.getKey(), registries));
             BatchObligationLedger.writeEntry(item, batchObligations.pendingFirings(entry.getKey()));
             taskList.add(item);
         }
+        taskList.addAll(unresolvedTasks.copy());
         data.put(NBT_TASKS, taskList);
+        data.putInt("initialItemsCursor", initialItemsCursor);
+        var unboundedKeys = new KeyCounter();
+        for (var key : unboundedSupplyKeys) unboundedKeys.add(key, 1L);
+        data.put("unboundedSupplyKeys", RecursiveCounterNbt.write(unboundedKeys, registries));
+        if (finalOutput != null) {
+            data.putByteArray("finalOutputDelivered", finalOutputDeliveredAmount().exactValue().toByteArray());
+        }
+        if (finalOutputPlannedProduction != null) {
+            data.putByteArray("finalOutputPlannedProduction", finalOutputPlannedProduction.exactValue().toByteArray());
+        }
         // 预期入网账落盘，且落<b>作业级</b>而非任务条目级：宿主自报的是"哪些键的产物直接
         // 交出去、不再回池子"的<b>枚数</b>，不是发数，而且报的是样板声明的<b>模板键</b>——动态产物的
         // 真实键要到 onBatchOutputs 才认得出来（见 AlloyFurnaceBigIntegerCpuAdapter#onBatchOutputs），

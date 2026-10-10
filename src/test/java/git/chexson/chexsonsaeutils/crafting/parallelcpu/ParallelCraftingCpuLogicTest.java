@@ -43,6 +43,150 @@ final class ParallelCraftingCpuLogicTest {
     private static final AEItemKey OUTPUT = AEItemKey.of(new ItemStack(Items.IRON_INGOT));
     private static final AEItemKey REMAINDER = AEItemKey.of(new ItemStack(Items.BUCKET));
 
+    @Test
+    void exactCellInitialExtractionTakesEntireWideUsedAndNeverRefillsConsumedPool() {
+        var demand = BigInteger.TEN.pow(100).add(BigInteger.valueOf(17));
+        var cell = new git.chexson.chexsonsaeutils.cell.InfinityCellInventory(new ItemStack(Items.STICK), null);
+        cell.insertExact(OUTPUT, demand.multiply(BigInteger.TWO), Actionable.MODULATE, IActionSource.empty());
+        var pool = new WideCraftingInventory(ignored -> {});
+        var plan = planWithWideUsed(OUTPUT, demand);
+        assertNull(ParallelCraftingCpuLogic.tryExtractInitialItems(plan, cell, pool, IActionSource.empty(), null));
+        assertEquals(demand, pool.amount(OUTPUT));
+        assertEquals(demand, cell.exactAmount(OUTPUT));
+        var job = new ParallelExecutingCraftingJob(plan, ignored -> {}, (CraftingLink) null, null);
+        ParallelCraftingCpuLogic.initializePlannedInitialItems(job, plan, pool);
+        assertEquals(BigInteger.ZERO, job.initialItemsRemaining.amount(OUTPUT));
+        pool.extractExact(OUTPUT, demand, Actionable.MODULATE);
+        assertEquals(BigInteger.ZERO, ParallelCraftingCpuLogic.extractPlannedInitialItems(
+                job, pool, cell, IActionSource.empty(), () -> true));
+        assertEquals(demand, cell.exactAmount(OUTPUT));
+    }
+
+    @Test
+    void exactCellContinuationSettlesOnlyPersistedPlannedRemainderInOneOperation() {
+        var demand = BigInteger.TEN.pow(80);
+        var plan = planWithWideUsed(OUTPUT, demand);
+        var job = new ParallelExecutingCraftingJob(plan, ignored -> {}, (CraftingLink) null, null);
+        var pool = new WideCraftingInventory(ignored -> {});
+        pool.insertExact(OUTPUT, BigInteger.valueOf(19), Actionable.MODULATE);
+        ParallelCraftingCpuLogic.initializePlannedInitialItems(job, plan, pool);
+        var cell = new git.chexson.chexsonsaeutils.cell.InfinityCellInventory(new ItemStack(Items.STICK), null);
+        cell.insertExact(OUTPUT, demand.multiply(BigInteger.TWO), Actionable.MODULATE, IActionSource.empty());
+        var budget = new java.util.concurrent.atomic.AtomicInteger();
+        assertEquals(demand.subtract(BigInteger.valueOf(19)), ParallelCraftingCpuLogic.extractPlannedInitialItems(
+                job, pool, cell, IActionSource.empty(), () -> budget.getAndIncrement() == 0));
+        assertEquals(demand, pool.amount(OUTPUT));
+        assertEquals(demand.add(BigInteger.valueOf(19)), cell.exactAmount(OUTPUT));
+        assertEquals(BigInteger.ZERO, job.initialItemsRemaining.amount(OUTPUT));
+    }
+
+    @Test
+    void exactCellPartialReceiptDoesNotInventMissingMaterialOrRepeatCollectedAmount() {
+        var max = BigInteger.valueOf(Long.MAX_VALUE);
+        var demand = max.multiply(BigInteger.TEN);
+        var plan = planWithWideUsed(OUTPUT, demand);
+        var cell = new git.chexson.chexsonsaeutils.cell.InfinityCellInventory(new ItemStack(Items.STICK), null);
+        var have = max.multiply(BigInteger.TWO).add(BigInteger.valueOf(7));
+        cell.insertExact(OUTPUT, have, Actionable.MODULATE, IActionSource.empty());
+        var pool = new WideCraftingInventory(ignored -> {});
+        assertNull(ParallelCraftingCpuLogic.tryExtractInitialItems(plan, cell, pool, IActionSource.empty(), null));
+        assertEquals(have, pool.amount(OUTPUT));
+        assertEquals(BigInteger.ZERO, cell.exactAmount(OUTPUT));
+        var job = new ParallelExecutingCraftingJob(plan, ignored -> {}, (CraftingLink) null, null);
+        ParallelCraftingCpuLogic.initializePlannedInitialItems(job, plan, pool);
+        assertEquals(demand.subtract(have), job.initialItemsRemaining.amount(OUTPUT));
+        cell.insertExact(OUTPUT, demand, Actionable.MODULATE, IActionSource.empty());
+        assertEquals(demand.subtract(have), ParallelCraftingCpuLogic.extractPlannedInitialItems(
+                job, pool, cell, IActionSource.empty(), () -> true));
+        assertEquals(demand, pool.amount(OUTPUT));
+        assertEquals(have, cell.exactAmount(OUTPUT));
+    }
+
+    @Test
+    void resumedJobRecognizesExplicitSupplyWithoutDiscardingInventoryOrWaitingOutputs() {
+        BigInteger amount = BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.TEN);
+        var plan = planWithWideUsed(OUTPUT, amount);
+        var job = new ParallelExecutingCraftingJob(plan, ignored -> {}, (CraftingLink) null, null);
+        job.initialItemsRemaining.insertExact(OUTPUT, amount, Actionable.MODULATE);
+        ((WideCraftingInventory) job.waitingFor).insertExact(OUTPUT, amount, Actionable.MODULATE);
+        var supply = new LyingInfiniteStorage(OUTPUT);
+        ParallelCraftingCpuLogic.refreshJobUnboundedSupply(job, supply, IActionSource.empty());
+        assertTrue(job.isUnboundedSupply(OUTPUT));
+        assertEquals(BigInteger.ZERO, job.initialItemsRemaining.amount(OUTPUT));
+        assertEquals(amount, WideCraftingInventory.amount(job.waitingFor, OUTPUT));
+        var keys = new java.util.HashSet<AEKey>();
+        var pool = new WideCraftingInventory(ignored -> {});
+        assertNull(ParallelCraftingCpuLogic.tryExtractInitialItems(plan, supply, pool, IActionSource.empty(), keys));
+        assertTrue(keys.contains(OUTPUT));
+        assertEquals(BigInteger.ZERO, pool.amount(OUTPUT));
+    }
+
+    @Test
+    void infiniteSupplyDoesNotExemptUnconfiguredComponentVariant() {
+        var named = new ItemStack(Items.IRON_INGOT);
+        named.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("有限变体"));
+        var variant = AEItemKey.of(named);
+        assertEquals(OUTPUT.getPrimaryKey(), variant.getPrimaryKey());
+        var plan = planWithWideUsed(variant, BigInteger.TEN);
+        var job = new ParallelExecutingCraftingJob(plan, ignored -> {}, (CraftingLink) null, null);
+        job.noteUnboundedSupply(OUTPUT);
+        assertTrue(job.isUnboundedSupply(OUTPUT));
+        assertFalse(job.isUnboundedSupply(variant));
+        var reservation = ParallelPlanReservation.build(List.of(), Map.of(), null, java.util.Set.of(OUTPUT));
+        assertTrue(reservation.isUnboundedSupply(OUTPUT));
+        assertFalse(reservation.isUnboundedSupply(variant));
+        var pool = new WideCraftingInventory(ignored -> {});
+        assertNotNull(ParallelCraftingCpuLogic.tryExtractInitialItems(plan, new LyingInfiniteStorage(OUTPUT),
+                pool, IActionSource.empty(), new java.util.HashSet<>()));
+        assertEquals(BigInteger.ZERO, pool.amount(variant));
+    }
+
+    @Test
+    void resumedFiniteStorageRevokesOldInfiniteIdentityWithoutChangingMaterialOrWaiting() {
+        BigInteger amount = BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.TEN);
+        var job = new ParallelExecutingCraftingJob(planWithWideUsed(OUTPUT, amount), ignored -> {},
+                (CraftingLink) null, null);
+        job.noteUnboundedSupply(OUTPUT);
+        job.initialItemsRemaining.insertExact(OUTPUT, amount, Actionable.MODULATE);
+        ((WideCraftingInventory) job.waitingFor).insertExact(OUTPUT, amount, Actionable.MODULATE);
+        var finite = new WideNetworkStorage(OUTPUT, amount);
+        class ExactFiniteView implements appeng.api.storage.MEStorage,
+                git.chexson.chexsonsaeutils.api.storage.ExactNetworkSupply {
+            @Override public Snapshot readExactSupply() {
+                return new Snapshot(Map.of(OUTPUT, finite.remainingTotal()), java.util.Set.of());
+            }
+            @Override public long extract(AEKey key, long count, Actionable mode, IActionSource source) {
+                return finite.extract(key, count, mode, source);
+            }
+            @Override public Component getDescription() { return Component.literal("有限大数库存"); }
+        }
+        ParallelCraftingCpuLogic.refreshJobUnboundedSupply(job, new ExactFiniteView(), IActionSource.empty());
+        assertFalse(job.isUnboundedSupply(OUTPUT));
+        assertEquals(amount, job.initialItemsRemaining.amount(OUTPUT));
+        assertEquals(amount, WideCraftingInventory.amount(job.waitingFor, OUTPUT));
+        assertEquals(amount, finite.remainingTotal());
+    }
+
+    @Test
+    void undeclaredSimulationSuccessAndRealRefusalIsMissingMaterial() {
+        var plan = planWithWideUsed(OUTPUT, BigInteger.TEN);
+        var keys = new java.util.HashSet<AEKey>();
+        var pool = new WideCraftingInventory(ignored -> {});
+        var storage = new appeng.api.storage.MEStorage() {
+            @Override public long extract(AEKey key, long amount, Actionable mode, IActionSource source) {
+                return mode == Actionable.SIMULATE ? amount : 0;
+            }
+            @Override public Component getDescription() { return Component.literal("拒收的普通盘"); }
+        };
+        assertNotNull(ParallelCraftingCpuLogic.tryExtractInitialItems(plan, storage, pool, IActionSource.empty(), keys));
+        assertTrue(keys.isEmpty());
+        var job = new ParallelExecutingCraftingJob(plan, ignored -> {}, (CraftingLink) null, null);
+        var missing = new KeyCounter(); missing.add(OUTPUT, 10);
+        ParallelCraftingCpuLogic.seedInitialWaitingFor(job, missing, null, storage, IActionSource.empty(), pool);
+        assertFalse(job.isUnboundedSupply(OUTPUT));
+        assertEquals(BigInteger.TEN, WideCraftingInventory.amount(job.waitingFor, OUTPUT));
+    }
+
 
     @Test
     void plannedInitialExtractionNeverExceedsWideUsedEvenAfterPoolIsConsumed() {
@@ -1763,16 +1907,9 @@ final class ParallelCraftingCpuLogicTest {
         assertEquals(10L, shortStorage.inserted.getOrDefault(OUTPUT, 0L), "已抽的那 10 枚要原路投回");
     }
 
-    /**
-     * 网络上那份料<b>不在任何单元里</b>（KubeJS／ExtendedAE 注册的无限岩浆、物质球）：规划侧
-     * 认不出它，计划带下来的无限键集是空的，于是它按普通键走到初始提料这一步——SIMULATE 答满、
-     * MODULATE 一枚不给。旧形状是整单投回网络 + 报「材料不足」拒提交，实机读数就是
-     * {@code alloc=[minecraft:lava left=Long.MAX taken=0 stored=0 toMake=0 src=NONE]}。
-     *
-     * <p>现在认下它：不拒提交，把这一键交回调用方补录成无限源。
-     */
+    /** 旧计划未携带身份，提交时仍能从明确的精确网络来源补录无限供给。 */
     @Test
-    void lyingNetworkSourceIsForgivenAtSubmitAndHandedBackAsUnbounded() {
+    void explicitlyDeclaredNetworkSourceIsRecognizedAtSubmitAndHandedBackAsUnbounded() {
         var lava = AEItemKey.of(Items.LAVA_BUCKET);
         var plan = new git.chexson.chexsonsaeutils.crafting.recursive.WideAmountCraftingPlan(
                 new CraftingPlan(new GenericStack(OUTPUT, 1L), 0L, false, false,
@@ -1809,7 +1946,7 @@ final class ParallelCraftingCpuLogicTest {
 
         assertNotNull(missing, "网络报 0 的键就是真缺料，不许放过");
         assertEquals(OUTPUT, missing.what());
-        assertTrue(forgiven.isEmpty(), "真缺料不能被认成无限源");
+        assertFalse(forgiven.contains(OUTPUT), "真缺料的键不能被认成无限源");
     }
 
     /**
@@ -1871,8 +2008,7 @@ final class ParallelCraftingCpuLogicTest {
     /**
      * 一张<b>存储量本来就 {@code >long} 的有限盘</b>（neoecoae／extendedae_plus 那一型）：它一次恰好
      * 交出一个 {@code long}，是真在给料的普通键，<b>绝不许</b>被认成无限源（凭空造料是用户纠过两次的
-     * 那一坑）。这里钉的是提交腿<b>唯一</b>那一条无限源判据——同一笔请求 SIMULATE 答应而 MODULATE
-     * 一枚不给的谎报签名——不许走偏到这台盘上：它给得出料，{@code forgiven} 必须恒空。
+     * 那一坑）。未声明生成能力的有限盘不得被豁免，{@code forgiven} 必须恒空。
      *
      * <p>提交腿对它也只喂一刀：计划要 3e19、网络真有 2×long，旧形状会把这 2×long 整仓吸进池子再
      * 因填不满而拒单（实机 11:20 的"乱提取"），现在一刀即止、剩下的照旧留在网络里由执行侧续取。
@@ -2072,13 +2208,17 @@ final class ParallelCraftingCpuLogicTest {
         }
     }
 
-    /** {@code what} 那一键：SIMULATE 有求必应，MODULATE 一枚不给。其余键两样都给 0。 */
+    /** 明确声明无限供给的网络夹具；模拟有求必应，实际不搬料，用于验证来源旁路。 */
     private static final class LyingInfiniteStorage
-            implements appeng.api.storage.MEStorage {
+            implements appeng.api.storage.MEStorage, git.chexson.chexsonsaeutils.api.storage.ExactNetworkSupply {
         private final AEKey lying;
 
         private LyingInfiniteStorage(AEKey lying) {
             this.lying = lying;
+        }
+
+        @Override public Snapshot readExactSupply() {
+            return new Snapshot(Map.of(), java.util.Set.of(lying));
         }
 
         @Override

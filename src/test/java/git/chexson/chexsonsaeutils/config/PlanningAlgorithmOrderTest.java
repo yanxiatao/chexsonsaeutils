@@ -11,47 +11,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanningAlgorithmOrderTest {
     @Test
-    void exposesStableAlgorithmMetadata() {
-        assertEquals("planning_algorithm.chexsonsaeutils.graph",
-                PlanningAlgorithmId.GRAPH.translationKey());
-        assertEquals("planning_algorithm.chexsonsaeutils.graph.description",
-                PlanningAlgorithmId.GRAPH.descriptionKey());
-        assertEquals("planning_algorithm.chexsonsaeutils.native",
-                PlanningAlgorithmId.NATIVE.translationKey());
-        assertEquals("planning_algorithm.chexsonsaeutils.native.description",
-                PlanningAlgorithmId.NATIVE.descriptionKey());
-        assertTrue(PlanningAlgorithmId.NATIVE.terminal());
-        assertTrue(PlanningAlgorithmId.NATIVE.isTerminal());
-        assertFalse(PlanningAlgorithmId.GRAPH.terminal());
-    }
-
-    @Test
-    void defaultOrderHasNoFastTierAndGoesGraphThenNative() {
-        // 判据：删档后默认序只剩"图 + 原生树"，FAST 与退役的冻结路线档都不许以任何形式回来。
-        // 默认序现在就是串名册本身（config 侧不再出现枚举类型）。
+    void defaultsMatchSupportedAlgorithmOrder() {
+        // 配置默认顺位与当前算法枚举保持一致。
         assertEquals(
                 List.of("GRAPH", "NATIVE"),
                 PlanningServerConfig.DEFAULT_ORDER);
         assertEquals(
                 List.of("GRAPH", "NATIVE"),
                 java.util.Arrays.stream(PlanningAlgorithmId.values()).map(Enum::name).toList());
-    }
-
-    // "config 说串"这一刀的另一半：config 侧自持的串名册必须与能力侧枚举个名逐条等值、同顺位。
-    // 名册少写一枚／多写一枚／重排 ⇒ 本用例判红（它不入主口径 census，专门管漂移）。
-    @Test
-    void rosterMatchesEveryAlgorithmName() {
-        assertEquals(
-                java.util.Arrays.stream(PlanningAlgorithmId.values())
-                        .map(Enum::name)
-                        .toList(),
-                PlanningServerConfig.DEFAULT_ORDER);
     }
 
     @Test
@@ -110,21 +82,6 @@ class PlanningAlgorithmOrderTest {
         assertEquals(1L, second.revision());
         assertEquals(reloaded, second.order());
         assertEquals(PlanningServerConfig.DEFAULT_ORDER, first.order());
-    }
-
-    @Test
-    void updateAdvancesRevisionOnce() {
-        PlanningAlgorithmOrderService service = new PlanningAlgorithmOrderService(
-                PlanningServerConfig.DEFAULT_ORDER);
-        List<String> order = List.of(
-                "NATIVE",
-                "GRAPH");
-
-        PlanningAlgorithmOrderService.UpdateResult result = service.update(order, 0L);
-
-        assertTrue(result.updated());
-        assertEquals(1L, result.snapshot().revision());
-        assertEquals(order, service.snapshot().order());
     }
 
     @Test

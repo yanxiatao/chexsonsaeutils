@@ -82,7 +82,7 @@ public final class RemotePreviewAssembly {
                 if (source == null || !seen.add(source)) continue;
                 var stock = stockByGrid.computeIfAbsent(source, grid -> {
                     var counter = new KeyCounter(); grid.getStorageService().getInventory().getAvailableStacks(counter);
-                    return new RemoteStock(counter, git.chexson.chexsonsaeutils.crafting.material.PlanningSupplyTruth.capture(grid, counter));
+                    return new RemoteStock(counter, git.chexson.chexsonsaeutils.crafting.material.PlanningSupplyTruth.capture(grid, counter, grid.getStorageService().getInventory()));
                 });
                 list.add(new Candidate(endpoint, source, endpoint.ready(), endpoint.label(), endpoint.status(), stock));
             }

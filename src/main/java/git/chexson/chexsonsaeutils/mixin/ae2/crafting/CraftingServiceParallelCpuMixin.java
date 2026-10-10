@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableSet;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
 import git.chexson.chexsonsaeutils.bigint.ClampedMath;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchOutputReceiver;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.NativeSourceCpuHandle;
@@ -44,6 +45,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -53,7 +55,7 @@ import java.util.UUID;
 // HEAD 回调按 Mixin 优先级升序插入：先处理本 CPU，避免第三方将宽域计划误判为离线。
 @Mixin(value = CraftingService.class, priority = 900, remap = false)
 public abstract class CraftingServiceParallelCpuMixin
-        implements ParallelCraftingContinuationSubmitter, SourceCpuResolver {
+        implements ParallelCraftingContinuationSubmitter, SourceCpuResolver, DeclaredBatchOutputReceiver {
 
     @Shadow(remap = false)
     private IGrid grid;
@@ -81,6 +83,13 @@ public abstract class CraftingServiceParallelCpuMixin
 
     @Unique
     private ParallelCraftingCpuGrid chexsonsaeutils$parallelCpuGrid;
+
+    /** 机器实际回流时现取同网等待索引，恢复存档后无需重新绑定某一批次的回调。 */
+    @Override
+    public BigInteger receive(IGrid sourceGrid, AEKey what, BigInteger available) {
+        if (sourceGrid != this.grid) return BigInteger.ZERO;
+        return chexsonsaeutils$getSyncedParallelCpuGrid().receive(sourceGrid, what, available);
+    }
 
     @Nullable
     @Override

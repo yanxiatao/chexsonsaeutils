@@ -100,7 +100,7 @@ public final class GraphPlanningSession {
                 networkStock, target, level);
         // 真值供给读在库存快照上，与编译拓扑无关：按请求挂到图上，供需判据与图同生命周期取用。
         // 溢出键在 networkStock 里只长成 Long.MAX_VALUE，那一截只有这里能捞回来。
-        PlanningSupplyTruth supplyTruth = PlanningSupplyTruth.capture(planningGrid, networkStock);
+        PlanningSupplyTruth supplyTruth = PlanningSupplyTruth.capture(planningGrid, networkStock, storage);
         graph.attachSupplyTruth(supplyTruth);
         if (!supplyTruth.isEmpty()) {
             // 一次规划请求一行：实机据此判断「规划侧读到了无限盘真值」这条链在不在跑

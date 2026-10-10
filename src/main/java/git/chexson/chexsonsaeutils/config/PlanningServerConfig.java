@@ -19,6 +19,10 @@ public final class PlanningServerConfig {
     public static final ModConfigSpec SPEC;
 
     private static final ModConfigSpec.ConfigValue<List<? extends String>> ORDER;
+    private static final ModConfigSpec.BooleanValue LOW_MEMORY;
+    private static final ModConfigSpec.BooleanValue AUTO_SPILL;
+    private static final ModConfigSpec.IntValue HEAP_RESERVE_MIB;
+    private static final ModConfigSpec.ConfigValue<Integer> JOURNAL_PAGE_ENTRIES;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -27,10 +31,38 @@ public final class PlanningServerConfig {
                 .push("planningAlgorithms");
         ORDER = defineOrder(builder, "order", DEFAULT_ORDER);
         builder.pop();
+        builder.comment("图求解内存配置：仅影响回滚日志，不改变规划结果或数量精度。")
+                .push("planningMemory");
+        LOW_MEMORY = builder.comment("低内存模式：将超出一页的回滚历史暂存到系统临时目录，可能降低求解速度。默认关闭。")
+                .define("lowMemory", false);
+        AUTO_SPILL = builder.comment("自动暂存：在堆余量不足或下次日志扩容侵入预留空间前，自动迁移现有日志到磁盘分页。默认开启。")
+                .define("autoSpill", true);
+        HEAP_RESERVE_MIB = builder.comment("自动暂存至少保留的堆空间，单位 MiB；实际预留取本值与最大堆 10% 的较大值。")
+                .defineInRange("heapReserveMiB", 256, 16, 16384);
+        JOURNAL_PAGE_ENTRIES = builder.comment("每个求解任务驻留的日志页条目数，必须为 2 的幂。默认 65536；越小越省堆内存，磁盘 I/O 越频繁。")
+                .define("journalPageEntries", 65536,
+                        value -> value instanceof Integer n && n >= 1024 && n <= 1048576 && Integer.bitCount(n) == 1);
+        builder.pop();
         SPEC = builder.build();
     }
 
     private PlanningServerConfig() {
+    }
+
+    public static boolean lowMemory() {
+        return SPEC.isLoaded() ? LOW_MEMORY.get() : LOW_MEMORY.getDefault();
+    }
+
+    public static boolean autoSpill() {
+        return SPEC.isLoaded() ? AUTO_SPILL.get() : AUTO_SPILL.getDefault();
+    }
+
+    public static int heapReserveMiB() {
+        return SPEC.isLoaded() ? HEAP_RESERVE_MIB.get() : HEAP_RESERVE_MIB.getDefault();
+    }
+
+    public static int journalPageEntries() {
+        return SPEC.isLoaded() ? JOURNAL_PAGE_ENTRIES.get() : JOURNAL_PAGE_ENTRIES.getDefault();
     }
 
     public static List<String> order() {

@@ -282,7 +282,7 @@ final class ParallelCraftingCpuLogic {
         suppressChangeNotifications = true;
         this.job = new ParallelExecutingCraftingJob(plan, this::postChange, linkCpu, playerId);
         for (AEKey forgiven : forgivenUnbounded) {
-            // 提交这一步现认的谎报键要立刻进作业：后面每一批的配额封顶、占料锁与
+            // 提交这一步核对的无限来源键要立刻进作业：后面每一批的配额封顶、占料锁与
             // waitingFor 都按这份集合放行，晚一步就又是一份永远等不到的"正在合成"。
             this.job.noteUnboundedSupply(forgiven);
         }
@@ -451,18 +451,26 @@ final class ParallelCraftingCpuLogic {
             @Nullable ParallelCpuProviderBackoff providerBackoff
     ) {
 
-        if (job == null || job.tasks.isEmpty()) {
+        if (job == null) {
             return 0L;
         }
+        boolean settlingDeliveredOrder = job.dyeableRecursivePlan && finalOutputQuantityDelivered(job);
+        if (job.tasks.isEmpty() && !settlingDeliveredOrder) return 0L;
 
         var grid = lane.cluster().grid();
         if (grid != null) {
-            String plannedPath = poolLedger.path("plannedInitialItems");
-            try {
-                extractPlannedInitialItems(job, inventory, grid.getStorageService().getInventory(),
-                        lane.cluster().source(), () -> hasTickBudget(budgetLedger));
-            } finally {
-                poolLedger.restore(plannedPath);
+            if (job.unboundedSupplyRefreshPending) {
+                refreshJobUnboundedSupply(job, grid.getStorageService().getInventory(), lane.cluster().source(), grid);
+                job.unboundedSupplyRefreshPending = false;
+            }
+            if (!settlingDeliveredOrder) {
+                String plannedPath = poolLedger.path("plannedInitialItems");
+                try {
+                    extractPlannedInitialItems(job, inventory, grid.getStorageService().getInventory(),
+                            lane.cluster().source(), () -> hasTickBudget(budgetLedger));
+                } finally {
+                    poolLedger.restore(plannedPath);
+                }
             }
         }
 
@@ -471,9 +479,13 @@ final class ParallelCraftingCpuLogic {
         // 配给本身在提交期定版，这里只按它销过的账折出剩余份额。
         // 环种账也现算一份交进去：环分量自己还没跑完的那一截种子要在取料点上先扣掉，
         // 否则配给那条早退会把池里那颗种一次让旁人抽走（实机 lane 48739137 的饿死形状）。
-        var planReservation = ParallelPlanReservation.build(orderedTasks, snapshotPool(inventory),
-                job.materialAllocation, job.unboundedSupplyKeys,
-                job.ringSeeds.seedDemandsByFamily(), job.batchObligations);
+        // 停止派发后，未执行任务不再占料或保留环种；已接单批次仍按原配额实际付款。
+        var planReservation = settlingDeliveredOrder
+                ? ParallelPlanReservation.build(List.of(), snapshotPool(inventory),
+                        job.materialAllocation, job.unboundedSupplyKeys)
+                : ParallelPlanReservation.build(orderedTasks, snapshotPool(inventory),
+                        job.materialAllocation, job.unboundedSupplyKeys,
+                        job.ringSeeds.seedDemandsByFamily(), job.batchObligations);
 
         long pushedPatterns = 0L;
         boolean diagnostics = ChexsonsaeutilsCompatibilityConfig.parallelCpuDiagnosticsEnabled();
@@ -503,6 +515,8 @@ final class ParallelCraftingCpuLogic {
         // 就会把同一份存量既当"已声明份数的口粮"又当"新批次的可供量"。
         payDeclaredBatchObligations(job, orderedTasks, planReservation, budgetLedger, batchProbe,
                 currentTick);
+        // 订单实物已交齐：只付清已接单批次，停止新派发和计划原料预取。
+        if (settlingDeliveredOrder) return 0L;
         // 按宿主类名统计可用性：[READY, BUSY, 退避, 预算耗尽, 推送成功]。
         // 折叠宿主读数为 0 时，先看清是哪一类宿主在真正收料、哪一类永远忙。
         var providerStats = new java.util.HashMap<String, long[]>();
@@ -590,7 +604,7 @@ final class ParallelCraftingCpuLogic {
                     if (provider instanceof PreparedBatchDispatcher
                             && !(details instanceof git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern)) {
                         preparedBatchReady = true;
-                        break;
+                        // 继续探测同样板的其他宿主，不能让先出现的 long 准备接口遮住宽域声明接口。
                     }
                     continue;
                 }
@@ -598,34 +612,6 @@ final class ParallelCraftingCpuLogic {
             if (!anyProviderReady) {
                 skippedNoProvider++;
                 continue taskLoop;
-            }
-
-            if (preparedBatchReady) {
-                long batchPushed = pushPreparedBatch(
-                        job,
-                        inventory,
-                        poolLedger,
-                        lane.cluster().level(),
-                        currentSourceCraftingId(),
-                        details,
-                        task,
-                        taskProviders,
-                        energyService,
-                        currentTick,
-                        budgetLedger,
-                        providerBackoff,
-                        planReservation
-                );
-                if (batchPushed > 0L) {
-                    pushedPatterns = ClampedMath.addUp(pushedPatterns, batchPushed);
-                    if (diagnostics) {
-                        nonDeclaredPushedExact = nonDeclaredPushedExact.add(BigInteger.valueOf(batchPushed));
-                    }
-                    if (taskMayLeaveTable(task.getKey(), task.getValue(), job.batchObligations)) {
-                        job.tasks.remove(task.getKey());
-                    }
-                    continue taskLoop;
-                }
             }
 
             var expectedOutputs = new KeyCounter();
@@ -693,6 +679,36 @@ final class ParallelCraftingCpuLogic {
                     if (push.endsTaskRound()) {
                         continue taskLoop;
                     }
+                }
+            }
+
+            // 原生宽域声明优先：NeoEco 准备接口仍以 long 请求并按输入倍率限量。
+            // 声明不适用或拒收后，才尝试其既有准备路径。
+            if (preparedBatchReady) {
+                long batchPushed = pushPreparedBatch(
+                        job,
+                        inventory,
+                        poolLedger,
+                        lane.cluster().level(),
+                        currentSourceCraftingId(),
+                        details,
+                        task,
+                        taskProviders,
+                        energyService,
+                        currentTick,
+                        budgetLedger,
+                        providerBackoff,
+                        planReservation
+                );
+                if (batchPushed > 0L) {
+                    pushedPatterns = ClampedMath.addUp(pushedPatterns, batchPushed);
+                    if (diagnostics) {
+                        nonDeclaredPushedExact = nonDeclaredPushedExact.add(BigInteger.valueOf(batchPushed));
+                    }
+                    if (taskMayLeaveTable(task.getKey(), task.getValue(), job.batchObligations)) {
+                        job.tasks.remove(task.getKey());
+                    }
+                    continue taskLoop;
                 }
             }
             batchCapMax = Math.max(batchCapMax, holderBatchCapacity);
@@ -1734,9 +1750,8 @@ final class ParallelCraftingCpuLogic {
                     negativeTerminal, pendingWide, clamped,
                     job::creditDeclaredBatchDelivered);
         }
-        for (var container : expectedContainerItems) {
-            ParallelExecutingCraftingJob.addMaxItems(
-                    job.timeTracker, container.getLongValue(), container.getKey().getType());
+        for (AEKey key : wideContainers.keys()) {
+            job.timeTracker.addMaxItems(PlanAmount.of(wideContainers.getExact(key)), key.getType());
         }
         progress.consumeFirings(accepted);
         return new DeclaredPush(acceptedFirings,
@@ -2011,11 +2026,7 @@ final class ParallelCraftingCpuLogic {
                 batches++;
                 continue;
             }
-            long payable = ParallelBatchExtraction.obligationBatchFirings(details, owed);
-            if (payable <= 0L) {
-                continue;
-            }
-            long paid = payObligationBatch(job, details, payable, inventory, level,
+            long paid = payObligationBatch(job, details, owed, inventory, level,
                     planReservation, poolLedger, refill, batchProbe);
             if (paid <= 0L) {
                 continue;
@@ -2429,7 +2440,23 @@ final class ParallelCraftingCpuLogic {
             @Nullable ParallelBatchExtraction.ObligationRefill refill,
             @Nullable ParallelBatchExtraction.Probe probe
     ) {
-        if (job == null || details == null || payableFirings <= 0L) {
+        return payObligationBatch(job, details, BigInteger.valueOf(payableFirings), inventory, level,
+                planReservation, poolLedger, refill, probe);
+    }
+
+    /** 内部实物交割保持精确发数；返回 long 仅用于推进及诊断读数。 */
+    static long payObligationBatch(
+            ParallelExecutingCraftingJob job,
+            IPatternDetails details,
+            BigInteger payableFirings,
+            ListCraftingInventory inventory,
+            @Nullable net.minecraft.world.level.Level level,
+            ParallelPlanReservation planReservation,
+            ParallelPoolLedger poolLedger,
+            @Nullable ParallelBatchExtraction.ObligationRefill refill,
+            @Nullable ParallelBatchExtraction.Probe probe
+    ) {
+        if (job == null || details == null || payableFirings.signum() <= 0) {
             return 0L;
         }
         // 成功或缺料都移到队尾；下轮从尚未获得交割机会的样板开始。
@@ -2438,7 +2465,8 @@ final class ParallelCraftingCpuLogic {
         long pulled;
         try {
             pulled = ParallelBatchExtraction.refillObligationBatch(
-                    details, inventory, level, payableFirings, planReservation, refill, probe);
+                    details, inventory, level, Ae2Amounts.toLong(PlanAmount.of(payableFirings)),
+                    planReservation, refill, probe);
         } finally {
             poolLedger.restore(topUpPath);
         }
@@ -2454,7 +2482,7 @@ final class ParallelCraftingCpuLogic {
             return 0L;
         }
         recordTakenInputs(job, details, paid);
-        job.batchObligations.settle(details, paid.executions());
+        job.batchObligations.settle(details, paid.exactExecutions());
         if (probe != null) {
             probe.obligationBatches++;
             probe.obligationFiringsSum = ClampedMath.addUp(
@@ -3494,6 +3522,54 @@ final class ParallelCraftingCpuLogic {
         }
     }
 
+    /** 精确来源的身份与当前提交者的提取权限必须同时成立，饱和库存不算无限供给。 */
+    private static Set<AEKey> availableUnboundedSupply(appeng.api.storage.MEStorage storage, IActionSource source) {
+        return availableUnboundedSupply(storage, source, null);
+    }
+
+    private static Set<AEKey> availableUnboundedSupply(appeng.api.storage.MEStorage storage,
+            IActionSource source, @Nullable IGrid grid) {
+        Set<AEKey> declared;
+        if (storage instanceof git.chexson.chexsonsaeutils.api.storage.ExactNetworkSupply exact) {
+            declared = exact.readExactSupply().unbounded();
+        } else if (grid != null) {
+            declared = git.chexson.chexsonsaeutils.crafting.material.PlanningSupplyTruth.currentUnboundedSupplies(grid);
+        } else {
+            return Set.of();
+        }
+        var result = new java.util.HashSet<AEKey>();
+        for (AEKey key : declared) {
+            if (storage.extract(key, 1, Actionable.SIMULATE, source) == 1) result.add(key);
+        }
+        return result;
+    }
+
+    /** 旧存档补录真实无限供给，只撤销未提入的计划原料；不删除库存和在途产出。 */
+    static void refreshJobUnboundedSupply(ParallelExecutingCraftingJob job,
+            appeng.api.storage.MEStorage storage, IActionSource source) {
+        refreshJobUnboundedSupply(job, storage, source, null);
+    }
+
+    private static void refreshJobUnboundedSupply(ParallelExecutingCraftingJob job,
+            appeng.api.storage.MEStorage storage, IActionSource source, @Nullable IGrid grid) {
+        var live = availableUnboundedSupply(storage, source, grid);
+        if (grid != null || storage instanceof git.chexson.chexsonsaeutils.api.storage.ExactNetworkSupply) {
+            // 完整挂载快照也能撤销旧启发式留下的误判或已被移除的生成器身份。
+            job.unboundedSupplyKeys.removeIf(key -> !live.contains(key));
+        }
+        for (AEKey key : live) {
+            if (!job.isUnboundedSupply(key)) {
+                job.noteUnboundedSupply(key);
+                AELog.info("[chexsonsaeutils-submit] 重新识别无限供给: %s", key);
+            }
+        }
+        for (AEKey key : java.util.List.copyOf(job.initialItemsRemaining.list.keySet())) {
+            if (job.isUnboundedSupply(key)) {
+                job.initialItemsRemaining.extractExact(key, job.initialItemsRemaining.amount(key), Actionable.MODULATE);
+            }
+        }
+    }
+
     /** 只续取提交计划的原材料余量，逐笔销账；不按缺料样板或义务发数新增网络取料。 */
     static BigInteger extractPlannedInitialItems(ParallelExecutingCraftingJob job,
             ListCraftingInventory pool, appeng.api.storage.MEStorage storage, IActionSource source,
@@ -3519,19 +3595,17 @@ final class ParallelCraftingCpuLogic {
                 finishedThisTick.add(key);
                 continue;
             }
-            long wanted = remaining.min(WideCeilings.LONG_ACCOUNT).longValueExact();
-            long extracted = storage.extract(key, wanted, Actionable.MODULATE, source);
-            if (extracted < 0 || extracted > wanted) {
-                AELog.error("Planned initial extraction returned invalid amount: key=%s wanted=%d got=%d",
-                        key, wanted, extracted);
-                return total;
+            BigInteger wanted = pool instanceof WideCraftingInventory
+                    ? remaining : remaining.min(WideCeilings.LONG_ACCOUNT);
+            BigInteger extracted = git.chexson.chexsonsaeutils.api.storage.ExactStorageExtraction.extract(
+                    storage, key, wanted, Actionable.MODULATE, source);
+            if (extracted.signum() > 0) {
+                if (pool instanceof WideCraftingInventory wide) wide.insertExact(key, extracted, Actionable.MODULATE);
+                else pool.insert(key, extracted.longValueExact(), Actionable.MODULATE);
+                job.initialItemsRemaining.extractExact(key, extracted, Actionable.MODULATE);
+                total = total.add(extracted);
             }
-            if (extracted > 0) {
-                pool.insert(key, extracted, Actionable.MODULATE);
-                job.initialItemsRemaining.extract(key, extracted, Actionable.MODULATE);
-                total = total.add(BigInteger.valueOf(extracted));
-            }
-            if (extracted < wanted || remaining.equals(BigInteger.valueOf(extracted))) {
+            if (extracted.compareTo(wanted) < 0 || remaining.equals(extracted)) {
                 finishedThisTick.add(key);
             }
         }
@@ -3539,53 +3613,18 @@ final class ParallelCraftingCpuLogic {
     }
 
     /**
-     * 提交时的初始提料：与 AE2 的 {@code CraftingCpuHelper.tryExtractInitialItems} 同一条语义，
-     * 两处改动——
-     * <ol>
-     *   <li><b>无限源键压根不向网络伸手</b>（同旧口径）；</li>
-     *   <li><b>需求越出 {@code long} 的键在这里只喂一刀</b>（{@code ≤long} 的那一口），剩下的那一截
-     *       不在提交这一步搬，由 {@link #extractPlannedInitialItems} 按计划余量分段续取
-     *       （每刀每键仍 ≤{@code long}）。AE2 原形状每键只抽一次、
-     *       一次最多 {@code long}，真需要 {@code >long} 枚的键（实机形态：{@code ae2:creative_storage_cell}
-     *       大单要几十万级 lava／redstone／铁）会被判成"网络其实有、只是单次装不下"→整单投回拒提交；
-     *       而把那一截按 chunk 吸到满足在同一个键上<b>既做不到也不该做</b>：
-     *       <ul>
-     *         <li>实机 1e10 的单真需 {@code 1e26} 枚 ⇒ {@code 1e26 ÷ Long.MAX} 约一千一万刀网络提取全压在
-     *             "点下开始键"那一刻，服务端当场僵住；</li>
-     *         <li>抽不满要拒单时，那条路会先把有限盘整仓吸进 CPU 池再原路投回（实机 2026-09-25 11:20
-     *             的"乱提取"本体）。</li>
-     *       </ul>
-     *       一刀满口（{@code extracted==chunk}）本身就证明网络给得起这一刀，放行提交；给不满一口的仍按
-     *       真值拒单、整单原路投回并报出缺的那一口：这是<b>搬不搬</b>的差别，不是放宽判据。</li>
-     * </ol>
-     *
-     * <p>需求／已抽／缺口三本账在宽域（{@link BigInteger}）上做差：真需求取自计划的宽域出账
-     * （{@code WideAmountKind.USED}，AE2 的 {@code long} 读数把超界计划饱和成 {@link Long#MAX_VALUE}），
-     * 无宽域记录则该 {@code long} 读数就是真值。只在喂 AE2 {@code MEStorage.extract} 与返回
-     * {@link GenericStack} 的最后一次窄化：返回给 AE2 的那份仍受 {@code long} 表达限制，如实饱和即可。
-     *
-     * <p>这一腿<b>唯一</b>认无限源的地方是交付签名：网络上那份料不在任何单元里（KubeJS／ExtendedAE
-     * 注册的无限岩浆、物质球），规划侧认不出它，于是它照普通键走到这一步。同一笔请求 chunk SIMULATE
-     * 答应而 MODULATE 一枚不给时放过这一键，并交给 {@code forgivenUnbounded} 补录成无限源：既不拒提交，
-     * 也不在界面上挂一份永远等不到的"正在合成"。巨大有限盘真交得出料（{@code extracted>0}），照旧走
-     * 真缺料出口。
-     *
-     * <p><b>为什么这里不靠"读出网络报量来判无限源"</b>（2026-09-25 复核 P0，曾经的
-     * {@code extracted > 同一时刻的报量} 那一判已撤回）：AE2 的
-     * {@code appeng.me.storage.NetworkStorage#getAvailableStacks}（19.2.17 源 204-219 行）把每个 mount
-     * 的报量 {@code KeyCounter.add} 累进<b>同一张表</b>，底层 {@code AEKey2LongMap.addTo} 走 fastutil 的
-     * 普通 long 加法——回绕、不饱和。于是两张各顶 {@code Long.MAX_VALUE} 的有限盘报成 {@code -2}、
-     * 一张溢出盘加别处 1 枚报成 {@code Long.MIN_VALUE}、三处贡献能回绕成一个小正数：那时网络其实
-     * 交不出 {@code >long}（一次 extract 最多一个 long），"交付＞报量"却当场成立 ⇒ 把有限盘认成无限源
-     * ＝凭空造料。聚合的 long 读数连"下限"都算不出，同方法在 {@code mountsInUse} 为真时还会
-     * <b>静默直接 return</b>（同一源 205-207 行）交回空表。无限源的合法判据只剩两型：① 单元侧
-     * 逐张自问、不回绕的 {@code PlanningSupplyTruth#overReportingKeys}；② 上面那条交付签名（同型的
-     * 还有 {@code ParallelBatchExtraction#refillObligationBatch} 与 {@link #seedInitialWaitingFor}）。
+     * 按计划 USED 真值初次取料；明确的无限源不提取实物，有限无限盘仍按实际库存扣料。
+     * 精确库存向宽域 CPU 一次交完整需求；普通库存只交一个 long 窗口，剩余按计划续取。
+     * 首次至少给满 min(需求, Long.MAX_VALUE) 才接受提交，保留普通库存原有拒单规则。
+     * 提交失败按实际池量退料；缺口只在 GenericStack 的显示边界饱和，不以其倒推真值。
      */
     static @Nullable GenericStack tryExtractInitialItems(ICraftingPlan plan,
             appeng.api.storage.MEStorage storage, ListCraftingInventory inventory, IActionSource src,
             @Nullable Set<AEKey> forgivenUnbounded) {
-        var unbounded = WideAmountPlanCarrier.resolveUnboundedKeys(plan);
+        var unbounded = new java.util.HashSet<>(WideAmountPlanCarrier.resolveUnboundedKeys(plan));
+        var liveUnbounded = availableUnboundedSupply(storage, src);
+        unbounded.addAll(liveUnbounded);
+        if (forgivenUnbounded != null) forgivenUnbounded.addAll(liveUnbounded);
         var wideLedgers = WideAmountPlanCarrier.resolveWideLedgers(plan);
         for (var entry : plan.usedItems()) {
             var what = entry.getKey();
@@ -3601,37 +3640,20 @@ final class ParallelCraftingCpuLogic {
                 // 宽域账报出不增料的数：这一键连一刀都不该伸（外层 toExtract>0 只看那份 long 读数）
                 continue;
             }
-            // 这一腿每键只伸手一次、最多喂一刀 ≤long：需求越出 long 的那一截<b>不在这里搬</b>，
-            // 由执行侧按批常态续取（见方法注释）。循环因此天然不存在，也就没有"把整仓吸进池子"
-            // 那一形状——开口量与一刀即止是同一件事，不需要额外的判据。
-            long chunk = remaining.min(WideCeilings.LONG_ACCOUNT).longValue();
-            long extracted = storage.extract(what, chunk, Actionable.MODULATE, src);
-            if (extracted > 0L) {
-                // 一枚都没抽到就别往池子里插 0 值行：list.isEmpty() 恒假会把 cantStoreItems
-                // 与 isActive() 一起点亮，这条 lane 就再也回收不掉（每 tick 空转）。
-                inventory.insert(what, extracted, Actionable.MODULATE);
+            BigInteger wanted = inventory instanceof WideCraftingInventory
+                    ? remaining : remaining.min(WideCeilings.LONG_ACCOUNT);
+            BigInteger extracted = git.chexson.chexsonsaeutils.api.storage.ExactStorageExtraction.extract(
+                    storage, what, wanted, Actionable.MODULATE, src);
+            if (extracted.signum() > 0) {
+                if (inventory instanceof WideCraftingInventory wide)
+                    wide.insertExact(what, extracted, Actionable.MODULATE);
+                else inventory.insert(what, extracted.longValueExact(), Actionable.MODULATE);
             }
-            if (extracted < chunk) {
-                // 这一口没喂满：网络连一个 long 都交不出，是 long 天花板以下的真缺料（一刀即止
-                // 只是不搬 >long 那一截，绝不把真给不出的缺口吞成"够"）。
-                if (extracted == 0L
-                        && storage.extract(what, chunk, Actionable.SIMULATE, src) > 0L) {
-                    // 同一笔请求 SIMULATE 答应而 MODULATE 一枚不给：交付签名，谎报的无限源。
-                    if (forgivenUnbounded != null) {
-                        forgivenUnbounded.add(what);
-                    }
-                    continue;
-                }
-                // 投回必须按<b>宽域真值</b>分 chunk 还，且只从池子里扣"网络确实收回去"的那一截：
-                // 读主表的话溢出那一截藏在侧表里看不见（池子跨批累加可以 >long），
-                // 只还回一个天花板再 clear() 就是把玩家的料凭空蒸发（复核 P0）。
+            if (extracted.compareTo(remaining.min(WideCeilings.LONG_ACCOUNT)) < 0) {
                 returnMaterialsToNetwork(storage, inventory, src);
-                // 缺口只在最后一次窄化交回 AE2：接口只吃得下 long，如实饱和那一截天花板。
-                var shortfall = remaining.subtract(BigInteger.valueOf(extracted));
-                return new GenericStack(what, shortfall.min(WideCeilings.LONG_ACCOUNT).longValue());
+                BigInteger shortfall = remaining.subtract(extracted);
+                return new GenericStack(what, shortfall.min(WideCeilings.LONG_ACCOUNT).longValueExact());
             }
-            // extracted == chunk：网络按 long 上限吐满这一口。普通 long 域需求到这里已经清了
-            // （与 AE2 原语义同值）；>long 的那一截原样留在网络里，由执行侧按批取。
         }
         return null;
     }
@@ -3656,6 +3678,15 @@ final class ParallelCraftingCpuLogic {
      */
     static void returnMaterialsToNetwork(appeng.api.storage.MEStorage storage,
             ListCraftingInventory inventory, IActionSource src) {
+        if (inventory instanceof WideCraftingInventory wide
+                && storage instanceof git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion) {
+            for (var key : java.util.List.copyOf(wide.list.keySet())) {
+                BigInteger accepted = git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion.insert(
+                        storage, key, wide.amount(key), Actionable.MODULATE, src);
+                if (accepted.signum() > 0) wide.extractExact(key, accepted, Actionable.MODULATE);
+            }
+            return;
+        }
         for (AEKey key : inventory.list.keySet()) {
             if (key == null) {
                 continue;
@@ -3693,6 +3724,7 @@ final class ParallelCraftingCpuLogic {
             return;
         }
 
+        if (storage != null) refreshJobUnboundedSupply(job, storage, src);
         var mintedOnDemand = new KeyCounter();
         for (var entry : missingInitialItems) {
             if (entry.getKey() == null) {
@@ -3709,10 +3741,7 @@ final class ParallelCraftingCpuLogic {
                 continue;
             }
             if (storage != null && pool != null && gap > 0L) {
-                // 与另两条腿同一把尺子：先<b>再真取一次</b>这一口的剩余，一枚都没给、而网络仍然
-                // "报得出"，才是谎报元件。只看 SIMULATE 不够——"每次交不满但仍在给料"的普通存储
-                // 会被误认成无限源，从此不再等它那一份真料。
-                // 这一腿的缺口本来就是 KeyCounter 上的 long 读数，一次伸手就是整口，不必再分刀。
+                // 有限来源再次实际提取缺口，只有收到的实物能减少等待量。
                 var awaitedKey = entry.getKey();
                 long delivered = storage.extract(awaitedKey, gap, Actionable.MODULATE, src);
                 if (delivered > 0L) {
@@ -3720,12 +3749,6 @@ final class ParallelCraftingCpuLogic {
                     gap = delivered >= gap ? 0L : gap - delivered;
                 }
                 if (gap <= 0L) {
-                    continue;
-                }
-                if (delivered == 0L
-                        && storage.extract(awaitedKey, gap, Actionable.SIMULATE, src) > 0L) {
-                    job.noteUnboundedSupply(awaitedKey);
-                    mintedOnDemand.add(awaitedKey, gap);
                     continue;
                 }
             }
@@ -4606,7 +4629,7 @@ final class ParallelCraftingCpuLogic {
         }
     }
 
-    /** 按精确等待账转移实物；时间估计可饱和，库存、等待量与到账流水全程使用 BigInteger。 */
+    /** 按精确等待账转移实物；库存、进度、等待量与到账流水全程使用精确数量。 */
     static BigInteger claimDeclaredIntermediateOutput(ParallelExecutingCraftingJob job,
             WideCraftingInventory pool, AEKey what, BigInteger available, Consumer<AEKey> changed) {
         if (available.signum() <= 0 || (what.matches(job.finalOutput)
@@ -4622,8 +4645,7 @@ final class ParallelCraftingCpuLogic {
         pool.insertExact(what, accepted, Actionable.MODULATE);
         waiting.extractExact(owedKey, accepted, Actionable.MODULATE);
         job.accountReturned.add(what, accepted);
-        ParallelExecutingCraftingJob.decrementItems(job.timeTracker,
-                Ae2Amounts.toLong(PlanAmount.of(accepted)), what.getType());
+        job.timeTracker.decrementItems(PlanAmount.of(accepted), what.getType());
         changed.accept(what);
         // Useless 扣完真实队列并送达终局后，由正常 tick 收尾，避免交付回调内重入 finishJob。
         return accepted;
@@ -4770,15 +4792,22 @@ final class ParallelCraftingCpuLogic {
         routingStandaloneOutput = true;
         try {
             for (int chunk = 0; chunk < 64 && job == current; chunk++) {
-                long offered = inventory.extract(what, current.remainingAmount, Actionable.SIMULATE);
-                if (offered <= 0) return;
-                long accepted = grid.getStorageService().getInventory().insert(what, offered, Actionable.MODULATE, lane.cluster().source());
-                if (accepted <= 0) return;
-                inventory.extract(what, accepted, Actionable.MODULATE);
-                current.recordFinalOutputAccepted(accepted);
+                BigInteger remaining = current.exactRemainingAmount == null
+                        ? BigInteger.valueOf(current.remainingAmount) : current.exactRemainingAmount.exactValue();
+                var storage = grid.getStorageService().getInventory();
+                BigInteger limit = storage instanceof git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion
+                        ? remaining : remaining.min(WideCeilings.LONG_ACCOUNT);
+                BigInteger offered = WideCraftingInventory.amount(inventory, what).min(limit);
+                if (offered.signum() <= 0) return;
+                BigInteger accepted = git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion.insert(
+                        storage, what, offered, Actionable.MODULATE, lane.cluster().source());
+                if (accepted.signum() <= 0) return;
+                ((WideCraftingInventory) inventory).extractExact(what, accepted, Actionable.MODULATE);
+                current.recordFinalOutputAccepted(PlanAmount.of(accepted));
                 postChange(what);
                 if (current.remainingAmount == 0) { finishJob(true); return; }
-                if (accepted < offered) return;
+                // 网络虽支持精确路由，实际接收盘可能只吃一个 long 窗口；满窗口按原预算继续交。
+                if (accepted.compareTo(offered.min(WideCeilings.LONG_ACCOUNT)) < 0) return;
             }
         } finally {
             routingStandaloneOutput = false;
@@ -4796,6 +4825,7 @@ final class ParallelCraftingCpuLogic {
     static boolean isDyeableRecursiveJobComplete(@Nullable ParallelExecutingCraftingJob job) {
         return job != null
                 && job.dyeableRecursivePlan
+                && !job.batchObligations.hasAnyPending()
                 && (finalOutputFullyDelivered(job)
                         || (job.tasks.isEmpty() && job.waitingFor.list.isEmpty()
                                 && declaredNetworkDeliveriesSettled(job)));
@@ -4848,7 +4878,7 @@ final class ParallelCraftingCpuLogic {
      * <p>为什么这条不是"卡住就放弃"：它读的是一件<b>已经发生的事实</b>——这一单要的产物已经<b>实物</b>
      * 交到作业的入账口（{@link #insertInternal} 认成终点产物那一支，AE2 真把料交进 CPU 账口的那一刻），
      * 量对得上订单。没有超时、没有自动终止、没有砍需求：订单量算不出来（{@link ParallelExecutingCraftingJob#finalOutputOrderAmount}
-     * 交回 {@code null}）或<b>产出终点键的那几张样板</b>还欠着宿主那头的材料
+     * 交回 {@code null}）或<b>任一已接单批次</b>还欠着宿主那头的材料
      * （{@link #finalOutputObligationsSettled}）都不判收工。
      * 宿主自报"不经池子直接交出"的那一截<b>不算</b>在这里（分流口 {@code reserveOne} 只摘
      * {@code waitingFor}、只记预期账，不记交付——那条通道里没有实物回执，见该方法注释）。
@@ -4867,35 +4897,22 @@ final class ParallelCraftingCpuLogic {
      * 少拿），那一腿归台账 #72 的"分轮交付"，本刀不替它补。
      */
     static boolean finalOutputFullyDelivered(@Nullable ParallelExecutingCraftingJob job) {
+        return finalOutputQuantityDelivered(job) && finalOutputObligationsSettled(job);
+    }
+
+    /** 最终产物实收量已齐，仅表示不再派发；已接单批次的材料结算仍必须继续。 */
+    private static boolean finalOutputQuantityDelivered(@Nullable ParallelExecutingCraftingJob job) {
         if (job == null) {
             return false;
         }
         PlanAmount order = job.finalOutputOrderAmount();
         return order != null
-                && finalOutputObligationsSettled(job)
                 && job.finalOutputDeliveredAmount().compareTo(order) >= 0;
     }
 
-    /**
-     * 申报出去给宿主的那一截材料交割干净了没有：<b>产出终点键</b>的那几张样板还欠着就不算这一单收工。
-     *
-     * <p><b>欠账的"谁"收窄到终点键的产出方</b>（FIX-F）：这条臂问的是"这一单交齐了没有"，而
-     * {@code hasAnyPending()} 是<b>作业级</b>读数——终点实物已按订单量交到入账口、另一张毫不相干的
-     * 样板还欠 1 发义务时，作业被那一格拦住不收工（实机症状"交齐了不收工"，库存含环起步借的那颗种
-     * 一起挂在 CPU 里）。
-     *
-     * <p>用的尺仍是 {@link #taskMayLeaveTable} 那一条（{@code obligations.hasPending(details)}，
-     * 同一本 {@code batchObligations}，不在这里建第二套账、也不新增闸门）：改的只有"问哪几张"。
-     * 终点键<b>自己</b>的欠账未清时这一臂照旧拦住收工——那正是 #92 那一型（申报出去却没交割的材料
-     * 让宿主白多产一发终点件），收窄不许把它一起放开。
-     */
+    /** 最终交货不能免除已经接单的中间批次材料；所有已声明义务都须结清。 */
     static boolean finalOutputObligationsSettled(ParallelExecutingCraftingJob job) {
-        for (IPatternDetails details : job.batchObligations.pendingPatterns()) {
-            if (job.producesFinalOutput(details)) {
-                return false;
-            }
-        }
-        return true;
+        return !job.batchObligations.hasAnyPending();
     }
 
     record InsertResult(long insertedAmount, long accountedAmount) {
@@ -5026,6 +5043,18 @@ final class ParallelCraftingCpuLogic {
         }
 
         var storage = grid.getStorageService().getInventory();
+        if (inventory instanceof WideCraftingInventory wide
+                && storage instanceof git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion) {
+            for (var what : java.util.List.copyOf(wide.list.keySet())) {
+                BigInteger accepted = git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion.insert(
+                        storage, what, wide.amount(what), Actionable.MODULATE, lane.cluster().source());
+                if (accepted.signum() > 0) {
+                    wide.extractExact(what, accepted, Actionable.MODULATE);
+                    postChange(what);
+                }
+            }
+            return;
+        }
         if (inventory instanceof WideCraftingInventory wide) {
             storeWideInventory(wide, (what, offer) -> {
                 postChange(what);
@@ -5168,6 +5197,10 @@ final class ParallelCraftingCpuLogic {
 
     void setJobSuspended(boolean suspended) {
         if (job != null && job.suspended != suspended) {
+            if (!suspended && job.hasUnresolvedTasks()) {
+                AELog.error("并行 CPU 无法继续：存在未解码的存档任务，请先恢复对应样板支持");
+                return;
+            }
             job.suspended = suspended;
             postChange(job.finalOutput == null ? null : job.finalOutput.what());
         }

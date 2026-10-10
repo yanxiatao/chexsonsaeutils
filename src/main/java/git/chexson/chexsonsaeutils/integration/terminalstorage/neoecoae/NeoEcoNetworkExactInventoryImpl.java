@@ -30,6 +30,9 @@ public final class NeoEcoNetworkExactInventoryImpl implements NetworkExactInvent
                     result.put(entry.getKey(), StorageAmount.finite(BigInteger.valueOf(entry.getLongValue())));
                 }
             }
+            // 精确源可只声明旁路数量；不能依赖 long 投影中恰好存在同一键。
+            wide.forEach((key, exact) -> result.put(key, exact.infinite()
+                    ? StorageAmount.infinite() : StorageAmount.finite(exact.value())));
             return Map.copyOf(result);
         } catch (RuntimeException | Error failure) {
             ExactAmountCollector.abort();

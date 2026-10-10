@@ -4,7 +4,7 @@ import appeng.api.networking.IGrid;
 import appeng.api.stacks.AEKey;
 import java.math.BigInteger;
 
-/** 声明批实物的宽域接收入口；供机器在扣除交付队列前转移真实产物，计划清单不得调用此口。 */
+/** 批量机器实物的宽域接收入口；声明批回调与装配机回流共用，计划清单不得调用此口。 */
 @FunctionalInterface
 public interface DeclaredBatchOutputReceiver {
     /**

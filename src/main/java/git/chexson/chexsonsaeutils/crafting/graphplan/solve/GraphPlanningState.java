@@ -87,6 +87,8 @@ public final class GraphPlanningState {
     private final Set<RingId> failedRingMacros = new HashSet<>();
     /** 留种还种已记账的环（按 ringId，同一环整趟只还一次；随 journal 回滚）。 */
     private final Set<RingId> repaidRingSeeds = new HashSet<>();
+    /** 已筹齐起步池的成员环，跨需求轮次及不同净输出入口复用。 */
+    private final Set<RingId> startedRings = new HashSet<>();
     private final ByteAccount byteAccount = new ByteAccount();
     /** bytes 构成分诊断：节点费与物料费分账（attempt 末尾探针用）。 */
     private double nodeBytesAccum;
@@ -161,7 +163,7 @@ public final class GraphPlanningState {
         this.journal = new PlanJournal(
                 new WideKeyCounter[] { unmodified, working, used, emitted, missing, ringExtractions,
                         recursiveInternalItems },
-                crafts, failedRingMacros, repaidRingSeeds, byteAccount, journalArena);
+                crafts, failedRingMacros, repaidRingSeeds, startedRings, byteAccount, journalArena);
     }
 
     /** 键的稠密 id——热路径调用方（站点 / 样板产出）应在编译期解析一次后复用。 */
@@ -173,6 +175,12 @@ public final class GraphPlanningState {
     public int journal() {
         return journal.mark();
     }
+
+    /** 在求解检查点检查堆余量，压力出现时无损迁移回滚历史。 */
+    public void checkMemoryPressure() { journal.checkMemoryPressure(); }
+
+    /** 求解尝试结束后不再需要回滚历史，立即释放日志旧值与临时文件。 */
+    public void releaseRollback() { journal.releaseRollback(); }
 
     /** Undo every journaled write after {@code mark}, newest first, and truncate. */
     public void undoTo(int mark) {
@@ -232,6 +240,11 @@ public final class GraphPlanningState {
     public boolean hasRingSeedRepaid(RingId ringId) {
         return this.repaidRingSeeds.contains(ringId);
     }
+
+    /** 起步完成状态随分支回滚，不能在试探失败后继续借用不存在的种子。 */
+    public boolean hasRingStarted(RingId ringId) { return startedRings.contains(ringId.startupIdentity()); }
+
+    public void markRingStarted(RingId ringId) { journal.ringStarted(ringId.startupIdentity()); }
 
     public void markRingSeedRepaid(RingId ringId) {
         journal.ringSeedRepaid(ringId);
@@ -713,6 +726,12 @@ public final class GraphPlanningState {
     /** 宽域发数版：环宏发射向量本身超界时走这条，增量口径与 long 版逐字相同。 */
     public void addCrafting(IPatternDetails details, PlanAmount times) {
         journal.craftsMerge(details, times);
+    }
+
+    /** 宽域节点费使用原始发数，不通过 double 反推数量。 */
+    public void addBytes(PlanAmount bytes) {
+        this.nodeBytesAccum += bytes.exactValue().doubleValue();
+        journal.plainBytes(bytes);
     }
 
     public void addBytes(double bytes) {

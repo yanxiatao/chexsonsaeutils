@@ -2,6 +2,10 @@ package git.chexson.chexsonsaeutils.crafting.parallelcpu;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import git.chexson.chexsonsaeutils.bigint.PlanAmount;
 import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
 import org.jetbrains.annotations.Nullable;
@@ -28,6 +32,52 @@ final class MaterialAllocationImpl implements MaterialAllocation {
     private final List<IPatternDetails> registeredPatterns = new ArrayList<>();
     /** 实际建账来源，诊断读取不触发 adopt/mint；不负责生命周期保护。 */
     private Source source = Source.NONE;
+
+    @Override
+    public CompoundTag writePatternToNBT(IPatternDetails pattern,
+            HolderLookup.Provider registries) {
+        var data = new CompoundTag();
+        data.putString("source", source.name());
+        if (assigned.containsKey(pattern)) data.put("assigned", writeCounter(assigned.get(pattern), registries));
+        if (envelopes.containsKey(pattern)) data.put("envelopes", writeCounter(envelopes.get(pattern), registries));
+        if (eaten.containsKey(pattern)) data.put("eaten", writeCounter(eaten.get(pattern), registries));
+        return data;
+    }
+
+    @Override
+    public void readPatternFromNBT(IPatternDetails pattern, CompoundTag data,
+            HolderLookup.Provider registries) {
+        if (data.isEmpty()) return;
+        source = Source.valueOf(data.getString("source"));
+        registerPattern(pattern);
+        if (data.contains("assigned")) assigned.put(pattern, readCounter(data.getList("assigned", Tag.TAG_COMPOUND), registries));
+        if (data.contains("envelopes")) envelopes.put(pattern, readCounter(data.getList("envelopes", Tag.TAG_COMPOUND), registries));
+        if (data.contains("eaten")) eaten.put(pattern, readCounter(data.getList("eaten", Tag.TAG_COMPOUND), registries));
+    }
+
+    /** 保留零值键和宽域真值，库存编码会过滤零值，因此不能用它保存硬配额账。 */
+    private static ListTag writeCounter(WideKeyCounter counter,
+            HolderLookup.Provider registries) {
+        var result = new ListTag();
+        for (var key : counter.keys()) {
+            var entry = key.toTagGeneric(registries);
+            entry.putByteArray("amount", counter.getAmount(key).exactValue().toByteArray());
+            result.add(entry);
+        }
+        return result;
+    }
+
+    private static WideKeyCounter readCounter(ListTag data,
+            HolderLookup.Provider registries) {
+        var counter = new WideKeyCounter();
+        for (int i = 0; i < data.size(); i++) {
+            var entry = data.getCompound(i);
+            var key = AEKey.fromTagGeneric(registries, entry);
+            if (key == null) throw new IllegalArgumentException("材料配额存档含无效键");
+            counter.setExact(key, new BigInteger(entry.getByteArray("amount")));
+        }
+        return counter;
+    }
 
     @Override
     public boolean adopt(Map<IPatternDetails, WideKeyCounter> planned,

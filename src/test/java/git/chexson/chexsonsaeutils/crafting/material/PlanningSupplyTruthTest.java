@@ -54,6 +54,29 @@ final class PlanningSupplyTruthTest {
     private static final BigInteger LONG_MAX = BigInteger.valueOf(Long.MAX_VALUE);
     private static final BigInteger OVERFLOWED = LONG_MAX.add(BigInteger.valueOf(5));
 
+    @Test
+    void extendedAeFluidSupplyIsDetectedInNativeFluidUnits() {
+        var lava = appeng.api.stacks.AEFluidKey.of(net.minecraft.world.level.material.Fluids.LAVA);
+        var source = new FakeCreativeCell(lava, (long) Integer.MAX_VALUE * lava.getAmountPerUnit());
+        var grid = FakePlanGrid.FakeGrid.builder().build();
+        grid.node.owner = new FakeDrive(List.of(source), true);
+        var truth = PlanningSupplyTruth.capture(grid, source.getAvailableStacks());
+        assertTrue(truth.unboundedSupplies().contains(lava));
+        assertEquals(Set.of(lava), PlanningSupplyTruth.currentUnboundedSupplies(grid));
+        assertEquals(PlanningSupplyTruth.UNBOUNDED, truth.supplyOf(lava, 1));
+    }
+
+    @Test
+    void undeclaredFiniteStorageIsNotInfiniteEvenWhenExtractionExceedsItsProjection() {
+        var storage = new MEStorage() {
+            @Override public void getAvailableStacks(KeyCounter out) { out.add(IRON, Integer.MAX_VALUE); }
+            @Override public long extract(AEKey key, long amount, Actionable mode,
+                    appeng.api.networking.security.IActionSource source) { return amount; }
+            @Override public Component getDescription() { return Component.literal("有限盘的截断读数"); }
+        };
+        assertTrue(PlanningSupplyTruth.unboundedKeysOf(storage).isEmpty());
+    }
+
     /** 无限盘溢出键：网络报 Long.MAX_VALUE，规划侧要读到真值。 */
     @Test
     void overflowKeyReadsBackAsBigIntegerTruthOnPlanningSide() {
@@ -375,16 +398,25 @@ final class PlanningSupplyTruthTest {
     }
 
     /** 创造形单元：报 Integer.MAX_VALUE，取多少给多少（AE2 CreativeCellInventory 的形状）。 */
-    private static final class FakeCreativeCell implements StorageCell {
+    private static final class FakeCreativeCell implements StorageCell,
+            git.chexson.chexsonsaeutils.api.storage.UnboundedStorageSupply {
         private final AEKey key;
+        private final long reported;
 
         private FakeCreativeCell(AEKey key) {
-            this.key = key;
+            this(key, Integer.MAX_VALUE);
         }
+
+        private FakeCreativeCell(AEKey key, long reported) {
+            this.key = key;
+            this.reported = reported;
+        }
+
+        @Override public Set<AEKey> unboundedSupplyKeys() { return Set.of(key); }
 
         @Override
         public void getAvailableStacks(KeyCounter out) {
-            out.add(this.key, Integer.MAX_VALUE);
+            out.add(this.key, reported);
         }
 
         @Override

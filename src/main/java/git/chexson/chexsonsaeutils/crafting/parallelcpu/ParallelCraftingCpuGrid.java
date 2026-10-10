@@ -12,6 +12,7 @@ import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEKey;
 import appeng.crafting.execution.CraftingSubmitResult;
 import git.chexson.chexsonsaeutils.bigint.ClampedMath;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchOutputReceiver;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,7 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-public final class ParallelCraftingCpuGrid {
+public final class ParallelCraftingCpuGrid implements DeclaredBatchOutputReceiver {
 
     private final IGrid grid;
     private final Set<ParallelCraftingCpuCluster> clusters = new LinkedHashSet<>();
@@ -229,6 +230,12 @@ public final class ParallelCraftingCpuGrid {
 
     void refreshLane(ParallelCraftingLane lane) {
         waitingIndex.refreshLane(lane);
+    }
+
+    /** 网格服务与机器复用的宽域实物入口；当前网格身份不匹配时不转移任何产物。 */
+    @Override
+    public BigInteger receive(IGrid sourceGrid, AEKey what, BigInteger available) {
+        return sourceGrid == grid ? claimDeclaredOutputs(what, available) : BigInteger.ZERO;
     }
 
     /** 机器合并批次后的真实产物按同网欠量直接入 CPU；剩余量仍由机器送回网络。 */

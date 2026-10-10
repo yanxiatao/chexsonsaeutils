@@ -10,6 +10,9 @@ import net.neoforged.fml.ModList;
 public final class CraftingRequestCompatibilityImpl implements CraftingRequestCompatibility {
     private final boolean data = ModList.get().isLoaded("data_energistics");
     private final boolean ae2lt = ModList.get().isLoaded("ae2lt");
+    @Override public appeng.api.networking.security.IActionSource netNew(appeng.api.networking.security.IActionSource source) {
+        return data ? Data.netNew(source) : source;
+    }
     @Override public Optional<Boolean> finalTotal(CraftAmountMenu menu) {
         return data ? Optional.of(Data.finalTotal(menu)) : Optional.empty();
     }
@@ -34,6 +37,10 @@ public final class CraftingRequestCompatibilityImpl implements CraftingRequestCo
         return false;
     }
     private static final class Data {
+        static appeng.api.networking.security.IActionSource netNew(appeng.api.networking.security.IActionSource source) {
+            return com.fish_dan_.data_energistics.common.crafting.trinity.planning.request.TrinityCraftingRequestContext.attach(
+                    source, com.fish_dan_.data_energistics.common.crafting.trinity.planning.CraftingQuantityMode.NET_NEW);
+        }
         private static com.fish_dan_.data_energistics.menu.crafting.TrinityCraftAmountMenuState state(CraftAmountMenu menu) {
             return (com.fish_dan_.data_energistics.menu.crafting.TrinityCraftAmountMenuState) (Object) menu;
         }

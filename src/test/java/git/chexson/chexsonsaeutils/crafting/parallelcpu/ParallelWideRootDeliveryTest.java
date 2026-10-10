@@ -26,6 +26,52 @@ final class ParallelWideRootDeliveryTest {
         var link = new CraftingLink(CraftingCpuHelper.generateLinkData(UUID.randomUUID(), true, false), (ICraftingCPU) null);
         return new ParallelExecutingCraftingJob(plan, ignored -> {}, link, null);
     }
+    @Test void exactNetworkRootDeliveryAndRejectedRollbackDeductOnlyActualReceipt() {
+        var network = new ExactNetwork();
+        var lane = new ParallelCraftingLaneState(ParallelRecursiveFinalOutputDeliveryTest.offlineCluster(network), UUID.randomUUID(), 0);
+        var registries = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
+        var pool = new WideCraftingInventory(ignored -> {});
+        pool.insertExact(PRODUCT, ORDER, appeng.api.config.Actionable.MODULATE);
+        var tag = new net.minecraft.nbt.CompoundTag();
+        tag.put("job", job().writeToNBT(registries)); tag.put("inventory", pool.writeToNBT(registries));
+        lane.logic().readFromNBT(tag, registries);
+        network.limit = BigInteger.valueOf(4);
+        lane.logic().drainStandaloneFinalOutput();
+        assertEquals(BigInteger.valueOf(4), network.stored); assertTrue(lane.logic().hasJob());
+        network.limit = ORDER;
+        lane.logic().drainStandaloneFinalOutput();
+        assertEquals(ORDER, network.stored); assertFalse(lane.logic().hasJob());
+        assertEquals(2, network.calls);
+
+        var huge = BigInteger.TEN.pow(100);
+        pool.clear(); pool.insertExact(PRODUCT, huge, appeng.api.config.Actionable.MODULATE);
+        network.limit = BigInteger.ZERO;
+        ParallelCraftingCpuLogic.returnMaterialsToNetwork(network, pool, appeng.api.networking.security.IActionSource.empty());
+        assertEquals(huge, pool.amount(PRODUCT));
+        network.limit = BigInteger.valueOf(7);
+        ParallelCraftingCpuLogic.returnMaterialsToNetwork(network, pool, appeng.api.networking.security.IActionSource.empty());
+        assertEquals(huge.subtract(BigInteger.valueOf(7)), pool.amount(PRODUCT));
+        assertEquals(ORDER.add(BigInteger.valueOf(7)), network.stored);
+        network.limit = huge;
+        ParallelCraftingCpuLogic.returnMaterialsToNetwork(network, pool, appeng.api.networking.security.IActionSource.empty());
+        assertTrue(pool.list.isEmpty()); assertEquals(ORDER.add(huge), network.stored);
+    }
+
+    private static final class ExactNetwork implements appeng.api.storage.MEStorage,
+            git.chexson.chexsonsaeutils.api.storage.ExactStorageInsertion {
+        BigInteger limit = BigInteger.ZERO;
+        BigInteger stored = BigInteger.ZERO;
+        int calls;
+        public net.minecraft.network.chat.Component getDescription() { return net.minecraft.network.chat.Component.literal("精确接收网络"); }
+        public BigInteger insertExact(AEKey key, BigInteger amount, appeng.api.config.Actionable mode,
+                appeng.api.networking.security.IActionSource source) {
+            calls++;
+            var accepted = amount.min(limit);
+            if (mode == appeng.api.config.Actionable.MODULATE) stored = stored.add(accepted);
+            return accepted;
+        }
+    }
+
     @Test void representativeLongDeliveryDoesNotCompleteExactOrder() {
         var job = job();
         job.recordFinalOutputAccepted(Long.MAX_VALUE);

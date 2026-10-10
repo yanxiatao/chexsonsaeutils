@@ -2,6 +2,7 @@ package git.chexson.chexsonsaeutils.crafting.graphplan.solve;
 
 import java.util.Arrays;
 import java.util.Set;
+import git.chexson.chexsonsaeutils.crafting.memory.HeapPressure;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -56,11 +57,13 @@ public final class PlanJournal {
     static final int RING_FAILED = 8;
     /** 留种还种轮数已按 {@code ringId} 记账（undo 时移除，环宏回滚后可重新还）。 */
     static final int RING_SEED_REPAID = 13;
+    /** 同一组环成员已经筹齐可循环复用的起步池。 */
+    static final int RING_STARTED = 15;
     /** {@code addStackBytes} 的一体条目：double 旧读数 + apb 桶增量。 */
     static final int BYTE_STACK = 9;
     /** {@code addStackBytes} 的宽域桶增量条目（乘积本身溢出 long 的稀有路径）。 */
     static final int BYTE_STACK_WIDE = 10;
-    /** {@code addBytes(double)} 的 double 读数恢复条目（无 apb 桶变化）。 */
+    /** {@code addBytes(double)} 的 double 读数与精确节点费恢复条目。 */
     static final int BYTE_PLAIN = 11;
 
     /** delta 条目标志：{@code deltas} 存带符号增量，undo 时反向 add。 */
@@ -73,6 +76,7 @@ public final class PlanJournal {
     private final WideCraftCounter crafts;
     private final Set<RingId> failedRingMacros;
     private final Set<RingId> repaidRingSeeds;
+    private final Set<RingId> startedRings;
     private final ByteAccount byteAccount;
 
     /**
@@ -90,13 +94,54 @@ public final class PlanJournal {
                 new ThreadLocal<>();
 
         public static Arena forCurrentThread() {
+            if (git.chexson.chexsonsaeutils.config.PlanningServerConfig.lowMemory()) {
+                return new Arena(git.chexson.chexsonsaeutils.config.PlanningServerConfig.journalPageEntries());
+            }
+            var pressure = HeapPressure.configured();
+            var sample = pressure.sample();
+            int autoPageEntries = git.chexson.chexsonsaeutils.config.PlanningServerConfig.journalPageEntries();
+            if (sample.needsSpill(autoPageEntries * 40L)) {
+                PER_THREAD.remove();
+                git.chexson.chexsonsaeutils.crafting.graphplan.graph.GraphCompiler.releaseCache();
+                logAutomaticSpill(sample, 0, Math.min(autoPageEntries, 1024));
+                return new Arena(Math.min(autoPageEntries, 1024));
+            }
             var reference = PER_THREAD.get();
             Arena arena = reference == null ? null : reference.get();
-            if (arena == null) {
+            if (arena == null || arena.pageEntries != 0) {
                 arena = new Arena();
                 PER_THREAD.set(new java.lang.ref.SoftReference<>(arena));
             }
+            arena.heapPressure = pressure;
+            arena.automaticPageEntries = autoPageEntries;
             return arena;
+        }
+
+        private int pageEntries;
+        private int automaticPageEntries;
+        private HeapPressure heapPressure = HeapPressure.NONE;
+
+        public Arena() { this(0); }
+
+        /** 非零为低内存页大小；测试可用小页验证跨页回滚。 */
+        public Arena(int pageEntries) {
+            if (pageEntries != 0 && (pageEntries < 16 || Integer.bitCount(pageEntries) != 1))
+                throw new IllegalArgumentException("Journal page entries must be a power of two >= 16");
+            this.pageEntries = pageEntries;
+            if (pageEntries != 0) {
+                kinds = new int[pageEntries]; keyIds = new int[pageEntries];
+                refs = new Object[pageEntries]; deltas = new long[pageEntries];
+                doubleOlds = new double[pageEntries]; objOlds = new Object[pageEntries];
+            }
+        }
+
+        /** 以可控堆余量驱动自动迁移，生产使用 forCurrentThread 配置策略。 */
+        Arena(int pageEntries, int automaticPageEntries, HeapPressure heapPressure) {
+            this(pageEntries);
+            if (automaticPageEntries < 16 || Integer.bitCount(automaticPageEntries) != 1)
+                throw new IllegalArgumentException("Automatic journal page entries must be a power of two >= 16");
+            this.automaticPageEntries = automaticPageEntries;
+            this.heapPressure = java.util.Objects.requireNonNull(heapPressure);
         }
 
         // 小计划按需扩容；大计划仍按线程复用已经增长的数组。
@@ -113,6 +158,10 @@ public final class PlanJournal {
 
     private final Arena arena;
     private int size;
+    private int pageBase;
+    private JournalPageStorage pages;
+    private boolean released;
+    private int pressureCheckCountdown = 1024;
     private int[] kinds;
     /** 账本条目的键 id（内化后账本按 id 数组寻址，undo 无需再解析 AEKey）。 */
     private int[] keyIds;
@@ -125,12 +174,13 @@ public final class PlanJournal {
 
     PlanJournal(WideKeyCounter[] counters,
             WideCraftCounter crafts,
-            Set<RingId> failedRingMacros, Set<RingId> repaidRingSeeds,
+            Set<RingId> failedRingMacros, Set<RingId> repaidRingSeeds, Set<RingId> startedRings,
             ByteAccount byteAccount, Arena arena) {
         this.counters = counters;
         this.crafts = crafts;
         this.failedRingMacros = failedRingMacros;
         this.repaidRingSeeds = repaidRingSeeds;
+        this.startedRings = startedRings;
         this.byteAccount = byteAccount;
         this.arena = arena;
         this.kinds = arena.kinds;
@@ -155,7 +205,16 @@ public final class PlanJournal {
 
     /** 逆序回放到 {@code mark} 并截断，之后日志可复用。 */
     void undoTo(int mark) {
-        for (int i = this.size - 1; i >= mark; i--) {
+        if (released) throw new IllegalStateException("Planning rollback has already been released");
+        if (mark < 0 || mark > size) throw new IllegalArgumentException("Invalid journal mark: " + mark);
+        while (this.size > mark) {
+            if (this.size == pageBase) {
+                var tops = pages.pop(kinds, keyIds, refs, deltas, doubleOlds, objOlds);
+                pageBase -= kinds.length;
+                doubleTop = tops.doubles(); objTop = tops.values();
+                arena.refsHighWater = kinds.length; arena.objHighWater = objTop;
+            }
+            int i = --this.size - pageBase;
             int kind = this.kinds[i];
             Object key = this.refs[i];
             this.refs[i] = null;
@@ -186,7 +245,11 @@ public final class PlanJournal {
                     PlanAmount.of(((java.math.BigInteger) popObj()).negate()));
             case RING_FAILED -> this.failedRingMacros.remove((RingId) key);
             case RING_SEED_REPAID -> this.repaidRingSeeds.remove((RingId) key);
-            case BYTE_PLAIN -> this.byteAccount.setAe2Bytes(popDouble());
+            case RING_STARTED -> this.startedRings.remove((RingId) key);
+            case BYTE_PLAIN -> {
+                this.byteAccount.restorePlainBytes((java.math.BigDecimal) popObj());
+                this.byteAccount.setAe2Bytes(popDouble());
+            }
             case BYTE_STACK -> {
                 this.byteAccount.setAe2Bytes(popDouble());
                 this.byteAccount.addBucket(((AEKey) key).getAmountPerByte(), -this.deltas[index]);
@@ -212,14 +275,19 @@ public final class PlanJournal {
 
     /** 主三列追加。 */
     private void append(int kind, @Nullable Object ref, long delta) {
-        int index = this.size;
+        if (size == Integer.MAX_VALUE) throw new PlanningOverflowException("planning journal exceeded 2^31 entries");
+        if (released) { this.size++; return; }
+        checkAppendPressure(kind);
+        int index = this.size - pageBase;
         if (index == this.kinds.length) {
-            grow();
+            if (arena.pageEntries != 0) {
+                spillPage(); index = 0;
+            } else grow();
         }
         this.kinds[index] = kind;
         this.refs[index] = ref;
         this.deltas[index] = delta;
-        this.size = index + 1;
+        this.size++;
         if (index >= this.arena.refsHighWater) {
             this.arena.refsHighWater = index + 1;
         }
@@ -227,16 +295,134 @@ public final class PlanJournal {
 
     /** 账本条目追加：键只记 id，不写 refs 列。 */
     private void appendKey(int kind, int keyId, long delta) {
-        int index = this.size;
+        if (size == Integer.MAX_VALUE) throw new PlanningOverflowException("planning journal exceeded 2^31 entries");
+        if (released) { this.size++; return; }
+        checkAppendPressure(kind);
+        int index = this.size - pageBase;
         if (index == this.kinds.length) {
-            grow();
+            if (arena.pageEntries != 0) {
+                spillPage(); index = 0;
+            } else grow();
         }
         this.kinds[index] = kind;
         this.keyIds[index] = keyId;
         this.refs[index] = null;
         this.deltas[index] = delta;
-        this.size = index + 1;
+        this.size++;
     }
+
+    /** 求解检查点也采样，覆盖无大量日志写入但其他计算占用堆的场景。 */
+    void checkMemoryPressure() {
+        if (!released && arena.pageEntries == 0 && arena.heapPressure != HeapPressure.NONE) {
+            maybeMigrate(0L);
+        }
+    }
+
+    private void checkAppendPressure(int kind) {
+        if (arena.pageEntries != 0 || arena.heapPressure == HeapPressure.NONE) return;
+        long allocation = 0L;
+        // 估计新数组的总分配，而非净增长：扩容时新旧两份会同时存在，引用按 8 字节保守估计。
+        if (size == kinds.length) allocation += kinds.length * 48L;
+        if (needsObject(kind) && objTop == objOlds.length) allocation += objOlds.length * 16L;
+        if (needsDouble(kind) && doubleTop == doubleOlds.length) allocation += doubleOlds.length * 16L;
+        if (--pressureCheckCountdown <= 0 || allocation > 0L) {
+            pressureCheckCountdown = 1024;
+            maybeMigrate(allocation);
+        }
+    }
+
+    private void maybeMigrate(long allocationBytes) {
+        var sample = arena.heapPressure.sample();
+        int capacity = Math.min(arena.automaticPageEntries, kinds.length);
+        long migrationBytes = capacity * 40L + 131072L;
+        if (!sample.needsSpill(Math.max(allocationBytes, migrationBytes))) return;
+        git.chexson.chexsonsaeutils.crafting.graphplan.graph.GraphCompiler.releaseCache();
+        migrateToPages(capacity);
+        logAutomaticSpill(sample, size, capacity);
+    }
+
+    private static void logAutomaticSpill(HeapPressure.Sample sample, int history, int pageEntries) {
+        com.mojang.logging.LogUtils.getLogger().warn(
+                "图求解自动暂存：可用堆={} MiB，预留={} MiB，历史={} 条，驻留页={} 条",
+                sample.availableBytes() / 1048576L, sample.reserveBytes() / 1048576L, history, pageEntries);
+    }
+
+    /** 全局检查点值保持不变；旧列直接分段写盘，只复制最后不足一页的活动尾部。 */
+    private void migrateToPages(int capacity) {
+        int[] nextKinds = new int[capacity], nextKeyIds = new int[capacity];
+        Object[] nextRefs = new Object[capacity], nextValues = new Object[capacity];
+        long[] nextDeltas = new long[capacity];
+        double[] nextDoubles = new double[capacity];
+        int completeRows = size - size % capacity;
+        int doubleOffset = 0, valueOffset = 0;
+        if (completeRows > 0) pages = JournalPageStorage.open();
+        for (int row = 0; row < completeRows; row += capacity) {
+            int doubleStart = doubleOffset, valueStart = valueOffset;
+            for (int i = row; i < row + capacity; i++) {
+                int kind = kinds[i];
+                if (needsDouble(kind)) doubleOffset++;
+                if (needsObject(kind)) valueOffset++;
+            }
+            pages.pushRange(kinds, keyIds, refs, deltas, doubleOlds, objOlds,
+                    new JournalPageStorage.Slice(row, capacity, doubleStart, doubleOffset - doubleStart,
+                            valueStart, valueOffset - valueStart));
+            // 已可靠写盘的旧数值立即解除引用，迁移本身不必等全部历史写完才允许 GC 回收。
+            Arrays.fill(refs, row, row + capacity, null);
+            Arrays.fill(objOlds, valueStart, valueOffset, null);
+        }
+        int tail = size - completeRows;
+        int nextDoubleTop = doubleTop - doubleOffset, nextObjTop = objTop - valueOffset;
+        if (nextDoubleTop < 0 || nextDoubleTop > tail || nextObjTop < 0 || nextObjTop > tail)
+            throw new IllegalStateException("Journal rare column offsets do not match the active tail");
+        System.arraycopy(kinds, completeRows, nextKinds, 0, tail);
+        System.arraycopy(keyIds, completeRows, nextKeyIds, 0, tail);
+        System.arraycopy(refs, completeRows, nextRefs, 0, tail);
+        System.arraycopy(deltas, completeRows, nextDeltas, 0, tail);
+        System.arraycopy(doubleOlds, doubleOffset, nextDoubles, 0, nextDoubleTop);
+        System.arraycopy(objOlds, valueOffset, nextValues, 0, nextObjTop);
+        Arrays.fill(refs, 0, Math.min(arena.refsHighWater, refs.length), null);
+        Arrays.fill(objOlds, 0, Math.min(arena.objHighWater, objOlds.length), null);
+        arena.kinds = kinds = nextKinds; arena.keyIds = keyIds = nextKeyIds;
+        arena.refs = refs = nextRefs; arena.deltas = deltas = nextDeltas;
+        arena.doubleOlds = doubleOlds = nextDoubles; arena.objOlds = objOlds = nextValues;
+        doubleTop = nextDoubleTop; objTop = nextObjTop; pageBase = completeRows;
+        arena.refsHighWater = tail; arena.objHighWater = objTop;
+        arena.pageEntries = capacity;
+    }
+
+    private static boolean needsDouble(int kind) {
+        return kind == BYTE_STACK || kind == BYTE_STACK_WIDE || kind == BYTE_PLAIN;
+    }
+
+    private static boolean needsObject(int kind) {
+        return (kind & (DELTA_FLAG | FAST_OLD_FLAG)) == 0
+                && (kind <= RECURSIVE_INTERNAL || kind == CRAFTS_WIDE
+                    || kind == BYTE_STACK_WIDE || kind == BYTE_PLAIN);
+    }
+
+    private void spillPage() {
+        if (pages == null) pages = JournalPageStorage.open();
+        pages.push(kinds, keyIds, refs, deltas, doubleOlds, doubleTop, objOlds, objTop);
+        Arrays.fill(refs, null); Arrays.fill(objOlds, 0, objTop, null);
+        pageBase += kinds.length; doubleTop = 0; objTop = 0;
+        arena.refsHighWater = 0; arena.objHighWater = 0;
+    }
+
+    /** attempt 已无回滚需求，立即释放旧值引用及临时页；后处理只计条目数。 */
+    void releaseRollback() {
+        if (released) return;
+        released = true;
+        Arrays.fill(refs, 0, Math.min(arena.refsHighWater, refs.length), null);
+        Arrays.fill(objOlds, 0, Math.min(arena.objHighWater, objOlds.length), null);
+        arena.refsHighWater = 0; arena.objHighWater = 0;
+        if (pages != null) { pages.close(); pages = null; }
+        kinds = new int[0]; keyIds = new int[0]; refs = new Object[0];
+        deltas = new long[0]; doubleOlds = new double[0]; objOlds = new Object[0];
+    }
+
+    int residentCapacity() { return kinds.length; }
+    int spilledPages() { return pages == null ? 0 : pages.pageCount(); }
+    java.nio.file.Path spillPath() { return pages == null ? null : pages.path(); }
 
     private void grow() {
         int capacity = this.kinds.length << 1;
@@ -254,6 +440,7 @@ public final class PlanJournal {
     }
 
     private void pushObj(@Nullable Object value) {
+        if (released) return;
         if (this.objTop == this.objOlds.length) {
             this.objOlds = Arrays.copyOf(this.objOlds, this.objOlds.length << 1);
             this.arena.objOlds = this.objOlds;
@@ -265,6 +452,7 @@ public final class PlanJournal {
     }
 
     private void pushDouble(double value) {
+        if (released) return;
         if (this.doubleTop == this.doubleOlds.length) {
             this.doubleOlds = Arrays.copyOf(this.doubleOlds, this.doubleOlds.length << 1);
             this.arena.doubleOlds = this.doubleOlds;
@@ -367,7 +555,7 @@ public final class PlanJournal {
         append(BYTE_STACK_WIDE, key, 0L);
         pushDouble(this.byteAccount.ae2Bytes());
         pushObj(product.exactValue());
-        this.byteAccount.addBytes((double) amount * multiplier.exactValue().doubleValue()
+        this.byteAccount.addAe2Bytes((double) amount * multiplier.exactValue().doubleValue()
                 / key.getType().getAmountPerByte() * 8);
         this.byteAccount.addBucketWide(key.getAmountPerByte(), product.exactValue());
     }
@@ -400,6 +588,12 @@ public final class PlanJournal {
         this.repaidRingSeeds.add(ringId);
     }
 
+    void ringStarted(RingId ringId) {
+        if (startedRings.contains(ringId)) return;
+        append(RING_STARTED, ringId, 0L);
+        startedRings.add(ringId);
+    }
+
     void stackBytes(AEKey key, long amount, long multiplier) {
         double oldBytes = this.byteAccount.ae2Bytes();
         long product = amount * multiplier;
@@ -416,9 +610,17 @@ public final class PlanJournal {
         this.byteAccount.add(key, amount, multiplier);
     }
 
+    void plainBytes(PlanAmount bytes) {
+        append(BYTE_PLAIN, null, 0L);
+        pushDouble(this.byteAccount.ae2Bytes());
+        pushObj(this.byteAccount.plainBytes());
+        this.byteAccount.addBytes(bytes);
+    }
+
     void plainBytes(double bytes) {
         append(BYTE_PLAIN, null, 0L);
         pushDouble(this.byteAccount.ae2Bytes());
+        pushObj(this.byteAccount.plainBytes());
         this.byteAccount.addBytes(bytes);
     }
 }

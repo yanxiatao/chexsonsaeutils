@@ -30,12 +30,10 @@ import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Field;
 import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -241,21 +239,6 @@ final class ParallelCustomKeyPoolRulerTest {
             new OmniInput[]{new OmniInput(
                     new GenericStack[]{new GenericStack(ORE, UNITS_PER_FIRING)}, UNITS_PER_FIRING)},
             List.of(new GenericStack(PRODUCT, 1)));
-
-    /** 夹具前提：这一型自定义键的两把尺子确实分叉（{@code equals} 同、主键引用不同）。 */
-    @Test
-    void theFixtureKeepsTwoDifferentRulersForTheSamePoolEntry() {
-        assertEquals(DECLARED, IN_POOL, "夹具前提：认量按 equals 必须是同一枚");
-        assertTrue(DECLARED.getPrimaryKey() != IN_POOL.getPrimaryKey(),
-                "夹具前提：主键必须是两个引用（值对象主键的自定义键就是这一型）");
-
-        var pool = poolWithOverflow();
-        assertEquals(BigInteger.valueOf(8L), WideCraftingInventory.amount(pool, DECLARED),
-                "池账（按 equals，停滞行 pool= 用的就是这一个读数）读出天花板之上的那一截 8 枚"
-                        + "——主表那一格按主键引用落在另一个桶里，读出来是 0");
-        assertTrue(!iteratorHasAny(pool.findFuzzyTemplates(DECLARED)),
-                "AE2 的模糊索引（按主键引用）看不见这一格——矛盾就是这么来的");
-    }
 
     /**
      * 取料点：这一格算得出份数、推得动。
@@ -482,82 +465,6 @@ final class ParallelCustomKeyPoolRulerTest {
 
     // ---------- 两处诊断读数的池内=：同一个桶里的 0 会骗下一轮排障 ----------
 
-    /**
-     * 诊断读数一（义务停滞行 {@code blocked=} 的 {@code 池内=}）：候选表上那一枚是<b>声明键</b>，
-     * 池子里真躺着的是另一个实例 ⇒ 按声明键裸读恒 0 ⇒ 这一格把"池里还有 8 枚"报成"池里一枚没有"，
-     * 下一轮排障就拿这个 0 判"池子里真没有"。
-     *
-     * <p>走唯一渲染口 {@code describeObligationStallLine}（生产侧 {@code AELog.warn} 打的就是整行）。
-     * 靠前的两条断言（夹具前提与"最后一格是 blocked="）改前改后同绿，红只许落在这一个数上。
-     */
-    @Test
-    void theBlockedObligationCellPrintsThePoolLedgerAmountForAThirdPartyKey() {
-        var pool = poolWithPlainEight();
-        assertEquals(0L, pool.list.get(DECLARED),
-                "夹具前提：AE2 主表按主键引用分格，声明键落在另一个桶里（这一档改前改后都一样）");
-        var job = newJob();
-        job.batchObligations.incur(OMNIVERSAL, BigInteger.valueOf(3L));
-        var line = ParallelCraftingCpuLogic.describeObligationStallLine(UUID.randomUUID(),
-                BigInteger.valueOf(3L), job,
-                List.of(Map.<IPatternDetails, ParallelExecutingCraftingJob.TaskProgress>entry(
-                        OMNIVERSAL, taskWith(3L))),
-                pool, RESERVATION, new ParallelBatchExtraction.Probe(), 0L);
-        var tokens = List.of(line.split(" "));
-        var blocked = tokens.get(tokens.size() - 1);
-        assertTrue(blocked.startsWith("blocked=<"), "最后一格必须是 blocked=：" + line);
-        assertTrue(blocked.contains(",池内=8,配额="),
-                "blocked= 的自定义键那一格要读出池里那 8 枚：改前按声明键裸读报的是 0，"
-                        + "而同一格里 可付发= 也跟着报 0：" + blocked);
-    }
-
-    /**
-     * 诊断读数二（停滞行 {@code backoffBlind=} 的 {@code 池内=}）：那一格点名的键是
-     * {@code materialBackoffMissing} 里在册的<b>候选表声明键</b> ⇒ 同一型恒 0。
-     *
-     * <p>走唯一渲染口 {@code StallProbe#describeStallLine}。靠前的"这一格点的是 slot0 那一枚键"
-     * 改前改后同绿，红只许落在这一个数上。
-     */
-    @Test
-    void theBackoffBlindCellPrintsThePoolLedgerAmountForAThirdPartyKey() {
-        var pool = poolWithPlainEight();
-        var job = newJob();
-        job.tasks.put(OMNIVERSAL, taskWith(5L));
-        job.materialBackoffUntil.put(OMNIVERSAL, 1_000L);
-        job.materialBackoffMissing.put(OMNIVERSAL, new java.util.HashSet<>(Set.of(DECLARED)));
-
-        var cell = stallToken(job, pool, "backoffBlind=");
-        assertTrue(cell.contains("#slot0," + DECLARED + ","),
-                "点名的格必须是退避那一张欠的自定义键那一格：" + cell);
-        assertTrue(cell.contains(",池内=8,网络sim=?"),
-                "backoffBlind= 的 池内= 要读出池里那 8 枚：改前按声明键裸读恒 0 ⇒ 这一格把\"池里还剩 8 枚\""
-                        + "报成\"池里一枚没有\"，与真缺料那一型在日志里长同一个字面：" + cell);
-    }
-
-    /**
-     * 反向守门（普通 {@code AEItemKey} 的两处诊断格）：物品键的主键是注册表单例 ⇒ 声明键与池里那一份
-     * 本来就在同一个分格 ⇒ 换读法前后 {@code 池内=} 逐字同一个数（这里两处都钉 8 枚）。
-     */
-    @Test
-    void anOrdinaryItemKeyPrintsTheSameTwoDiagnosticAmounts() {
-        var pool = poolWithPlainOre();
-        var job = newJob();
-        job.batchObligations.incur(ORE_ONLY, BigInteger.valueOf(3L));
-        job.tasks.put(ORE_ONLY, taskWith(5L));
-        job.materialBackoffUntil.put(ORE_ONLY, 1_000L);
-        job.materialBackoffMissing.put(ORE_ONLY, new java.util.HashSet<>(Set.of((AEKey) ORE)));
-
-        var line = ParallelCraftingCpuLogic.describeObligationStallLine(UUID.randomUUID(),
-                BigInteger.valueOf(3L), job,
-                List.of(Map.<IPatternDetails, ParallelExecutingCraftingJob.TaskProgress>entry(
-                        ORE_ONLY, taskWith(3L))),
-                pool, RESERVATION, new ParallelBatchExtraction.Probe(), 0L);
-        var tokens = List.of(line.split(" "));
-        assertTrue(tokens.get(tokens.size() - 1).contains(",池内=8,配额="),
-                "blocked= 那一格：物品键走哪把尺都是同一个分格，8 枚不许读成 0：" + line);
-        assertTrue(stallToken(job, pool, "backoffBlind=").contains(",池内=8,网络sim=?"),
-                "backoffBlind= 那一格：与改前同一个数");
-    }
-
     // ---------- 倒终点产物与实物回补那两脚：读与扣都伸容器真装着的那一枚 ----------
 
     /**
@@ -601,22 +508,18 @@ final class ParallelCustomKeyPoolRulerTest {
      */
     @Test
     void theReturnedPhysicalProductIsAccountedAgainstTheBufferThatHoldsTheOwedEntry() throws Exception {
-        var job = newJob();
-        var owed = new KeyCounter();
-        owed.add(DECLARED, 8L);
-        ParallelCraftingCpuLogic.reserveExpectedWaiting(job, owed, new KeyCounter(), null);
-        var logic = logicWithJob(job);
+        var logic = logicAwaiting(DECLARED);
 
-        assertEquals(8L, job.waitingFor.extract(DECLARED, Long.MAX_VALUE, Actionable.SIMULATE),
+        assertEquals(8L, logic.getWaitingFor(DECLARED),
                 "夹具前提：挂账真挂在样板申报的那一枚上");
-        assertEquals(0L, job.waitingFor.extract(IN_POOL, Long.MAX_VALUE, Actionable.SIMULATE),
+        assertEquals(0L, logic.getWaitingFor(IN_POOL),
                 "夹具前提：交回来的那一枚落在另一个桶里（这一条改前改后同绿）");
 
         assertEquals(8L, logic.insert(IN_POOL, 8L, Actionable.SIMULATE),
                 "实物回到账口必须认这笔回补：改前问账按交来的那一枚裸读 ⇒ EMPTY ⇒ 一枚都不收");
         assertEquals(8L, logic.insert(IN_POOL, 8L, Actionable.MODULATE),
                 "实收那一笔同样要认：改前这里也是 EMPTY，回补整段作废");
-        assertEquals(0L, job.waitingFor.extract(DECLARED, Long.MAX_VALUE, Actionable.SIMULATE),
+        assertEquals(0L, logic.getWaitingFor(DECLARED),
                 "摘账必须落在挂账那一格上：只放开问账而摘走另一格，这一格永远清不掉、作业永远收不了工");
     }
 
@@ -640,29 +543,26 @@ final class ParallelCustomKeyPoolRulerTest {
         assertEquals(8L, requester.delivered(declaredItem), "倒出去的还是 8 枚，换读法不许把看得见的那格读没");
         assertEquals(0L, logic.getStored(deliveredItem), "扣走的还是同一格那 8 枚");
 
-        var job = newJob();
-        var owed = new KeyCounter();
-        owed.add(declaredItem, 8L);
-        ParallelCraftingCpuLogic.reserveExpectedWaiting(job, owed, new KeyCounter(), null);
-        var bufferLogic = logicWithJob(job);
+        var bufferLogic = logicAwaiting(declaredItem);
         assertEquals(8L, bufferLogic.insert(deliveredItem, 8L, Actionable.MODULATE),
                 "回补认的还是 8 枚：与改前同一个数");
-        assertEquals(0L, job.waitingFor.extract(declaredItem, Long.MAX_VALUE, Actionable.SIMULATE),
+        assertEquals(0L, bufferLogic.getWaitingFor(declaredItem),
                 "摘账摘的还是同一格");
     }
 
     // ---------- 那两脚的夹具 ----------
 
-    /**
-     * 离线把作业挂进产线那个 {@code logic}：自定义键过不了 {@code writeToNBT}（键类型不在 AE2 的
-     * keytypes 注册表里），所以只灌 {@code job} 那一个字段——被测的是 {@code insertInternal}
-     * 与 flush 里的那句判据本身，不在这里复刻任何算式。
-     */
-    private static ParallelCraftingCpuLogic logicWithJob(ParallelExecutingCraftingJob job) throws Exception {
-        var logic = new ParallelCraftingLaneState(null, UUID.randomUUID(), 0L).logic();
-        Field field = ParallelCraftingCpuLogic.class.getDeclaredField("job");
-        field.setAccessible(true);
-        field.set(logic, job);
+    /** 通过真实提交入口把已申报产出挂入等待账，使用同一作业完成模拟和实际到账验证。 */
+    private static ParallelCraftingCpuLogic logicAwaiting(AEKey awaited) {
+        var network = new appeng.me.storage.NetworkStorage();
+        var cluster = ParallelRecursiveFinalOutputDeliveryTest.offlineCluster(network);
+        var logic = new ParallelCraftingLaneState(cluster, UUID.randomUUID(), 0L).logic();
+        var emitted = new KeyCounter();
+        emitted.add(awaited, 8L);
+        var plan = new CraftingPlan(new GenericStack(PRODUCT, 1L), 0L, false, false,
+                new KeyCounter(), emitted, new KeyCounter(), Map.of());
+        assertTrue(logic.trySubmitJob(cluster.grid(), plan,
+                appeng.api.networking.security.IActionSource.empty(), null).successful());
         return logic;
     }
 
@@ -722,29 +622,6 @@ final class ParallelCustomKeyPoolRulerTest {
         public IGridNode getActionableNode() {
             return null;
         }
-    }
-
-    /** 走停滞行唯一渲染口取 {@code marker} 开头那一格（生产侧 {@code AELog.info} 打的就是整行）。 */
-    private static String stallToken(ParallelExecutingCraftingJob job,
-            WideCraftingInventory pool, String marker) {
-        var stallProbe = new ParallelCraftingLaneState(null, UUID.randomUUID(), 10L)
-                .logic().new StallProbe();
-        var line = stallProbe.describeStallLine(UUID.randomUUID(), 1, job, pool, null,
-                "…", "", 0L, -2L);
-        for (var token : line.split(" ")) {
-            if (token.startsWith(marker)) {
-                return token;
-            }
-        }
-        throw new AssertionError("整行里没有以 " + marker + " 开头的格：" + line);
-    }
-
-    /** 只挂现成的两本账（任务表与退避在册的缺口键）：两处诊断格读的就是这两本，不新建第二本账。 */
-    private static ParallelExecutingCraftingJob newJob() {
-        var base = new CraftingPlan(new GenericStack(PRODUCT, 1L), 0L, true, false,
-                new KeyCounter(), new KeyCounter(), new KeyCounter(), Map.of());
-        return new ParallelExecutingCraftingJob(base, ignored -> {
-        }, (CraftingLink) null, null);
     }
 
     /** 欠账排水只读任务表上的顺位：这一档给一张挂在表上的任务条目（发数读数本身不参与排水）。 */

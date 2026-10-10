@@ -36,4 +36,16 @@ public abstract class CraftingServiceOrderedPlanningMixin {
         long requestStartNanos = System.nanoTime();
         return new OrderedPlanningCalculation(level, grid, simRequester, output, strategy, requestStartNanos);
     }
+    @com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation(method = "beginCraftingCalculation",
+            at = @At(value = "INVOKE", target = "Ljava/util/concurrent/ExecutorService;submit(Ljava/util/concurrent/Callable;)Ljava/util/concurrent/Future;"), remap = false)
+    private java.util.concurrent.Future<appeng.api.networking.crafting.ICraftingPlan> chexsonsaeutils$attachPlanningProgress(
+            java.util.concurrent.ExecutorService executor,
+            java.util.concurrent.Callable<appeng.api.networking.crafting.ICraftingPlan> work,
+            com.llamalad7.mixinextras.injector.wrapoperation.Operation<java.util.concurrent.Future<appeng.api.networking.crafting.ICraftingPlan>> original,
+            @com.llamalad7.mixinextras.sugar.Local CraftingCalculation job) {
+        var future = original.call(executor, work);
+        return job instanceof git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressSource source
+                ? new git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressFuture<>(future, source.planningProgress())
+                : future;
+    }
 }

@@ -94,7 +94,19 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CTRecipeHelperCompatMixin"
     );
     private static final Set<String> NEOECOAE_COMPAT_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.neoecoae.ExtremeAssemblerNeoEcoBatchProviderMixin"
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.ExtremeAssemblerNeoEcoBatchProviderMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoInfiniteCpuStorageDisplayMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoNetworkStorageMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoInventoryHandlerMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoDriveWatcherMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoWideCraftingCpuMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoCraftingBusBatchMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoExternalCpuOutputMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoParallelPlanAdmissionMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoJobOutputAccessor",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoExactProgressMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoExactCpuOutputMixin",
+            "git.chexson.chexsonsaeutils.mixin.neoecoae.NeoEcoOwnPlanPreviewMixin"
     );
     private static final Set<String> USELESS_MOD_COMPAT_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.useless.SmartDoublingPlansFoldSkipMixin",
@@ -157,6 +169,12 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         }
         if (NEOECOAE_COMPAT_MIXINS.contains(mixinClassName)) {
             return isLoadedDuringMixinScan(NEOECOAE_MOD_ID, mixinClassName);
+        }
+        if (mixinClassName.equals("git.chexson.chexsonsaeutils.mixin.extendedae.InfinityCellSupplyMixin")) {
+            return isLoadedDuringMixinScan("extendedae", mixinClassName);
+        }
+        if (mixinClassName.equals("git.chexson.chexsonsaeutils.mixin.cell4.InfinityStorageSupplyMixin")) {
+            return isLoadedDuringMixinScan("cell4", mixinClassName);
         }
         if (USELESS_MOD_COMPAT_MIXINS.contains(mixinClassName)) {
             return isLoadedDuringMixinScan(USELESS_MOD_ID, mixinClassName);

@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,15 +46,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>申报上界同尺：无限格不参与"现场量 ÷ 每发件数"，否则申报归零（实机 {@code declaredReject=99}）。</li>
  * </ul>
  *
- * <p>无限判别仍只有那一条：键在 {@code ParallelPlanReservation#isUnboundedSupply} 的族集合里
- * （由"同一笔请求 SIMULATE 答应而 MODULATE 一枚不给"认下）。"报了多少"与"一次能取出多少"
- * 都不在这里当判据，所以"存量 &gt; long 因而向网络报满 long 的有限盘"不会走到这些用例的任何一支。
+ * <p>无限判别只匹配来源明确提供的精确键；报量、模拟与实际交付差异均不能声明身份。
  */
 final class ParallelUnboundedSourceExtractionTest {
 
     /** 就地产出的那一个键：创造盘／无限岩浆这一型，池子里永远躺着 0。 */
     private static final AEItemKey INFINITE_SOURCE = AEItemKey.of(Items.LAVA_BUCKET);
-    /** 同族（同一物品本体）两个变体：认下受损的那一枚，全新的也算无限源。 */
+    /** 同物品的两个数据变体：受损键具有无限来源不代表全新键也具有。 */
     private static AEItemKey wornKey(int damage) {
         var stack = new ItemStack(Items.IRON_PICKAXE);
         stack.setDamageValue(damage);
@@ -168,11 +167,10 @@ final class ParallelUnboundedSourceExtractionTest {
     }
 
     /**
-     * 无限豁免按<b>物品本体族</b>放行：样板声明的是全新的镐，认下的是受损的那一枚——同一物品本体，
-     * 取料点要按同一把尺子认，否则这一格又回到"连候选都递不出来"。
+     * 样板需要全新镐，但来源只提供受损键，不能凭空生成全新资源。
      */
     @Test
-    void theUnboundedFamilyCoversVariantsOfTheSameItemBody() {
+    void unconfiguredVariantCannotBeGeneratedFromAnotherInfiniteVariant() {
         var pattern = new FakePattern(AEItemKey.of(Items.CAMPFIRE),
                 new FakeInput[]{
                         new FakeInput(new GenericStack[]{new GenericStack(SAME_BODY_FRESH,
@@ -185,15 +183,14 @@ final class ParallelUnboundedSourceExtractionTest {
         var reservation = MaterialAllocationFixtures.build(
                 Map.<IPatternDetails, ParallelExecutingCraftingJob.TaskProgress>of().entrySet(),
                 Map.of(), NO_PLAN, NO_TAKEN, Set.of(INFINITE_WORN));
-        assertTrue(reservation.isUnboundedSupply(SAME_BODY_FRESH),
-                "夹具前提：认下的那一族必须覆盖到本用例声明的变体");
+        assertFalse(reservation.isUnboundedSupply(SAME_BODY_FRESH));
 
         var batch = ParallelBatchExtraction.prepare(pattern, pool, null, 9L,
                 new KeyCounter(), new KeyCounter(), reservation);
 
-        assertNotNull(batch);
-        assertEquals(2L, batch.executions());
-        assertEquals(MINTED_UNITS_PER_FIRING * 2L, batch.holder()[0].get(SAME_BODY_FRESH));
+        assertNull(batch);
+        assertEquals(2L, pool.extract(ORE, Long.MAX_VALUE, Actionable.SIMULATE));
+        assertEquals(0L, pool.extract(SAME_BODY_FRESH, Long.MAX_VALUE, Actionable.SIMULATE));
     }
 
     /**
@@ -374,8 +371,7 @@ final class ParallelUnboundedSourceExtractionTest {
      * 回补那条腿不再搬<b>账上已认</b>的无限源：取料点就地认量之后，搬进池子的同一份量要么被记两次、
      * 要么留下残池被 {@code storeItems()} 投回网络（凭空多一份料）。
      *
-     * <p>对照半边钉住"本批现场认下"那一型：<b>同样不搬也不注</b>。这一批付不出、欠账留在义务账上，
-     * 下一 tick 配给表认得它之后再就地认量——用一 tick 延迟换"认量绝不进池"这条不变式。
+     * <p>对照半边未声明身份，模拟成功也不能转成无限来源；缓冲和真实材料保持原样。
      */
     @Test
     void obligationRefillStopsHaulingARecognizedUnboundedSourceIntoThePool() {
@@ -397,18 +393,16 @@ final class ParallelUnboundedSourceExtractionTest {
         assertEquals(MINTED_UNITS_PER_FIRING * 2L, paid.holder()[0].get(INFINITE_SOURCE));
         assertEquals(2L, pool.extract(ORE, Long.MAX_VALUE, Actionable.SIMULATE), "有限格真付了 2 枚");
 
-        // 对照：本批现场才认下的那一型（账上还没有它）也不注进池子——认下即收手，键交回作业，
-        // 下一 tick 的配给表认得它，那一批由取料点就地认量。这一批付不出是<b>一 tick 延迟</b>，
-        // 欠账原样留在义务账上，不是丢料。
+        // 对照：没有已核对来源身份，拒收时保持缺料，不生成资源。
         var freshPool = widePool();
         freshPool.insert(ORE, 4L, Actionable.MODULATE);
         var fresh = new CreativeRefill();
         long freshPulled = ParallelBatchExtraction.refillObligationBatch(INFINITE_THEN_ORE, freshPool,
                 null, 2L, RESERVATION_FREE, fresh);
-        assertEquals(0L, freshPulled, "现场认下即收手：凭空的量一枚都不进池子");
+        assertEquals(0L, freshPulled, "真实拒收：没有实物进入池子");
         assertEquals(0, WideCraftingInventory.amount(freshPool, INFINITE_SOURCE).signum(),
                 "注进池子那一写法留下的残池，唯一去处是 storeItems() 投回网络 = 凭空多一份料");
-        assertEquals(Set.of(INFINITE_SOURCE), fresh.noted, "认中要交回作业，下一批才就地认量");
+        assertTrue(fresh.noted.isEmpty(), "模拟答应但实际拒收不构成无限供给身份");
         assertEquals(4L, WideCraftingInventory.amount(freshPool, ORE).longValueExact(),
                 "这一批没付出去：有限格那一截原样留在池里，不是被吞掉");
     }

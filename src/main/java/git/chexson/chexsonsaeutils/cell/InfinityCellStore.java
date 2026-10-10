@@ -409,6 +409,47 @@ public final class InfinityCellStore {
             return amount;
         }
 
+        /** 单次精确实物插入；复用原有侧表、总量、版本及持久化脏标记。 */
+        public synchronized BigInteger insertExact(AEKey key, BigInteger amount, Actionable mode) {
+            if (amount.signum() < 0) throw new IllegalArgumentException("存储插入量不得为负");
+            if (amount.signum() == 0 || mode != Actionable.MODULATE) return amount;
+            if (amount.bitLength() < 64) {
+                insert(key, amount.longValueExact(), mode);
+                return amount;
+            }
+            int id = keyDictionary.idFor(key);
+            if (!amounts.containsKey(id)) structuralVersion++;
+            BigInteger updated = exactAmount(id).add(amount);
+            amounts.put(id, Long.MAX_VALUE);
+            overflowAmounts.put(id, updated);
+            addToTotal(amount);
+            markChanged();
+            return amount;
+        }
+
+        /** 一次精确扣料；降回 long 或清零时同步侧表、总量、快照版本及持久化脏标记。 */
+        public synchronized BigInteger extractExact(AEKey key, BigInteger amount, Actionable mode) {
+            if (amount.signum() < 0) throw new IllegalArgumentException("存储提取量不得为负");
+            if (amount.signum() == 0) return BigInteger.ZERO;
+            if (amount.bitLength() < 64) return BigInteger.valueOf(extract(key, amount.longValueExact(), mode));
+            int id = keyDictionary.existingIdFor(key);
+            if (id == 0) return BigInteger.ZERO;
+            BigInteger extracted = exactAmount(id).min(amount);
+            if (extracted.signum() > 0 && mode == Actionable.MODULATE) {
+                BigInteger updated = exactAmount(id).subtract(extracted);
+                if (updated.signum() == 0) {
+                    amounts.remove(id); overflowAmounts.remove(id); structuralVersion++;
+                } else if (updated.compareTo(WideCeilings.LONG_ACCOUNT) <= 0) {
+                    amounts.put(id, updated.longValueExact()); overflowAmounts.remove(id);
+                } else {
+                    amounts.put(id, Long.MAX_VALUE); overflowAmounts.put(id, updated);
+                }
+                addToTotal(extracted.negate());
+                markChanged();
+            }
+            return extracted;
+        }
+
         public synchronized long extract(AEKey key, long amount, Actionable mode) {
             if (amount <= 0) {
                 return 0;

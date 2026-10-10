@@ -174,7 +174,12 @@ final class ParallelDeclaredBatchDeliveryCredentialTest {
 
         var batchId = host.lastAcceptedBatchReceipt().batchId();
         assertNotNull(batchId);
+        assertEquals(0.0f, job.timeTracker.getProgress(), "计划回报不能冒充已合成进度");
         host.lastAcceptedBatchReceipt().deliverTerminal(batchId, DeclaredBatchTerminalLedger.Outcome.SUCCESS);
+        assertEquals(1.0f, job.timeTracker.getProgress(), "真实交割终局才推进进度");
+        host.lastAcceptedBatchReceipt().deliverTerminal(batchId, DeclaredBatchTerminalLedger.Outcome.SUCCESS);
+        assertEquals(1.0f, job.timeTracker.getProgress(), "重复终局不能重复计入完成量");
+
 
         // 交割对平：该批 SUCCESS 到 ⇒ 交割账记的枚数＝该批 planNet 枚数
         assertEquals(job.expectedToNetwork(PRODUCT).exactValue(),

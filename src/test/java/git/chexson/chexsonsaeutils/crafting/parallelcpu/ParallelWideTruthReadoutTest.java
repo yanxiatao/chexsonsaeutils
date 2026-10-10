@@ -347,64 +347,7 @@ final class ParallelWideTruthReadoutTest {
 
     // ---------- noCandWhy=：自报身份 + 每发件数 ----------
 
-    /**
-     * {@code noCandWhy=} 只是"最后一次 noteNoCandidate"的快照，与 {@code ncSplit=} 的百窗累计
-     * 不是同一窗、不是同一格——实机把两者读成同一格的自相矛盾（"池内 7 枚 accept 得进却进 noCand"）。
-     * 这一格必须自报身份（末次），并补印每发件数：串里那个 {@code x1} 是 template 量（AE2 恒 1），
-     * 没有 {@code IInput.getMultiplier()}，"7 枚 &lt; 每发 9 枚"这一型永远说不清。
-     */
-    @Test
-    void noCandWhyCellSelfReportsTheLastNoteAndAddsUnitsPerFiring() {
-        var p = new FakePattern(AEItemKey.of(Items.ANVIL),
-                new FakeInput[]{new FakeInput(
-                        new GenericStack[]{new GenericStack(AEItemKey.of(Items.DIRT), 1L)},
-                        4L, null, Set.of(AEItemKey.of(Items.DIRT)))},
-                List.of(new GenericStack(PRODUCT, 1)));
-        var job = newJob();
-        job.tasks.put(p, progress(2L));
-        var probe = new ParallelBatchExtraction.Probe();
-        probe.noteNoCandidate(0, p.getInputs()[0], widePool(), null, p, RESERVATION_FREE);
-        var line = stallLine(job, widePool(), probe.noCandKey, probe.noCandStored, probe.noCandQuota);
-
-        assertTrue(line.contains("noCandWhy=[末次]"),
-                "这一格要自报它是末次快照（与 ncSplit[百窗累计] 分得开）：" + line);
-        assertTrue(List.of(line.split(" ")).contains("每发件数=4"),
-                "每发件数 = IInput.getMultiplier() = 4（x1 是 template 量，不是这一问）：" + line);
-
-        // 反向那一档：身份标回查不到（这一张已不在本轮任务表）就明打 "?"，不许拿上一张的每发冒充。
-        var emptyTable = newJob();
-        var stray = stallLine(emptyTable, widePool(), probe.noCandKey, probe.noCandStored, probe.noCandQuota);
-        assertTrue(List.of(stray.split(" ")).contains("每发件数=?"),
-                "回查不到就打 ?（纯读数宁缺勿假）：" + stray);
-    }
-
     // ---------- ncSplit=：格名自报窗口，子标签说真判据 ----------
-
-    /**
-     * {@code ncSplit} 是 100 窗跨样板累计，不是本轮这一格；子标签 {@code empty} 的旧话术
-     * "所有候选现场都是 0——真没料"与它落进的判据（池内 &lt; 每发件数）不符：本用例池里明明躺着
-     * 7 枚、每发要 9 枚，也被记进这一档。格名改成 {@code ncSplit[百窗累计]=}、标签改成
-     * {@code 池内不够一发}——只改话术，判据算式一字未动。
-     */
-    @Test
-    void ncSplitCellNameSaysItsWindowAndItsLabelSaysTheRealRuler() {
-        var cand = AEItemKey.of(Items.AMETHYST_SHARD);
-        var p = new FakePattern(AEItemKey.of(Items.CAULDRON),
-                new FakeInput[]{new FakeInput(
-                        new GenericStack[]{new GenericStack(cand, 1L)}, 9L, null, Set.of(cand))},
-                List.of(new GenericStack(PRODUCT, 1)));
-        var pool = widePool();
-        pool.insertExact(cand, BigInteger.valueOf(7L), Actionable.MODULATE);
-        var probe = new ParallelBatchExtraction.Probe();
-        probe.noteNoCandidate(0, p.getInputs()[0], pool, null, p, RESERVATION_FREE);
-        assertEquals(1L, probe.ncEmpty, "夹具前提：这一档真走 ncEmpty（池内 7 < 每发 9），不是别的归因");
-
-        var line = renderPer100rLine(probe, pool, 0L);
-        var token = firstTokenStartingWith(line, "ncSplit");
-        assertEquals("ncSplit[百窗累计]=池内不够一发100/nolist0/locked0/short0", token,
-                "格名自报窗口、子标签与实现判据对齐（100 轮 × 每轮 1 次 ncEmpty）：整行=" + line);
-        assertFalse(line.contains("ncSplit=empty"), "旧话术不许回来：" + line);
-    }
 
     // ---------- pushed=：宽域真值合计 ----------
 

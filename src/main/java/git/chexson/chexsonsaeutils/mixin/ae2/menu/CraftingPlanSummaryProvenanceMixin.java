@@ -11,8 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Syncs the planning provenance (millis + solving level) to the client as a
- * trailing payload on the plan-summary packet.
+ * 在计划摘要包尾同步规划耗时、求解档位和精确字节，避免独立菜单字段未到时丢失真值。
  */
 @Mixin(value = CraftingPlanSummary.class, remap = false)
 public abstract class CraftingPlanSummaryProvenanceMixin implements EnhancedCraftingPlanSummary {
@@ -22,6 +21,15 @@ public abstract class CraftingPlanSummaryProvenanceMixin implements EnhancedCraf
 
     @Unique
     private String chexsonsaeutils$solver = "";
+
+    @Unique
+    private java.math.BigInteger chexsonsaeutils$exactBytes;
+
+    @Override
+    public java.math.BigInteger chexsonsaeutils$exactBytes() { return chexsonsaeutils$exactBytes; }
+
+    @Override
+    public void chexsonsaeutils$setExactBytes(java.math.BigInteger bytes) { chexsonsaeutils$exactBytes = bytes; }
 
     @Override
     public long chexsonsaeutils$planningMillis() {
@@ -43,6 +51,7 @@ public abstract class CraftingPlanSummaryProvenanceMixin implements EnhancedCraf
     private void chexsonsaeutils$writeProvenance(RegistryFriendlyByteBuf buffer, CallbackInfo ci) {
         buffer.writeVarLong(this.chexsonsaeutils$planningMillis);
         buffer.writeUtf(this.chexsonsaeutils$solver);
+        git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.write(buffer, this.chexsonsaeutils$exactBytes);
     }
 
     @Inject(method = "read", at = @At("RETURN"), remap = false)
@@ -52,8 +61,10 @@ public abstract class CraftingPlanSummaryProvenanceMixin implements EnhancedCraf
     ) {
         long millis = buffer.readVarLong();
         String solver = buffer.readUtf();
+        java.math.BigInteger exactBytes = git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.read(buffer);
         if (cir.getReturnValue() instanceof EnhancedCraftingPlanSummary enhanced) {
             enhanced.chexsonsaeutils$setProvenance(millis, solver);
+            enhanced.chexsonsaeutils$setExactBytes(exactBytes);
         }
     }
 }

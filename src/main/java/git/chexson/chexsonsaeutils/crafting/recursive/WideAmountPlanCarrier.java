@@ -33,6 +33,15 @@ public interface WideAmountPlanCarrier {
         return amount != null ? amount : git.chexson.chexsonsaeutils.bigint.PlanAmount.of(plan.finalOutput().amount());
     }
 
+    /** 计划所需字节真值；null 表示原计划 bytes 的有限 long 已经是真值。 */
+    default @Nullable git.chexson.chexsonsaeutils.bigint.PlanAmount chexsonsaeutils$exactBytes() { return null; }
+
+    /** 读取精确字节占用，饱和值只用于 AE2 的 long 接口边界。 */
+    static git.chexson.chexsonsaeutils.bigint.PlanAmount resolveBytes(ICraftingPlan plan) {
+        var bytes = readThrough(plan, WideAmountPlanCarrier::chexsonsaeutils$exactBytes);
+        return bytes != null ? bytes : git.chexson.chexsonsaeutils.bigint.PlanAmount.of(plan.bytes());
+    }
+
     /** 本计划的宽域溢出账（只含绝对值超过 {@code long} 的键）；无溢出时为空快照，永不为 {@code null}。 */
     WideLedgerSnapshot chexsonsaeutils$wideLedgers();
 
