@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    "IQI",
+    "PAP",
+    "IQI"
+  ],
+  "key": {
+    "I": {
+      "item": "minecraft:iron_ingot"
+    },
+    "Q": {
+      "item": "ae2:quartz_glass"
+    },
+    "P": {
+      "item": "ae2:pattern_provider"
+    },
+    "A": {
+      "item": "ae2:engineering_processor"
+    }
+  },
+  "result": {
+    "id": "chexsonsaeutils:pattern_transmitter",
+    "count": 1
+  }
+}

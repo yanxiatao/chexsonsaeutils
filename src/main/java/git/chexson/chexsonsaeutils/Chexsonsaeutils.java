@@ -85,6 +85,7 @@ public class Chexsonsaeutils {
         NeoForge.EVENT_BUS.addListener(this::onLevelSave);
         NeoForge.EVENT_BUS.addListener(this::onLevelUnload);
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
+        NeoForge.EVENT_BUS.addListener(git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.RemotePreviewAssembly::closed);
         NeoForge.EVENT_BUS.addListener(git.chexson.chexsonsaeutils.events.MatterMassMergeHandler::onItemPickup);
         NeoForge.EVENT_BUS.addListener(git.chexson.chexsonsaeutils.events.MatterMassMergeHandler::onContainerClose);
         // 槽位编号叠加为纯客户端功能：仅客户端注册，避免专用服务端构造期经方法引用
@@ -399,6 +400,7 @@ public class Chexsonsaeutils {
     }
 
     private void onServerStopping(ServerStoppingEvent event) {
+        git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.RemotePreviewAssembly.stop();
         InfinityCellStore.global().save(
                 event.getServer().getWorldPath(LevelResource.ROOT),
                 event.getServer().registryAccess()

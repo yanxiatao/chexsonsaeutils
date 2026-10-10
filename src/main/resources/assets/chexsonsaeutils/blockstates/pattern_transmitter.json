@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "chexsonsaeutils:block/pattern_transmitter"
+    },
+    "facing=south": {
+      "model": "chexsonsaeutils:block/pattern_transmitter",
+      "y": 180
+    },
+    "facing=east": {
+      "model": "chexsonsaeutils:block/pattern_transmitter",
+      "y": 90
+    },
+    "facing=west": {
+      "model": "chexsonsaeutils:block/pattern_transmitter",
+      "y": 270
+    },
+    "facing=up": {
+      "model": "chexsonsaeutils:block/pattern_transmitter",
+      "x": 270
+    },
+    "facing=down": {
+      "model": "chexsonsaeutils:block/pattern_transmitter",
+      "x": 90
+    }
+  }
+}

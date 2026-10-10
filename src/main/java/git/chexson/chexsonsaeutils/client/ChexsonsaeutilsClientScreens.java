@@ -31,6 +31,9 @@ public final class ChexsonsaeutilsClientScreens {
 
     /** 在菜单类型注册完成后的客户端事件中，按既定顺序绑定屏幕和发射器阈值提交行为。 */
     public static void register(RegisterMenuScreensEvent event) {
+        git.chexson.chexsonsaeutils.client.gui.patterntransmitter.RemotePreviewClient.bind();
+        event.register(git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.PatternTransmitterRegistration.MENU.get(),
+                git.chexson.chexsonsaeutils.client.gui.patterntransmitter.PatternTransmitterScreen::new);
         event.register(git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.MENU.get(),
                 git.chexson.chexsonsaeutils.client.gui.terminal.BigIntCraftingTerminalScreen::new);
         event.register(git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.WIDE_CONFIRM.get(),

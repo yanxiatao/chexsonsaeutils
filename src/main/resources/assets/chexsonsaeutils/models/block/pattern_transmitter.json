@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "chexsonsaeutils:block/pattern_transmitter_side",
+    "north": "chexsonsaeutils:block/pattern_transmitter_receiver",
+    "south": "chexsonsaeutils:block/pattern_transmitter_source",
+    "east": "chexsonsaeutils:block/pattern_transmitter_side",
+    "west": "chexsonsaeutils:block/pattern_transmitter_side",
+    "up": "chexsonsaeutils:block/pattern_transmitter_top",
+    "down": "chexsonsaeutils:block/pattern_transmitter_top"
+  }
+}

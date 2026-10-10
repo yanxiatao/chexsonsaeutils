@@ -376,5 +376,7 @@
   "gui.chexsonsaeutils.wide_request.failed": "Exact crafting request failed: %s",
   "gui.chexsonsaeutils.wide_request.exact_amount": "Exact count (smallest unit): %s",
   "gui.chexsonsaeutils.wide_request.order_amount": "Requested count (smallest unit): %s",
-  "gui.chexsonsaeutils.wide_request.delivery_amount": "Planned delivery (smallest unit): %s"
+  "gui.chexsonsaeutils.wide_request.delivery_amount": "Planned delivery (smallest unit): %s",
+  "block.chexsonsaeutils.pattern_transmitter": "ME Pattern Transmitter",
+  "item.chexsonsaeutils.remote_pattern": "Internal Remote Pattern"
 }

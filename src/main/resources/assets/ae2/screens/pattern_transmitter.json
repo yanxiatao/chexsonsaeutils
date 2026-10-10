@@ -1,0 +1,11 @@
+{
+  "$schema": "schema.json",
+  "includes": ["common/common.json"],
+  "generatedBackground": {"width": 362, "height": 240},
+  "text": {"dialog_title": {"position": {"left": 8, "top": 6}}},
+  "slots": {
+    "CONFIG": {"left": 8, "top": 61, "grid": "BREAK_AFTER_9COLS"},
+    "PLAYER_INVENTORY": {"left": 8, "top": 154, "grid": "BREAK_AFTER_9COLS"},
+    "PLAYER_HOTBAR": {"left": 8, "top": 212, "grid": "HORIZONTAL"}
+  }
+}

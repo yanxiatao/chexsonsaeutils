@@ -376,5 +376,7 @@
   "gui.chexsonsaeutils.wide_request.failed": "精确下单失败：%s",
   "gui.chexsonsaeutils.wide_request.exact_amount": "精确计数（最小单位）：%s",
   "gui.chexsonsaeutils.wide_request.order_amount": "请求数量（最小单位）：%s",
-  "gui.chexsonsaeutils.wide_request.delivery_amount": "计划交付（最小单位）：%s"
+  "gui.chexsonsaeutils.wide_request.delivery_amount": "计划交付（最小单位）：%s",
+  "block.chexsonsaeutils.pattern_transmitter": "ME 样板传递器",
+  "item.chexsonsaeutils.remote_pattern": "内部远程样板"
 }

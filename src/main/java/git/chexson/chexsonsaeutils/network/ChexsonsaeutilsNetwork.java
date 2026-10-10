@@ -31,6 +31,14 @@ public final class ChexsonsaeutilsNetwork {
      * @param event NeoForge 载荷注册事件
      */
     public static void registerPayloadHandlers(RegisterPayloadHandlersEvent event) {
+        event.registrar("1").playToServer(
+                git.chexson.chexsonsaeutils.network.crafting.remote.RemotePreviewPayload.Request.TYPE,
+                git.chexson.chexsonsaeutils.network.crafting.remote.RemotePreviewPayload.Request.CODEC,
+                git.chexson.chexsonsaeutils.network.crafting.remote.RemotePreviewPayload.Request::handle);
+        event.registrar("1").playToClient(
+                git.chexson.chexsonsaeutils.network.crafting.remote.RemotePreviewPayload.Response.TYPE,
+                git.chexson.chexsonsaeutils.network.crafting.remote.RemotePreviewPayload.Response.CODEC,
+                git.chexson.chexsonsaeutils.network.crafting.remote.RemotePreviewPayload.Response::handle);
         var terminalRegistrar = event.registrar("1");
         terminalRegistrar.playToClient(git.chexson.chexsonsaeutils.network.crafting.ExactCraftingCpuPayload.TYPE,
                 git.chexson.chexsonsaeutils.network.crafting.ExactCraftingCpuPayload.STREAM_CODEC,

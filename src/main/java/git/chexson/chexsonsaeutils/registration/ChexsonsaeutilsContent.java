@@ -179,6 +179,7 @@ public final class ChexsonsaeutilsContent {
                     .title(Component.translatable("itemGroup.chexsonsaeutils"))
                     .icon(() -> new ItemStack(EXTREME_ASSEMBLER_ITEM.get()))
                     .displayItems((parameters, output) -> {
+                        output.accept(git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.PatternTransmitterRegistration.ITEM.get());
                         output.accept(MULTI_LEVEL_EMITTER_ITEM.get());
                         output.accept(PLAYER_SIMULATION_PLANE_ITEM.get());
                         output.accept(EXTREME_ASSEMBLER_ITEM.get());
@@ -202,6 +203,7 @@ public final class ChexsonsaeutilsContent {
     }
 
     public static void register(IEventBus modEventBus) {
+        git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.PatternTransmitterRegistration.register(modEventBus);
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         BLOCK_ENTITY_TYPES.register(modEventBus);
@@ -228,6 +230,7 @@ public final class ChexsonsaeutilsContent {
     }
 
     public static void registerCommonContent() {
+        git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.PatternTransmitterRegistration.bootstrap();
         git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.bootstrap();
         registerExtremeAssemblerBootstrap();
         registerAEDirectProcessingMachineBootstrap();
@@ -259,6 +262,7 @@ public final class ChexsonsaeutilsContent {
     }
 
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
+        git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.PatternTransmitterRegistration.capabilities(event);
         event.registerBlockEntity(
                 AECapabilities.IN_WORLD_GRID_NODE_HOST,
                 EXTREME_ASSEMBLER_BLOCK_ENTITY.get(),

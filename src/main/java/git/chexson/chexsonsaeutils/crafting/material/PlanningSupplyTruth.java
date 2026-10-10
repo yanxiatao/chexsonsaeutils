@@ -167,6 +167,19 @@ public final class PlanningSupplyTruth {
         var copy = Map.copyOf(wideSupplies);
         return copy.isEmpty() ? EMPTY : new PlanningSupplyTruth(copy, copy.size());
     }
+    /**
+     * 多目标只读预览在同一来源库存上扣除已模拟占用后，替换有限供给数量。
+     * 无限源标记及归属诊断保持原样，不能把无限源转换成有限的数值替身。
+     */
+    public PlanningSupplyTruth withRemaining(Map<AEKey, PlanAmount> remaining) {
+        var supplies = new java.util.HashMap<>(this.wideSupplies);
+        remaining.forEach((key, amount) -> {
+            if (amount.compareTo(PlanAmount.ZERO) < 0) throw new IllegalArgumentException("预览供给不能为负");
+            if (!this.unboundedSupplies.contains(key)) supplies.put(key, amount);
+        });
+        return new PlanningSupplyTruth(Map.copyOf(supplies), this.wideSourceCount, this.unboundedSupplies,
+                this.scannedHostCount, this.scannedCellCount, this.tallyKeyCount);
+    }
 
     /**
      * 从一次规划请求的库存快照读出真值供给。

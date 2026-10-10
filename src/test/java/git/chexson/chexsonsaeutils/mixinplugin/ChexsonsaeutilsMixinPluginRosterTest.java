@@ -186,6 +186,7 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
 
         for (String entry : List.of(
                 "ae2.automation.StorageLevelEmitterPartAccessor",
+                "ae2.menu.CraftConfirmMenuRemoteAccessor",
                 "ae2.crafting.CraftingTreeNodeNativeLimitQtyBatchMixin",
                 "ae2.crafting.CraftingSimulationStateFastResetMixin",
                 "ae2.crafting.ChildCraftingSimulationStateFastMixin",

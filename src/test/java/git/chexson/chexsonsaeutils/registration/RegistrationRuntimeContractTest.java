@@ -2,6 +2,7 @@ package git.chexson.chexsonsaeutils.registration;
 
 import appeng.block.AEBaseEntityBlock;
 import git.chexson.chexsonsaeutils.bootstrap.mattermass.MatterMassPatternProviderMenuRegistration;
+import git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.PatternTransmitterRegistration;
 import git.chexson.chexsonsaeutils.bootstrap.patternprovider.CustomPatternProviderBlockEntityRegistration;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternRegistration;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingRecipeRegistration;
@@ -58,17 +59,21 @@ final class RegistrationRuntimeContractTest {
     /** 八类真实注册值；顺序按当前各注册器的挂接顺序及其条目顺序展开。 */
     private static final List<RegistryContract> CONTRACTS = List.of(
             new RegistryContract(BuiltInRegistries.BLOCK, List.of(
+                    "pattern_transmitter",
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool",
                     "auto_item_gen", "matter_mass_pattern_provider", "custom_pattern_provider")),
             new RegistryContract(BuiltInRegistries.ITEM, List.of(
+                    "pattern_transmitter", "remote_pattern",
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool",
                     "multi_level_emitter", "player_simulation_plane", "infinity_cell", "auto_item_gen", "matter_mass_pattern_provider",
                     "custom_pattern", "custom_pattern_provider_part", "custom_pattern_provider",
                     "matter_mass_pattern", "matter_mass", "bigint_crafting_terminal")),
             new RegistryContract(BuiltInRegistries.BLOCK_ENTITY_TYPE, List.of(
+                    "pattern_transmitter",
                     "auto_item_gen", "extreme_assembler", "ae_direct_processing_machine",
                     "ae2_parallel_cpu_tool", "matter_mass_pattern_provider", "custom_pattern_provider")),
             new RegistryContract(BuiltInRegistries.MENU, List.of(
+                    "pattern_transmitter",
                     "simulation_amount", "player_simulation_plane",
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool_cpu",
                     "custom_pattern_provider", "custom_pattern_encoder", "custom_pattern_upgrade",
@@ -148,6 +153,8 @@ final class RegistrationRuntimeContractTest {
     void registeredMenusAreTheTypesUsedByTheirMenuImplementations() {
         requireLoadedMod();
         assertMenu("extreme_assembler", ChexsonsaeutilsContent.EXTREME_ASSEMBLER_MENU, ExtremeAssemblerMenu.TYPE);
+        assertMenu("pattern_transmitter", PatternTransmitterRegistration.MENU,
+                git.chexson.chexsonsaeutils.menu.patterntransmitter.PatternTransmitterMenu.TYPE);
         assertMenu("ae_direct_processing_machine", ChexsonsaeutilsContent.AE_DIRECT_PROCESSING_MACHINE_MENU,
                 AEDirectProcessingMachineMenu.TYPE);
         assertMenu("ae2_parallel_cpu_tool_cpu", ChexsonsaeutilsContent.AE2_PARALLEL_CPU_TOOL_CPU_MENU,
@@ -193,6 +200,8 @@ final class RegistrationRuntimeContractTest {
     /** 注册器逐个列出，直接调用公开 API，避免用反射探查字段或从源码猜测把手。 */
     private static List<DeferredRegister<?>> registrations() {
         return List.of(
+                PatternTransmitterRegistration.BLOCKS, PatternTransmitterRegistration.ITEMS,
+                PatternTransmitterRegistration.ENTITIES, PatternTransmitterRegistration.MENUS,
                 ChexsonsaeutilsContent.BLOCKS, ChexsonsaeutilsContent.ITEMS,
                 ChexsonsaeutilsContent.BLOCK_ENTITY_TYPES, ChexsonsaeutilsContent.MENU_TYPES,
                 DirectProcessingRecipeRegistration.RECIPE_TYPES, DirectProcessingRecipeRegistration.RECIPE_SERIALIZERS,
