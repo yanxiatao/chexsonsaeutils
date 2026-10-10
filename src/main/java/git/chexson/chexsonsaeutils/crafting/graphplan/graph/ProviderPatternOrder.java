@@ -46,7 +46,7 @@ import net.minecraft.nbt.Tag;
  * {@code getFuzzyCraftable}，都不经本类；它那份份数账 {@code CraftingSimulationState.java:56}
  * 是 {@code HashMap}，交回的 {@code plan.patternTimes()} 因而是哈希序，而
  * {@code ParallelExecutingCraftingJob} 构造任务表时正是按 {@code patternTimes().keySet()} 的遍历序
- * 落底序（{@code HostBatchPlanner.java:275} 读的也是同一本）。这一腿<b>活着</b>且我们够不着——
+ * 落底序。这一腿<b>活着</b>且我们够不着——
  * 要把它也定死，需要（二选一）在 {@code CraftingTreeNode} 那两个读取点上做 mixin 把清单穿回本类，
  * 或把 DECLINE 回落换成我们自己的树/清单。<b>在它换成这两者之一以前，凡走树路交出的计划，
  * 顺位仍然随会话翻。</b>

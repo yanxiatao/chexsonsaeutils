@@ -40,6 +40,9 @@ public final class ChexsonsaeutilsNetwork {
                 git.chexson.chexsonsaeutils.network.crafting.remote.RemotePreviewPayload.Response.CODEC,
                 git.chexson.chexsonsaeutils.network.crafting.remote.RemotePreviewPayload.Response::handle);
         var terminalRegistrar = event.registrar("1");
+        terminalRegistrar.playToClient(git.chexson.chexsonsaeutils.network.crafting.WidePlanChunkPayload.TYPE,
+                git.chexson.chexsonsaeutils.network.crafting.WidePlanChunkPayload.STREAM_CODEC,
+                git.chexson.chexsonsaeutils.network.crafting.WidePlanChunkPayload::handle);
         terminalRegistrar.playToClient(git.chexson.chexsonsaeutils.network.crafting.ExactCraftingCpuPayload.TYPE,
                 git.chexson.chexsonsaeutils.network.crafting.ExactCraftingCpuPayload.STREAM_CODEC,
                 git.chexson.chexsonsaeutils.network.crafting.ExactCraftingCpuPayload::handle);

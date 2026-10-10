@@ -24,9 +24,7 @@ import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.CraftingOutputRouter;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchHost;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchOutputReceiver;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.DelegatingPatternDetails;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchProvider;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.HolderBatchProvider;
 import git.chexson.chexsonsaeutils.crafting.persistence.ExtremeAssemblerPatternHostSavedData;
 import git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoBatchHost;
 import git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoBatchOutputBuffer;
@@ -62,7 +60,7 @@ import java.util.Set;
  */
 public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworkedBlockEntity
         implements PatternContainer, ICraftingProvider, InternalInventoryHost,
-        HostBatchProvider, DeclaredBatchHost, git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoExactBatchHost, PatternMatrixSource {
+        HolderBatchProvider, DeclaredBatchHost, git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoExactBatchHost, PatternMatrixSource {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -203,25 +201,10 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
         if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern supportedPattern)) {
             return false;
         }
-        if (supportedPattern instanceof HostBatchPattern aggregatedPattern) {
-            return pushAggregatedPattern(aggregatedPattern, inputHolder);
-        }
-        if (!localPatternProviderFacade.contains(unwrapFormalDelegatingPattern(patternDetails))) {
+        if (!localPatternProviderFacade.contains(patternDetails)) {
             return false;
         }
         return acceptVirtualOutputs(supportedPattern, inputHolder);
-    }
-
-    private boolean pushAggregatedPattern(
-            HostBatchPattern aggregatedPattern,
-            KeyCounter[] inputHolder
-    ) {
-        if (aggregatedPattern == null
-                || inputHolder == null
-                || !aggregatedPattern.hostLocator().matches(this)) {
-            return false;
-        }
-        return acceptVirtualOutputs(aggregatedPattern, inputHolder);
     }
 
     /** 与保存同源的读回入口；单批大数在重载后保持精确。 */
@@ -298,10 +281,7 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
                 || !(pattern instanceof IMolecularAssemblerSupportedPattern supportedPattern)) {
             return 0L;
         }
-        if (supportedPattern instanceof HostBatchPattern aggregatedPattern) {
-            return aggregatedPattern.hostLocator().matches(this) ? Long.MAX_VALUE : 0L;
-        }
-        return localPatternProviderFacade.contains(unwrapFormalDelegatingPattern(pattern))
+        return localPatternProviderFacade.contains(pattern)
                 ? Long.MAX_VALUE
                 : 0L;
     }
@@ -593,11 +573,6 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
         return localPatternProviderFacade.activePatternCount();
     }
 
-    @Override
-    public int getCurrentOperationTicks() {
-        return 1;
-    }
-
     /** 份数按 long 反推、产出走虚拟缓冲一次并入，没有直连机那种 int 执行计数上限。 */
     @Override
     public long maxPushExecutions(IPatternDetails pattern) {
@@ -614,10 +589,7 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
                 || !(pattern instanceof IMolecularAssemblerSupportedPattern supportedPattern)) {
             return null;
         }
-        if (supportedPattern instanceof HostBatchPattern aggregatedPattern) {
-            return aggregatedPattern.hostLocator().matches(this) ? supportedPattern : null;
-        }
-        return localPatternProviderFacade.contains(unwrapFormalDelegatingPattern(pattern))
+        return localPatternProviderFacade.contains(pattern)
                 ? supportedPattern
                 : null;
     }
@@ -826,13 +798,6 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
             );
         }
         saveChanges();
-    }
-
-    private static IPatternDetails unwrapFormalDelegatingPattern(IPatternDetails patternDetails) {
-        if (patternDetails instanceof DelegatingPatternDetails delegatingPattern) {
-            return delegatingPattern.basePattern();
-        }
-        return patternDetails;
     }
 
     private void forceProviderRefreshIfReady() {

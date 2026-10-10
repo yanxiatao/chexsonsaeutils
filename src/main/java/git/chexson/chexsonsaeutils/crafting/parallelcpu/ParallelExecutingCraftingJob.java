@@ -125,7 +125,7 @@ final class ParallelExecutingCraftingJob {
      * （{@code CraftingTreeNode.java:86/:126}）与 {@code getFuzzyCraftable}（{@code :98}），
      * 一个都不经上面那两个读取点；它交回的 {@code plan.patternTimes()} 出自
      * {@code CraftingSimulationState.java:56} 那只 {@code HashMap}，因而是哈希遍历序。
-     * 本仓 {@code hostbatch/HostBatchPlanner.java:275} 吃的正是这一本 ⇒ <b>凡走树路交出的计划，
+     * 任务表按这本份数账初始化，因此 <b>凡走树路交出的计划，
      * 这本任务表的底序仍然随会话翻</b>（AE2 原生树回落腿按口径原样保留、不为它做特殊处理；
      * 详见 {@code ProviderPatternOrder} 类抬头"管到哪一条路"）。
      * 注册序自己造不出源头没有的次序。

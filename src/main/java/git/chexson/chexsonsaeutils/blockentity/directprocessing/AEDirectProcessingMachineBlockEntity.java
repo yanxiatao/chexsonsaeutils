@@ -39,8 +39,7 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReaso
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibility;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibilityCache;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchProvider;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.HolderBatchProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PendingOutputBatch;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTask;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionBudget;
@@ -82,7 +81,7 @@ import java.util.UUID;
 
 public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         implements ICraftingProvider, PatternContainer, InternalInventoryHost,
-        ProcessingTaskCompletionHost, HostBatchProvider, NeoEcoBatchHost, PatternMatrixSource {
+        ProcessingTaskCompletionHost, HolderBatchProvider, NeoEcoBatchHost, PatternMatrixSource {
 
     /** 标记与实体样板分库存；机器页提供四行九列。 */
     public static final int MACHINE_BINDING_SLOTS = 36;
@@ -298,11 +297,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         long startedAtNanos = System.nanoTime();
         pushPatternCacheLookupCount++;
 
-        if (patternDetails instanceof HostBatchPattern aggregatedPattern) {
-            recordPushPatternCacheLookupNanos(startedAtNanos);
-            return pushAggregatedPattern(aggregatedPattern, inputHolder);
-        }
-
         PatternCompatibility compatibility = patternDetails == null
                 ? null
                 : compatibilityCache.get(patternDetails.getDefinition(), recipeIndex.version());
@@ -396,40 +390,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         Level currentLevel = getLevel();
         long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
         if (task == null || !executionQueue.offer(task, budgetController, acceptedTick)) {
-            return false;
-        }
-        pushPatternAcceptedCount++;
-        saveChanges();
-        return true;
-    }
-
-    private boolean pushAggregatedPattern(
-            HostBatchPattern aggregatedPattern,
-            KeyCounter[] inputHolder
-    ) {
-        if (aggregatedPattern == null
-                || inputHolder == null
-                || !aggregatedPattern.hostLocator().matches(this)) {
-            pushPatternRejectedCount++;
-            return false;
-        }
-        if (!this.getMainNode().isActive()
-                || pendingOutputRetryDelayTicks > 0
-                || pendingOutputBatches.size() >= configMaxPendingOutputBatches()
-                || executionQueue.totalTaskCount() >= configMaxQueueTasks()) {
-            pushPatternRejectedCount++;
-            return false;
-        }
-
-        ProcessingTask task = ProcessingTask.compileAggregated(
-                aggregatedPattern,
-                inputHolder,
-                aggregatedPattern.totalTicks()
-        );
-        Level currentLevel = getLevel();
-        long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
-        if (task == null || !executionQueue.offer(task, budgetController, acceptedTick)) {
-            pushPatternRejectedCount++;
             return false;
         }
         pushPatternAcceptedCount++;
@@ -880,52 +840,10 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 pendingOutputRetryCount++;
                 tryFlushPendingOutput();
             }
-            feedActivePipelineTasks();
             executionQueue.tick(this, getProcessingLaneCount(), budgetController);
             tryFlushPendingOutput();
         } finally {
         }
-    }
-
-    /**
-     * Phase 5 分步供料：活动任务当前步的外部输入不足时，从网络两阶段抽取
-     * （SIMULATE 全量校验 → MODULATE 落地）——不足即挂起本 tick，绝不半供给。
-     * 链内中间品由任务缓冲自持，不经网络。
-     */
-    private void feedActivePipelineTasks() {
-        appeng.api.networking.IGrid grid = getMainNode().getGrid();
-        if (grid == null) {
-            return;
-        }
-        var storageService = grid.getStorageService();
-        if (storageService == null) {
-            return;
-        }
-        var inventory = storageService.getInventory();
-        executionQueue.forEachActiveTask(task -> {
-            if (!task.isPipelined() || task.currentStepFed()) {
-                return;
-            }
-            Map<AEKey, Long> needs = task.currentStepNeeds();
-            if (needs.isEmpty()) {
-                return;
-            }
-            for (Map.Entry<AEKey, Long> need : needs.entrySet()) {
-                if (inventory.extract(need.getKey(), need.getValue(), Actionable.SIMULATE, actionSource)
-                        < need.getValue()) {
-                    return;
-                }
-            }
-            Map<AEKey, Long> fed = new LinkedHashMap<>();
-            for (Map.Entry<AEKey, Long> need : needs.entrySet()) {
-                long extracted = inventory.extract(need.getKey(), need.getValue(), Actionable.MODULATE, actionSource);
-                if (extracted <= 0L) {
-                    return;
-                }
-                fed.put(need.getKey(), extracted);
-            }
-            task.feedExternalInputs(fed);
-        });
     }
 
     private void refreshConfigMappingsIfChanged() {
@@ -1083,7 +1001,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return fallback;
     }
 
-    @Override
     public int getCurrentOperationTicks() {
         return FULL_SPEED_OPERATION_TICKS;
     }
@@ -1096,56 +1013,41 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         if (pendingOutputBatches.isEmpty()) {
             return;
         }
-        long startedAtNanos = System.nanoTime();
-        try {
-            while (!pendingOutputBatches.isEmpty() && budgetController.hasTimeBudget(System.nanoTime())) {
-                PendingOutputBatch batch = pendingOutputBatches.peekFirst();
-                if (batch == null || batch.isEmpty()) {
-                    pendingOutputBatches.removeFirst();
-                    continue;
-                }
-                // Phase 6：接上 AeReturn 预算科目——回网冲刷按 payload 量领取，
-                // 与时间预算正交，产出洪峰不再挤占 push 侧的 tick 预算。
-                long payloadAmount = 0L;
-                for (GenericStack stack : batch.payload()) {
-                    if (stack != null && stack.amount() > 0L) {
-                        payloadAmount += stack.amount();
-                    }
-                }
-                if (!budgetController.tryClaimAeReturn(Math.max(1L, payloadAmount))) {
-                    break;
-                }
-                CraftingService craftingService = getMainNode().getGrid() != null
-                        && getMainNode().getGrid().getCraftingService() instanceof CraftingService service
-                        ? service
-                        : null;
-                SourceCpuHandle sourceCpu = craftingService instanceof SourceCpuResolver resolver
-                        && batch.sourceCraftingId() != null
-                        ? resolver.chexsonsaeutils$findSourceCpu(batch.sourceCraftingId())
-                        : null;
-                IStorageService storageService = getMainNode().getGrid() == null
-                        ? null
-                        : getMainNode().getGrid().getStorageService();
-                List<GenericStack> rejectedSlice = CraftingOutputRouter.routePayload(
-                        storageService,
-                        actionSource,
-                        batch.payload(),
-                        sourceCpu
-                ).remainingPayload();
-                List<GenericStack> remainingPayload = DirectProcessingStackSupport.normalizeStacks(rejectedSlice);
-                if (!remainingPayload.isEmpty()) {
-                    pendingOutputBatches.removeFirst();
-                    pendingOutputBatches.addFirst(batch.withPayload(remainingPayload));
-                    markPendingOutputReturnRejected();
-                    return;
-                }
+        while (!pendingOutputBatches.isEmpty() && budgetController.hasTimeBudget(System.nanoTime())) {
+            PendingOutputBatch batch = pendingOutputBatches.peekFirst();
+            if (batch == null || batch.isEmpty()) {
                 pendingOutputBatches.removeFirst();
-                recordPushToAeReturnLatency(batch.latencyOrigin());
+                continue;
             }
-            pendingOutputRetryDelayTicks = 0;
-            pendingOutputRetryBackoffTicks = 0;
-        } finally {
+            CraftingService craftingService = getMainNode().getGrid() != null
+                    && getMainNode().getGrid().getCraftingService() instanceof CraftingService service
+                    ? service
+                    : null;
+            SourceCpuHandle sourceCpu = craftingService instanceof SourceCpuResolver resolver
+                    && batch.sourceCraftingId() != null
+                    ? resolver.chexsonsaeutils$findSourceCpu(batch.sourceCraftingId())
+                    : null;
+            IStorageService storageService = getMainNode().getGrid() == null
+                    ? null
+                    : getMainNode().getGrid().getStorageService();
+            List<GenericStack> rejectedSlice = CraftingOutputRouter.routePayload(
+                    storageService,
+                    actionSource,
+                    batch.payload(),
+                    sourceCpu
+            ).remainingPayload();
+            List<GenericStack> remainingPayload = DirectProcessingStackSupport.normalizeStacks(rejectedSlice);
+            if (!remainingPayload.isEmpty()) {
+                pendingOutputBatches.removeFirst();
+                pendingOutputBatches.addFirst(batch.withPayload(remainingPayload));
+                markPendingOutputReturnRejected();
+                return;
+            }
+            pendingOutputBatches.removeFirst();
+            recordPushToAeReturnLatency(batch.latencyOrigin());
         }
+        pendingOutputRetryDelayTicks = 0;
+        pendingOutputRetryBackoffTicks = 0;
     }
 
     private void markPendingOutputReturnRejected() {

@@ -16,7 +16,6 @@ categories:
 - `craftingContinuationEnabled`
 - `processingPatternReplacementEnabled`
 - `formalMachineCraftingDispatchEnabled`
-- `formalMachinePlanningAggregationEnabled`
 
 这些布尔值都是启动期功能总开关。
 

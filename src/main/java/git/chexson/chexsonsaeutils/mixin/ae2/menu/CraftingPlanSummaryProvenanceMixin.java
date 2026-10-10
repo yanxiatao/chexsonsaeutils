@@ -16,6 +16,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(value = CraftingPlanSummary.class, remap = false)
 public abstract class CraftingPlanSummaryProvenanceMixin implements EnhancedCraftingPlanSummary {
 
+    @Unique private git.chexson.chexsonsaeutils.crafting.status.PlanGraph chexsonsaeutils$graph = git.chexson.chexsonsaeutils.crafting.status.PlanGraph.EMPTY;
+    @Override public git.chexson.chexsonsaeutils.crafting.status.PlanGraph chexsonsaeutils$graph() { return chexsonsaeutils$graph; }
+    @Override public void chexsonsaeutils$setGraph(git.chexson.chexsonsaeutils.crafting.status.PlanGraph graph) { chexsonsaeutils$graph = graph; }
+
     @Unique
     private long chexsonsaeutils$planningMillis = -1L;
 
@@ -52,6 +56,7 @@ public abstract class CraftingPlanSummaryProvenanceMixin implements EnhancedCraf
         buffer.writeVarLong(this.chexsonsaeutils$planningMillis);
         buffer.writeUtf(this.chexsonsaeutils$solver);
         git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.write(buffer, this.chexsonsaeutils$exactBytes);
+        chexsonsaeutils$graph.write(buffer);
     }
 
     @Inject(method = "read", at = @At("RETURN"), remap = false)
@@ -62,9 +67,11 @@ public abstract class CraftingPlanSummaryProvenanceMixin implements EnhancedCraf
         long millis = buffer.readVarLong();
         String solver = buffer.readUtf();
         java.math.BigInteger exactBytes = git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.read(buffer);
+        var graph = git.chexson.chexsonsaeutils.crafting.status.PlanGraph.read(buffer);
         if (cir.getReturnValue() instanceof EnhancedCraftingPlanSummary enhanced) {
             enhanced.chexsonsaeutils$setProvenance(millis, solver);
             enhanced.chexsonsaeutils$setExactBytes(exactBytes);
+            enhanced.chexsonsaeutils$setGraph(graph);
         }
     }
 }

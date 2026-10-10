@@ -1,0 +1,23 @@
+name: 文档提交范围
+
+on:
+  push:
+    branches: ['1.21.1']
+  pull_request:
+    branches: ['1.21.1']
+
+permissions:
+  contents: read
+
+jobs:
+  document-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: 检查受跟踪文档
+        run: python -B tools/check_document_policy.py --history

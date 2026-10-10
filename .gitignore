@@ -171,3 +171,24 @@ appeng/
 .project
 .settings/
 bin/
+
+# 文档只允许玩家指南、发布说明、许可证与 CI 审查规则。
+# 测试、设计、规划、验收、性能记录等开发文档永远不提交。
+*.[mM][dD]
+*.[mM][aA][rR][kK][dD][oO][wW][nN]
+*.[rR][sS][tT]
+*.[aA][dD][oO][cC]
+*.[tT][xX][tT]
+*.[pP][dD][fF]
+*.[dD][oO][cC]
+*.[dD][oO][cC][xX]
+!/README.md
+!/CHANGELOG.md
+!/THIRD_PARTY_NOTICES.md
+!/LICENSE
+!/LICENSES/**
+!/docs/direct-processing-kubejs.md
+!/src/main/resources/assets/chexsonsaeutils/ae2guide/**/*.md
+!/src/main/resources/kubejs.plugins.txt
+!/.github/ai-review.md
+!/.github/codex/prompts/review.md

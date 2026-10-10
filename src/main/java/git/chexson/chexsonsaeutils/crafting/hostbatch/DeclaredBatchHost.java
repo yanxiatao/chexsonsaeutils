@@ -11,7 +11,7 @@ import java.math.BigInteger;
 /**
  * "份数声明 + 单发原型材料"的批量宿主（执行侧能力，不参与规划聚合）。
  *
- * <p>与 {@link HostBatchProvider} 那条 k 倍 holder 路径的区别只有一件事：宿主不再从
+ * <p>与 {@link HolderBatchProvider} 那条 k 倍 holder 路径的区别只有一件事：宿主不再从
  * holder 的实际量反推份数，而是照收 CPU 声明的份数——一次交互能推进几发于是只由
  * <b>宿主真实能力</b>与<b>产出侧可表示性</b>决定，不再被"k 倍料能不能一次装进
  * {@code KeyCounter[]}"夹住（{@code KeyCounter} 底层是 {@code Object2LongMap}，单键上限 long）。

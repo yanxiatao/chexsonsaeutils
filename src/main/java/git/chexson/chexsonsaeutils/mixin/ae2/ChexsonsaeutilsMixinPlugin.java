@@ -48,10 +48,6 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> CRAFTING_CPU_PUSH_CONTEXT_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicHostBatchSourceContextMixin"
     );
-    private static final Set<String> FORMAL_MACHINE_PLANNING_ENTRY_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceGetProvidersHostBatchPatternMixin"
-    );
     private static final Set<String> PARALLEL_CPU_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeInvoker",
@@ -134,15 +130,10 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         if (CRAFTING_CPU_ACCESSOR_MIXINS.contains(mixinClassName)) {
             return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled")
                     || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled")
-                    || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY)
                     || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
         if (CRAFTING_CPU_PUSH_CONTEXT_MIXINS.contains(mixinClassName)) {
-            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY)
-                    || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
-        }
-        if (FORMAL_MACHINE_PLANNING_ENTRY_MIXINS.contains(mixinClassName)) {
-            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY);
+            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
         if (PARALLEL_CPU_ONLY_MIXINS.contains(mixinClassName)) {
             return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_ENABLED, "parallelCraftingCpuEnabled");

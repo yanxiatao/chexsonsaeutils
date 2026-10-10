@@ -9,7 +9,6 @@ import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import appeng.menu.me.crafting.CraftingStatus;
 import appeng.menu.me.crafting.CraftingStatusEntry;
 import appeng.menu.me.common.IncrementalUpdateHelper;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -115,21 +114,13 @@ public final class CraftingStatusEnhancer {
                 continue;
             }
             IPatternDetails pattern = entry.getKey();
-            if (pattern instanceof HostBatchPattern aggregatedPattern) {
-                for (var step : aggregatedPattern.steps()) {
-                    GenericStack stepOutput = step.stepPrimaryOutput();
-                    if (stepOutput != null && stepOutput.what() != null) {
-                        timesByOutput.computeIfAbsent(stepOutput.what(), ignored -> new ArrayList<>()).add(times);
-                    }
+            for (var output : pattern.getOutputs()) {
+                if (output.what() == null) {
+                    continue;
                 }
-            } else {
-                for (var output : pattern.getOutputs()) {
-                    if (output.what() == null) {
-                        continue;
-                    }
-                    timesByOutput.computeIfAbsent(output.what(), ignored -> new ArrayList<>()).add(times);
-                }
+                timesByOutput.computeIfAbsent(output.what(), ignored -> new ArrayList<>()).add(times);
             }
+
         }
 
         timesByOutput.replaceAll((ignored, values) -> List.copyOf(values));

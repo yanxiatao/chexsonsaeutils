@@ -6,9 +6,6 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.CraftingHostLocator;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchStep;
 import git.chexson.chexsonsaeutils.bigint.WideCraftingInventory;
 import git.chexson.chexsonsaeutils.crafting.solve.FakePlanGrid;
 import net.minecraft.core.RegistryAccess;
@@ -40,13 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Phase 5 分步流水守恒：步序推进后 payload 必须等于净产出
- * （Σ步产出 − Σ步输入 = aggregatedOutputs + remainders）；首步外部输入
- * 不齐时 push 被拒（返回 null，CPU 退回原料）；中步缺口挂起不耗 tick；
- * executionCount = Σ步执行数。
- */
-class ProcessingTaskPipelineTest {
+/** 普通批处理的实收输入、精确份数、产出和拒收守恒回归。 */
+class ProcessingTaskBatchTest {
 
     private static final RegistryAccess REGISTRIES =
             RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
@@ -55,25 +47,6 @@ class ProcessingTaskPipelineTest {
     private static final AEItemKey MID = AEItemKey.of(new ItemStack(Items.IRON_INGOT));
     private static final AEItemKey FUEL = AEItemKey.of(new ItemStack(Items.COAL));
     private static final AEItemKey OUT = AEItemKey.of(new ItemStack(Items.IRON_BLOCK));
-
-    /** 三步量纲链：raw×4+fuel → mid×6（2 次执行）；mid×6 → out×1+fuel 余（3 次执行）。 */
-    private static List<HostBatchStep> steps() {
-        return List.of(
-                new HostBatchStep(new ItemStack(Items.PAPER), 2L,
-                        List.of(new GenericStack(RAW, 4L), new GenericStack(FUEL, 1L)),
-                        new GenericStack(MID, 6L),
-                        List.of()),
-                new HostBatchStep(new ItemStack(Items.PAPER), 3L,
-                        List.of(new GenericStack(MID, 6L)),
-                        new GenericStack(OUT, 1L),
-                        List.of(new GenericStack(FUEL, 1L))));
-    }
-
-    private static HostBatchPattern pattern() {
-        return new FakeHostBatchPattern(steps(),
-                List.of(new GenericStack(RAW, 4L), new GenericStack(FUEL, 1L)),
-                List.of(new GenericStack(OUT, 1L)));
-    }
 
     private static KeyCounter holders(GenericStack... stacks) {
         KeyCounter holder = new KeyCounter();
@@ -97,43 +70,6 @@ class ProcessingTaskPipelineTest {
                 "两份顶值 tick 总和相加必须停在顶上，不许回绕成负数");
         assertEquals(2, merged.acceptedPushCount(), "样本数累加仍走本文件的夹 0 底 int 档");
 
-    }
-
-    @Test
-    void pipelinedTaskConservesMaterialsAcrossSteps() {
-        ProcessingTask task = ProcessingTask.compileAggregated(
-                pattern(),
-                new KeyCounter[]{holders(new GenericStack(RAW, 4L), new GenericStack(FUEL, 1L))},
-                20);
-        assertTrue(task != null && task.isPipelined(), "聚合任务必须进入分步模式");
-        assertEquals(5L, task.executionCount(), "executionCount = Σ步执行数");
-
-        // 步 0 由 push 供料（raw×4 + fuel×1）——两步应全部走完
-        advanceSteps(task, 100);
-        assertTrue(task.isReadyToComplete(), "供料齐备时应走完全部步");
-
-        Map<AEKey, Long> totals = new LinkedHashMap<>();
-        for (GenericStack stack : task.buildOutputPayload()) {
-            totals.merge(stack.what(), stack.amount(), Long::sum);
-        }
-        assertEquals(1L, totals.getOrDefault(OUT, 0L), "最终产出 out×1");
-        assertEquals(1L, totals.getOrDefault(FUEL, 0L), "余料 fuel×1");
-        assertFalse(totals.containsKey(MID), "链内中间品不得流出");
-        assertFalse(totals.containsKey(RAW), "原料不得流出");
-    }
-
-    @Test
-    void missingFirstStepInputRejectsPushWithoutConsumingHolders() {
-        KeyCounter holder = holders(new GenericStack(RAW, 4L));
-
-        ProcessingTask task = ProcessingTask.compileAggregated(
-                pattern(),
-                new KeyCounter[]{holder},
-                20);
-
-        assertNull(task, "首步 fuel 缺口 → push 必须被拒");
-        assertEquals(4L, holder.get(RAW), "已检查的 raw 必须完整回滚");
-        assertEquals(0L, holder.get(FUEL), "缺失的 fuel 不得被伪造");
     }
 
     @Test
@@ -173,8 +109,7 @@ class ProcessingTaskPipelineTest {
         UUID sourceCraftingId = UUID.randomUUID();
 
         ProcessingTask task = ProcessingTask.compileNeoEcoBatch(
-                new FakeHostBatchPattern(
-                        List.of(),
+                new BatchPattern(
                         List.of(new GenericStack(RAW, 2L)),
                         List.of(new GenericStack(OUT, 3L))),
                 signature,
@@ -215,8 +150,7 @@ class ProcessingTaskPipelineTest {
                 OUT,
                 1L
         );
-        FakeHostBatchPattern pattern = new FakeHostBatchPattern(
-                List.of(),
+        BatchPattern pattern = new BatchPattern(
                 List.of(new GenericStack(RAW, 1L)),
                 List.of(new GenericStack(OUT, 1L))
         );
@@ -279,8 +213,7 @@ class ProcessingTaskPipelineTest {
                 lava,
                 1000L
         );
-        FakeHostBatchPattern pattern = new FakeHostBatchPattern(
-                List.of(),
+        BatchPattern pattern = new BatchPattern(
                 List.of(new GenericStack(RAW, 1L)),
                 List.of(new GenericStack(lava, 1000L))
         );
@@ -316,8 +249,7 @@ class ProcessingTaskPipelineTest {
                 OUT,
                 Long.MAX_VALUE
         );
-        FakeHostBatchPattern pattern = new FakeHostBatchPattern(
-                List.of(),
+        BatchPattern pattern = new BatchPattern(
                 List.of(new GenericStack(RAW, 1L)),
                 List.of(new GenericStack(OUT, Long.MAX_VALUE))
         );
@@ -381,50 +313,6 @@ class ProcessingTaskPipelineTest {
         return totals;
     }
 
-    @Test
-    void midStepShortageSuspendsWithoutConsumingTicks() {
-        // 手工构造：走完步 0 后清空缓冲中的 mid——步 1 缺料挂起，ticks 不再消耗
-        ProcessingTask task = ProcessingTask.compileAggregated(
-                pattern(),
-                new KeyCounter[]{holders(new GenericStack(RAW, 4L), new GenericStack(FUEL, 1L))},
-                20);
-        advanceSteps(task, 100);
-        assertTrue(task.isReadyToComplete());
-
-        // 重新验证挂起语义：第二步未 feed 前不能推进——通过 needs 空/非空切换确认
-        ProcessingTask suspended = ProcessingTask.compileAggregated(
-                pattern(),
-                new KeyCounter[]{holders(new GenericStack(RAW, 4L), new GenericStack(FUEL, 1L))},
-                20);
-        assertTrue(suspended != null && suspended.currentStepFed());
-        // 步 0 产出 6 mid，步 1 需 6 mid——步 0 完成前 needs 非空不存在（步 0 已 fed）；
-        // 完成步 0 后缓冲恰有 6 mid → 步 1 needs 为空 → 自动就位继续推进。
-        advanceSteps(suspended, 3); // 步 0 ticks 份额（total 20 加权 2/5 → 8）未耗尽
-        assertFalse(suspended.isReadyToComplete());
-    }
-
-    /**
-     * 缓冲那一格越出 long 时不许被读成 0：{@code fastValue()} 在宽值上是规范化留下的空位，
-     * 少了 {@code isFast()} 前置判就把"满缓冲"读成"空缓冲"，缺口按全额再要一次料。
-     *
-     * <p>链是半覆盖的：步 0 只产 3 枚 mid、步 1 要吃 6 枚——先钉住"缺 3 枚照报"这条控制腿，
-     * 再续一笔 {@code Long.MAX_VALUE} 把 mid 抬到 {@code 2^63 + 2}（3 + (2^63-1)），
-     * 缺口那一腿必须整条消失，不许按全额 6 枚再要一次。
-     */
-    @Test
-    void bufferAboveLongDomainCoversStepInputInsteadOfReadingAsZero() {
-        ProcessingTask wide = stepShortTask();
-        wide.feedExternalInputs(Map.of(MID, Long.MAX_VALUE));
-        Map<AEKey, Long> wideNeeds = wide.currentStepNeeds();
-        assertTrue(wideNeeds.isEmpty(),
-                () -> "缓冲里有 2^63+2 枚 mid，6 枚的一步缺口不许被宽值读成 0 后按全额再要一次: " + wideNeeds);
-
-        // long 域顶格内侧（3 + (2^63-4) 恰好 = 2^63-1，仍是 fast 读数）：同一条判据，逐字不退
-        ProcessingTask atLongTop = stepShortTask();
-        atLongTop.feedExternalInputs(Map.of(MID, Long.MAX_VALUE - 4L));
-        assertTrue(atLongTop.currentStepNeeds().isEmpty(), "顶格内侧的满缓冲照旧不许报缺");
-    }
-
     /**
      * K2 钳位调用点钉子：{@link DirectProcessingStackSupport#normalizeStacks} 的合并口"夹顶值就是顶"——
      * 同键两份栈量相加越过 long 域顶时读数夹在 Long.MAX_VALUE，不回绕成负数、也不读成 0。
@@ -441,162 +329,23 @@ class ProcessingTaskPipelineTest {
                 () -> "越过 long 域顶的合并量必须夹在 Long.MAX_VALUE, 实际=" + merged.get(0).amount());
     }
 
-    /**
-     * 缓冲落盘要记得住越界那一截：老写法只写 {@code Ae2Amounts.toLong} 那份饱和读数，
-     * 而磁盘不是 AE2 出口——第一次存盘就把 {@code 2^63 + 2} 枚 mid 削成 {@code Long.MAX_VALUE}，
-     * 越界那一截永久消失（重启后连"少要了这一截"都查不出来）。
-     */
-    @Test
-    void pipelineBufferRoundTripsThroughNbtBitForBitAboveLongDomain() {
-        ProcessingTask task = stepShortTask();
-        task.feedExternalInputs(Map.of(MID, Long.MAX_VALUE));
-        BigInteger exactMid = new BigInteger("9223372036854775810");
-
-        CompoundTag tag = task.writeToTag(REGISTRIES);
-        ListTag buffer = tag.getList("pipelineBuffer", Tag.TAG_COMPOUND);
-        assertEquals(1, buffer.size(), "前提：缓冲只剩 mid 那一格");
-        CompoundTag entry = buffer.getCompound(0);
-        assertTrue(entry.contains(WideCraftingInventory.NBT_ENTRY_AMOUNT_WIDE, Tag.TAG_BYTE_ARRAY),
-                "越界那一格必须多挂宽域覆盖键，不许只落饱和读数");
-        assertEquals(exactMid, new BigInteger(entry.getByteArray(WideCraftingInventory.NBT_ENTRY_AMOUNT_WIDE)),
-                "落盘的宽域位逐位等于 2^63+2");
-        assertEquals(Long.MAX_VALUE, GenericStack.readTag(REGISTRIES, entry).amount(),
-                "老 long 位照旧是饱和读数，AE2 那侧的口径不许动");
-
-        ProcessingTask restored = ProcessingTask.readFromTag(tag, REGISTRIES);
-        assertNotNull(restored, "带覆盖键的缓冲条目不许把任务读没了");
-        ListTag rewritten = restored.writeToTag(REGISTRIES).getList("pipelineBuffer", Tag.TAG_COMPOUND);
-        assertEquals(1, rewritten.size());
-        assertEquals(exactMid,
-                new BigInteger(rewritten.getCompound(0).getByteArray(WideCraftingInventory.NBT_ENTRY_AMOUNT_WIDE)),
-                "回读再落盘逐位相同——越界那一截真的回来了，不是只把 Long.MAX_VALUE 搬回来");
-        assertTrue(restored.currentStepNeeds().isEmpty(), "还原后的缓冲仍要读得出够这一口");
-
-        // 反向控制：越界条目不带覆盖键时按老 long 位读，一位都不许多出来
-        entry.remove(WideCraftingInventory.NBT_ENTRY_AMOUNT_WIDE);
-        ProcessingTask legacy = ProcessingTask.readFromTag(tag, REGISTRIES);
-        assertNotNull(legacy);
-        assertEquals(Long.MAX_VALUE, GenericStack.readTag(REGISTRIES,
-                legacy.writeToTag(REGISTRIES).getList("pipelineBuffer", Tag.TAG_COMPOUND).getCompound(0)).amount(),
-                "缺覆盖键就是这笔装得进 long：按老 long 读数原样吃回来");
-    }
-
-    /** 走完步 0、停在步 1 的任务：步 0 产 3 枚 mid，步 1 要吃 6 枚，缓冲正好差 3 枚。 */
-    private static ProcessingTask stepShortTask() {
-        List<HostBatchStep> halfSteps = List.of(
-                new HostBatchStep(new ItemStack(Items.PAPER), 2L,
-                        List.of(new GenericStack(RAW, 4L), new GenericStack(FUEL, 1L)),
-                        new GenericStack(MID, 3L),
-                        List.of()),
-                new HostBatchStep(new ItemStack(Items.PAPER), 3L,
-                        List.of(new GenericStack(MID, 6L)),
-                        new GenericStack(OUT, 1L),
-                        List.of(new GenericStack(FUEL, 1L))));
-        ProcessingTask task = ProcessingTask.compileAggregated(
-                new FakeHostBatchPattern(halfSteps,
-                        List.of(new GenericStack(RAW, 4L), new GenericStack(FUEL, 1L)),
-                        List.of(new GenericStack(OUT, 1L))),
-                new KeyCounter[]{holders(new GenericStack(RAW, 4L), new GenericStack(FUEL, 1L))},
-                20);
-        assertNotNull(task, "前提：首步供料齐备，聚合任务必须编出来");
-        task.advance(8);
-        // 控制腿：缓冲只有 3 枚时缺口照报 3 枚——修法不许把判据改成恒过
-        assertEquals(Map.of(MID, 3L), task.currentStepNeeds(),
-                "前提：停在步 1，mid 缓冲恰有 3 枚、缺口恰报 3 枚");
-        return task;
-    }
-
     private static void advanceSteps(ProcessingTask task, int ticks) {
         for (int i = 0; i < ticks; i++) {
             task.advance(1);
         }
     }
 
-    /** HostBatchPattern 全接口轻量替身。 */
-    private static final class FakeHostBatchPattern implements HostBatchPattern {
-        private final List<HostBatchStep> steps;
-        private final List<GenericStack> inputs;
+    /** 普通样板替身，批处理使用显式输入/输出契约。 */
+    private static final class BatchPattern implements IPatternDetails {
+        private final IInput[] inputs;
         private final List<GenericStack> outputs;
-
-        private FakeHostBatchPattern(List<HostBatchStep> steps, List<GenericStack> inputs, List<GenericStack> outputs) {
-            this.steps = steps;
-            this.inputs = inputs;
+        BatchPattern(List<GenericStack> inputs, List<GenericStack> outputs) {
+            this.inputs = inputs.stream().map(stack -> new FakePlanGrid.FakeInput(stack.what(), stack.amount()))
+                    .toArray(IInput[]::new);
             this.outputs = outputs;
         }
-
-        @Override
-        public CraftingHostLocator hostLocator() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<GenericStack> aggregatedInputs() {
-            return inputs;
-        }
-
-        @Override
-        public List<GenericStack> aggregatedOutputs() {
-            return outputs;
-        }
-
-        @Override
-        public List<GenericStack> aggregatedRemainders() {
-            return List.of();
-        }
-
-        @Override
-        public List<HostBatchStep> steps() {
-            return steps;
-        }
-
-        @Override
-        public int totalTicks() {
-            return 20;
-        }
-
-        @Override
-        public IPatternDetails basePattern() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public ItemStack assemble(net.minecraft.world.item.crafting.CraftingInput input, Level level) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public boolean isItemValid(int slot, AEItemKey key, Level level) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public boolean isSlotEnabled(int slot) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void fillCraftingGrid(KeyCounter[] table, appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern.CraftingGridAccessor gridAccessor) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public AEItemKey getDefinition() {
-            return AEItemKey.of(new ItemStack(Items.PAPER));
-        }
-
-        @Override
-        public IInput[] getInputs() {
-            return new IInput[0];
-        }
-
-        @Override
-        public List<GenericStack> getOutputs() {
-            return outputs;
-        }
-
-        @Override
-        public boolean supportsPushInputsToExternalInventory() {
-            return false;
-        }
+        @Override public AEItemKey getDefinition() { return AEItemKey.of(new ItemStack(Items.PAPER)); }
+        @Override public IInput[] getInputs() { return inputs; }
+        @Override public List<GenericStack> getOutputs() { return outputs; }
     }
 }

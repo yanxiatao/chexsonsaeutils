@@ -37,7 +37,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = CraftConfirmMenu.class, remap = false)
 public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
-        implements CraftingContinuationSubmitBridge.ContinuationModeHost, MenuProvenanceHost, WideAmountMenuSource {
+        implements CraftingContinuationSubmitBridge.ContinuationModeHost, MenuProvenanceHost, WideAmountMenuSource,
+        git.chexson.chexsonsaeutils.network.crafting.WidePlanChunkTarget {
     @Unique
     private static final String chexsonSetContinuationMode = "chexsonSetContinuationMode";
 
@@ -67,19 +68,15 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
     @GuiSync(9211)
     public String chexsonsaeutils$provenanceSolver = "";
 
-    /**
-     * M1：超 {@code long} 的计划数量的宽域真值，编码后随菜单同步到客户端确认屏。
-     *
-     * AE2 的 {@code CraftingPlanSummaryEntry} 数量字段是 {@code long}，图规划出账时
-     * 已被 {@code Ae2Amounts.toLong} 饱和成 {@code Long.MAX_VALUE}，真值经普通通道丢失。
-     * 宽域账由图规划出口直接挂在计划对象上（{@link WideAmountPlanCarrier}），这里读本菜单
-     * {@link #result} 的载体，用 {@link WidePlanLedgerCodec} 编成
-     * {@code kind|base64(AEKey)|decimal} 字符串同步。
-     * 键取 9212（避开 AE2 本类的 1/2/3/6/7/8 与上面 provenance 的 9210/9211）。
-     * 无溢出键时恒为空串——客户端据此原样沿用 AE2 显示，观感零变。
-     */
+    /** 菜单同步只传版本；精确数量走有界分片，避免单字符串的 32767 字符上限。 */
     @GuiSync(9212)
-    public String chexsonsaeutils$wideAmounts = "";
+    public long chexsonsaeutils$wideAmountsRevision;
+
+    @Unique private String chexsonsaeutils$pendingWideAmounts;
+
+    @Unique
+    private final git.chexson.chexsonsaeutils.network.crafting.WidePlanFrame chexsonsaeutils$wideFrame =
+            new git.chexson.chexsonsaeutils.network.crafting.WidePlanFrameImpl();
 
     /** 字节真值独立于数量账同步，不能从 summary 的饱和 long 恢复。 */
     @GuiSync(9213)
@@ -205,7 +202,7 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
         }
         this.chexsonsaeutils$provenanceMillis = -1L;
         this.chexsonsaeutils$provenanceSolver = "";
-        this.chexsonsaeutils$wideAmounts = "";
+        chexsonsaeutils$publishWideAmounts("");
         this.chexsonsaeutils$exactBytes = "";
         this.chexsonsaeutils$publishedPlan = null;
         this.chexsonsaeutils$publishedSummary = null;
@@ -213,7 +210,7 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
     }
 
     /**
-     * 服务端：读本菜单当前计划自带的宽域载体，编码写进同步字段。无溢出键（含计划根本没有
+     * 服务端：读本菜单当前计划自带的宽域载体，编码并分片下发。无溢出键（含计划根本没有
      * 载体——AE2 原生计划、别的规划 mod 接管的计划）时置空串，客户端原样沿用 AE2 显示。
      */
     @Inject(method = "broadcastChanges", at = @At("HEAD"), remap = false)
@@ -231,6 +228,9 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
         chexsonsaeutils$publishedSummary = this.plan;
         if (this.plan != null && this.result != null) {
             git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.attach(this.plan, this.result);
+            if (this.plan instanceof EnhancedCraftingPlanSummary enhanced
+                    && enhanced.chexsonsaeutils$graph().nodes().isEmpty() && enhanced.chexsonsaeutils$graph().problem().isEmpty())
+                git.chexson.chexsonsaeutils.crafting.status.PlanGraph.attach(this.plan, this.result);
             if (net.neoforged.fml.ModList.get().isLoaded("neoecoae"))
                 git.chexson.chexsonsaeutils.integration.craftingdisplay.neoecoae.NeoEcoCraftingPreview.apply(this.plan, this.result);
             git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer.attachPatternTimes(this.plan, this.result);
@@ -243,18 +243,38 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
         WideLedgerSnapshot snapshot = ownWidePlan
                 ? git.chexson.chexsonsaeutils.crafting.status.PlanSummaryAmounts.fromPlan(this.result).displaySnapshot()
                 : WideLedgerSnapshot.empty();
-        if (snapshot.isEmpty()) {
-            this.chexsonsaeutils$wideAmounts = "";
-            return;
-        }
-        this.chexsonsaeutils$wideAmounts =
-                WidePlanLedgerCodec.encode(snapshot, getPlayer().level().registryAccess());
+        chexsonsaeutils$publishWideAmounts(
+                WidePlanLedgerCodec.encode(snapshot, getPlayer().level().registryAccess()));
     }
 
-    /** 客户端经 {@link WideAmountMenuSource} 读取 M1 同步字段（字段编译期不在 AE2 类上）。 */
+    /** 每个新账本拥有独立版本；分片先于 GuiSync 到达也不会显示在旧计划上。 */
+    @Unique
+    private void chexsonsaeutils$publishWideAmounts(String encoded) {
+        ++chexsonsaeutils$wideAmountsRevision;
+        chexsonsaeutils$pendingWideAmounts = encoded;
+    }
+
+    /** 构造期只记录待发账本；菜单打开后的广播才发送，避免客户端尚未拥有容器。 */
+    @Inject(method = "broadcastChanges", at = @At("TAIL"), remap = false)
+    private void chexsonsaeutils$sendWideAmounts(CallbackInfo ci) {
+        if (isClientSide() || chexsonsaeutils$pendingWideAmounts == null) return;
+        for (var chunk : git.chexson.chexsonsaeutils.network.crafting.WidePlanChunkPayload.split(
+                containerId, chexsonsaeutils$wideAmountsRevision, chexsonsaeutils$pendingWideAmounts)) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
+                    (net.minecraft.server.level.ServerPlayer) getPlayer(), chunk);
+        }
+        chexsonsaeutils$pendingWideAmounts = null;
+    }
+
+    /** 客户端只读取与当前菜单版本一致的完整账本。 */
     @Override
     public String chexsonsaeutils$syncedWideAmounts() {
-        return this.chexsonsaeutils$wideAmounts == null ? "" : this.chexsonsaeutils$wideAmounts;
+        return chexsonsaeutils$wideFrame.completed(chexsonsaeutils$wideAmountsRevision);
+    }
+
+    @Override
+    public void receiveWidePlanChunk(long revision, int index, int count, String data) {
+        chexsonsaeutils$wideFrame.accept(revision, index, count, data);
     }
 
     @Override

@@ -45,6 +45,9 @@ final class PlanSummaryBytesTest {
     }
 
     private static final class Summary extends CraftingPlanSummary implements EnhancedCraftingPlanSummary {
+        private PlanGraph graph = PlanGraph.EMPTY;
+        @Override public PlanGraph chexsonsaeutils$graph() { return graph; }
+        @Override public void chexsonsaeutils$setGraph(PlanGraph value) { graph = value; }
         private BigInteger bytes;
         private long millis;
         private String solver = "graph";

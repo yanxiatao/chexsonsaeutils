@@ -1,34 +1,29 @@
-# Third Party Notices
+# 第三方声明
 
-## Applied Energistics 2 (AE2)
+本项目原创内容使用 MIT；第三方移植内容保留其上游版权和许可证。以下记录引用与移植范围，其他兼容接口参考项目见 [README](README.md)。
 
-- Source: https://github.com/AppliedEnergistics/Applied-Energistics-2
-- Local reference path: `reference-sources/ae2`
-- Reference version: 19.2.17 (Minecraft 1.21.1 / NeoForge)
-- License: LGPL-3.0
+## Applied Energistics 2
 
-This project forks `appeng/helpers/patternprovider/PatternProviderLogic.java` into
-`src/main/java/git/chexson/chexsonsaeutils/helpers/custompatternprovider/CustomPatternProviderLogic.java`
-(adapted for the frame pattern provider's private-dimension machine target).
-The LGPL-3.0 license header is preserved in the forked file.
+- 来源：[Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2)，参考版本 19.2.17。
+- 本地参考：`reference-sources/ae2`。
+- 许可证：[LGPL-3.0](LICENSES/LGPL-3.0.txt)。
+- `appeng/helpers/patternprovider/PatternProviderLogic.java` 移植为本项目 `CustomPatternProviderLogic.java`，用于定制样板供应器的私有维度机器目标。移植文件保留原 LGPL 声明，包括适用后续版本的条款。
 
-```text
-GNU LESSER GENERAL PUBLIC LICENSE
-Version 3, 29 June 2007
-https://www.gnu.org/licenses/lgpl-3.0.html
-```
+## ExtendedAE
 
-## REFactoryTeam/AEA
+- 来源：[ExtendedAE](https://github.com/GlodBlock/ExtendedAE)。
+- 本地参考：`reference-sources/extendedae`。
+- 许可证：[LGPL-3.0](LICENSES/LGPL-3.0.txt)。
+- `client/gui/matrix` 中的装配矩阵界面、格子和行结构移植自 ExtendedAE；搜索行为与按钮沿用其实现。界面复用 ExtendedAE 提供的 `textures/guis/assembler_matrix.png` 与相关界面资源。
+- 本声明不改变上述移植内容的原版权归属；具体文件中的上游声明继续有效。
 
-- Source: https://github.com/REFactoryTeam/AEA
-- Local reference path: `reference-sources/AEA`
-- Reference commit: `65d403f15b6ff62ebc06ba3fe013c492a4a846bc`
-- Reference branch: `1.20.1`
-- License: MIT
+## REFactoryTeam / AEA
 
-This project uses AEA as reference material for planned feature migration.
-If AEA-derived source code, model data, textures, or other substantial material is copied into
-this project, the following MIT license notice must be preserved in source and release artifacts.
+- 来源：[AEA](https://github.com/REFactoryTeam/AEA)，参考分支 `1.20.1`。
+- 参考提交：`65d403f15b6ff62ebc06ba3fe013c492a4a846bc`。
+- 本地参考：`reference-sources/AEA`。
+- 许可证：MIT。
+- 本项目迁移了样板染色、增强合成状态、Building Gadgets 2 与 FTB Ultimine 集成；相关源代码、模型、贴图或其他移植内容保留以下声明。
 
 ```text
 MIT License

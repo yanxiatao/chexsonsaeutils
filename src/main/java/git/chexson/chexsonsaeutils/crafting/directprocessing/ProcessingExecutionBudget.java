@@ -5,24 +5,18 @@ public final class ProcessingExecutionBudget {
     public static final Limits NORMAL_LIMITS = new Limits(
             64,
             64,
-            16,
-            16_384L,
             1_000_000L,
             1_024
     );
     public static final Limits HIGH_LIMITS = new Limits(
             256,
             256,
-            32,
-            65_536L,
             2_000_000L,
             4_096
     );
     public static final Limits BENCHMARK_LIMITS = new Limits(
             4_096,
             4_096,
-            128,
-            1_048_576L,
             5_000_000L,
             65_536
     );
@@ -30,8 +24,6 @@ public final class ProcessingExecutionBudget {
     private final Limits limits;
     private int admitTokens;
     private int completeTokens;
-    private int aeReturnOps;
-    private long aeReturnAmount;
     private long deadlineNanos;
     private long tickStartedAtNanos;
 
@@ -66,8 +58,6 @@ public final class ProcessingExecutionBudget {
         tickStartedAtNanos = nowNanos;
         admitTokens = limits.admitTokens();
         completeTokens = limits.completeTokens();
-        aeReturnOps = limits.aeReturnOps();
-        aeReturnAmount = limits.aeReturnAmount();
         deadlineNanos = safeAdd(nowNanos, limits.wallNanos());
     }
 
@@ -87,23 +77,6 @@ public final class ProcessingExecutionBudget {
         return true;
     }
 
-    public boolean tryClaimAeReturn(long amount) {
-        return tryClaimAeReturn(amount, 1);
-    }
-
-    public boolean tryClaimAeReturn(long amount, int operations) {
-        long requestedAmount = Math.max(1L, amount);
-        int requestedOperations = Math.max(1, operations);
-        if (!hasTimeBudget(System.nanoTime())
-                || aeReturnOps < requestedOperations
-                || aeReturnAmount < requestedAmount) {
-            return false;
-        }
-        aeReturnOps -= requestedOperations;
-        aeReturnAmount -= requestedAmount;
-        return true;
-    }
-
     public boolean hasTimeBudget(long nowNanos) {
         return nowNanos - deadlineNanos < 0L;
     }
@@ -116,8 +89,6 @@ public final class ProcessingExecutionBudget {
         return new Snapshot(
                 admitTokens,
                 completeTokens,
-                aeReturnOps,
-                aeReturnAmount,
                 Math.max(0L, deadlineNanos - System.nanoTime()),
                 tickStartedAtNanos,
                 limits
@@ -137,16 +108,12 @@ public final class ProcessingExecutionBudget {
     public record Limits(
             int admitTokens,
             int completeTokens,
-            int aeReturnOps,
-            long aeReturnAmount,
             long wallNanos,
             int maxCoalescedExecutions
     ) {
         public Limits {
             admitTokens = Math.max(1, admitTokens);
             completeTokens = Math.max(1, completeTokens);
-            aeReturnOps = Math.max(1, aeReturnOps);
-            aeReturnAmount = Math.max(1L, aeReturnAmount);
             wallNanos = Math.max(1L, wallNanos);
             maxCoalescedExecutions = Math.max(1, maxCoalescedExecutions);
         }
@@ -155,8 +122,6 @@ public final class ProcessingExecutionBudget {
     public record Snapshot(
             int admitTokensRemaining,
             int completeTokensRemaining,
-            int aeReturnOpsRemaining,
-            long aeReturnAmountRemaining,
             long wallNanosRemaining,
             long tickStartedAtNanos,
             Limits limits

@@ -6,7 +6,7 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchHost;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchProvider;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.HolderBatchProvider;
 import git.chexson.chexsonsaeutils.integration.uselessmod.UselessBigIntegerBatchClient;
 import git.chexson.chexsonsaeutils.integration.uselessmod.UselessBigIntegerReceipt;
 import git.chexson.chexsonsaeutils.integration.uselessmod.UselessFurnaceBatchHost;
@@ -202,12 +202,10 @@ final class ProviderBatchCapabilitiesImplTest {
         }
     }
 
-    private static class NativeHolder extends PlainProvider implements HostBatchProvider {
+    private static class NativeHolder extends PlainProvider implements HolderBatchProvider {
         long maximum = 8L;
         int maxCalls;
         public long maxPushExecutions(IPatternDetails pattern) { maxCalls++; return maximum; }
-        public int getCurrentOperationTicks() { throw unused(); }
-        public BlockPos getBlockPos() { throw unused(); }
     }
 
     private static final class DualHolder extends NativeHolder implements UselessFurnaceBatchHost {

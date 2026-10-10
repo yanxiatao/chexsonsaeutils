@@ -75,6 +75,9 @@ public final class PartialPlanMissingSummary {
         Collections.sort(rebuilt);
         CraftingPlanSummary revealed =
                 new CraftingPlanSummary(summary.getUsedBytes(), summary.isSimulation(), List.copyOf(rebuilt));
+        if (summary instanceof git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingPlanSummary source
+                && revealed instanceof git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingPlanSummary target)
+            target.chexsonsaeutils$setGraph(source.chexsonsaeutils$graph());
         // 换对象等于把 ae2ct 挂在旧对象上的那份 recipe helper 丢了——它的 write TAIL 无条件
         // 解引用那个字段，丢了就是把整条连接的编码打死。这里把 job 搬过来，合成树照旧。
         // 没装 ae2ct 时是空操作（Ae2ctJobBridge 全程反射，认不出形状就什么都不做）。

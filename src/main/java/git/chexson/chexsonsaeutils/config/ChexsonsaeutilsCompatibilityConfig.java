@@ -19,7 +19,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
 
     public static final ModConfigSpec SPEC;
     public static final ModConfigSpec.BooleanValue CRAFTING_CONTINUATION_ENABLED;
-    public static final ModConfigSpec.BooleanValue FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED;
     public static final ModConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
     public static final ModConfigSpec.IntValue MAX_CUSTOM_PATTERN_PAGES;
     public static final ModConfigSpec.BooleanValue DYEABLE_PATTERNS_ENABLED;
@@ -81,10 +80,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     private static final String GRAPH_PLANNING_MAX_DEPTH_KEY = "graphPlanningMaxDepth";
     private static final String RECURSIVE_RING_MAX_MEMBERS_KEY = "recursiveRingMaxMembers";
 
-    // 入口 Chexsonsaeutils / mixin ChexsonsaeutilsMixinPlugin 与 CraftingServiceParallelCpuMixin /
-    // crafting.hostbatch.HostBatchPlanner 的跨文件回落读取也已收口：声明处 .define 与读取处第二参
-    // 引同一条 public 常量，11 处裸串字面量全部退场，键名漂移改为编译期报错。
-    public static final String FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY = "formalMachinePlanningAggregationEnabled";
     public static final String PROCESSING_PATTERN_REPLACEMENT_ENABLED_KEY = "processingPatternReplacementEnabled";
     public static final String MATTER_MASS_PATTERN_PROVIDER_ENABLED_KEY = "matterMassPatternProviderEnabled";
 
@@ -100,12 +95,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.craftingContinuationEnabled")
                 .define("craftingContinuationEnabled", true);
-        FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED = builder
-                .comment("Enable formal machine large-request planning aggregation fast path.",
-                        "Optimizes planning for bulk crafting requests.",
-                        "Takes effect after restart.")
-                .translation("configuration.chexsonsaeutils.formalMachinePlanningAggregationEnabled")
-                .define(FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY, true);
         PROCESSING_PATTERN_REPLACEMENT_ENABLED = builder
                 .comment("Enable AE2 processing pattern replacement feature bundle.",
                         "Allows dynamic pattern substitution based on available materials.",

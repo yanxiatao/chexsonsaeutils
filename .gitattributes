@@ -1,1 +1,2 @@
 * text=auto eol=crlf
+.githooks/* text eol=lf

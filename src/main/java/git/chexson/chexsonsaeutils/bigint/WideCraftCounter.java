@@ -270,7 +270,7 @@ public final class WideCraftCounter {
      * 决定，而 AE2 与其下游的样板实现一律把 hashCode 取成 {@code getDefinition().hashCode()}
      * （{@code AECraftingPattern}/{@code AEProcessingPattern}/{@code AESmithingTablePattern}/
      * {@code AEStonecuttingPattern} 都是 {@code return definition.hashCode();}，本仓
-     * {@code CustomProcessingPattern}/{@code MatterMassPatternDetails}/{@code HostBatchPatternImpl}/
+     * {@code CustomProcessingPattern}/{@code MatterMassPatternDetails}/
      * {@code ReplacementAwarePattern} 同形），再往下是 {@code AEItemKey} 的
      * {@code ItemStack.hashItemAndComponents} —— {@code Item} 不覆写 {@code hashCode}，那是一位
      * <b>身份哈希</b>：同一份计划换一次 JVM 会话就能给出相反的顺位。

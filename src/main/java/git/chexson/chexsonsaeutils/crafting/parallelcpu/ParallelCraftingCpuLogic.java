@@ -601,8 +601,7 @@ final class ParallelCraftingCpuLogic {
                         declaredBatchHost = batchCapabilities().adaptedDeclaredHost(provider, details,
                                 host -> declaredProbeReady(host, details, currentTick, providerBackoff));
                     }
-                    if (provider instanceof PreparedBatchDispatcher
-                            && !(details instanceof git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern)) {
+                    if (provider instanceof PreparedBatchDispatcher) {
                         preparedBatchReady = true;
                         // 继续探测同样板的其他宿主，不能让先出现的 long 准备接口遮住宽域声明接口。
                     }

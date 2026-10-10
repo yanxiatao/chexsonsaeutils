@@ -5,7 +5,7 @@ import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.core.AELog;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchHost;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchProvider;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.HolderBatchProvider;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.HolderBatchCapability;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.ProviderBatchCapabilities;
 import git.chexson.chexsonsaeutils.integration.uselessmod.UselessBigIntegerBatchClient;
@@ -43,7 +43,7 @@ public final class ProviderBatchCapabilitiesImpl implements ProviderBatchCapabil
     public @Nullable DeclaredBatchHost adaptedDeclaredHost(ICraftingProvider provider, IPatternDetails pattern,
             Predicate<DeclaredBatchHost> ready) {
         // 双接口提供者沿用原来的 else-if：原生 holder 已命中时不走 useless 折叠或 bigint 探测。
-        if (provider instanceof HostBatchProvider || !(provider instanceof UselessFurnaceBatchHost)) {
+        if (provider instanceof HolderBatchProvider || !(provider instanceof UselessFurnaceBatchHost)) {
             return null;
         }
         var host = bigintDeclaredHost(provider);
@@ -66,7 +66,7 @@ public final class ProviderBatchCapabilitiesImpl implements ProviderBatchCapabil
 
     @Override
     public @Nullable HolderBatchCapability holderCapability(ICraftingProvider provider) {
-        if (provider instanceof HostBatchProvider host) {
+        if (provider instanceof HolderBatchProvider host) {
             return new NativeHolderBatchCapabilityImpl(host);
         } else if (provider instanceof UselessFurnaceBatchHost host) {
             return new FoldedHolderBatchCapabilityImpl(host);
@@ -75,7 +75,7 @@ public final class ProviderBatchCapabilitiesImpl implements ProviderBatchCapabil
     }
 
     /** 原生 holder 准备阶段重读动态上限，保留探测后容量缩小的拒绝语义。 */
-    private record NativeHolderBatchCapabilityImpl(HostBatchProvider host) implements HolderBatchCapability {
+    private record NativeHolderBatchCapabilityImpl(HolderBatchProvider host) implements HolderBatchCapability {
         @Override
         public long maxPushExecutions(IPatternDetails pattern) { return host.maxPushExecutions(pattern); }
         @Override

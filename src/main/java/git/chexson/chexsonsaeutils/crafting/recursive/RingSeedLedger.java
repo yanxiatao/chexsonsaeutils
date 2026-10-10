@@ -103,7 +103,7 @@ public final class RingSeedLedger<P> {
      * 一张样板的一发消耗／还回由它的 definition 与槽位定，本仓与 AE2 的样板实现在运行期都不改这两样：
      * AE2 四条原生样板（{@code AECraftingPattern}/{@code AEProcessingPattern}/
      * {@code AESmithingTablePattern}/{@code AEStonecuttingPattern}）与本仓
-     * {@code CustomProcessingPattern}/{@code MatterMassPatternDetails}/{@code HostBatchPatternImpl}
+     * {@code CustomProcessingPattern}/{@code MatterMassPatternDetails}
      * 都在构造期把槽算成 {@code final} 字段（物质团那一份是首次读时懒建、建完就定死，
      * 而首次读正是本账本第一趟 {@link #rebuild} 干的事）。<b>换规则就换实例</b>而不是改槽位：
      * 染色样板替换与 {@code ReplacementAwarePattern}（槽位重算）交出的都是重建的那一张新

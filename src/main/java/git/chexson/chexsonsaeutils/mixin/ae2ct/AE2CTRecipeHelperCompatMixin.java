@@ -12,7 +12,6 @@ import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import com.neuvillette.ae2ct.api.ICraftingPlanSummary;
 import com.neuvillette.ae2ct.api.RecipeHelper;
 import git.chexson.chexsonsaeutils.crafting.recursive.RecursivePlanContract;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -53,13 +52,7 @@ public abstract class AE2CTRecipeHelperCompatMixin {
             IPatternDetails pattern = entry.getKey();
             Long times = entry.getValue();
 
-            if (pattern instanceof HostBatchPattern aggregatedPattern) {
-                recipes.add(new RecipeHelper.Recipe(
-                        aggregatedPattern.aggregatedInputs(),
-                        aggregatedPattern.aggregatedOutputs(),
-                        times
-                ));
-            } else if (!(pattern instanceof RecursivePlanContract)) {
+            if (!(pattern instanceof RecursivePlanContract)) {
                 List<GenericStack> inputs = new ArrayList<>();
                 for (var input : pattern.getInputs()) {
                     var possibleInputs = input.getPossibleInputs();

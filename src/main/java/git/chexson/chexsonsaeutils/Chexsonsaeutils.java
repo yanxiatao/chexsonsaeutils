@@ -8,7 +8,6 @@ import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.config.PlanningAlgorithmOrderService;
 import git.chexson.chexsonsaeutils.config.PlanningServerConfig;
 import git.chexson.chexsonsaeutils.command.ChexsonsaeutilsCommand;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanCapture;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.mattermass.MatterMassPatternDecoder;
@@ -128,9 +127,6 @@ public class Chexsonsaeutils {
         event.enqueueWork(UselessBigIntegerCompat::registerCpuAdapter);
         if (ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED_KEY)) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
-        }
-        if (ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY)) {
-            event.enqueueWork(Chexsonsaeutils::registerHostBatchPatternDecoder);
         }
         if (ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED, ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED_KEY)) {
             event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(MatterMassPatternDecoder.INSTANCE));
@@ -467,13 +463,6 @@ public class Chexsonsaeutils {
 
     private static void registerProcessingPatternReplacementDecoder() {
         IPatternDetailsDecoder decoder = new ProcessingPatternReplacementDecoder();
-        List<IPatternDetailsDecoder> decoders = PatternDetailsHelperAccessor.chexsonsaeutils$getDecoders();
-        decoders.removeIf(existingDecoder -> existingDecoder.getClass() == decoder.getClass());
-        decoders.add(0, decoder);
-    }
-
-    private static void registerHostBatchPatternDecoder() {
-        IPatternDetailsDecoder decoder = new HostBatchPatternDecoder();
         List<IPatternDetailsDecoder> decoders = PatternDetailsHelperAccessor.chexsonsaeutils$getDecoders();
         decoders.removeIf(existingDecoder -> existingDecoder.getClass() == decoder.getClass());
         decoders.add(0, decoder);

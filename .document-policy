@@ -1,0 +1,11 @@
+# 可提交文档白名单；测试、设计、规划、验收与性能记录仅保留在本地。
+README.md
+CHANGELOG.md
+THIRD_PARTY_NOTICES.md
+LICENSE
+LICENSES/*
+docs/direct-processing-kubejs.md
+src/main/resources/assets/chexsonsaeutils/ae2guide/*.md
+src/main/resources/kubejs.plugins.txt
+.github/ai-review.md
+.github/codex/prompts/review.md

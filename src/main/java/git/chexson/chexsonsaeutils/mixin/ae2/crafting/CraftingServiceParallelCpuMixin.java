@@ -211,7 +211,6 @@ public abstract class CraftingServiceParallelCpuMixin
                 return;
             }
             ICraftingSubmitResult result = CraftingSubmitResult.INCOMPLETE_PLAN;
-            chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
             cir.setReturnValue(result);
             return;
         }
@@ -221,7 +220,6 @@ public abstract class CraftingServiceParallelCpuMixin
             ICraftingSubmitResult result = chexsonsaeutils$getSyncedParallelCpuGrid()
                     .submitPartialJob(job, requestingMachine, target, prioritizePower, src);
             if (result != null) {
-                chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
                 cir.setReturnValue(result);
             }
             return;
@@ -233,7 +231,6 @@ public abstract class CraftingServiceParallelCpuMixin
 
         if (job.simulation()) {
             ICraftingSubmitResult result = CraftingSubmitResult.INCOMPLETE_PLAN;
-            chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
             cir.setReturnValue(result);
             return;
         }
@@ -243,7 +240,6 @@ public abstract class CraftingServiceParallelCpuMixin
         if (target == null && result == null) {
             return;
         }
-        chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
         cir.setReturnValue(result == null ? CraftingSubmitResult.CPU_OFFLINE : result);
     }
 
@@ -275,7 +271,6 @@ public abstract class CraftingServiceParallelCpuMixin
         ICraftingSubmitResult result = chexsonsaeutils$getSyncedParallelCpuGrid()
                 .submitJob(job, requestingMachine, null, prioritizePower, src);
         if (result != null) {
-            chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, null, result);
             cir.setReturnValue(result);
         }
     }
@@ -501,20 +496,6 @@ public abstract class CraftingServiceParallelCpuMixin
         return null;
     }
 
-    @Unique
-    private void chexsonsaeutils$registerFormalMachineSubmitResult(
-            @Nullable ICraftingPlan job,
-            @Nullable ICraftingRequester requestingMachine,
-            @Nullable ICraftingCPU target,
-            @Nullable ICraftingSubmitResult result
-    ) {
-        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY)
-                || result == null
-                || !result.successful()) {
-            return;
-        }
-    }
-
     @Override
     public ICraftingSubmitResult submitParallelContinuationPartialJob(
             ICraftingPlan job,
@@ -526,7 +507,6 @@ public abstract class CraftingServiceParallelCpuMixin
         ICraftingSubmitResult result = chexsonsaeutils$getSyncedParallelCpuGrid()
                 .submitPartialJob(job, requestingMachine, target, prioritizePower, src);
         if (result != null) {
-            chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
         }
         return result;
     }

@@ -26,7 +26,6 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
     private static final String KEY_REPLACEMENT = "processingPatternReplacementEnabled";
     private static final String KEY_CONTINUATION = "craftingContinuationEnabled";
     private static final String KEY_DYEABLE = "dyeablePatternsEnabled";
-    private static final String KEY_FORMAL = "formalMachinePlanningAggregationEnabled";
     private static final String KEY_ENHANCED = "enhancedCraftingStatusEnabled";
     private static final String KEY_PARALLEL = "parallelCraftingCpuEnabled";
     private static final String KEY_BUILDING_GADGETS2 = "buildingGadgets2IntegrationEnabled";
@@ -37,7 +36,6 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
             Map.entry(KEY_REPLACEMENT, ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED),
             Map.entry(KEY_CONTINUATION, ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED),
             Map.entry(KEY_DYEABLE, ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED),
-            Map.entry(KEY_FORMAL, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED),
             Map.entry(KEY_ENHANCED, ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED),
             Map.entry(KEY_PARALLEL, ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_ENABLED),
             Map.entry(KEY_BUILDING_GADGETS2, ChexsonsaeutilsCompatibilityConfig.BUILDING_GADGETS2_INTEGRATION_ENABLED),
@@ -105,7 +103,7 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
         }
 
         List<String> cpuAccessorKeys = List.of(
-                KEY_CONTINUATION, KEY_DYEABLE, KEY_FORMAL, KEY_ENHANCED);
+                KEY_CONTINUATION, KEY_DYEABLE, KEY_ENHANCED);
         for (String entry : List.of(
                 "ae2.crafting.CraftingCpuLogicAccessor",
                 "ae2.crafting.CraftingLinkAccessor",
@@ -114,14 +112,7 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
             rows.add(ofAny(entry, cpuAccessorKeys));
         }
 
-        rows.add(ofAny("ae2.crafting.CraftingCpuLogicHostBatchSourceContextMixin",
-                List.of(KEY_FORMAL, KEY_ENHANCED)));
-
-        for (String entry : List.of(
-                "ae2.crafting.CraftingServiceAccessor",
-                "ae2.crafting.CraftingServiceGetProvidersHostBatchPatternMixin")) {
-            rows.add(ofKey(entry, KEY_FORMAL));
-        }
+        rows.add(ofKey("ae2.crafting.CraftingCpuLogicHostBatchSourceContextMixin", KEY_ENHANCED));
 
         for (String entry : List.of(
                 "ae2.crafting.CraftingServiceParallelCpuMixin",
@@ -216,10 +207,11 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
                 "ae2.crafting.CraftingSimulationStateFastResetMixin",
                 "ae2.crafting.ChildCraftingSimulationStateFastMixin",
                 "ae2.menu.CraftingPlanSummaryProvenanceMixin",
+                "ae2.menu.CraftingPlanSummaryGraphMixin",
+                "ae2.client.gui.CraftConfirmScreenGraphMixin",
+                "ae2.client.gui.AE2CTGraphRedirectMixin",
                 "ae2.crafting.CraftingCalculationProvenanceMixin",
                 "ae2.crafting.NetworkCraftingSimulationStateAccessor",
-                "ae2.crafting.CraftingCalculationGridCaptureMixin",
-                "ae2.crafting.CraftingSimulationStateHostBatchAccessor",
                 "ae2.crafting.CraftingServiceProvidersTickAccessor",
                 "ae2.crafting.ElapsedTimeTrackerAccessor",
                 "ae2.parts.encoding.PatternEncodingLogicMixin",

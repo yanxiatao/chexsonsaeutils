@@ -1,0 +1,5 @@
+#!/bin/sh
+# 其他分支没有此检查脚本时不改变其提交流程。
+if test -f tools/check_document_policy.py; then
+    exec python -B tools/check_document_policy.py
+fi

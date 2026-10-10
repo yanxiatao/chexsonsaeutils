@@ -7,7 +7,6 @@ import appeng.api.stacks.KeyCounter;
 import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.ListCraftingInventory;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchRemainders;
 import git.chexson.chexsonsaeutils.bigint.Ae2Amounts;
 import git.chexson.chexsonsaeutils.bigint.PlanAmount;
 import git.chexson.chexsonsaeutils.bigint.WideCeilings;

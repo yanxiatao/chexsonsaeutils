@@ -34,7 +34,6 @@ public class ReplacementAwarePatternContractTest {
         AEProcessingPattern.encode(stack, List.of(new GenericStack(RAW, 2)), List.of(new GenericStack(OUT, 2)));
         var first = wrap(new AEProcessingPattern(AEItemKey.of(stack)));
         var second = wrap(new AEProcessingPattern(AEItemKey.of(stack)));
-        assertFalse(((Object) first) instanceof git.chexson.chexsonsaeutils.crafting.hostbatch.DelegatingPatternDetails);
         assertEquals(first, first); assertEquals(first, second); assertEquals(second, first);
         assertTrue(List.of(first).contains(second));
         assertEquals(5L, Map.of(first, 5L).get(second));

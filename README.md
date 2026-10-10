@@ -1,189 +1,54 @@
 # Chexson's AE Utils
 
-[English README](README_EN.md)
+Applied Energistics 2 的实用扩展模组，补充合成、样板、存储与自动化功能。
 
-`Chexson's AE Utils` 是一个面向 Applied Energistics 2 的实用扩展模组，当前目标平台为 `Minecraft 1.21.1 + NeoForge 21.1.238 + AE2 19.2.17 + Java 21`。它补充了多槽发信器、处理样板替换规则、缺料时继续合成，以及 AEA 迁移的染色样板、增强合成状态、Building Gadgets 2 集成、FTB Ultimine 记忆卡兼容能力。
+## 主要功能
 
-本仓库是迁移到 `Minecraft 1.21.1 + NeoForge` 的分支，不是旧版 `1.20.1 + Forge` 分支的直接发布说明。发布前请以实际构建产物、变更日志和测试结果为准。
+- **ME 多槽发信器**：在一个部件中监控多个物品，配置阈值、模糊匹配与逻辑表达式。
+- **处理样板替换**：按物品标签或指定候选材料配置替换规则。
+- **合成续跑**：缺料时执行可完成的分支，并显示等待状态。
+- **并行合成 CPU（无阂枢）**：并行执行合成任务，支持大数量规划与状态显示。
+- **大数量合成终端与无限存储单元**：支持超出普通整数范围的数量输入、显示和存储。
+- **直连处理机（径行）与极限装配机（归墟）**：集中管理样板，提供机器配方导入与加工能力。
+- **ME 样板传递器**：向另一 ME 网络开放合成能力，支持多个来源与远程需求预览。
+- **玩家模拟面板**：通过模拟玩家进行方块交互与挖掘，使用 ME 网络缓存物品。
+- **合成生产关系图**：查看物料与样板关系，搜索节点并导出图片。
+- **其他扩展**：定制样板供应器、物质团供应器、样板染色、增强合成状态，以及 Building Gadgets 2、FTB Ultimine 等可选集成。
 
-## AI 编写提示
+详细操作见游戏内 AE2 指南；整合包脚本配置见 [直连处理机 KubeJS 用法](docs/direct-processing-kubejs.md)。
 
-本模组的代码、文档与部分资源主要由 AI 在开发者指令下编写、迁移和整理，并由人工进行取舍与审阅。请将它视为需要独立验证的软件：在重要存档或服务器中使用前，建议先备份世界、确认依赖版本，并在测试环境中验证核心自动化链路。
+## 支持版本
 
-## 版本与依赖
+本分支面向 **Minecraft 1.21.1 / NeoForge / Java 21**，不适用于 Forge 或 Fabric。
 
-- Minecraft: `1.21.1`
-- NeoForge: `21.1.238` 或更高的兼容 `21.1.x` 版本
-- Applied Energistics 2: `19.2.17` 或更高的兼容 `19.2.x` 版本
-- Java: `21`
-- Mod ID: `chexsonsaeutils`
-- License: `MIT`
+| 组件 | 当前构建版本或要求 |
+| --- | --- |
+| Minecraft | 1.21.1 |
+| NeoForge | 21.1.238 |
+| Applied Energistics 2 | 19.2.17 |
+| ExtendedAE | 必需，使用兼容 Minecraft 1.21.1 的 NeoForge 版本 |
+| GuideME | 21.1.1 |
+| Java | 21 |
 
-### 可选依赖
+将模组及必需依赖放入 `mods` 目录。配置文件为 `config/chexsonsaeutils-common.toml`，也可从模组配置界面编辑。JEI、Configured、KubeJS 及其他集成模组按需安装；更新依赖时需确认对应功能的兼容性。
 
-- **Configured** (`2.6+`): 提供游戏内配置 UI，可通过 Mod 菜单访问。未安装时，配置文件仍可通过 `config/chexsonsaeutils-common.toml` 手动编辑。
+## AI 编写提醒
 
-该分支依赖 NeoForge 与 AE2 的当前内部 API 和 mixin 接缝。升级 AE2、NeoForge 或 Minecraft 后，应重新运行测试并做游戏内验证。
+本模组的代码、文档和部分资源主要由 AI 在开发者指令下编写、迁移与整理，并由人工取舍和审阅。可能存在缺陷或兼容问题；用于重要存档或服务器前，请先备份并在测试环境确认实际表现。
 
-## 功能说明
+## 参考与许可证
 
-### AEA 迁移功能
+本项目原创内容使用 [MIT 许可证](LICENSE)。引用或移植的第三方内容保留原许可证，不能统一视为 MIT。
 
-当前分支已迁移并保留以下 AEA 功能：
+| 项目 | 参考或使用内容 | 上游许可证 |
+| --- | --- | --- |
+| [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2) | 网络、样板、合成接口及样板供应器逻辑移植 | LGPL-3.0；移植文件保留原声明 |
+| [ExtendedAE](https://github.com/GlodBlock/ExtendedAE) | 装配矩阵界面、行结构、搜索与界面资源复用 | LGPL-3.0 |
+| [AEA](https://github.com/REFactoryTeam/AEA) | 样板染色、合成状态及可选模组集成功能迁移 | MIT |
+| [AdvancedAE](https://github.com/pedroksl/AdvancedAE) | 合成与机器实现参考 | LGPL-3.0 |
+| [AE2 Lightning Tech](https://github.com/ae2lt/AE2-Lightning-Tech) | 批量加工与集成接口参考 | 代码 LGPL-3.0；美术资源 CC BY-NC-SA 3.0 |
+| [NeoECOAEExtension](https://github.com/DancingSnow0517/NeoECOAEExtension) | 大数库存与批量合成接口对接 | GPL-3.0 |
+| [DataEnergistics](https://github.com/fish1145/DataEnergistics) | 数量模式与下单接口对接 | 代码 AGPL-3.0；资源以其单独声明为准 |
+| [JustEnoughCharacters](https://github.com/Towdium/JustEnoughCharacters) | 中文搜索接口对接 | MIT |
 
-- `Dyeable Patterns`：
-  AE2 编码样板支持染色。
-  内置客户端资源包会覆盖样板模型与贴图。
-  颜色仅用于样板数据、持久兼容与客户端显示，不参与 planning 身份、路线、缓存、算法选择或语义。
-- `Enhanced Crafting Status`：
-  在合成状态和 Craft Confirm 视图中追加 `Blocked` 与 `Pattern Times` 信息。
-  仅扩展状态展示与序列化，不替换本仓已有 continuation、formal-machine、parallel CPU 的 UI 语义。
-- `Building Gadgets 2 Integration`：
-  可将 BG2 模板材料需求编码为标准 AE2 processing pattern。
-  生成物保持标准 AE2 processing pattern，不额外写入 replacement metadata。
-- `FTB Ultimine & Memory Card Compatibility`：
-  FTB Ultimine 批量右键流程可复用 AE 记忆卡设置目标。
-  未安装 FTB Ultimine 时不会加载对应 mixin。
-
-### ME 多槽发信器
-
-`ME 多槽发信器` 是对 AE2 原生发信器语义的扩展，物品 ID 为 `chexsonsaeutils:multi_level_emitter`。它仍作为 AE2 部件放置在可接受 AE2 part 的网络侧面，但可以在一个部件里管理多个监控槽位。
-
-主要能力：
-
-- 最多配置 `64` 个监控槽位。
-- 每个槽位可独立标记物品、设置阈值、比较模式和模糊匹配模式。
-- 支持通过合成卡启用与自动合成相关的槽位行为。
-- 支持表达式逻辑，例如 `#1 OR (#2 AND #3)`。
-- 表达式支持 `AND`、`OR` 和括号分组，并会对越界槽位、未标记槽位和语法问题给出反馈。
-- 槽位数量、阈值、比较方式、模糊匹配、合成模式和表达式会持久化到部件 NBT。
-
-合成配方是无序合成：
-
-- `ae2:level_emitter`
-- `ae2:logic_processor`
-- `ae2:engineering_processor`
-
-产物为 `chexsonsaeutils:multi_level_emitter`。
-
-### 处理样板替换规则
-
-处理样板替换功能允许玩家为 AE2 processing pattern 的输入槽保存替换规则。它适合“同一个处理流程可以接受同类材料或指定候选物品”的自动化场景。
-
-主要能力：
-
-- 在 AE2 样板编码终端中为处理输入槽配置规则。
-- 支持按共享物品标签分组选择，也支持显式选择单个物品。
-- 将替换规则写入编码样板的 metadata，根标签为 `chexsonsaeutils_processing_replacements`。
-- 解码样板时恢复 replacement-aware 语义。
-- 在 planning 和 execution 阶段按规则选择可用候选输入，而不是固定使用编码时的单一输入。
-- UI 会区分未配置、已配置和部分失效状态，便于排查标签或物品变化造成的规则问题。
-
-### 合成续跑与缺料忽略
-
-合成续跑功能扩展 AE2 的合成确认流程，在合成计划存在缺料时提供 `Default` 与 `Ignore Missing` 模式切换。
-
-主要能力：
-
-- 在 Craft Confirm 界面切换任务级合成模式。
-- `Default` 保持 AE2 默认行为。
-- `Ignore Missing` 会尽量提交可执行分支，只让受缺料影响的分支等待。
-- 合成 CPU 菜单和状态显示会保留等待数量、等待分支与运行中摘要。
-- 与多槽发信器的合成状态联动能力配合使用时，可构建更细粒度的补货与等待逻辑。
-
-## 配置
-
-本模组使用 NeoForge 的 `ModConfigSpec` 系统。
-
-### 游戏内配置 UI
-
-#### NeoForge 原生配置屏幕（推荐）
-
-无需额外依赖，直接使用 NeoForge 提供的配置界面：
-- 主菜单 → Mods → 选择 `Chexson's ae utils` → **配置**按钮（右上角齿轮图标）
-- 提供标准的 NeoForge 配置编辑界面，支持所有配置项
-
-#### Configured（可选增强）
-
-如果安装了 **Configured** mod（`2.6+` 版本），可获得更友好的配置 UI：
-- 主菜单或暂停菜单 → Mods → 选择 `Chexson's ae utils` → Config 按钮
-- 配置界面提供分类明确的选项、范围验证和详细注释
-
-### 配置文件
-
-公共配置文件位于：
-
-```text
-config/chexsonsaeutils-common.toml
-```
-
-当前配置项：
-
-```toml
-[features]
-craftingContinuationEnabled = true
-formalMachineCraftingDispatchEnabled = false
-formalMachinePlanningAggregationEnabled = true
-processingPatternReplacementEnabled = true
-
-[aeaMigration]
-dyeablePatternsEnabled = true
-enhancedCraftingStatusEnabled = true
-buildingGadgets2IntegrationEnabled = true
-ftbUltimineMemoryCardEnabled = true
-
-[parallelCraftingCpuTool]
-parallelCraftingCpuEnabled = true
-# ... 更多参数见配置文件
-
-[aeDirectProcessingMachine]
-recipeMappings = []
-budgetProfile = "normal"
-genericDiscoveryEnabled = true
-```
-
-- `craftingContinuationEnabled`：启用或禁用 AE2 合成续跑 / 缺料忽略功能包。
-- `formalMachineCraftingDispatchEnabled`：启用或禁用 formal-machine 的 AE2 合成派发快路径。
-- `formalMachinePlanningAggregationEnabled`：启用或禁用 formal-machine 的大请求 planning 聚合快路径。
-- `processingPatternReplacementEnabled`：启用或禁用 AE2 处理样板替换功能包。
-- `[aeaMigration].dyeablePatternsEnabled`：启用或禁用 AEA 染色样板迁移。
-  关闭后会同时关闭染色样板 mixin、物品染色处理和内置客户端资源包注册。
-- `[aeaMigration].enhancedCraftingStatusEnabled`：启用或禁用 AEA 增强合成状态迁移。
-- `[aeaMigration].buildingGadgets2IntegrationEnabled`：启用或禁用 AEA Building Gadgets 2 集成。
-- `[aeaMigration].ftbUltimineMemoryCardEnabled`：启用或禁用 AEA FTB Ultimine 记忆卡兼容。
-
-以上配置均在启动时读取，修改后需要重启游戏或服务器。
-
-## 安装说明
-
-1. 安装 Minecraft `1.21.1`、NeoForge `21.1.238+` 与 Java `21`。
-2. 安装 Applied Energistics 2 `19.2.17+`。
-3. 将本模组 jar 放入 `mods` 目录。
-4. 首次启动后检查 `config/chexsonsaeutils-common.toml`。
-5. 在测试世界中验证多槽发信器、处理样板替换、合成续跑和 AEA 迁移功能是否符合整合包预期。
-
-建议在服务器环境中先进行离线或测试服验证，再迁移到正式存档。
-
-## 兼容性与限制
-
-- 本模组不是 AE2 官方项目，也不代表 AE2 官方兼容承诺。
-- 当前分支只面向 `Minecraft 1.21.1 + NeoForge + AE2 19`。
-- 功能依赖 AE2 菜单、样板、合成服务和部件系统的内部行为；AE2 更新后可能需要适配。
-- 修改处理样板 metadata 和多槽发信器 NBT 前，建议备份重要世界。
-- 如果整合包中还有修改 AE2 合成、样板或终端界面的模组，建议重点测试交互兼容性。
-- BG2 与 FTB Ultimine 集成功能都属于可选依赖路径。
-  未安装对应 mod 时，本模组应保持可启动且不加载对应 mixin。
-
-## 反馈问题
-
-提交问题时建议包含：
-
-- Minecraft、NeoForge、AE2 和本模组版本。
-- 是否在客户端、服务端或专用服务器出现。
-- 完整日志和崩溃报告。
-- 复现步骤、涉及的样板或发信器配置。
-- `config/chexsonsaeutils-common.toml` 中的相关配置。
-
-## 许可证
-
-本项目使用 `MIT` 许可证。详见仓库中的许可证文件或发布页面说明。
+具体移植范围与版权声明见 [第三方声明](THIRD_PARTY_NOTICES.md)。参考源码保存在本地 `reference-sources/`，不随本仓库提交。版本变更见 [更新日志](CHANGELOG.md)。

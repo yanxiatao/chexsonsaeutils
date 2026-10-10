@@ -5,6 +5,12 @@ package git.chexson.chexsonsaeutils.crafting.status;
  */
 public interface EnhancedCraftingPlanSummary {
 
+    /** 与当前摘要绑定的生产图，空图表示尚未取得原计划。 */
+    PlanGraph chexsonsaeutils$graph();
+
+    /** 原计划转换摘要时挂载生产图，客户端禁止从汇总行猜测关系。 */
+    void chexsonsaeutils$setGraph(PlanGraph graph);
+
     /** 与计划摘要同包同步的字节真值，null 表示摘要来自原生有限 long 计划。 */
     @org.jetbrains.annotations.Nullable java.math.BigInteger chexsonsaeutils$exactBytes();
 
