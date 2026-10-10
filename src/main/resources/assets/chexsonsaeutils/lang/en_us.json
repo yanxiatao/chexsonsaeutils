@@ -1,4 +1,8 @@
 {
+  "block.chexsonsaeutils.self_powered_controller": "Self-Powered ME Controller",
+  "block.chexsonsaeutils.self_powered_overloaded_controller": "Self-Powered Overloaded ME Controller",
+  "block.chexsonsaeutils.self_powered_wireless_overloaded_controller": "Self-Powered Wireless Overloaded ME Controller",
+  "block.chexsonsaeutils.self_powered_advanced_wireless_overloaded_controller": "Self-Powered Advanced Wireless Overloaded ME Controller",
   "gui.chexsonsaeutils.planning.indeterminate": "Calculating · %s · %s ms",
   "gui.chexsonsaeutils.planning.progress": "Calculating · %s · %s steps · %s ms",
   "gui.chexsonsaeutils.planning.phase.queued": "Queued",

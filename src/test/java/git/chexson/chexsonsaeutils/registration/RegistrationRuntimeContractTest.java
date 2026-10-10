@@ -54,15 +54,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class RegistrationRuntimeContractTest {
 
     private record RegistryContract(Registry<?> registry, List<String> paths) {
+        RegistryContract {
+            if (paths.contains("self_powered_controller") && ModList.get().isLoaded("ae2lt")) {
+                var expanded = new java.util.ArrayList<>(paths);
+                expanded.addAll(1, List.of("self_powered_overloaded_controller",
+                        "self_powered_wireless_overloaded_controller", "self_powered_advanced_wireless_overloaded_controller"));
+                paths = List.copyOf(expanded);
+            }
+        }
     }
 
     /** 八类真实注册值；顺序按当前各注册器的挂接顺序及其条目顺序展开。 */
     private static final List<RegistryContract> CONTRACTS = List.of(
             new RegistryContract(BuiltInRegistries.BLOCK, List.of(
+                    "self_powered_controller",
                     "pattern_transmitter",
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool",
                     "auto_item_gen", "matter_mass_pattern_provider", "custom_pattern_provider")),
             new RegistryContract(BuiltInRegistries.ITEM, List.of(
+                    "self_powered_controller",
                     "pattern_transmitter", "remote_pattern",
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool",
                     "multi_level_emitter", "player_simulation_plane", "infinity_cell", "auto_item_gen", "matter_mass_pattern_provider",
@@ -142,7 +152,10 @@ final class RegistrationRuntimeContractTest {
             ResourceLocation id = id(path);
             AEBaseEntityBlock<?> block = assertInstanceOf(AEBaseEntityBlock.class,
                     BuiltInRegistries.BLOCK.get(id), "注册方块不是 AE2 实体方块：" + id);
-            var type = BuiltInRegistries.BLOCK_ENTITY_TYPE.get(id);
+            var typeId = path.startsWith("self_powered_")
+                    ? ResourceLocation.fromNamespaceAndPath(path.equals("self_powered_controller") ? "ae2" : "ae2lt",
+                            path.substring("self_powered_".length())) : id;
+            var type = BuiltInRegistries.BLOCK_ENTITY_TYPE.get(typeId);
             assertNotNull(type, "方块实体类型未登记：" + id);
             assertSame(type, block.getBlockEntityType(), "AE2 bootstrap 未正确绑定实体类型：" + id);
             assertTrue(type.isValid(block.defaultBlockState()), "实体类型不接受自身方块：" + id);
@@ -200,6 +213,8 @@ final class RegistrationRuntimeContractTest {
     /** 注册器逐个列出，直接调用公开 API，避免用反射探查字段或从源码猜测把手。 */
     private static List<DeferredRegister<?>> registrations() {
         return List.of(
+                git.chexson.chexsonsaeutils.bootstrap.controller.SelfPoweredControllerRegistration.BLOCKS,
+                git.chexson.chexsonsaeutils.bootstrap.controller.SelfPoweredControllerRegistration.ITEMS,
                 PatternTransmitterRegistration.BLOCKS, PatternTransmitterRegistration.ITEMS,
                 PatternTransmitterRegistration.ENTITIES, PatternTransmitterRegistration.MENUS,
                 ChexsonsaeutilsContent.BLOCKS, ChexsonsaeutilsContent.ITEMS,

@@ -197,6 +197,8 @@ final class ChexsonsaeutilsMixinPluginRosterTest {
 
         for (String entry : List.of(
                 "ae2.storage.CreativeCellSupplyMixin",
+                "ae2.blockentity.SelfPoweredControllerEnergyMixin",
+                "ae2.blockentity.SelfPoweredControllerConnectionMixin",
                 "ae2.storage.NetworkExactStorageMixin",
                 "ae2.storage.InventoryExactStorageMixin",
                 "ae2.storage.DriveExactStorageMixin",

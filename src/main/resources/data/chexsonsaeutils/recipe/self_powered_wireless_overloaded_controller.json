@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "redstone",
+  "ingredients": [
+    {
+      "item": "ae2lt:wireless_overloaded_controller"
+    },
+    {
+      "item": "ae2:creative_energy_cell"
+    }
+  ],
+  "result": {
+    "id": "chexsonsaeutils:self_powered_wireless_overloaded_controller",
+    "count": 1
+  },
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "ae2lt"
+    }
+  ]
+}

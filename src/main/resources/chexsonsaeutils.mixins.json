@@ -5,6 +5,8 @@
   "plugin": "git.chexson.chexsonsaeutils.mixin.ae2.ChexsonsaeutilsMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "ae2.blockentity.SelfPoweredControllerEnergyMixin",
+    "ae2.blockentity.SelfPoweredControllerConnectionMixin",
     "ae2.menu.CraftConfirmMenuRemoteAccessor",
     "ae2.automation.StorageLevelEmitterPartAccessor",
     "ae2.menu.CraftConfirmMenuContinuationMixin",

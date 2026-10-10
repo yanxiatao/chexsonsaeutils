@@ -1,4 +1,8 @@
 {
+  "block.chexsonsaeutils.self_powered_controller": "自供能 ME 控制器",
+  "block.chexsonsaeutils.self_powered_overloaded_controller": "自供能超载 ME 控制器",
+  "block.chexsonsaeutils.self_powered_wireless_overloaded_controller": "自供能无线超载 ME 控制器",
+  "block.chexsonsaeutils.self_powered_advanced_wireless_overloaded_controller": "自供能高级无线超载 ME 控制器",
   "gui.chexsonsaeutils.planning.indeterminate": "计算中 · %s · %s ms",
   "gui.chexsonsaeutils.planning.progress": "计算中 · %s · 已处理 %s 步 · %s ms",
   "gui.chexsonsaeutils.planning.phase.queued": "等待计算",

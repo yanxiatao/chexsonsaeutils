@@ -179,6 +179,7 @@ public final class ChexsonsaeutilsContent {
                     .title(Component.translatable("itemGroup.chexsonsaeutils"))
                     .icon(() -> new ItemStack(EXTREME_ASSEMBLER_ITEM.get()))
                     .displayItems((parameters, output) -> {
+                        git.chexson.chexsonsaeutils.bootstrap.controller.SelfPoweredControllerRegistration.displayItems(output);
                         output.accept(git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.PatternTransmitterRegistration.ITEM.get());
                         output.accept(MULTI_LEVEL_EMITTER_ITEM.get());
                         output.accept(PLAYER_SIMULATION_PLANE_ITEM.get());
@@ -203,6 +204,7 @@ public final class ChexsonsaeutilsContent {
     }
 
     public static void register(IEventBus modEventBus) {
+        git.chexson.chexsonsaeutils.bootstrap.controller.SelfPoweredControllerRegistration.register(modEventBus);
         git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.PatternTransmitterRegistration.register(modEventBus);
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
@@ -230,6 +232,7 @@ public final class ChexsonsaeutilsContent {
     }
 
     public static void registerCommonContent() {
+        git.chexson.chexsonsaeutils.bootstrap.controller.SelfPoweredControllerRegistration.bootstrap();
         git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.PatternTransmitterRegistration.bootstrap();
         git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.bootstrap();
         registerExtremeAssemblerBootstrap();

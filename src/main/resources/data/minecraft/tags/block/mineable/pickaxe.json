@@ -1,6 +1,19 @@
 {
   "replace": false,
   "values": [
-    "chexsonsaeutils:pattern_transmitter"
+    "chexsonsaeutils:pattern_transmitter",
+    "chexsonsaeutils:self_powered_controller",
+    {
+      "id": "chexsonsaeutils:self_powered_overloaded_controller",
+      "required": false
+    },
+    {
+      "id": "chexsonsaeutils:self_powered_wireless_overloaded_controller",
+      "required": false
+    },
+    {
+      "id": "chexsonsaeutils:self_powered_advanced_wireless_overloaded_controller",
+      "required": false
+    }
   ]
 }

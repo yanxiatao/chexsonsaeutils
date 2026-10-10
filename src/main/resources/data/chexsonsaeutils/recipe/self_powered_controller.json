@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "redstone",
+  "ingredients": [
+    {
+      "item": "ae2:controller"
+    },
+    {
+      "item": "ae2:creative_energy_cell"
+    }
+  ],
+  "result": {
+    "id": "chexsonsaeutils:self_powered_controller",
+    "count": 1
+  }
+}
