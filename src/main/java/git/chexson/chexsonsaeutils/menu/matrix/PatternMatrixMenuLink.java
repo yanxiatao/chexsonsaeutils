@@ -7,10 +7,15 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
 import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixEntriesPayload;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixEntry;
 import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixMatchesPayload;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixRealStack;
 import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixRealStacksPayload;
 import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixSearchPayload;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixServerTarget;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixTarget;
 import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixVisibleRequestPayload;
 
 import java.util.ArrayList;
@@ -18,7 +23,7 @@ import java.util.List;
 
 /**
  * 菜单侧的装配矩阵胶水：服务端按批下发摘要、按需回真栈、按位图回搜索结果；
- * 客户端只维护一份 {@link PatternMatrixClientView}。
+ * 客户端只维护一份 `PatternMatrixClientView`。
  *
  * <p>两台机器的菜单共用这个类，机器差异全部收敛在 {@link PatternMatrixSource} 的
  * 展示栈/状态码/搜索口径里。</p>

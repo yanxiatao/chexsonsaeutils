@@ -16,7 +16,7 @@ import git.chexson.chexsonsaeutils.mixin.ae2.client.gui.EditBoxAccessor;
 import git.chexson.chexsonsaeutils.mixin.minecraft.world.inventory.SlotAccessor;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
-import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.model.MultiLevelEmitterRules;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompileResult;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionDiagnostic;
@@ -55,7 +55,6 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
     private static final Component CRAFTING_LOCK_HELPER =
             Component.translatable("gui.chexsonsaeutils.multi_level_emitter.crafting_lock_helper");
     private static final int COLOR_LABEL = 0x404040;
-    private static final int COLOR_SUBLABEL = 0x606060;
     private static final int COLOR_HELPER = 0x8A8A8A;
     private static final int COLOR_TEXT = 0x202020;
     private static final int COLOR_INPUT_TEXT = EditBox.DEFAULT_TEXT_COLOR;
@@ -889,22 +888,6 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
         return leftBoundary && rightBoundary;
     }
 
-    private static void drawScaled(
-            GuiGraphics guiGraphics,
-            Font font,
-            Component text,
-            int x,
-            int y,
-            int color,
-            float scale
-    ) {
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().translate(x, y, 0);
-        guiGraphics.pose().scale(scale, scale, 1.0f);
-        guiGraphics.drawString(font, text, 0, 0, color, false);
-        guiGraphics.pose().popPose();
-    }
-
     private static void drawFittedText(
             GuiGraphics guiGraphics,
             Font font,
@@ -927,9 +910,9 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
         guiGraphics.pose().popPose();
     }
 
-    private static Icon fuzzyModeIcon(MultiLevelEmitterPart.MatchingMode mode) {
-        MultiLevelEmitterPart.MatchingMode effective =
-                mode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : mode;
+    private static Icon fuzzyModeIcon(MultiLevelEmitterRules.MatchingMode mode) {
+        MultiLevelEmitterRules.MatchingMode effective =
+                mode == null ? MultiLevelEmitterRules.MatchingMode.STRICT : mode;
         return switch (effective) {
             case STRICT -> Icon.TOOLBAR_BUTTON_BACKGROUND;
             case IGNORE_ALL -> Icon.FUZZY_IGNORE;
@@ -958,7 +941,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
 
     private final class FuzzyModeButton extends Button {
 
-        private MultiLevelEmitterPart.MatchingMode matchingMode = MultiLevelEmitterPart.MatchingMode.STRICT;
+        private MultiLevelEmitterRules.MatchingMode matchingMode = MultiLevelEmitterRules.MatchingMode.STRICT;
         private int textColorOverride = -1;
 
         private FuzzyModeButton(
@@ -974,8 +957,8 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             this.setTooltip(tooltip);
         }
 
-        private void setMatchingMode(MultiLevelEmitterPart.MatchingMode matchingMode) {
-            this.matchingMode = matchingMode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : matchingMode;
+        private void setMatchingMode(MultiLevelEmitterRules.MatchingMode matchingMode) {
+            this.matchingMode = matchingMode == null ? MultiLevelEmitterRules.MatchingMode.STRICT : matchingMode;
         }
 
         private void setTextColorOverride(int textColorOverride) {
@@ -1004,7 +987,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             }
             background.dest(getX(), getY()).blit(guiGraphics);
 
-            if (matchingMode == MultiLevelEmitterPart.MatchingMode.STRICT) {
+            if (matchingMode == MultiLevelEmitterRules.MatchingMode.STRICT) {
                 MatrixText.drawCenteredFitted(
                         guiGraphics,
                         font,

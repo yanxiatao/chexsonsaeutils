@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.crafting.directprocessing;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import com.mojang.logging.LogUtils;
+import git.chexson.chexsonsaeutils.bigint.ClampedMath;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ public final class DirectProcessingStackSupport {
             if (stack == null || stack.what() == null || stack.amount() <= 0L) {
                 continue;
             }
-            merged.merge(stack.what(), stack.amount(), DirectProcessingStackSupport::saturatingAdd);
+            merged.merge(stack.what(), stack.amount(), ClampedMath::add);
         }
         if (merged.isEmpty()) {
             return List.of();
@@ -47,7 +48,7 @@ public final class DirectProcessingStackSupport {
             if (stack == null || stack.what() == null || stack.amount() <= 0L) {
                 continue;
             }
-            amounts.merge(stack.what(), stack.amount(), DirectProcessingStackSupport::saturatingAdd);
+            amounts.merge(stack.what(), stack.amount(), ClampedMath::add);
         }
         return amounts.isEmpty() ? Map.of() : Map.copyOf(amounts);
     }
@@ -65,7 +66,7 @@ public final class DirectProcessingStackSupport {
             if (input == null || input.input() == null || input.amount() <= 0L) {
                 continue;
             }
-            merged.merge(input.input(), input.amount(), DirectProcessingStackSupport::saturatingAdd);
+            merged.merge(input.input(), input.amount(), ClampedMath::add);
         }
         if (merged.isEmpty()) {
             return List.of();
@@ -86,7 +87,7 @@ public final class DirectProcessingStackSupport {
             if (input == null || input.input() == null || input.amount() <= 0L) {
                 continue;
             }
-            amounts.merge(input.input(), input.amount(), DirectProcessingStackSupport::saturatingAdd);
+            amounts.merge(input.input(), input.amount(), ClampedMath::add);
         }
         return amounts.isEmpty() ? Map.of() : Map.copyOf(amounts);
     }
@@ -122,8 +123,8 @@ public final class DirectProcessingStackSupport {
         return normalizeStacks(stacks);
     }
 
-    static List<GenericStack> scaleStacks(List<GenericStack> stacks, int scale) {
-        if (stacks == null || stacks.isEmpty() || scale <= 0) {
+    static List<GenericStack> scaleStacks(List<GenericStack> stacks, long scale) {
+        if (stacks == null || stacks.isEmpty() || scale <= 0L) {
             return List.of();
         }
         List<GenericStack> scaled = new ArrayList<>(stacks.size());
@@ -140,8 +141,12 @@ public final class DirectProcessingStackSupport {
         return normalizeStacks(scaled);
     }
 
+    /**
+     * 由 holder 实收量反推执行份数。份数口径与 {@link ProcessingTask} 的执行计数同为
+     * long——这里曾夹在 {@code Integer.MAX_VALUE}，把直连机整批压在 2.1e9 份上。
+     */
     @Nullable
-    static Integer deriveExecutionCount(
+    static Long deriveExecutionCount(
             List<RecipeSignatureInput> selectedInputs,
             List<RecipeSignatureInput> inputsPerExecution
     ) {
@@ -151,7 +156,7 @@ public final class DirectProcessingStackSupport {
                 || !selectedAmounts.keySet().equals(requiredAmounts.keySet())) {
             return null;
         }
-        Integer ratio = null;
+        Long ratio = null;
         for (Map.Entry<AEKey, Long> entry : requiredAmounts.entrySet()) {
             long selectedAmount = selectedAmounts.getOrDefault(entry.getKey(), 0L);
             long requiredAmount = entry.getValue();
@@ -159,14 +164,14 @@ public final class DirectProcessingStackSupport {
                 return null;
             }
             long candidateRatio = selectedAmount / requiredAmount;
-            if (candidateRatio <= 0L || candidateRatio > Integer.MAX_VALUE) {
+            if (candidateRatio <= 0L) {
                 return null;
             }
             if (ratio == null) {
-                ratio = (int) candidateRatio;
+                ratio = candidateRatio;
                 continue;
             }
-            if (ratio.intValue() != (int) candidateRatio) {
+            if (ratio.longValue() != candidateRatio) {
                 return null;
             }
         }
@@ -174,15 +179,15 @@ public final class DirectProcessingStackSupport {
     }
 
     @Nullable
-    static Integer deriveExecutionCountFromStacks(
+    static Long deriveExecutionCountFromStacks(
             List<GenericStack> selectedStacks,
             List<GenericStack> stacksPerExecution
     ) {
         return deriveExecutionCount(toSignatureInputs(selectedStacks), toSignatureInputs(stacksPerExecution));
     }
 
-    static long multiplyOrZero(long amount, int count) {
-        if (amount <= 0L || count <= 0) {
+    static long multiplyOrZero(long amount, long count) {
+        if (amount <= 0L || count <= 0L) {
             return 0L;
         }
         if (amount > Long.MAX_VALUE / count) {
@@ -190,15 +195,5 @@ public final class DirectProcessingStackSupport {
             return 0L;
         }
         return amount * count;
-    }
-
-    static long saturatingAdd(long left, long right) {
-        if (right > 0L && left > Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        if (right < 0L && left < Long.MIN_VALUE - right) {
-            return Long.MIN_VALUE;
-        }
-        return left + right;
     }
 }

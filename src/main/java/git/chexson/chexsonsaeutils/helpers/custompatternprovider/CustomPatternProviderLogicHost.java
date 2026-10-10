@@ -15,7 +15,9 @@ import appeng.helpers.patternprovider.PatternProviderLogicHost;
 import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuHostLocator;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import net.minecraft.world.inventory.MenuType;
+import appeng.menu.AEBaseMenu;
+import appeng.menu.locator.MenuLocators;
 
 /**
  * 定制样板供应器逻辑宿主接口。
@@ -249,7 +251,7 @@ public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost
      */
     @Override
     default void openMenu(Player player, MenuHostLocator locator) {
-        MenuOpener.open(Chexsonsaeutils.CUSTOM_PATTERN_PROVIDER_MENU.get(), player, locator);
+        MenuOpener.open(getMainMenuType(), player, locator);
     }
 
     /**
@@ -257,6 +259,18 @@ public interface CustomPatternProviderLogicHost extends PatternProviderLogicHost
      */
     @Override
     default void returnToMainMenu(Player player, ISubMenu subMenu) {
-        MenuOpener.returnTo(Chexsonsaeutils.CUSTOM_PATTERN_PROVIDER_MENU.get(), player, subMenu.getLocator());
+        MenuOpener.returnTo(getMainMenuType(), player, subMenu.getLocator());
     }
+    /** 宿主选择实际主菜单类型；逻辑接口不绑定任何具体 GUI。 */
+    MenuType<? extends AEBaseMenu> getMainMenuType();
+
+    /** 主菜单定位；方块宿主使用方块定位，面板宿主覆写为面板定位。 */
+    default MenuHostLocator getMainMenuLocator() {
+        return MenuLocators.forBlockEntity(getBlockEntity());
+    }
+
+    /** 扩容定位所需的面板方向；方块宿主没有面板方向。 */
+    @org.jetbrains.annotations.Nullable
+    default Direction getPartSide() { return null; }
+
 }

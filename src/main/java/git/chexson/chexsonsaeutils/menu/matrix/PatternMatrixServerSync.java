@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.menu.matrix;
 
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixEntry;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;

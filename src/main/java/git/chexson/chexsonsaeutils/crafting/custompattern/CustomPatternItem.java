@@ -17,7 +17,6 @@ import appeng.api.stacks.AEKey;
 import appeng.core.AppEng;
 import appeng.core.localization.GuiText;
 import appeng.crafting.pattern.EncodedPatternItem;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
  * 定制样板物品（EncodedPatternItem 子类）。
@@ -72,7 +71,7 @@ public class CustomPatternItem extends EncodedPatternItem<CustomProcessingPatter
                     "slotMapping length %d does not match sparseInputs size %d"
                             .formatted(slotMapping.length, encoded.sparseInputs().size()));
         }
-        var stack = new ItemStack(ChexsonsaeutilsContent.CUSTOM_PATTERN_ITEM.get());
+        var stack = new ItemStack(CustomPatternRegistration.CUSTOM_PATTERN_ITEM.get());
         CustomProcessingPattern.encode(stack, encoded.sparseInputs(), encoded.sparseOutputs(), slotMapping,
                 extractSlots, overflowStacks);
         return stack;

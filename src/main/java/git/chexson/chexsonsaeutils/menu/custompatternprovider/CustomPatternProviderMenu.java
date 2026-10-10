@@ -14,7 +14,7 @@ import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.implementations.PatternProviderMenu;
 import appeng.menu.slot.AppEngSlot;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternItem;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
@@ -23,7 +23,7 @@ import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigL
 import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
 import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeLocator;
 import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeMenu;
-import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
+
 
 /**
  * 定制样板供应器菜单（阶段 3：继承 AE2 原版 PatternProviderMenu）。
@@ -55,7 +55,7 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
             .<CustomPatternProviderMenu<?>, CustomPatternProviderHost>create(
                     CustomPatternProviderMenu::new, CustomPatternProviderHost.class)
             .buildUnregistered(Objects.requireNonNull(
-                    ResourceLocation.tryParse(Chexsonsaeutils.MODID + ":custom_pattern_provider")
+                    ResourceLocation.tryParse(ModIds.MODID + ":custom_pattern_provider")
             ));
 
     private final T host;
@@ -267,10 +267,7 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
             return;
         }
         var blockEntity = getHost().getBlockEntity();
-        Direction partSide = null;
-        if (getHost() instanceof CustomPatternProviderPart part) {
-            partSide = part.getSide();
-        }
+        Direction partSide = getHost().getPartSide();
         MenuOpener.open(CustomPatternUpgradeMenu.TYPE, getPlayer(),
                 new CustomPatternUpgradeLocator(blockEntity.getBlockPos(), getPlayer().level().dimension(), partSide));
     }

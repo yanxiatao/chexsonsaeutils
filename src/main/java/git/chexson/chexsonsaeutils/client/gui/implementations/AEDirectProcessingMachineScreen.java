@@ -14,7 +14,7 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImport
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReasonCode;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixClientView;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.events.GuiEventListener;

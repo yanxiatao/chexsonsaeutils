@@ -2,6 +2,8 @@ package git.chexson.chexsonsaeutils.crafting.solve;
 
 import appeng.crafting.inv.ChildCraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
 
 import java.util.ArrayDeque;
 
@@ -28,6 +30,7 @@ import java.util.ArrayDeque;
  */
 public final class FastSimStatePool {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int MAX_PER_THREAD = 64;
 
     private static final ThreadLocal<ArrayDeque<ChildCraftingSimulationState>> POOL =
@@ -47,7 +50,7 @@ public final class FastSimStatePool {
             ((FastSimStateParentAccess) (Object) state).chexsonsaeutils$setFastParent(parent);
             return state;
         } catch (RuntimeException failure) {
-            // Never let pooling break crafting; behave exactly like the un-pooled path.
+            LOGGER.error("Failed to reuse crafting simulation state", failure);
             return new ChildCraftingSimulationState(parent);
         }
     }
@@ -59,16 +62,13 @@ public final class FastSimStatePool {
         try {
             // 归还前置空 parent，避免池化实例在共享合成线程上跨计算持有旧网格/存储引用。
             ((FastSimStateParentAccess) (Object) state).chexsonsaeutils$setFastParent(null);
-        } catch (RuntimeException ignored) {
-            // 置空失败不影响后续复用：acquire 总会重新指定 parent。
-        }
-        try {
             ArrayDeque<ChildCraftingSimulationState> stack = POOL.get();
             if (stack.size() < MAX_PER_THREAD) {
                 stack.addFirst(state);
             }
-        } catch (RuntimeException ignored) {
-            // Dropping the instance is always safe.
+        } catch (RuntimeException failure) {
+            // 清理失败的实例不能回池，否则会持有旧网格引用。
+            LOGGER.error("Discarding crafting simulation state after release failure", failure);
         }
     }
 }

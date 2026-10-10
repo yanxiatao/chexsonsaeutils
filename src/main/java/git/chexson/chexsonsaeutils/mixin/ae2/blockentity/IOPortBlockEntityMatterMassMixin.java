@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import appeng.blockentity.storage.IOPortBlockEntity;
 import appeng.util.inv.AppEngInternalInventory;
-import git.chexson.chexsonsaeutils.cell.MatterMassStore;
+import git.chexson.chexsonsaeutils.mattermassstore.MatterMassStore;
 import git.chexson.chexsonsaeutils.item.mattermass.MatterMassItem;
 
 /**

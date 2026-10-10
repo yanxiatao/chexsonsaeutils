@@ -90,6 +90,30 @@ final class InfinityCellStoreTest {
         assertEquals(new BigInteger("9223372036854775816"), cell.totalAmount());
     }
 
+    /**
+     * 总量的窄化判据与同类那条 long 腿共用一把尺：{@code bitLength() <= 63} 才装得进 {@code long}
+     * （long 腿用 {@code Math.addExact}，越界才切实值，恰是这一口径）。
+     *
+     * <p>旧写法 {@code addToTotal(BigInteger)} 用 {@code < 63}，把 {@code 2^62..2^63-1} 整段白拒进
+     * {@code totalBig}。这一档在本类<b>没有可达的数值后果</b>：{@code totalAmount()} 两档都交回逐位
+     * 相同的读数，所以这条用例钉的是"界画在哪"（2^63-1 与 2^63 之间），不是"旧写法必红"——
+     * 有可达后果的那一份在白拒带上有牙（见 {@code RingStartupLongBoundaryTest}）。
+     */
+    @Test
+    void totalNarrowsAtTheLongBoundaryNotOneNotchBelowIt() {
+        var store = new InfinityCellStore();
+        var cell = store.cell(UUID.randomUUID());
+        var twoPow63 = new BigInteger("9223372036854775808");
+
+        cell.loadAmount(store.keyDictionary().idFor(COPPER), BigInteger.valueOf(Long.MAX_VALUE));
+        assertEquals(BigInteger.valueOf(Long.MAX_VALUE), cell.totalAmount(),
+                "恰在 2^63-1 这一档：总量读数逐位等于 9223372036854775807，不许当越界处理");
+
+        cell.loadAmount(store.keyDictionary().idFor(TIN), twoPow63);
+        assertEquals(BigInteger.valueOf(Long.MAX_VALUE).add(twoPow63), cell.totalAmount(),
+                "越过 2^63 才切实值：两笔合计逐位等于 18446744073709551615");
+    }
+
     @Test
     void snapshotIsReusedUntilVersionChangesAndExposesOriginalKeys() {
         var store = new InfinityCellStore();

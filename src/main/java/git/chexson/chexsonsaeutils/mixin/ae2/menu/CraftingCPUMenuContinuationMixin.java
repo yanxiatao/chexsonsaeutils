@@ -5,7 +5,7 @@ import appeng.menu.guisync.GuiSync;
 import appeng.menu.me.crafting.CraftingCPUMenu;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationStatusSnapshot;
-import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingBranch;
+import git.chexson.chexsonsaeutils.crafting.contract.CraftingContinuationWaitingBranch;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;

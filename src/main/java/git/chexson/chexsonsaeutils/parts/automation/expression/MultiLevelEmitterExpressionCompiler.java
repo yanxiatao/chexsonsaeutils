@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.parts.automation.expression;
 
-import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.model.MultiLevelEmitterRules;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -441,7 +441,7 @@ public final class MultiLevelEmitterExpressionCompiler {
     }
 
     private interface ExprNode {
-        MultiLevelEmitterPart.AggregationResult evaluate(List<MultiLevelEmitterPart.SlotEvaluation> slotResults);
+        MultiLevelEmitterRules.AggregationResult evaluate(List<MultiLevelEmitterRules.SlotEvaluation> slotResults);
 
         int highestReferencedSlot();
 
@@ -452,17 +452,17 @@ public final class MultiLevelEmitterExpressionCompiler {
 
     private record SlotNode(int slotNumber, int start, int end) implements ExprNode {
         @Override
-        public MultiLevelEmitterPart.AggregationResult evaluate(List<MultiLevelEmitterPart.SlotEvaluation> slotResults) {
+        public MultiLevelEmitterRules.AggregationResult evaluate(List<MultiLevelEmitterRules.SlotEvaluation> slotResults) {
             int index = slotNumber - 1;
             if (slotResults == null || index < 0 || index >= slotResults.size()) {
-                return new MultiLevelEmitterPart.AggregationResult(0, false);
+                return new MultiLevelEmitterRules.AggregationResult(0, false);
             }
 
-            MultiLevelEmitterPart.SlotEvaluation slotResult = slotResults.get(index);
+            MultiLevelEmitterRules.SlotEvaluation slotResult = slotResults.get(index);
             if (slotResult == null || !slotResult.participating()) {
-                return new MultiLevelEmitterPart.AggregationResult(0, false);
+                return new MultiLevelEmitterRules.AggregationResult(0, false);
             }
-            return new MultiLevelEmitterPart.AggregationResult(1, slotResult.result());
+            return new MultiLevelEmitterRules.AggregationResult(1, slotResult.result());
         }
 
         @Override
@@ -473,9 +473,9 @@ public final class MultiLevelEmitterExpressionCompiler {
 
     private record BinaryNode(TokenKind operator, ExprNode left, ExprNode right, int start, int end) implements ExprNode {
         @Override
-        public MultiLevelEmitterPart.AggregationResult evaluate(List<MultiLevelEmitterPart.SlotEvaluation> slotResults) {
-            MultiLevelEmitterPart.AggregationResult leftResult = left.evaluate(slotResults);
-            MultiLevelEmitterPart.AggregationResult rightResult = right.evaluate(slotResults);
+        public MultiLevelEmitterRules.AggregationResult evaluate(List<MultiLevelEmitterRules.SlotEvaluation> slotResults) {
+            MultiLevelEmitterRules.AggregationResult leftResult = left.evaluate(slotResults);
+            MultiLevelEmitterRules.AggregationResult rightResult = right.evaluate(slotResults);
             if (leftResult.participatingCount() == 0) {
                 return rightResult;
             }
@@ -488,7 +488,7 @@ public final class MultiLevelEmitterExpressionCompiler {
                 case OR -> leftResult.result() || rightResult.result();
                 default -> false;
             };
-            return new MultiLevelEmitterPart.AggregationResult(
+            return new MultiLevelEmitterRules.AggregationResult(
                     leftResult.participatingCount() + rightResult.participatingCount(),
                     result
             );
@@ -502,7 +502,7 @@ public final class MultiLevelEmitterExpressionCompiler {
 
     private record ParenthesizedNode(ExprNode inner, int start, int end) implements ExprNode {
         @Override
-        public MultiLevelEmitterPart.AggregationResult evaluate(List<MultiLevelEmitterPart.SlotEvaluation> slotResults) {
+        public MultiLevelEmitterRules.AggregationResult evaluate(List<MultiLevelEmitterRules.SlotEvaluation> slotResults) {
             return inner.evaluate(slotResults);
         }
 
@@ -514,8 +514,8 @@ public final class MultiLevelEmitterExpressionCompiler {
 
     private record ErrorNode(int start, int end) implements ExprNode {
         @Override
-        public MultiLevelEmitterPart.AggregationResult evaluate(List<MultiLevelEmitterPart.SlotEvaluation> slotResults) {
-            return new MultiLevelEmitterPart.AggregationResult(0, false);
+        public MultiLevelEmitterRules.AggregationResult evaluate(List<MultiLevelEmitterRules.SlotEvaluation> slotResults) {
+            return new MultiLevelEmitterRules.AggregationResult(0, false);
         }
 
         @Override
@@ -528,8 +528,8 @@ public final class MultiLevelEmitterExpressionCompiler {
         INSTANCE;
 
         @Override
-        public MultiLevelEmitterPart.AggregationResult evaluate(List<MultiLevelEmitterPart.SlotEvaluation> slotResults) {
-            return new MultiLevelEmitterPart.AggregationResult(0, false);
+        public MultiLevelEmitterRules.AggregationResult evaluate(List<MultiLevelEmitterRules.SlotEvaluation> slotResults) {
+            return new MultiLevelEmitterRules.AggregationResult(0, false);
         }
 
         @Override
@@ -556,8 +556,8 @@ public final class MultiLevelEmitterExpressionCompiler {
         }
 
         @Override
-        public MultiLevelEmitterPart.AggregationResult evaluateParticipating(
-                List<MultiLevelEmitterPart.SlotEvaluation> slotResults
+        public MultiLevelEmitterRules.AggregationResult evaluateParticipating(
+                List<MultiLevelEmitterRules.SlotEvaluation> slotResults
         ) {
             return root.evaluate(slotResults);
         }

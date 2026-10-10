@@ -15,12 +15,10 @@ final class FixedPlanningAlgorithmOrderTest {
     void movesItemsInsideOrder() {
         var order = FixedPlanningAlgorithmOrder.defaults();
 
-        assertTrue(order.moveDown(PlanningAlgorithm.FROZEN_ROUTE));
+        assertTrue(order.moveDown(PlanningAlgorithm.GRAPH));
         assertEquals(List.of(
-                PlanningAlgorithm.GRAPH,
-                PlanningAlgorithm.FROZEN_ROUTE,
-                PlanningAlgorithm.OPTIMIZED_TREE,
-                PlanningAlgorithm.NATIVE_AE2
+                PlanningAlgorithm.NATIVE_AE2,
+                PlanningAlgorithm.GRAPH
         ), order.order());
     }
 
@@ -28,22 +26,20 @@ final class FixedPlanningAlgorithmOrderTest {
     void refusesMovesBeyondBoundariesOrUnknownMember() {
         var order = FixedPlanningAlgorithmOrder.defaults();
 
-        assertFalse(order.moveUp(PlanningAlgorithm.FROZEN_ROUTE));
+        assertFalse(order.moveUp(PlanningAlgorithm.GRAPH));
         assertFalse(order.moveDown(PlanningAlgorithm.NATIVE_AE2));
         assertFalse(order.move(-1, 0));
-        assertFalse(order.move(0, 4));
+        assertFalse(order.move(0, 2));
     }
 
     @Test
     void dragMovePreservesAllFixedItems() {
         var order = FixedPlanningAlgorithmOrder.defaults();
 
-        assertTrue(order.move(0, 3));
+        assertTrue(order.move(0, 1));
         assertEquals(List.of(
-                PlanningAlgorithm.GRAPH,
-                PlanningAlgorithm.OPTIMIZED_TREE,
                 PlanningAlgorithm.NATIVE_AE2,
-                PlanningAlgorithm.FROZEN_ROUTE
+                PlanningAlgorithm.GRAPH
         ), order.order());
         FixedPlanningAlgorithmOrder.validate(order.order());
     }
@@ -53,10 +49,8 @@ final class FixedPlanningAlgorithmOrderTest {
         assertThrows(IllegalArgumentException.class, () -> new FixedPlanningAlgorithmOrder(
                 List.of(PlanningAlgorithm.GRAPH)));
         assertThrows(IllegalArgumentException.class, () -> new FixedPlanningAlgorithmOrder(List.of(
-                PlanningAlgorithm.FROZEN_ROUTE,
-                PlanningAlgorithm.FROZEN_ROUTE,
-                PlanningAlgorithm.OPTIMIZED_TREE,
-                PlanningAlgorithm.NATIVE_AE2
+                PlanningAlgorithm.GRAPH,
+                PlanningAlgorithm.GRAPH
         )));
     }
 
@@ -84,7 +78,7 @@ final class FixedPlanningAlgorithmOrderTest {
     @Test
     void restoreDefaultsAndSnapshotKeepRevisionAndReadOnlyState() {
         var order = FixedPlanningAlgorithmOrder.defaults();
-        order.moveDown(PlanningAlgorithm.FROZEN_ROUTE);
+        order.moveDown(PlanningAlgorithm.GRAPH);
         assertFalse(order.isDefault());
 
         order.restoreDefaults();

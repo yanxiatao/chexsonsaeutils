@@ -10,9 +10,9 @@ import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.CraftingTreeProcess;
 import appeng.crafting.inv.ChildCraftingSimulationState;
 import appeng.crafting.inv.CraftingSimulationState;
-import git.chexson.chexsonsaeutils.crafting.numeric.Ae2Amounts;
-import git.chexson.chexsonsaeutils.crafting.numeric.PlanAmount;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideMath;
+import git.chexson.chexsonsaeutils.bigint.Ae2Amounts;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.bigint.WideMath;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeFastAccessor;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeInvoker;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessAccessor;
@@ -54,9 +54,6 @@ import java.util.Map;
  */
 public final class FastLimitQtyBatcher {
 
-    /** 仅供等价性测试：置为 {@code true} 时强制走逐件参照路径。 */
-    public static volatile boolean forcePerItemForTesting = false;
-
     private enum InputKind {
         /** 纯消耗：无回流，按 times 倍批量。 */
         CONSUME,
@@ -84,9 +81,6 @@ public final class FastLimitQtyBatcher {
             long totalRequestedItems,
             long craftedPerPattern
     ) throws InterruptedException {
-        if (forcePerItemForTesting) {
-            return false;
-        }
         if (craftedPerPattern <= 0 || totalRequestedItems <= 0) {
             return false;
         }
@@ -197,6 +191,7 @@ public final class FastLimitQtyBatcher {
         } catch (CraftBranchFailure failure) {
             return false; // 沙盒丢弃，回退逐件
         } catch (RuntimeException failure) {
+            appeng.core.AELog.error(failure);
             return false;
         } finally {
             FastSimStatePool.release(sandbox);

@@ -1,12 +1,12 @@
 package git.chexson.chexsonsaeutils.crafting.graphplan.graph;
 
 import appeng.api.stacks.AEKey;
-import git.chexson.chexsonsaeutils.crafting.numeric.PlanAmount;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideMath;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.bigint.WideMath;
 
 /**
  * 样板单次发射（per-craft）在指定键上的宽精确流量口径。
- * 搜索、事务 VM、线性规划与守恒闸门共用同一份定义，避免四条求解路径各自漂移。
+ * 线性规划求解器与守恒闸门共用同一份定义，避免两条路径各自漂移。
  */
 public final class GraphPatternFlows {
 

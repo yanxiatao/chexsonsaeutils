@@ -36,11 +36,13 @@ public abstract class AE2CTRecipeHelperCompatMixin {
             ICraftingPlan job,
             CallbackInfoReturnable<CraftingPlanSummary> cir
     ) {
-        // Phase 4：crafts 层替换后计划回归原生 CraftingPlan——
-        // 只要 patternTimes 含 HostBatchPattern 即按聚合计划处理。
-        boolean hasHostBatch = job.patternTimes().keySet().stream()
-                .anyMatch(pattern -> pattern instanceof HostBatchPattern);
-        if (!hasHostBatch) {
+        // 门槛是「这条计划 AE2 与 ae2ct 认不认得」，不是「含不含聚合样板」：
+        // ae2ct 在 fromJob 的 TAIL 上无条件把 ICraftingPlan 强转成 appeng.crafting.CraftingPlan，
+        // 我们的 RecursiveCraftingPlan / WideAmountCraftingPlan 都不是它的子类——
+        // 让它跑下去要么 CCE 被 AE2 吞成「Failed to start crafting job」（预览根本出不来），
+        // 要么留下一个没填 helper 的 summary，在 write 的 TAIL 上把整条连接掐断。
+        // 所以：原生计划照旧放行，非原生的全部由这条兼容链负责（自己造 summary + 自己填 helper）。
+        if (!git.chexson.chexsonsaeutils.integration.ae2ct.Ae2ctJobBridge.takesOver(job)) {
             return;
         }
         ICraftingPlan aggregated = job;

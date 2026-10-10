@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.client.gui.config;
 
+import git.chexson.chexsonsaeutils.crafting.solve.PlanningAlgorithmId;
 import git.chexson.chexsonsaeutils.network.planning.PlanningOrderClientResponseRouter;
 import git.chexson.chexsonsaeutils.network.planning.PlanningOrderProtocol;
 import git.chexson.chexsonsaeutils.network.planning.PlanningOrderStatePayload;
@@ -71,7 +72,13 @@ public final class NetworkPlanningAlgorithmOrderClientBridge implements Planning
                 PlanningAlgorithmOrderSnapshot snapshot = new PlanningAlgorithmOrderSnapshot(
                         payload.revision(),
                         payload.editable(),
-                        decoded.stream().map(PlanningAlgorithm::fromProtocolId).toList()
+                        // decode 现在交回串名册形状：这里就地 parse 回能力侧枚举，再映射到客户端显示模型。
+                        // 认不出照样抛 IllegalArgumentException（不另加兜底分支），非法 id 的结局仍是 invalidResponse()。
+                        decoded.stream()
+                                .map(id -> PlanningAlgorithmId.parse(id).orElseThrow(
+                                        () -> new IllegalArgumentException("Unknown planning algorithm ID: " + id)))
+                                .map(PlanningAlgorithm::fromProtocolId)
+                                .toList()
                 );
                 request.complete(payload, snapshot);
             } catch (IllegalArgumentException exception) {

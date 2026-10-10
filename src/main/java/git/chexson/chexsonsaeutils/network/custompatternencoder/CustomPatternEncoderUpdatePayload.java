@@ -12,8 +12,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import appeng.api.stacks.GenericStack;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
+import git.chexson.chexsonsaeutils.modid.ModIds;
+
 
 /**
  * 定制样板编码 GUI 的「服务端 → 客户端」数据同步负载。
@@ -31,7 +31,7 @@ public record CustomPatternEncoderUpdatePayload(
 ) implements CustomPacketPayload {
 
     public static final Type<CustomPatternEncoderUpdatePayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "custom_pattern_encoder_update")
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "custom_pattern_encoder_update")
     );
 
     private static final StreamCodec<ByteBuf, int[]> INT_ARRAY_STREAM_CODEC = ByteBufCodecs.INT
@@ -66,8 +66,8 @@ public record CustomPatternEncoderUpdatePayload(
             // 避免本类持有客户端 LocalPlayer/Minecraft 直接引用，导致专用服务端加载
             // 本类时触发 dist 校验失败（BootstrapMethodError: invalid dist DEDICATED_SERVER）。
             var player = context.player();
-            if (player != null && player.containerMenu instanceof CustomPatternEncoderMenu menu
-                    && menu.containerId == payload.containerId()) {
+            if (player != null && player.containerMenu instanceof CustomPatternEncoderSyncTarget menu
+                    && player.containerMenu.containerId == payload.containerId()) {
                 menu.updateFromServer(payload.sparseInputs(), payload.slotMapping(), payload.extractSlots(),
                         payload.overflowStacks());
             }

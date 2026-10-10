@@ -22,7 +22,7 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 
 import appeng.blockentity.AEBaseBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+
 
 public class AutoItemGenBlockEntity extends AEBaseBlockEntity {
 
@@ -34,7 +34,7 @@ public class AutoItemGenBlockEntity extends AEBaseBlockEntity {
     private Item filter;
 
     public AutoItemGenBlockEntity(BlockPos pos, BlockState blockState) {
-        super(ChexsonsaeutilsContent.AUTO_ITEM_GEN_BLOCK_ENTITY.get(), pos, blockState);
+        super(((appeng.block.AEBaseEntityBlock<?>) blockState.getBlock()).getBlockEntityType(), pos, blockState);
     }
 
     public static void serverTick(Level level, BlockPos pos, BlockState state, AutoItemGenBlockEntity be) {

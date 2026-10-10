@@ -36,20 +36,9 @@ public abstract class PatternEncodingTermScreenRuleMixin extends MEStorageScreen
     @Unique
     private static final int chexsonsaeutils$BADGE_SIZE = 8;
     @Unique
-    private static final int chexsonsaeutils$BADGE_INSET = 4;
-    @Unique
     private static final int chexsonsaeutils$CONFIGURED_BADGE_COLOR = 0xFF3D8C56;
     @Unique
     private static final int chexsonsaeutils$PARTIALLY_INVALID_BADGE_COLOR = 0xFFDDD28C;
-    @Unique
-    private static final String chexsonsaeutils$STATUS_NOT_CONFIGURED =
-            "gui.chexsonsaeutils.processing_pattern_rule.status.not_configured";
-    @Unique
-    private static final String chexsonsaeutils$STATUS_CONFIGURED =
-            "gui.chexsonsaeutils.processing_pattern_rule.status.configured";
-    @Unique
-    private static final String chexsonsaeutils$STATUS_PARTIALLY_INVALID =
-            "gui.chexsonsaeutils.processing_pattern_rule.status.partially_invalid";
     @Unique
     private @Nullable Slot chexsonsaeutils$tooltipSlot;
 

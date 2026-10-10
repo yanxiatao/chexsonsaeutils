@@ -10,7 +10,7 @@ import net.minecraft.server.level.ServerPlayer;
 import appeng.api.stacks.AEKey;
 import appeng.core.network.CustomAppEngPayload;
 import appeng.core.network.ServerboundPacket;
-import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
+
 
 /**
  * 客户端 → 服务端：把某个稀疏输入映射到机器槽位（-1 = 未指定）。
@@ -42,7 +42,7 @@ public record CustomPatternSlotChangePacket(AEKey key, int slot) implements Serv
 
     @Override
     public void handleOnServer(ServerPlayer player) {
-        if (player.containerMenu instanceof CustomPatternEncoderMenu encoderMenu) {
+        if (player.containerMenu instanceof CustomPatternEncoderSyncTarget encoderMenu) {
             encoderMenu.update(this.key, this.slot);
         }
     }

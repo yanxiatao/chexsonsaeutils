@@ -112,7 +112,15 @@ dependencies {
     implementation 'org.spongepowered:mixin:0.8.5'
 
     compileOnly "org.appliedenergistics:appliedenergistics2:${ae2_version}"
-    compileOnly files('reference-sources/neoecoae-21.2.0-preview14.jar')
+    // neoecoae：软依赖（万象/直连机的快路径批量供应，运行时按 ModLoaded 检测，仅编译期引用）。
+    // 21.2.0-beta4 起 api.me.ECOBatchCapacityProvider 的 eco$getBatchCapacity/eco$pushBatch 被删，
+    // 换成 api.me.provider.ECOFastPathDispatchProvider 的单次 eco$prepareFastPath(ctx) 申报；
+    // 部分类从 api.me 迁到 api.me.provider、impl.crafting.fastpath 迁到 crafting.execution.fastpath。
+    compileOnly files("reference-sources/neoecoae-${neoecoae_version}.jar")
+    // useless_mod：软依赖（高级合金炉的批量推送兼容，运行时按 ModLoaded 检测，仅编译期引用）。
+    // 2.3.8 起才有 api.crafting.bigint 通道（BigInteger 份数批次：findTargets/capacity/admit/commit），
+    // 2.3.9 的 claimOutputs 可转移真实 BigInteger 产物，因此以 2.3.9 为编译基线；jar 不入库。
+    compileOnly files('reference-sources/useless_mod-1.21.1-2.3.9.jar')
     compileOnly files('libs/ae2ct-1.21.1-1.1.1.jar')
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
@@ -165,7 +173,8 @@ def generateModMetadata = tasks.register('generateModMetadata', ProcessResources
         mod_description        : mod_description,
         ae2_version            : ae2_version,
         guideme_version        : guideme_version,
-        mekanism_version       : mekanism_version
+        mekanism_version       : mekanism_version,
+        neoecoae_version       : neoecoae_version
     ]
     inputs.properties replaceProperties
     from 'src/main/templates'
@@ -192,9 +201,24 @@ publishing {
 }
 
 tasks.named('test', Test).configure {
-    useJUnitPlatform()
+    // 度量用例（@Tag('footprint')）不进门禁：读数随 JVM/GC 波动、无容差可钉，且单条就占全量
+    // 时长的一半以上（本机 43.4s / 44.2s）。要量时显式加 -Pfootprint 手工跑一次。
+    useJUnitPlatform {
+        if (!project.hasProperty('footprint')) {
+            excludeTags 'footprint'
+        }
+    }
     systemProperty 'user.dir', project.projectDir.absolutePath
-    ['plannerCompare.warmup', 'plannerCompare.samples', 'plannerCompare.retentionEvidence'].each { propertyName ->
+    // 迭代期只跑一片：-Ponly=graphplan 或 -Ponly=WideAmountConfirmLines（按 FQCN 子串匹配）。
+    // 切片只用于快速反馈；收口必须不带 -Ponly 跑一次全量，否则回归看不见。
+    if (project.hasProperty('only')) {
+        String slice = project.property('only').toString()
+        filter {
+            includeTestsMatching "*${slice}*"
+        }
+    }
+    ['plannerCompare.warmup', 'plannerCompare.samples', 'plannerCompare.retentionEvidence',
+     'chexson.capture'].each { propertyName ->
         if (System.getProperty(propertyName) != null) {
             systemProperty propertyName, System.getProperty(propertyName)
         }

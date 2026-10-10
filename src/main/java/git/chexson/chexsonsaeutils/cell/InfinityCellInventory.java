@@ -31,7 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-public final class InfinityCellInventory implements StorageCell {
+public final class InfinityCellInventory implements StorageCell, WideSupplySource {
     /** 套娃检查决策缓存上限；满即整体清空（决策是 AEKey 的纯函数，重建只损失命中率）。 */
     private static final int FIT_CACHE_LIMIT = 4096;
     private static final Object2BooleanOpenHashMap<AEKey> FIT_CACHE = new Object2BooleanOpenHashMap<>();
@@ -88,6 +88,18 @@ public final class InfinityCellInventory implements StorageCell {
     @Override
     public void getAvailableStacks(KeyCounter out) {
         cellData.getAvailableStacks(out);
+    }
+
+    /** 溢出键的 BigInteger 真值：与 {@link #reportedAmount} 同源，只是不套 {@code long} 饱和口径。 */
+    @Override
+    public BigInteger exactAmount(AEKey key) {
+        return cellData.exactAmount(key);
+    }
+
+    /** 本单元对网络报出的那份 {@code long} 读数（{@code getAvailableStacks} 写的就是它）。 */
+    @Override
+    public long reportedAmount(AEKey key) {
+        return cellData.visibleAmount(key);
     }
 
     @Override

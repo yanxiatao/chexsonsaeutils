@@ -14,6 +14,7 @@ import net.minecraft.world.item.crafting.RecipeType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public final class ExtendedCraftingRecipeShapeSupport
         implements DirectProcessingExternalRecipeShapeRegistry.ExternalRecipeShapeSupport {
@@ -21,9 +22,7 @@ public final class ExtendedCraftingRecipeShapeSupport
     private final DirectProcessingStackConverterRegistry stackConverters;
 
     public ExtendedCraftingRecipeShapeSupport(DirectProcessingStackConverterRegistry stackConverters) {
-        this.stackConverters = stackConverters == null
-                ? DirectProcessingStackConverterRegistry.directProcessingDefaults()
-                : stackConverters;
+        this.stackConverters = Objects.requireNonNull(stackConverters, "stackConverters");
     }
 
     @Override

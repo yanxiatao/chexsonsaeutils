@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.persistence;
 
-import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingDetail;
+import git.chexson.chexsonsaeutils.crafting.contract.CraftingContinuationWaitingDetail;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;

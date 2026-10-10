@@ -7,8 +7,10 @@ import appeng.api.stacks.KeyCounter;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchStep;
-import git.chexson.chexsonsaeutils.crafting.numeric.Ae2Amounts;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideKeyCounter;
+import git.chexson.chexsonsaeutils.bigint.Ae2Amounts;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.bigint.WideCraftingInventory;
+import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -16,6 +18,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,9 +42,10 @@ public final class ProcessingTask {
     private final ItemStack patternDefinition;
     private List<GenericStack> selectedInputs;
     private final List<GenericStack> outputsPerExecution;
-    private final int totalTicks;
-    private int executionCount;
-    private int remainingTicks;
+    /** 整批工时（每发 tick × 份数）；与执行计数同宽，不得再夹在 int 上。 */
+    private final long totalTicks;
+    private long executionCount;
+    private long remainingTicks;
     @Nullable
     private UUID sourceCraftingId;
 
@@ -64,15 +68,15 @@ public final class ProcessingTask {
             ItemStack patternDefinition,
             List<GenericStack> selectedInputs,
             List<GenericStack> outputsPerExecution,
-            int totalTicks,
-            int remainingTicks,
-            int executionCount
+            long totalTicks,
+            long remainingTicks,
+            long executionCount
     ) {
         this.patternDefinition = patternDefinition == null ? ItemStack.EMPTY : patternDefinition.copy();
         this.selectedInputs = List.copyOf(selectedInputs == null ? List.of() : selectedInputs);
         this.outputsPerExecution = List.copyOf(outputsPerExecution == null ? List.of() : outputsPerExecution);
-        this.totalTicks = Math.max(1, totalTicks);
-        this.remainingTicks = Math.max(0, remainingTicks);
+        this.totalTicks = Math.max(1L, totalTicks);
+        this.remainingTicks = Math.max(0L, remainingTicks);
         this.executionCount = normalizeExecutionCount(executionCount);
         this.sourceCraftingId = null;
         this.steps = List.of();
@@ -102,8 +106,8 @@ public final class ProcessingTask {
             restoreInputHolders(inputHolder, originalInputs);
             return null;
         }
-        Integer executionCount = DirectProcessingStackSupport.deriveExecutionCount(selectedInputs, signature.inputs());
-        if (executionCount == null || executionCount <= 0) {
+        Long executionCount = DirectProcessingStackSupport.deriveExecutionCount(selectedInputs, signature.inputs());
+        if (executionCount == null || executionCount <= 0L) {
             restoreInputHolders(inputHolder, originalInputs);
             return null;
         }
@@ -118,18 +122,23 @@ public final class ProcessingTask {
                     executionCount
             );
         }
-        if (executionCount == 1
+        if (executionCount == 1L
                 || !DirectProcessingStackSupport.stacksEqual(normalizedPatternOutputs, outputsPerExecution)) {
             restoreInputHolders(inputHolder, originalInputs);
             return null;
         }
-        long scaledTicks = Math.min(Integer.MAX_VALUE, (long) totalTicks * executionCount);
+        // 工时 = 每发 tick × 份数：越界只可能是 long 溢出，届时整批拒收（绝不饱和后提速）。
+        if (executionCount > Long.MAX_VALUE / Math.max(1L, totalTicks)) {
+            restoreInputHolders(inputHolder, originalInputs);
+            return null;
+        }
+        long scaledTicks = (long) totalTicks * executionCount;
         return new ProcessingTask(
                 pattern.getDefinition().toStack(),
                 DirectProcessingStackSupport.toGenericStacks(signature.inputs()),
                 outputsPerExecution,
-                (int) scaledTicks,
-                (int) scaledTicks,
+                scaledTicks,
+                scaledTicks,
                 executionCount
         );
     }
@@ -146,7 +155,7 @@ public final class ProcessingTask {
             UUID sourceCraftingId
     ) {
         if (pattern == null || signature == null || sourceCraftingId == null
-                || count <= 0L || count > Integer.MAX_VALUE) {
+                || count <= 0L) {
             return null;
         }
         List<GenericStack> normalizedInputs = DirectProcessingStackSupport.normalizeStacks(inputsPerExecution);
@@ -163,14 +172,16 @@ public final class ProcessingTask {
                 normalizedOutputs,
                 remaindersPerExecution
         );
-        int executionCount = (int) count;
-        long ticksPerExecution = Math.max(1, totalTicks);
+        // 份数本身不再夹 int：执行计数与工时都是 long，越界只剩 long 乘法溢出这一条
+        // 真拒收理由（原来这里是 (int) count 的强转 + count > Integer.MAX_VALUE 判据）。
+        long executionCount = count;
+        long ticksPerExecution = Math.max(1L, totalTicks);
         if (normalizedInputs.isEmpty() || payloadPerExecution == null || payloadPerExecution.isEmpty()
-                || ticksPerExecution > Integer.MAX_VALUE / count
+                || executionCount > Long.MAX_VALUE / ticksPerExecution
                 || DirectProcessingStackSupport.scaleStacks(payloadPerExecution, executionCount).isEmpty()) {
             return null;
         }
-        int scaledTicks = (int) (ticksPerExecution * count);
+        long scaledTicks = ticksPerExecution * executionCount;
         ProcessingTask task = new ProcessingTask(
                 pattern.getDefinition().toStack(),
                 normalizedInputs,
@@ -216,7 +227,8 @@ public final class ProcessingTask {
                 outputs,
                 totalTicks,
                 totalTicks,
-                (int) Math.min(Integer.MAX_VALUE, Math.max(1L, executionTotal))
+                // Σ步执行数本就是 long：这里曾按 int 夹一次，把聚合任务的份数读数压在 2.1e9。
+                Math.max(1L, executionTotal)
         );
         task.initPipeline(steps);
 
@@ -257,24 +269,38 @@ public final class ProcessingTask {
      */
     private void initPipeline(List<HostBatchStep> pipelineSteps) {
         this.steps = List.copyOf(pipelineSteps);
-        this.stepTicks = new int[this.steps.size()];
+        this.stepTicks = allocateStepTicks();
+        this.stepCursor = 0;
+        this.currentStepRemainingTicks = this.stepTicks[0];
+        this.currentStepFed = false;
+    }
+
+    /**
+     * totalTicks 按步执行数加权拆成每步 tick 预算，整除余数给末步——总 tick 消耗与
+     * 整批模式一致。步预算仍是 int：它受聚合样板的 int 工时口径
+     * （{@code HostBatchPattern.totalTicks()}）约束，与本次放宽的执行份数无关。
+     */
+    private int[] allocateStepTicks() {
+        int[] ticks = new int[this.steps.size()];
         long weightedTotal = 0L;
         for (HostBatchStep step : this.steps) {
             weightedTotal += step.executionCount();
         }
-        int allocated = 0;
+        long allocated = 0L;
         for (int index = 0; index < this.steps.size(); index++) {
             if (index == this.steps.size() - 1) {
-                this.stepTicks[index] = Math.max(1, this.totalTicks - allocated);
+                ticks[index] = (int) Math.max(1L, saturatingStepTicks(this.totalTicks - allocated));
             } else {
                 long share = this.totalTicks * this.steps.get(index).executionCount() / Math.max(1L, weightedTotal);
-                this.stepTicks[index] = (int) Math.max(1L, share);
-                allocated += this.stepTicks[index];
+                ticks[index] = (int) Math.max(1L, saturatingStepTicks(share));
+                allocated += ticks[index];
             }
         }
-        this.stepCursor = 0;
-        this.currentStepRemainingTicks = this.stepTicks[0];
-        this.currentStepFed = false;
+        return ticks;
+    }
+
+    private static long saturatingStepTicks(long ticks) {
+        return Math.min((long) Integer.MAX_VALUE, Math.max(0L, ticks));
     }
 
     // ---- 分步流水 API（仅 steps 非空时生效）----
@@ -298,7 +324,10 @@ public final class ProcessingTask {
             if (input == null || input.what() == null || input.amount() <= 0L) {
                 continue;
             }
-            long buffered = intermediateBuffer.getAmount(input.what()).fastValue();
+            PlanAmount bufferedAmount = intermediateBuffer.getAmount(input.what());
+            // 缓冲越出 long 时 fastValue() 恒为 0（那是规范化留下的空位，不是"一格都没有"），
+            // 直读会把满缓冲读成空缓冲、缺口按全额再要一次料。宽值一律按"够这一口"读。
+            long buffered = bufferedAmount.isFast() ? bufferedAmount.fastValue() : Long.MAX_VALUE;
             long missing = input.amount() - buffered;
             if (missing > 0L) {
                 needs.merge(input.what(), missing, Long::sum);
@@ -427,7 +456,7 @@ public final class ProcessingTask {
             }
             return;
         }
-        remainingTicks = Math.max(0, remainingTicks - Math.max(1, workUnits));
+        remainingTicks = Math.max(0L, remainingTicks - Math.max(1, workUnits));
     }
 
     public boolean isReadyToComplete() {
@@ -462,7 +491,7 @@ public final class ProcessingTask {
         return List.copyOf(payload);
     }
 
-    public int executionCount() {
+    public long executionCount() {
         return executionCount;
     }
 
@@ -480,9 +509,9 @@ public final class ProcessingTask {
         tag.put(NBT_PATTERN, patternDefinition.saveOptional(registries));
         tag.put(NBT_INPUTS, writeStacks(registries, selectedInputs));
         tag.put(NBT_OUTPUTS, writeStacks(registries, outputsPerExecution));
-        tag.putInt(NBT_TOTAL_TICKS, totalTicks);
-        tag.putInt(NBT_REMAINING_TICKS, remainingTicks);
-        tag.putInt(NBT_EXECUTION_COUNT, executionCount);
+        tag.putLong(NBT_TOTAL_TICKS, totalTicks);
+        tag.putLong(NBT_REMAINING_TICKS, remainingTicks);
+        tag.putLong(NBT_EXECUTION_COUNT, executionCount);
         if (sourceCraftingId != null) {
             tag.putUUID(NBT_SOURCE_CRAFTING_ID, sourceCraftingId);
         }
@@ -498,13 +527,29 @@ public final class ProcessingTask {
         return tag;
     }
 
+    /**
+     * 缓冲落盘：老 {@code long} 位存饱和读数，越出 {@code long} 的那一格多挂
+     * {@link WideCraftingInventory#NBT_ENTRY_AMOUNT_WIDE}（BigInteger 补码全量）。
+     *
+     * <p>编码形状与 {@code WideCraftingInventory.writeToNBT} 逐字同一条（同一覆盖键、同一"饱和底 +
+     * 全量覆盖"规则），不新造第 8 套落盘格式。旧写法只落 {@code Ae2Amounts.toLong} 那份饱和读数，
+     * 越界那一截在第一次存盘就永久消失——磁盘不是 AE2 出口，不该在这里夹顶。
+     */
     private ListTag writeBuffer(HolderLookup.Provider registries) {
         ListTag listTag = new ListTag();
         for (AEKey key : intermediateBuffer.keys()) {
-            long amount = Ae2Amounts.toLong(intermediateBuffer.getAmount(key));
-            if (amount != 0L) {
-                listTag.add(GenericStack.writeTag(registries, new GenericStack(key, amount)));
+            var exact = intermediateBuffer.getExact(key);
+            if (exact.signum() == 0L) {
+                continue;
             }
+            boolean insideLong = exact.bitLength() <= 63;
+            long view = insideLong ? exact.longValueExact()
+                    : Ae2Amounts.toLong(PlanAmount.of(exact));
+            CompoundTag entry = GenericStack.writeTag(registries, new GenericStack(key, view));
+            if (!insideLong) {
+                entry.putByteArray(WideCraftingInventory.NBT_ENTRY_AMOUNT_WIDE, exact.toByteArray());
+            }
+            listTag.add(entry);
         }
         return listTag;
     }
@@ -520,9 +565,9 @@ public final class ProcessingTask {
         if (patternDefinition.isEmpty() || inputs.isEmpty() || outputs.isEmpty()) {
             return null;
         }
-        int totalTicks = tag.contains(NBT_TOTAL_TICKS) ? tag.getInt(NBT_TOTAL_TICKS) : 1;
-        int remainingTicks = tag.contains(NBT_REMAINING_TICKS) ? tag.getInt(NBT_REMAINING_TICKS) : totalTicks;
-        int executionCount = tag.contains(NBT_EXECUTION_COUNT) ? tag.getInt(NBT_EXECUTION_COUNT) : 1;
+        long totalTicks = tag.contains(NBT_TOTAL_TICKS) ? tag.getLong(NBT_TOTAL_TICKS) : 1L;
+        long remainingTicks = tag.contains(NBT_REMAINING_TICKS) ? tag.getLong(NBT_REMAINING_TICKS) : totalTicks;
+        long executionCount = tag.contains(NBT_EXECUTION_COUNT) ? tag.getLong(NBT_EXECUTION_COUNT) : 1L;
         ProcessingTask task = new ProcessingTask(
                 patternDefinition,
                 inputs,
@@ -553,32 +598,26 @@ public final class ProcessingTask {
     /** 恢复游标与 tick 预算（步内容已反序列化；缓冲随后注入）。 */
     private void restorePipeline(List<HostBatchStep> pipelineSteps, int cursor) {
         this.steps = List.copyOf(pipelineSteps);
-        this.stepTicks = new int[this.steps.size()];
-        long weightedTotal = 0L;
-        for (HostBatchStep step : this.steps) {
-            weightedTotal += step.executionCount();
-        }
-        int allocated = 0;
-        for (int index = 0; index < this.steps.size(); index++) {
-            if (index == this.steps.size() - 1) {
-                this.stepTicks[index] = Math.max(1, this.totalTicks - allocated);
-            } else {
-                long share = this.totalTicks * this.steps.get(index).executionCount() / Math.max(1L, weightedTotal);
-                this.stepTicks[index] = (int) Math.max(1L, share);
-                allocated += this.stepTicks[index];
-            }
-        }
+        this.stepTicks = allocateStepTicks();
         this.stepCursor = Math.max(0, Math.min(cursor, this.steps.size()));
         this.currentStepRemainingTicks = this.stepCursor < this.steps.size() ? this.stepTicks[this.stepCursor] : 0;
         this.currentStepFed = false;
     }
 
+    /** 读回缓冲：条目带覆盖键就按补码还原精确值，否则按老 {@code long} 值走（与 {@code writeToNBT} 成对）。 */
     private void readBuffer(ListTag listTag, HolderLookup.Provider registries) {
         for (Tag entry : listTag) {
             if (entry instanceof CompoundTag compoundTag) {
                 GenericStack stack = GenericStack.readTag(registries, compoundTag);
-                if (stack != null && stack.what() != null && stack.amount() != 0L) {
-                    intermediateBuffer.add(stack.what(), stack.amount());
+                if (stack == null || stack.what() == null) {
+                    continue;
+                }
+                BigInteger exact = compoundTag.contains(
+                        WideCraftingInventory.NBT_ENTRY_AMOUNT_WIDE, Tag.TAG_BYTE_ARRAY)
+                        ? new BigInteger(compoundTag.getByteArray(WideCraftingInventory.NBT_ENTRY_AMOUNT_WIDE))
+                        : BigInteger.valueOf(stack.amount());
+                if (exact.signum() != 0L) {
+                    intermediateBuffer.add(stack.what(), exact);
                 }
             }
         }
@@ -587,12 +626,12 @@ public final class ProcessingTask {
     }
 
 
-    private static int normalizeExecutionCount(int executionCount) {
-        return Math.max(1, executionCount);
+    private static long normalizeExecutionCount(long executionCount) {
+        return Math.max(1L, executionCount);
     }
 
-    private static long multiplyOrZero(long amount, int count) {
-        if (amount <= 0L || count <= 0) {
+    private static long multiplyOrZero(long amount, long count) {
+        if (amount <= 0L || count <= 0L) {
             return 0L;
         }
         if (amount > Long.MAX_VALUE / count) {

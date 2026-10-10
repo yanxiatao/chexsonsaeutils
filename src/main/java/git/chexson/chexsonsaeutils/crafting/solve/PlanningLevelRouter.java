@@ -6,24 +6,21 @@ import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.stacks.GenericStack;
 import com.mojang.logging.LogUtils;
-import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.crafting.ParallelCpuProvider;
+import git.chexson.chexsonsaeutils.crafting.graphplan.diag.GraphPlanningBudget;
 import git.chexson.chexsonsaeutils.crafting.graphplan.engine.PlanningAttemptResult;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
- * Routes a crafting-plan calculation to one of the three solving levels:
- * graph planning (level 1), the optimized tree path (level 2, fast path),
- * or AE2's throttled native tree (level 3).
+ * Routes a crafting-plan calculation to one of the two solving levels:
+ * graph planning (level 1) or AE2's throttled native tree (the fallback leg).
  *
- * <p>Today this exposes the level-2 gating: the fast path is used only when
- * the AE network hosts one of this mod's parallel CPUs, the feature toggles
- * are on, and the parallel CPU feature itself is enabled. The opt-in
- * {@code parallelCpuFastPlanningAnyGridEnabled} switch (default off) lets any
- * grid use the fast path even without a parallel CPU. Any uncertainty falls
- * through to the native path. Level-1 graph gating joins here in the
- * graph-planning phase.
+ * <p>只服务自有并行 CPU：图规划要求网格里真有本模组的活跃并行 CPU，
+ * 且相关开关与本模组的并行 CPU 功能都开着。任何不确定一律落回原生路径。
+ * 原先允许"任意网格"也走我方算法的两个入口已按战略删除——不留兼容壳，
+ * 旧 TOML 里残留的键没人读，自然被忽略。
  */
 public final class PlanningLevelRouter {
 
@@ -32,34 +29,8 @@ public final class PlanningLevelRouter {
     private PlanningLevelRouter() {
     }
 
-    public static boolean shouldUseFastPlanning(@Nullable IGrid grid) {
-        if (grid == null) {
-            return false;
-        }
-        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(
-                ChexsonsaeutilsCompatibilityConfig.PARALLEL_CPU_FAST_PLANNING_ENABLED,
-                "parallelCpuFastPlanningEnabled")) {
-            return false;
-        }
-        if (ChexsonsaeutilsCompatibilityConfig.featureEnabled(
-                ChexsonsaeutilsCompatibilityConfig.PARALLEL_CPU_FAST_PLANNING_ANY_GRID_ENABLED,
-                "parallelCpuFastPlanningAnyGridEnabled")) {
-            return true;
-        }
-        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(
-                ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_ENABLED,
-                "parallelCraftingCpuEnabled")) {
-            return false;
-        }
-        // 宿主批重写已接入图路径与 L2/L3 crafts 层，含宿主网格不再回落——
-        // 此前守门依赖的 hasActiveHosts 探测本身有 bug（按抽象类枚举永远
-        // false），修好探测后旧守门会误拦含宿主网格。
-        return hasActiveParallelCpu(grid);
-    }
-
     /**
-     * Level-1 graph gating: global toggle plus the same grid requirement as the
-     * fast path (an active parallel CPU, or the any-grid opt-in).
+     * Level-1 图规划门控：总开关 + 网格判据（网格持有本模组活跃并行 CPU）。
      */
     public static boolean shouldUseGraphPlanning(@Nullable IGrid grid) {
         if (grid == null) {
@@ -69,22 +40,12 @@ public final class PlanningLevelRouter {
                 ChexsonsaeutilsCompatibilityConfig.GRAPH_PLANNING_ENABLED, "graphPlanningEnabled")) {
             return false;
         }
-        if (ChexsonsaeutilsCompatibilityConfig.featureEnabled(
-                ChexsonsaeutilsCompatibilityConfig.GRAPH_PLANNING_ANY_GRID_ENABLED,
-                "graphPlanningAnyGridEnabled")) {
-            return true;
-        }
         if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(
                 ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_ENABLED,
                 "parallelCraftingCpuEnabled")) {
             return false;
         }
         return hasActiveParallelCpu(grid);
-    }
-
-    public static long budgetMillis() {
-        return ChexsonsaeutilsCompatibilityConfig
-                .intValue(ChexsonsaeutilsCompatibilityConfig.PARALLEL_CPU_FAST_PLANNING_BUDGET_MILLIS);
     }
 
     public static long graphBudgetMillis() {
@@ -94,20 +55,15 @@ public final class PlanningLevelRouter {
 
     public static boolean hasActiveParallelCpu(IGrid grid) {
         try {
-            for (AE2ParallelCpuToolBlockEntity machine : grid.getMachines(AE2ParallelCpuToolBlockEntity.class)) {
-                if (machine != null && machine.canProcessParallelCpuJobs()) {
-                    return true;
-                }
-            }
             for (IGridNode node : grid.getNodes()) {
                 if (node != null
-                        && node.getOwner() instanceof AE2ParallelCpuToolBlockEntity owner
+                        && node.getOwner() instanceof ParallelCpuProvider owner
                         && owner.canProcessParallelCpuJobs()) {
                     return true;
                 }
             }
-        } catch (RuntimeException ignored) {
-            // Never let capability detection break crafting; fall back to native.
+        } catch (RuntimeException failure) {
+            LOGGER.warn("Parallel CPU capability detection failed, falling back to native planning", failure);
             return false;
         }
         return false;
@@ -116,32 +72,53 @@ public final class PlanningLevelRouter {
     /** One-line diagnostics for the level-1 graph attempt (handled/declined/budget). */
     public static void logGraphOutcome(GenericStack output, CalculationStrategy strategy,
             PlanningAttemptResult result, long elapsedNanos,
-            @Nullable git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanningBudget budget) {
+            @Nullable GraphPlanningBudget budget) {
         logGraphOutcome(output, strategy, result, elapsedNanos, budget, null);
     }
 
     public static void logGraphOutcome(GenericStack output, CalculationStrategy strategy,
             PlanningAttemptResult result, long elapsedNanos,
-            @Nullable git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanningBudget budget,
+            @Nullable GraphPlanningBudget budget,
             @Nullable appeng.api.networking.crafting.ICraftingSimulationRequester requester) {
+        if (result.handled()) {
+            PlanningProvenance.tag(result.plan(), PlanningProvenance.GRAPH, elapsedNanos, requester);
+        }
+        describeOutcome(null, output, result, elapsedNanos, budget);
+    }
+
+    /**
+     * 有序规划（GRAPH 尝试）的图层级结果行。
+     *
+     * <p>与 {@link #logGraphOutcome} 同一份口径，但不打 provenance——有序路径
+     * 之后会按实际选中的算法自行打标。缺了这行，实机日志里既看不到图层级
+     * 是否被尝试，也看不到它为什么拒绝，只能靠离线回放猜。
+     */
+    public static void logGraphAttemptOutcome(@Nullable String attempt, GenericStack output,
+            PlanningAttemptResult result, long elapsedNanos,
+            @Nullable GraphPlanningBudget budget) {
+        describeOutcome(attempt, output, result, elapsedNanos, budget);
+    }
+
+    private static void describeOutcome(@Nullable String attempt, GenericStack output,
+            PlanningAttemptResult result, long elapsedNanos,
+            @Nullable GraphPlanningBudget budget) {
         String request = output.what() + " x " + output.amount();
         long millis = (System.nanoTime() - elapsedNanos) / 1_000_000L;
         if (result.handled()) {
-            PlanningProvenance.tag(result.plan(), PlanningProvenance.GRAPH, elapsedNanos, requester);
             String phases = "";
             if (budget != null) {
                 long compileNanos = budget.phaseNanos(
-                        git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanningBudget.Phase.COMPILE);
+                        GraphPlanningBudget.Phase.COMPILE);
                 long solveNanos = budget.phaseNanos(
-                        git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanningBudget.Phase.SOLVE);
+                        GraphPlanningBudget.Phase.SOLVE);
                 long convertNanos = budget.phaseNanos(
-                        git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanningBudget.Phase.CONVERT);
+                        GraphPlanningBudget.Phase.CONVERT);
                 long retentionNanos = budget.phaseNanos(
-                        git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanningBudget.Phase.RETENTION);
+                        GraphPlanningBudget.Phase.RETENTION);
                 // CONVERT 是最后一个阶段，没有后续 enter() 来结账——不封口的话它的耗时
                 // 会整段掉进 other，读数误导（此前一直显示 convert 0）。
                 convertNanos += budget.currentPhaseNanos(
-                        git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanningBudget.Phase.CONVERT);
+                        GraphPlanningBudget.Phase.CONVERT);
                 // other = 标题栏读数 − 四段之和：会话建立前的准备、provider 取用、
                 // 出口日志等都落在这里。缺口不显式记账时无从判断该往哪儿优化。
                 long otherMillis = Math.max(0L,
@@ -150,15 +127,19 @@ public final class PlanningLevelRouter {
                         compileNanos / 1_000_000L, solveNanos / 1_000_000L, convertNanos / 1_000_000L,
                         retentionNanos / 1_000_000L, otherMillis);
             }
-            LOGGER.info("Graph planning handled: {}, strategy {}, took {} ms{}, plan {{{}}}",
-                    request, strategy, millis, phases, describe(result.plan()));
+            LOGGER.info("Graph planning[{}] handled: {}, took {} ms{}, plan {{{}}}",
+                    attemptLabel(attempt), request, millis, phases, describe(result.plan()));
         } else if (result.budgetExhaustedPhase() != null) {
-            LOGGER.info("Graph planning budget exhausted during {}: {}, took {} ms, falling back",
-                    result.budgetExhaustedPhase(), request, millis);
+            LOGGER.info("Graph planning[{}] budget exhausted during {}: {}, took {} ms, falling back",
+                    attemptLabel(attempt), result.budgetExhaustedPhase(), request, millis);
         } else {
-            LOGGER.info("Graph planning declined ({}): {}, took {} ms, falling back",
-                    result.declineReason(), request, millis);
+            LOGGER.info("Graph planning[{}] declined ({}): {}, took {} ms, falling back",
+                    attemptLabel(attempt), result.declineReason(), request, millis);
         }
+    }
+
+    private static String attemptLabel(@Nullable String attempt) {
+        return attempt == null ? "graph" : attempt;
     }
 
     /** Crash diagnostics for an unexpected level-1 failure. */
@@ -170,11 +151,11 @@ public final class PlanningLevelRouter {
                 output.what() + " x " + output.amount());
     }
 
-    /** One-line diagnostics for whichever lower level produced the final plan. */
-    public static ICraftingPlan logFallbackPlan(String tier, GenericStack output,
+    /** 回落腿那一行读数：图没有交出计划，交出去的是 AE2 原生树的结果。 */
+    public static ICraftingPlan logFallbackPlan(GenericStack output,
             ICraftingPlan plan, long elapsedNanos) {
-        LOGGER.info("Graph fallback ({}): {}, took {} ms, plan {{{}}}",
-                tier, output.what() + " x " + output.amount(),
+        LOGGER.info("Graph fallback (native): {}, took {} ms, plan {{{}}}",
+                output.what() + " x " + output.amount(),
                 (System.nanoTime() - elapsedNanos) / 1_000_000L, describe(plan));
         return plan;
     }

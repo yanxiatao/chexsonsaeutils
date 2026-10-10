@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.client.integration.jei;
 
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.runtime.IJeiRuntime;
@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 public final class ChexsonsaeutilsJeiPlugin implements IModPlugin {
 
     private static final ResourceLocation PLUGIN_UID =
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "direct_processing_machine");
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "direct_processing_machine");
 
     @Override
     public ResourceLocation getPluginUid() {

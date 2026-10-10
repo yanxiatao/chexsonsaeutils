@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Set;
 
 import appeng.api.stacks.AEKey;
-import git.chexson.chexsonsaeutils.crafting.solve.DependencyGraphs;
+import git.chexson.chexsonsaeutils.crafting.depgraph.DependencyGraphs;
 
 /**
  * Capacity-walk cycle analysis over the compiled graph (Phase 2d B1).

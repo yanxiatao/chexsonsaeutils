@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.crafting.parallelcpu;
 import appeng.api.config.Actionable;
 import appeng.api.config.CpuSelectionMode;
 import appeng.api.networking.IGrid;
+import appeng.api.networking.crafting.CraftingSubmitErrorCode;
 import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.crafting.ICraftingRequester;
@@ -13,12 +14,16 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.CraftingSubmitResult;
+import appeng.core.AELog;
 import appeng.me.helpers.MachineSource;
 import appeng.menu.me.crafting.CraftingStatus;
 import appeng.menu.me.crafting.CraftingStatusEntry;
 import com.google.common.collect.ImmutableSet;
-import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
+import git.chexson.chexsonsaeutils.crafting.hostcpu.ParallelCpuHost;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.ProviderBatchCapabilities;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchTerminalDrops;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.ProviderBatchCapabilitiesFactory;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -36,8 +41,9 @@ import java.util.UUID;
 
 public final class ParallelCraftingCpuCluster {
 
-    private final AE2ParallelCpuToolBlockEntity owner;
+    private final ParallelCpuHost host;
     private final MachineSource source;
+    private final ProviderBatchCapabilitiesFactory batchCapabilitiesFactory;
     private final ParallelCraftingCPU remainingCapacityCpu = new ParallelCraftingCPU(this, null);
     private final ParallelCpuProviderBackoff providerBackoff = new ParallelCpuProviderBackoff(
             ChexsonsaeutilsCompatibilityConfig.intValue(
@@ -52,9 +58,21 @@ public final class ParallelCraftingCpuCluster {
     private long lastModifiedOnTick;
     private int nextTickLaneStartIndex;
 
-    public ParallelCraftingCpuCluster(AE2ParallelCpuToolBlockEntity owner) {
-        this.owner = owner;
-        this.source = new MachineSource(owner);
+    public ParallelCraftingCpuCluster(ParallelCpuHost host,
+            ProviderBatchCapabilitiesFactory batchCapabilitiesFactory) {
+        this.host = host;
+        this.source = new MachineSource(host);
+        this.batchCapabilitiesFactory = batchCapabilitiesFactory;
+    }
+
+    /** 每条产线独立创建适配会话，网格只在适配壳首次创建时现取。 */
+    ProviderBatchCapabilities createBatchCapabilities() {
+        return batchCapabilitiesFactory.create(this::grid);
+    }
+
+    /** 诊断直接现取全场快照，不触发任何产线会话或宿主能力探测。 */
+    DeclaredBatchTerminalDrops terminalDrops() {
+        return batchCapabilitiesFactory.terminalDrops();
     }
 
     public void attachGridContext(ParallelCraftingCpuGrid gridContext) {
@@ -72,7 +90,7 @@ public final class ParallelCraftingCpuCluster {
     }
 
     public CpuSelectionMode getSelectionMode() {
-        return owner.getSelectionMode();
+        return host.getSelectionMode();
     }
 
     public boolean canBeAutoSelectedFor(IActionSource src) {
@@ -109,7 +127,7 @@ public final class ParallelCraftingCpuCluster {
             long currentTick
     ) {
         if (!canProcessJobs()) {
-            return CraftingSubmitResult.CPU_OFFLINE;
+            return offlineSubmission(grid, "host-inactive");
         }
         if (!hasSubmissionCapacity()) {
             return CraftingSubmitResult.CPU_BUSY;
@@ -123,7 +141,7 @@ public final class ParallelCraftingCpuCluster {
                 requester
         );
         if (submitResult == null || !submitResult.successful()) {
-            return submitResult == null ? CraftingSubmitResult.CPU_OFFLINE : submitResult;
+            return submitResult == null ? offlineSubmission(grid, "lane-returned-null") : submitResult;
         }
 
         lanes.put(lane.laneId(), lane);
@@ -140,7 +158,7 @@ public final class ParallelCraftingCpuCluster {
             long currentTick
     ) {
         if (!canProcessJobs()) {
-            return CraftingSubmitResult.CPU_OFFLINE;
+            return offlineSubmission(grid, "partial-host-inactive");
         }
         if (!hasSubmissionCapacity()) {
             return CraftingSubmitResult.CPU_BUSY;
@@ -154,7 +172,7 @@ public final class ParallelCraftingCpuCluster {
                 requester
         );
         if (submitResult == null || !submitResult.successful()) {
-            return submitResult == null ? CraftingSubmitResult.CPU_OFFLINE : submitResult;
+            return submitResult == null ? offlineSubmission(grid, "partial-lane-returned-null") : submitResult;
         }
 
         lanes.put(lane.laneId(), lane);
@@ -566,11 +584,11 @@ public final class ParallelCraftingCpuCluster {
     }
 
     public IGrid grid() {
-        return owner.getMainNode().getGrid();
+        return host.getGrid();
     }
 
     public net.minecraft.world.level.Level level() {
-        return owner.getLevel();
+        return host.getLevel();
     }
 
     public IActionSource source() {
@@ -578,15 +596,33 @@ public final class ParallelCraftingCpuCluster {
     }
 
     public boolean isActive() {
-        return owner.isParallelCpuProviderActive();
+        return host.isParallelCpuProviderActive();
     }
 
     public boolean canProcessJobs() {
-        return owner.canProcessParallelCpuJobs();
+        return host.canProcessParallelCpuJobs();
     }
 
-    public AE2ParallelCpuToolBlockEntity owner() {
-        return owner;
+    /** 只在拒绝提交时采集状态，区分注册丢失与节点运行条件；不改变离线判据或读取执行库存。 */
+    ICraftingSubmitResult offlineSubmission(@Nullable IGrid submittingGrid, String reason) {
+        var node = host.getActionableNode();
+        var hostGrid = host.getGrid();
+        var state = new OfflineSubmissionState(
+                reason, host.isParallelCpuProviderActive(), host.canProcessParallelCpuJobs(), node != null,
+                node == null ? null : node.isPowered(),
+                node == null ? null : node.hasGridBooted(),
+                node == null ? null : node.meetsChannelRequirements(),
+                node == null ? 0 : node.getConnections().size(),
+                hostGrid != null && hostGrid == submittingGrid,
+                gridContext != null && gridContext.grid() == submittingGrid);
+        AELog.warn("[chexsonsaeutils-submit] CPU_OFFLINE: %s", state);
+        return new CraftingSubmitResult(null, CraftingSubmitErrorCode.CPU_OFFLINE, state);
+    }
+
+    /** 提交失败的服务端诊断快照；节点不存在时运行条件未知，不能冒充已确认的断电。 */
+    record OfflineSubmissionState(String reason, boolean providerReady, boolean canProcess, boolean nodePresent,
+            @Nullable Boolean powered, @Nullable Boolean booted, @Nullable Boolean channelsSatisfied,
+            int connections, boolean sameGrid, boolean attachedToSubmittingGrid) {
     }
 
     long lastModifiedOnTick() {

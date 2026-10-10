@@ -17,7 +17,6 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import appeng.crafting.pattern.AEProcessingPattern;
 import git.chexson.chexsonsaeutils.item.mattermass.MatterMassItem;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
  * 物质团样板详情（IPatternDetails）。
@@ -41,7 +40,7 @@ public class MatterMassPatternDetails implements IPatternDetails {
     public MatterMassPatternDetails(AEItemKey definition) {
         this.definition = definition;
 
-        var encoded = definition.get(ChexsonsaeutilsContent.ENCODED_MATTER_MASS_PATTERN.get());
+        var encoded = definition.get(MatterMassPatternRegistration.ENCODED_MATTER_MASS_PATTERN.get());
         if (encoded == null) {
             throw new IllegalArgumentException("Given item does not encode a matter mass pattern: " + definition);
         } else if (encoded.containsMissingContent()) {
@@ -75,7 +74,7 @@ public class MatterMassPatternDetails implements IPatternDetails {
         }
         Objects.requireNonNull(sparseOutputs.get(0),
                 "The first (primary) output must be non-null.");
-        stack.set(ChexsonsaeutilsContent.ENCODED_MATTER_MASS_PATTERN.get(),
+        stack.set(MatterMassPatternRegistration.ENCODED_MATTER_MASS_PATTERN.get(),
                 new EncodedMatterMassPattern(sparseInputs, sparseOutputs, massUuid));
     }
 
@@ -173,7 +172,7 @@ public class MatterMassPatternDetails implements IPatternDetails {
     public static PatternDetailsTooltip getInvalidPatternTooltip(ItemStack stack, Level level,
             @Nullable Exception cause, TooltipFlag flags) {
         var tooltip = new PatternDetailsTooltip(PatternDetailsTooltip.OUTPUT_TEXT_PRODUCES);
-        var encoded = stack.get(ChexsonsaeutilsContent.ENCODED_MATTER_MASS_PATTERN.get());
+        var encoded = stack.get(MatterMassPatternRegistration.ENCODED_MATTER_MASS_PATTERN.get());
         if (encoded != null) {
             encoded.sparseInputs().stream().filter(Objects::nonNull).forEach(tooltip::addInput);
             encoded.sparseOutputs().stream().filter(Objects::nonNull).forEach(tooltip::addOutput);

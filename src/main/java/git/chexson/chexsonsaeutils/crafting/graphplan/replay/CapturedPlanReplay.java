@@ -75,6 +75,10 @@ public final class CapturedPlanReplay {
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             root = JsonParser.parseReader(reader).getAsJsonObject();
         }
+        return load(root, registries);
+    }
+
+    public static Loaded load(JsonObject root, HolderLookup.Provider registries) throws IOException {
         int schemaVersion = root.has("schemaVersion") ? root.get("schemaVersion").getAsInt() : 1;
         if (schemaVersion != 2) {
             throw new IOException("capture schema " + schemaVersion + " is legacy and cannot be authoritative");
@@ -288,6 +292,9 @@ public final class CapturedPlanReplay {
         }
 
         @Override public Collection<IPatternDetails> getCraftingFor(AEKey key) {
+            // 工件里记的那份序＝录制那一刻我们侧真正用过的序（并列项已在 GraphCompiler 的
+            // 收集点定过序，见 ProviderPatternOrder）。本替身<b>不</b>报机器优先级，
+            // stabilized() 因此原样交回——回放侧不会按另一份优先级把这份次序重排。
             return this.craftingFor.getOrDefault(key, List.of());
         }
         @Override public boolean canEmitFor(AEKey key) { return this.emittable.contains(key); }

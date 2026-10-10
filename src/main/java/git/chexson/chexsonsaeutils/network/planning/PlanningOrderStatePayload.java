@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.network.planning;
 
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.config.PlanningAlgorithmOrderService;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -20,7 +20,7 @@ public record PlanningOrderStatePayload(
         List<String> ids
 ) implements CustomPacketPayload {
     public static final Type<PlanningOrderStatePayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "planning_order_state")
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "planning_order_state")
     );
     public static final StreamCodec<RegistryFriendlyByteBuf, PlanningOrderStatePayload> STREAM_CODEC =
             StreamCodec.ofMember(PlanningOrderStatePayload::write, PlanningOrderStatePayload::decode);
@@ -63,7 +63,7 @@ public record PlanningOrderStatePayload(
 
     private void write(RegistryFriendlyByteBuf buffer) {
         buffer.writeLong(this.requestId);
-        buffer.writeUtf(this.result.name());
+        buffer.writeUtf(this.result.name(), PlanningOrderProtocol.MAX_RESULT_NAME_LENGTH);
         buffer.writeLong(this.revision);
         buffer.writeBoolean(this.editable);
         writeIds(buffer, this.ids);
@@ -71,25 +71,28 @@ public record PlanningOrderStatePayload(
 
     private static PlanningOrderStatePayload decode(RegistryFriendlyByteBuf buffer) {
         long requestId = buffer.readLong();
-        Result result = Result.valueOf(buffer.readUtf(32));
+        Result result = Result.valueOf(buffer.readUtf(PlanningOrderProtocol.MAX_RESULT_NAME_LENGTH));
         long revision = buffer.readLong();
         boolean editable = buffer.readBoolean();
         return new PlanningOrderStatePayload(requestId, result, revision, editable, readIds(buffer));
     }
 
     private static void writeIds(RegistryFriendlyByteBuf buffer, List<String> ids) {
+        if (ids.size() > PlanningOrderProtocol.MAX_PLANNING_ALGORITHM_IDS) {
+            throw new IllegalArgumentException("Planning algorithm ID count too large for network: " + ids.size());
+        }
         buffer.writeVarInt(ids.size());
-        ids.forEach(buffer::writeUtf);
+        ids.forEach(id -> buffer.writeUtf(id, PlanningOrderProtocol.MAX_PLANNING_ID_LENGTH));
     }
 
     private static List<String> readIds(RegistryFriendlyByteBuf buffer) {
         int count = buffer.readVarInt();
-        if (count < 0 || count > 16) {
+        if (count < 0 || count > PlanningOrderProtocol.MAX_PLANNING_ALGORITHM_IDS) {
             throw new IllegalArgumentException("Invalid planning algorithm ID count: " + count);
         }
         List<String> ids = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
-            ids.add(buffer.readUtf(64));
+            ids.add(buffer.readUtf(PlanningOrderProtocol.MAX_PLANNING_ID_LENGTH));
         }
         return ids;
     }

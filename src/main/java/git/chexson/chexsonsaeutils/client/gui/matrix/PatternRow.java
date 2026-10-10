@@ -1,7 +1,7 @@
 package git.chexson.chexsonsaeutils.client.gui.matrix;
 
 import appeng.util.inv.AppEngInternalInventory;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixClientView;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
 import net.minecraft.world.item.ItemStack;
 
 /**

@@ -34,9 +34,8 @@ import java.util.stream.Collectors;
  * 批量失败则在取消后的副本里执行与原生逐位一致的逐件循环。其余任何场景
  * （多分支、可发射、非 limitQty 等）不取消注入，完全走 AE2 原生逻辑。
  *
- * <p>快速计算由 {@link CraftingTreeNodeFastBatchMixin} 整体接管并自带批量；
- * 染色计算使用独立的树节点类，不会经过本类。因此按 job 的确切类型分流，
- * 三者互不重叠。
+ * <p>染色计算使用独立的树节点类，不会经过本类；因此按 job 的确切类型分流，
+ * 只有原生 {@link CraftingCalculation} 这一个入口会被本类接管。
  */
 @Mixin(value = CraftingTreeNode.class, remap = false)
 public abstract class CraftingTreeNodeNativeLimitQtyBatchMixin {

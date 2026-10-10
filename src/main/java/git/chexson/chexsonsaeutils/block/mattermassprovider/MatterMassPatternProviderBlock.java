@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.block.mattermassprovider;
 
+import git.chexson.chexsonsaeutils.bootstrap.mattermass.MatterMassPatternProviderMenuRegistration;
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
@@ -19,7 +20,6 @@ import appeng.block.AEBaseEntityBlock;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
 import git.chexson.chexsonsaeutils.blockentity.mattermassprovider.MatterMassPatternProviderBlockEntity;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
  * 物质团供应器方块。
@@ -94,7 +94,7 @@ public class MatterMassPatternProviderBlock extends AEBaseEntityBlock<MatterMass
     private void openMenu(Level level, Player player, MatterMassPatternProviderBlockEntity blockEntity) {
         if (!level.isClientSide()) {
             MenuOpener.open(
-                    ChexsonsaeutilsContent.MATTER_MASS_PATTERN_PROVIDER_MENU.get(),
+                    MatterMassPatternProviderMenuRegistration.MATTER_MASS_PATTERN_PROVIDER_MENU.get(),
                     player,
                     MenuLocators.forBlockEntity(blockEntity)
             );

@@ -5,6 +5,7 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfig
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedSignature;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedStack;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackConverterRegistry;
+import git.chexson.chexsonsaeutils.integration.directprocessing.DirectProcessingAssembly;
 import mezz.jei.api.gui.builder.IIngredientAcceptor;
 import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
 import mezz.jei.api.gui.builder.IRecipeSlotBuilder;
@@ -37,6 +38,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -49,13 +51,11 @@ public final class JeiRecipeSignatureHintBridge {
     private final DirectProcessingStackConverterRegistry stackConverters;
 
     public JeiRecipeSignatureHintBridge() {
-        this(DirectProcessingStackConverterRegistry.directProcessingDefaults());
+        this(DirectProcessingAssembly.createStackConverters());
     }
 
     JeiRecipeSignatureHintBridge(DirectProcessingStackConverterRegistry stackConverters) {
-        this.stackConverters = stackConverters == null
-                ? DirectProcessingStackConverterRegistry.directProcessingDefaults()
-                : stackConverters;
+        this.stackConverters = Objects.requireNonNull(stackConverters, "stackConverters");
     }
 
     public List<MachineRecipeImportedSignature> collectSignatureHintsForMachine(
@@ -127,7 +127,7 @@ public final class JeiRecipeSignatureHintBridge {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private List<MachineRecipeImportedSignature> collectRecipeSignatures(
+    List<MachineRecipeImportedSignature> collectRecipeSignatures(
             IRecipeCategory category,
             Object recipe,
             ResourceLocation recipeTypeId
@@ -438,7 +438,7 @@ public final class JeiRecipeSignatureHintBridge {
                 return;
             }
             MachineRecipeImportedStack imported = MachineRecipeImportedStack.fromGenericStack(
-                    stackConverters == null ? null : stackConverters.convert(ingredient)
+                    stackConverters.convert(ingredient)
             );
             if (imported != null) {
                 capturedIngredients.add(imported);

@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils.crafting.solve;
 
+import git.chexson.chexsonsaeutils.crafting.material.PlanGrossAudit;
+
 import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingPlan;
@@ -10,12 +12,15 @@ import appeng.api.stacks.KeyCounter;
 import appeng.crafting.CraftingCalculation;
 import git.chexson.chexsonsaeutils.config.PlanningAlgorithmOrderService;
 import git.chexson.chexsonsaeutils.crafting.graphplan.graph.CraftGraph;
+import git.chexson.chexsonsaeutils.crafting.recursive.RecursivePlanContract;
 import net.minecraft.world.level.Level;
 
 import java.util.List;
 
 /** A single AE2 calculation whose constructor freezes and executes configured algorithm order. */
 public final class OrderedPlanningCalculation extends CraftingCalculation {
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+
     private final Level level;
     private final IGrid grid;
     private final ICraftingSimulationRequester requester;
@@ -23,10 +28,7 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
     private final CalculationStrategy strategy;
     private final List<PlanningAlgorithmId> order;
     private final boolean graphEligible;
-    private final boolean fastEligible;
-    private final long fastBudgetMillis;
     private final long graphBudgetMillis;
-    private final boolean synchronousNative;
     private final long requestStartNanos;
     private final RecursivePlanningKernel recursiveKernel;
     private final KeyCounter missing = new KeyCounter();
@@ -53,12 +55,14 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
             long requestStartNanos
     ) {
         this(level, grid, requester, output, strategy,
-                PlanningAlgorithmOrderService.global().snapshot().order(),
+                // 配置侧只交串名册；本类内部字段仍是枚举，故就地 parse 回枚举，顺位照原样保留。
+                // 认不出就是"名册与枚举个名漂了"，当场抛、不静默丢档（丢档会让顺位变短而误判成缺档）。
+                PlanningAlgorithmOrderService.global().snapshot().order().stream()
+                        .map(id -> PlanningAlgorithmId.parse(id).orElseThrow(
+                                () -> new IllegalStateException("Unknown planning algorithm ID: " + id)))
+                        .toList(),
                 PlanningLevelRouter.shouldUseGraphPlanning(grid),
-                PlanningLevelRouter.shouldUseFastPlanning(grid),
-                PlanningLevelRouter.budgetMillis(),
                 PlanningLevelRouter.graphBudgetMillis(),
-                false,
                 requestStartNanos);
     }
 
@@ -70,13 +74,10 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
             CalculationStrategy strategy,
             List<PlanningAlgorithmId> order,
             boolean graphEligible,
-            boolean fastEligible,
-            long fastBudgetMillis,
-            long graphBudgetMillis,
-            boolean synchronousNative
+            long graphBudgetMillis
     ) {
-        this(level, grid, requester, output, strategy, order, graphEligible, fastEligible,
-                fastBudgetMillis, graphBudgetMillis, synchronousNative, System.nanoTime());
+        this(level, grid, requester, output, strategy, order, graphEligible,
+                graphBudgetMillis, System.nanoTime());
     }
 
     OrderedPlanningCalculation(
@@ -87,10 +88,7 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
             CalculationStrategy strategy,
             List<PlanningAlgorithmId> order,
             boolean graphEligible,
-            boolean fastEligible,
-            long fastBudgetMillis,
             long graphBudgetMillis,
-            boolean synchronousNative,
             long requestStartNanos
     ) {
         super(level, grid, requester, output, strategy);
@@ -101,10 +99,7 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
         this.strategy = strategy;
         this.order = List.copyOf(order);
         this.graphEligible = graphEligible;
-        this.fastEligible = fastEligible;
-        this.fastBudgetMillis = fastBudgetMillis;
         this.graphBudgetMillis = graphBudgetMillis;
-        this.synchronousNative = synchronousNative;
         this.requestStartNanos = requestStartNanos;
         this.recursiveKernel = new RecursivePlanningKernel(
                 level, grid, requester, output, strategy, this.graphBudgetMillis,
@@ -120,15 +115,86 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
         );
         if (selected == null) {
             // Defensive compatibility for an invalid/incomplete external snapshot.
-            ICraftingPlan plan = runAe2Native();
+            ICraftingPlan plan = keepRingSeed(runAe2Native());
             updateFinalState(plan);
-            PlanningProvenance.tag(plan, PlanningProvenance.NATIVE, this.requestStartNanos, this.requester);
+            String solver = plan instanceof RecursivePlanContract
+                    ? PlanningProvenance.GRAPH : PlanningProvenance.NATIVE;
+            PlanningProvenance.tag(plan, solver, this.requestStartNanos, this.requester);
+            logSelectedPlan(plan, solver + "(no-selection)");
             return plan;
         }
-        ICraftingPlan plan = selected.value();
+        ICraftingPlan plan = keepRingSeed(selected.value());
+        PlanningAlgorithmId algorithm = selected.algorithm();
+        if (plan != selected.value()) {
+            // 换成图引擎的精确产物了，标签不能再报成 NATIVE。
+            algorithm = PlanningAlgorithmId.GRAPH;
+        }
         updateFinalState(plan);
-        tagActualAlgorithm(plan, selected.algorithm(), this.requestStartNanos);
+        tagActualAlgorithm(plan, algorithm, this.requestStartNanos);
+        logSelectedPlan(plan, algorithm.name());
         return plan;
+    }
+
+    /**
+     * 最终交给 AE2 的那份计划身份。层级尝试行只说明"算出来过契约"，
+     * 卡死行里的 recursive=false 又只反映执行侧作业字段，中间任何一次
+     * 包装或替换都看不见——所以按提交链的最后一站单独记一行。
+     */
+    private void logSelectedPlan(ICraftingPlan plan, String algorithm) {
+        LOGGER.info(
+                "Ordered planning selected: output={}, algorithm={}, plan={}, contract={},"
+                        + " patterns={}, simulation={}, missing={} {} missingKeys={}",
+                plan.finalOutput(), algorithm, plan.getClass().getSimpleName(),
+                plan instanceof git.chexson.chexsonsaeutils.crafting.recursive.RecursivePlanContract contract
+                        && contract.chexsonsaeutils$usesDyeableRecursivePlanning(),
+                plan.patternTimes().size(), plan.simulation(), plan.missingItems().size(),
+                PlanGrossAudit.gross(plan), describeMissing(plan));
+    }
+
+    /**
+     * 把计划真记下的缺口键与量原样列出来（最多 6 条）。
+     *
+     * <p>要分开的两件事：缺口量是<b>普通数</b> ⇒ 网络真没那么多，报缺料是正确行为；
+     * 缺口量<b>恰为 {@code Long.MAX_VALUE}</b> ⇒ 这一截是被 long 域饱和出来的假缺，
+     * 该修的是需求/缺口账的数域，而不是叫玩家补料。
+     */
+    private static String describeMissing(appeng.api.networking.crafting.ICraftingPlan plan) {
+        var missing = plan.missingItems();
+        if (missing == null || missing.isEmpty()) {
+            return "[]";
+        }
+        var described = new StringBuilder("[");
+        int listed = 0;
+        for (var entry : missing) {
+            if (entry.getKey() == null) {
+                continue;
+            }
+            if (listed > 0) {
+                described.append(", ");
+            }
+            described.append(entry.getKey()).append(" x ").append(entry.getLongValue());
+            if (++listed >= 6) {
+                described.append("...(more)");
+                break;
+            }
+        }
+        return described.append(']').toString();
+    }
+
+    /**
+     * 成环邻域不得交出非递归计划：AE2 原生树把环里的样板当普通输入一次性
+     * 消耗，不留可回炉的那份种子，闭池 CPU 于是永远缺这个键——现场表现就是
+     * 递归样板卡死。只在图会话已经建好（本轮真的编译过邻域）时判定环，
+     * 不为守卫额外触发一次编译；补不出来（含仍是模拟计划）就照原样交出。
+     */
+    private ICraftingPlan keepRingSeed(ICraftingPlan plan) {
+        if (plan instanceof RecursivePlanContract
+                || !this.recursiveKernel.hasSession()
+                || this.recursiveKernel.graphCycleKind() == CraftGraph.CycleKind.NONE) {
+            return plan;
+        }
+        ICraftingPlan recursive = this.recursiveKernel.solveRecursive();
+        return recursive == null || recursive.simulation() ? plan : recursive;
     }
 
     private void updateFinalState(ICraftingPlan plan) {
@@ -140,30 +206,28 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
 
     private boolean isEligible(PlanningAlgorithmId algorithm) {
         return switch (algorithm) {
-            case FROZEN_ROUTE, GRAPH -> this.graphEligible;
-            case FAST -> this.fastEligible;
+            case GRAPH -> this.graphEligible;
             case NATIVE -> true;
         };
     }
 
     private ICraftingPlan runAttempt(PlanningAlgorithmId algorithm) {
-        if (algorithm == PlanningAlgorithmId.FROZEN_ROUTE) {
-            return recursiveCycleDetected()
-                    ? runRecursiveAttempt()
-                    : this.recursiveKernel.solveAggregate();
-        }
         if (algorithm == PlanningAlgorithmId.GRAPH) {
             return runGraphAttempt();
         }
         if (recursiveCycleDetected()) {
-            return runRecursiveAttempt();
+            ICraftingPlan recursive = runRecursiveAttempt();
+            // 只有终点算法（NATIVE）也没辙时才换成交回"材料不足"的残缺计划：玩家看得见逐键缺口，
+            // 而不是聊天栏里一行 IllegalStateException。中间层级照旧交回 null，让 selector 往下试，
+            // 真缺料以外的判决（预算耗尽、图 overflow、编译失败）也照旧——行为一字不变。
+            if (recursive == null && algorithm == PlanningAlgorithmId.NATIVE) {
+                return this.recursiveKernel.terminalShortagePlan();
+            }
+            return recursive;
         }
         return switch (algorithm) {
-            case FAST -> new FastCraftingCalculation(
-                    this.level, this.grid, this.requester, this.output, this.strategy,
-                    this.fastBudgetMillis).runSingleAttempt();
             case NATIVE -> runAe2Native();
-            case FROZEN_ROUTE, GRAPH -> throw new IllegalStateException("handled above");
+            case GRAPH -> throw new IllegalStateException("handled above");
         };
     }
 
@@ -192,21 +256,15 @@ public final class OrderedPlanningCalculation extends CraftingCalculation {
         return stock;
     }
 
+    /** AE2 原生树回落腿：AE2 自己的节流计算，逐字不动。 */
     private ICraftingPlan runAe2Native() {
-        if (this.synchronousNative) {
-            return new FastCraftingCalculation(
-                    this.level, this.grid, this.requester, this.output, this.strategy, 0L)
-                    .runSingleAttempt();
-        }
         return new CraftingCalculation(
                 this.level, this.grid, this.requester, this.output, this.strategy).run();
     }
 
     private void tagActualAlgorithm(ICraftingPlan plan, PlanningAlgorithmId algorithm, long startNanos) {
         String solver = switch (algorithm) {
-            case FROZEN_ROUTE -> PlanningProvenance.FROZEN_ROUTE;
             case GRAPH -> PlanningProvenance.GRAPH;
-            case FAST -> PlanningProvenance.FAST;
             case NATIVE -> PlanningProvenance.NATIVE;
         };
         PlanningProvenance.tag(plan, solver, startNanos, this.requester);

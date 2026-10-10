@@ -24,14 +24,13 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.neoforge.common.Tags;
 
 import appeng.block.AEBaseEntityBlock;
-import appeng.block.crafting.PatternProviderBlock;
 import appeng.block.crafting.PushDirection;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
 import appeng.util.Platform;
 import git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternRegistration;
 
 /**
  * 定制样板供应器方块（阶段 2）。
@@ -49,18 +48,15 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  */
 public class CustomPatternProviderBlock extends AEBaseEntityBlock<CustomPatternProviderBlockEntity> {
 
-    /** 推送方向属性（复用 AE2 的属性实例，blockstates 变体名 push_direction）。 */
-    public static final net.minecraft.world.level.block.state.properties.EnumProperty<PushDirection> PUSH_DIRECTION = PatternProviderBlock.PUSH_DIRECTION;
-
     public CustomPatternProviderBlock() {
         super(metalProps());
-        this.registerDefaultState(this.defaultBlockState().setValue(PUSH_DIRECTION, PushDirection.ALL));
+        this.registerDefaultState(this.defaultBlockState().setValue(CustomPatternProviderBlockEntity.PUSH_DIRECTION, PushDirection.ALL));
     }
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         super.createBlockStateDefinition(builder);
-        builder.add(PUSH_DIRECTION);
+        builder.add(CustomPatternProviderBlockEntity.PUSH_DIRECTION);
     }
 
     /**
@@ -137,7 +133,7 @@ public class CustomPatternProviderBlock extends AEBaseEntityBlock<CustomPatternP
      */
     public void setSide(Level level, BlockPos pos, Direction facing) {
         var currentState = level.getBlockState(pos);
-        var pushSide = currentState.getValue(PUSH_DIRECTION).getDirection();
+        var pushSide = currentState.getValue(CustomPatternProviderBlockEntity.PUSH_DIRECTION).getDirection();
 
         PushDirection newPushDirection;
         if (pushSide == facing.getOpposite()) {
@@ -150,7 +146,7 @@ public class CustomPatternProviderBlock extends AEBaseEntityBlock<CustomPatternP
             newPushDirection = PushDirection.fromDirection(Platform.rotateAround(pushSide, facing));
         }
 
-        level.setBlockAndUpdate(pos, currentState.setValue(PUSH_DIRECTION, newPushDirection));
+        level.setBlockAndUpdate(pos, currentState.setValue(CustomPatternProviderBlockEntity.PUSH_DIRECTION, newPushDirection));
     }
 
     /**
@@ -168,7 +164,7 @@ public class CustomPatternProviderBlock extends AEBaseEntityBlock<CustomPatternP
             if (drop.getItem() instanceof BlockItem blockItem && blockItem.getBlock() == this) {
                 if (params.getOptionalParameter(LootContextParams.BLOCK_ENTITY)
                         instanceof CustomPatternProviderBlockEntity blockEntity) {
-                    drop.set(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), blockEntity.getPages());
+                    drop.set(CustomPatternRegistration.CUSTOM_PATTERN_PAGES.get(), blockEntity.getPages());
                 }
                 break;
             }

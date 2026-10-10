@@ -6,7 +6,8 @@ import appeng.api.stacks.GenericStack;
 import git.chexson.chexsonsaeutils.crafting.recursive.CompressedRing;
 import git.chexson.chexsonsaeutils.crafting.recursive.RecursiveRingPlanner;
 import git.chexson.chexsonsaeutils.crafting.recursive.RingId;
-import git.chexson.chexsonsaeutils.crafting.solve.DependencyGraphs;
+import git.chexson.chexsonsaeutils.crafting.depgraph.DependencyGraphs;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -83,27 +84,30 @@ public final class RingContraction {
         if (keyCount == 0 || patternList.isEmpty()) {
             return new Analysis(CraftGraph.CycleKind.NONE, List.of());
         }
-        List<LinkedHashSet<Integer>> successors = new ArrayList<>(nodeCount);
-        for (int i = 0; i < nodeCount; i++) {
-            successors.add(new LinkedHashSet<>());
-        }
+        // 原始可达图直接写整数边，避免每节点一个集合和每边装箱。
+        var edgeLists = new IntArrayList[nodeCount];
         for (int ordinal = 0; ordinal < patternList.size(); ordinal++) {
             IPatternDetails pattern = patternList.get(ordinal);
             int patternNode = keyCount + ordinal;
             for (GenericStack output : pattern.getOutputs()) {
                 if (output != null && output.what() != null && output.amount() > 0L) {
-                    successors.get(patternNode).add(keyIndex.get(output.what()));
+                    addEdge(edgeLists, patternNode, keyIndex.get(output.what()));
                 }
             }
             for (IPatternDetails.IInput input : pattern.getInputs()) {
                 int inputKeyNode = normalInputKeyNode(input, keyIndex);
                 if (inputKeyNode >= 0) {
-                    successors.get(inputKeyNode).add(patternNode);
+                    addEdge(edgeLists, inputKeyNode, patternNode);
                 }
             }
         }
 
-        List<List<Integer>> components = DependencyGraphs.stronglyConnectedComponents(successors, nodeCount);
+        int[][] successors = new int[nodeCount][];
+        int[] emptyEdges = new int[0];
+        for (int node = 0; node < nodeCount; node++) {
+            successors[node] = edgeLists[node] == null ? emptyEdges : edgeLists[node].toIntArray();
+        }
+        List<List<Integer>> components = DependencyGraphs.stronglyConnectedComponents(successors);
         int[] componentOf = DependencyGraphs.assertCondensationAcyclic(components, successors);
 
         int cyclicComponents = 0;
@@ -132,12 +136,14 @@ public final class RingContraction {
                     continue;
                 }
                 RingId ringId = RingId.of(entry, memberSources);
-                Map<AEKey, Long> startupSeeds = RingStartupPlan.minimumSeeds(ring.executionRatio());
+                Map<AEKey, git.chexson.chexsonsaeutils.bigint.PlanAmount> startupSeeds =
+                        RingStartupPlan.minimumSeeds(ring.executionRatio());
                 if (startupSeeds == null || startupSeeds.isEmpty()) {
                     continue;
                 }
                 macros.add(new RingMacro(ringId, ring.netInputs(), ring.netOutputs(),
-                        ring.catalysts(), startupSeeds, ring.executionRatio(), false));
+                        ring.catalysts(), startupSeeds, ring.executionRatio(),
+                        ring.memberFlows(), false));
             }
             if (macros.size() > macroStart) {
                 compressedComponents++;
@@ -152,6 +158,14 @@ public final class RingContraction {
     }
 
     public record Analysis(CraftGraph.CycleKind cycleKind, List<RingMacro> macros) {
+    }
+
+    /** 保留原始输入和输出的边顺序；平行边不影响强连通关系。 */
+    private static void addEdge(IntArrayList[] edges, int from, int to) {
+        if (edges[from] == null) {
+            edges[from] = new IntArrayList(2);
+        }
+        edges[from].add(to);
     }
 
     private static int normalInputKeyNode(

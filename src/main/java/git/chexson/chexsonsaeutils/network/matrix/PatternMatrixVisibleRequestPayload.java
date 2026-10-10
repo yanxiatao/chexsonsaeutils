@@ -8,8 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixServerTarget;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 
 import java.util.Arrays;
 import java.util.List;
@@ -26,17 +25,17 @@ public record PatternMatrixVisibleRequestPayload(
 ) implements CustomPacketPayload {
 
     public static final Type<PatternMatrixVisibleRequestPayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "pattern_matrix_visible")
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "pattern_matrix_visible")
     );
 
-    /** 单次索取的槽数上限。 */
+    /** 单次索取的槽数上限：线侧编解码按这同一把尺两端强制（D6b），线下只按它裁剪。 */
     public static final int MAX_SLOTS = 256;
 
     public static final StreamCodec<RegistryFriendlyByteBuf, PatternMatrixVisibleRequestPayload> STREAM_CODEC =
             StreamCodec.composite(
                     ByteBufCodecs.VAR_INT,
                     PatternMatrixVisibleRequestPayload::containerId,
-                    ByteBufCodecs.VAR_INT.apply(ByteBufCodecs.list()),
+                    ByteBufCodecs.VAR_INT.apply(ByteBufCodecs.list(MAX_SLOTS)),
                     PatternMatrixVisibleRequestPayload::slots,
                     PatternMatrixVisibleRequestPayload::new
             );

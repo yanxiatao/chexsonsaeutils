@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "source": {
+    "kind": "git-ref",
+    "commit": "326c465f4143003bc0d34a63c6942d6cd5df3424"
+  },
+  "scope": {
+    "source_root": "src/main/java",
+    "include_mixin": false,
+    "package_prefix": "git.chexson.chexsonsaeutils",
+    "references": [
+      "import",
+      "fqn"
+    ]
+  },
+  "allowed_cyclic_components": [],
+  "allowed_root_dependencies": []
+}

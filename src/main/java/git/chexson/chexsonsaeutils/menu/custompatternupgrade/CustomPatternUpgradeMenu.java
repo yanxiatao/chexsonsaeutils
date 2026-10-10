@@ -11,7 +11,7 @@ import appeng.menu.SlotSemantics;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.slot.AppEngSlot;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.integration.extendedae.ExtendedAeCompat;
 
@@ -37,7 +37,7 @@ public class CustomPatternUpgradeMenu extends AEBaseMenu {
 
     public static final MenuType<CustomPatternUpgradeMenu> TYPE = MenuTypeBuilder
             .create(CustomPatternUpgradeMenu::new, CustomPatternUpgradeHost.class)
-            .buildUnregistered(ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "custom_pattern_upgrade"));
+            .buildUnregistered(ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "custom_pattern_upgrade"));
 
     /** 宿主库存变更回调（由宿主转发，见 {@link CustomPatternUpgradeHost#setInventoryChangedHandler}）。 */
     public interface InventoryChangedHandler {

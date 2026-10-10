@@ -129,6 +129,7 @@ VERSIONING.md
 MOD_DESCRIPTION.md
 
 # Local planning, agent, MCP, and IDE metadata
+.scratch/
 .planning/
 plans/
 .qwen/

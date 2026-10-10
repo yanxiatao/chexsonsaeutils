@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 
 public final class GenericRecipeShapeReader {
@@ -42,23 +43,12 @@ public final class GenericRecipeShapeReader {
     private final DirectProcessingStackConverterRegistry stackConverters;
     private final DirectProcessingExternalRecipeShapeRegistry externalShapeRegistry;
 
-    public GenericRecipeShapeReader() {
-        this(
-                DirectProcessingStackConverterRegistry.directProcessingDefaults(),
-                DirectProcessingExternalRecipeShapeRegistry.directProcessingDefaults()
-        );
-    }
-
-    GenericRecipeShapeReader(
+    public GenericRecipeShapeReader(
             DirectProcessingStackConverterRegistry stackConverters,
             DirectProcessingExternalRecipeShapeRegistry externalShapeRegistry
     ) {
-        this.stackConverters = stackConverters == null
-                ? DirectProcessingStackConverterRegistry.directProcessingDefaults()
-                : stackConverters;
-        this.externalShapeRegistry = externalShapeRegistry == null
-                ? DirectProcessingExternalRecipeShapeRegistry.directProcessingDefaults()
-                : externalShapeRegistry;
+        this.stackConverters = Objects.requireNonNull(stackConverters, "stackConverters");
+        this.externalShapeRegistry = Objects.requireNonNull(externalShapeRegistry, "externalShapeRegistry");
     }
 
     public Set<RecipeSignature> readStaticItemRecipe(
@@ -146,7 +136,9 @@ public final class GenericRecipeShapeReader {
                 return RecipeShape.unreadable();
             }
             return new RecipeShape(inputs, List.of(output));
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException exception) {
+            LOG.debug("Failed to read direct-processing public recipe shape for {}", recipe,
+                    exception);
             return RecipeShape.unreadable();
         }
     }
@@ -170,7 +162,9 @@ public final class GenericRecipeShapeReader {
                 return RecipeShape.unreadable();
             }
             return readJsonShape(ops, jsonObject, identity);
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException exception) {
+            LOG.debug("Failed to read direct-processing recipe codec shape for {}", recipe,
+                    exception);
             return RecipeShape.unreadable();
         }
     }
@@ -181,7 +175,9 @@ public final class GenericRecipeShapeReader {
         RecipeSerializer<?> serializer;
         try {
             serializer = recipe.getSerializer();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException exception) {
+            LOG.debug("Failed to access direct-processing recipe serializer for {}", recipe,
+                    exception);
             serializer = null;
         }
         if (serializer != null) {
@@ -190,7 +186,9 @@ public final class GenericRecipeShapeReader {
                 if (serializerCodec != null) {
                     return (Codec<Object>) serializerCodec.codec();
                 }
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException exception) {
+                LOG.debug("Failed to access direct-processing serializer codec for {}", serializer,
+                        exception);
             }
         }
         return null;

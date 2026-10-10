@@ -2,7 +2,6 @@ package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.GenericStack;
-import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.crafting.Recipe;
@@ -17,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 public final class MachineRecipeIndexBuilder {
@@ -25,18 +25,6 @@ public final class MachineRecipeIndexBuilder {
     private final MachineAdapterRegistry adapterRegistry;
     private final RecipeTypeCandidateResolver candidateResolver;
     private final GenericRecipeShapeReader shapeReader;
-
-    public MachineRecipeIndexBuilder() {
-        this(MachineAdapterRegistry.directProcessingDefaults(), new GenericRecipeShapeReader(), true);
-    }
-
-    public static MachineRecipeIndexBuilder fromConfig() {
-        return new MachineRecipeIndexBuilder(
-                MachineAdapterRegistry.directProcessingDefaults(),
-                new GenericRecipeShapeReader(),
-                genericDiscoveryEnabled()
-        );
-    }
 
     public MachineRecipeIndexBuilder(
             MachineAdapterRegistry adapterRegistry,
@@ -50,13 +38,13 @@ public final class MachineRecipeIndexBuilder {
             GenericRecipeShapeReader shapeReader,
             boolean genericDiscoveryEnabled
     ) {
-        this.adapterRegistry = adapterRegistry == null ? MachineAdapterRegistry.empty() : adapterRegistry;
+        this.adapterRegistry = Objects.requireNonNull(adapterRegistry, "adapterRegistry");
+        this.shapeReader = Objects.requireNonNull(shapeReader, "shapeReader");
         this.candidateResolver = new RecipeTypeCandidateResolver(
                 this.adapterRegistry,
                 MachineRecipeConfigMappingRegistry.instance(),
                 genericDiscoveryEnabled
         );
-        this.shapeReader = shapeReader == null ? new GenericRecipeShapeReader() : shapeReader;
     }
 
     public MachineRecipeIndex buildIndex(Level level, MachineIdentity identity, long version) {
@@ -494,7 +482,8 @@ public final class MachineRecipeIndexBuilder {
                 if (outcome.signatures().isEmpty()) {
                     shapeScanState.unreadableShape = true;
                 }
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException exception) {
+                LOG.warn("Failed to index direct-processing recipe {}", holder.id(), exception);
                 // Keep a single unreadable mod recipe from aborting this direct machine's local index rebuild.
                 shapeScanState.unreadableShape = true;
             }
@@ -545,12 +534,6 @@ public final class MachineRecipeIndexBuilder {
             }
         }
         return ids.isEmpty() ? List.of() : List.copyOf(ids);
-    }
-
-    private static boolean genericDiscoveryEnabled() {
-        return ChexsonsaeutilsCompatibilityConfig
-                .AE_DIRECT_PROCESSING_MACHINE_GENERIC_DISCOVERY_ENABLED
-                .get();
     }
 
 }

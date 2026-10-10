@@ -39,7 +39,7 @@ class PlanningProvenanceTest {
     @Test
     void peekIsNonDestructive() {
         StubPlan plan = new StubPlan();
-        PlanningProvenance.tag(plan, PlanningProvenance.FAST, System.nanoTime());
+        PlanningProvenance.tag(plan, PlanningProvenance.NATIVE, System.nanoTime());
 
         assertSame(PlanningProvenance.peek(plan), PlanningProvenance.peek(plan));
     }
@@ -53,6 +53,19 @@ class PlanningProvenanceTest {
         PlanningProvenance.Info info = PlanningProvenance.peek(plan);
         assertTrue(info.calculationCompletedNanos() >= started);
         assertTrue(info.elapsedMillisAt(info.calculationCompletedNanos() + 4_000_000L) >= 12L);
+    }
+
+    /** 图与原生树的来源名称必须使用不同的翻译键。 */
+    @Test
+    void solverTranslationKeysDistinguishGraphAndNative() {
+        assertEquals("gui.chexsonsaeutils.solver.graph",
+                PlanningProvenance.solverTranslationKey(PlanningProvenance.GRAPH));
+        assertEquals("gui.chexsonsaeutils.solver.native",
+                PlanningProvenance.solverTranslationKey(PlanningProvenance.NATIVE));
+        assertEquals(2L, java.util.stream.Stream.of(PlanningProvenance.GRAPH, PlanningProvenance.NATIVE)
+                .map(PlanningProvenance::solverTranslationKey)
+                .distinct()
+                .count(), "屏上的求解器读数只剩图/原生两值");
     }
 
     @Test

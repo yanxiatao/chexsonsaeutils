@@ -5,12 +5,13 @@ import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
+import git.chexson.chexsonsaeutils.crafting.graphplan.diag.GraphPlanningBudget;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Entry facade for level-1 graph planning: session creation over a captured
- * network stock snapshot. Admission gating (grid/parallel-CPU/any-grid) lives
+ * network stock snapshot. Admission gating (grid/parallel-CPU) lives
  * in {@code PlanningLevelRouter}; this class only owns engine identity and
  * session construction.
  */

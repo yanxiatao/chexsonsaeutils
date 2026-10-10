@@ -3,7 +3,7 @@ package git.chexson.chexsonsaeutils.block.crafting;
 import appeng.block.AEBaseEntityBlock;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
@@ -32,7 +32,7 @@ public class AEDirectProcessingMachineBlock extends AEBaseEntityBlock<AEDirectPr
         }
         if (!level.isClientSide()) {
             MenuOpener.open(
-                    Chexsonsaeutils.AE_DIRECT_PROCESSING_MACHINE_MENU.get(),
+                    AEDirectProcessingMachineMenu.TYPE,
                     player,
                     MenuLocators.forBlockEntity(blockEntity)
             );

@@ -17,26 +17,51 @@ final class OrderedPlanningSelectorTest {
         List<PlanningAlgorithmId> visited = new java.util.ArrayList<>();
 
         var selected = OrderedPlanningSelector.select(
-                List.of(PlanningAlgorithmId.FAST, PlanningAlgorithmId.GRAPH, PlanningAlgorithmId.NATIVE),
+                List.of(PlanningAlgorithmId.GRAPH, PlanningAlgorithmId.NATIVE),
                 algorithm -> true,
                 algorithm -> {
                     visited.add(algorithm);
                     return algorithm == PlanningAlgorithmId.GRAPH ? "graph-plan" : null;
                 });
 
-        assertEquals(List.of(PlanningAlgorithmId.FAST, PlanningAlgorithmId.GRAPH), visited);
+        assertEquals(List.of(PlanningAlgorithmId.GRAPH), visited);
         assertEquals(PlanningAlgorithmId.GRAPH, selected.algorithm());
         assertEquals("graph-plan", selected.value());
     }
 
+    /**
+     * 判据（删 FAST 档）：默认序就是「图 + 原生树」，图那一档 DECLINE（交回 null）之后
+     * 直接落到原生树——序里没有任何中间算法档，期望写死。
+     */
+    @Test
+    void graphDeclineFallsStraightThroughToNativeTreeInDefaultOrder() {
+        List<PlanningAlgorithmId> tried = new java.util.ArrayList<>();
+
+        var selected = OrderedPlanningSelector.select(
+                // 配置侧交回的是串名册；顺位由这里原样 parse 成枚举，一名对一枚、不借 Set 也不重排。
+                git.chexson.chexsonsaeutils.config.PlanningServerConfig.DEFAULT_ORDER.stream()
+                        .map(PlanningAlgorithmId::parse)
+                        .flatMap(java.util.Optional::stream)
+                        .toList(),
+                algorithm -> true,
+                algorithm -> {
+                    tried.add(algorithm);
+                    return algorithm == PlanningAlgorithmId.NATIVE ? "native-plan" : null;
+                });
+
+        assertEquals(List.of(PlanningAlgorithmId.GRAPH, PlanningAlgorithmId.NATIVE), tried);
+        assertEquals(PlanningAlgorithmId.NATIVE, selected.algorithm());
+        assertEquals("native-plan", selected.value());
+    }
+
     @Test
     void ineligibleAndRecoverableFailuresContinue() {
+        // 可恢复失败那一腿：图这一档抛异常（非终点档）⇒ 继续往下试，由终点档交回计划。
         List<PlanningAlgorithmId> visited = new java.util.ArrayList<>();
 
         var selected = OrderedPlanningSelector.select(
-                List.of(PlanningAlgorithmId.FROZEN_ROUTE, PlanningAlgorithmId.GRAPH,
-                        PlanningAlgorithmId.FAST, PlanningAlgorithmId.NATIVE),
-                algorithm -> algorithm != PlanningAlgorithmId.FROZEN_ROUTE,
+                List.of(PlanningAlgorithmId.GRAPH, PlanningAlgorithmId.NATIVE),
+                algorithm -> true,
                 algorithm -> {
                     visited.add(algorithm);
                     if (algorithm == PlanningAlgorithmId.GRAPH) {
@@ -45,9 +70,21 @@ final class OrderedPlanningSelectorTest {
                     return algorithm == PlanningAlgorithmId.NATIVE ? "native-plan" : null;
                 });
 
-        assertEquals(List.of(PlanningAlgorithmId.GRAPH, PlanningAlgorithmId.FAST,
-                PlanningAlgorithmId.NATIVE), visited);
+        assertEquals(List.of(PlanningAlgorithmId.GRAPH, PlanningAlgorithmId.NATIVE), visited);
         assertEquals(PlanningAlgorithmId.NATIVE, selected.algorithm());
+
+        // 不许入围那一腿：图被 eligibility 挡在门外 ⇒ 一次都不试，直接由终点档交回。
+        List<PlanningAlgorithmId> tried = new java.util.ArrayList<>();
+        var fellThrough = OrderedPlanningSelector.select(
+                List.of(PlanningAlgorithmId.GRAPH, PlanningAlgorithmId.NATIVE),
+                algorithm -> algorithm != PlanningAlgorithmId.GRAPH,
+                algorithm -> {
+                    tried.add(algorithm);
+                    return "native-plan";
+                });
+
+        assertEquals(List.of(PlanningAlgorithmId.NATIVE), tried);
+        assertEquals(PlanningAlgorithmId.NATIVE, fellThrough.algorithm());
     }
 
     @Test
@@ -93,7 +130,7 @@ final class OrderedPlanningSelectorTest {
     @Test
     void emptyEligibleSetReturnsNull() {
         assertNull(OrderedPlanningSelector.select(
-                List.of(PlanningAlgorithmId.GRAPH, PlanningAlgorithmId.FAST),
+                List.of(PlanningAlgorithmId.GRAPH, PlanningAlgorithmId.NATIVE),
                 algorithm -> false,
                 algorithm -> "unreachable"));
     }

@@ -19,17 +19,8 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final String FTB_ULTIMINE_MOD_ID = "ftbultimine";
     private static final String AE2CT_MOD_ID = "ae2ct";
     private static final String NEOECOAE_MOD_ID = "neoecoae";
+    private static final String USELESS_MOD_ID = "useless_mod";
 
-    private static final Set<String> REPLACEMENT_TERMINAL_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.menu.PatternEncodingTermMenuRuleMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.PatternEncodingTermScreenRuleMixin"
-    );
-    private static final Set<String> REPLACEMENT_RUNTIME_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCalculationAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessReplacementMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeReplacementMixin"
-    );
     private static final Set<String> REPLACEMENT_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.PatternEncodingTermMenuRuleMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.PatternEncodingTermScreenRuleMixin",
@@ -59,23 +50,17 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     );
     private static final Set<String> FORMAL_MACHINE_PLANNING_ENTRY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceGetProvidersHostBatchPatternMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServicePlanningAggregationMixin"
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceGetProvidersHostBatchPatternMixin"
     );
     private static final Set<String> PARALLEL_CPU_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceParallelCpuMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCalculationFastPausingMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeInvoker",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessFastAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeFastBatchMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeFastAccessor",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingStatusMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CPUSelectionListParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftConfirmScreenParallelCpuMixin"
-    );
-    private static final Set<String> ORDERED_PLANNING_ENTRY_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceOrderedPlanningMixin"
     );
     private static final Set<String> AEA_DYEABLE_PATTERN_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicRecursivePlanMixin",
@@ -105,10 +90,16 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     );
     private static final Set<String> AE2CT_COMPAT_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CraftingPlanSummaryCompatMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CraftingPlanSummaryJobGuardMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2ct.AE2CTRecipeHelperCompatMixin"
     );
     private static final Set<String> NEOECOAE_COMPAT_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.neoecoae.ExtremeAssemblerNeoEcoBatchProviderMixin"
+    );
+    private static final Set<String> USELESS_MOD_COMPAT_MIXINS = Set.of(
+            "git.chexson.chexsonsaeutils.mixin.useless.SmartDoublingPlansFoldSkipMixin",
+            "git.chexson.chexsonsaeutils.mixin.useless.AdvancedAlloyFurnaceBatchHostMixin",
+            "git.chexson.chexsonsaeutils.mixin.useless.MePatternAssemblyBatchHostMixin"
     );
 
     @Override
@@ -123,7 +114,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (REPLACEMENT_ONLY_MIXINS.contains(mixinClassName)) {
-            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled");
+            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED_KEY);
         }
         if (CONTINUATION_ONLY_MIXINS.contains(mixinClassName)) {
             return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled");
@@ -131,21 +122,18 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         if (CRAFTING_CPU_ACCESSOR_MIXINS.contains(mixinClassName)) {
             return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled")
                     || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled")
-                    || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")
+                    || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY)
                     || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
         if (CRAFTING_CPU_PUSH_CONTEXT_MIXINS.contains(mixinClassName)) {
-            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")
+            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY)
                     || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
         if (FORMAL_MACHINE_PLANNING_ENTRY_MIXINS.contains(mixinClassName)) {
-            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled");
+            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY);
         }
         if (PARALLEL_CPU_ONLY_MIXINS.contains(mixinClassName)) {
             return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.PARALLEL_CRAFTING_CPU_ENABLED, "parallelCraftingCpuEnabled");
-        }
-        if (ORDERED_PLANNING_ENTRY_MIXINS.contains(mixinClassName)) {
-            return true;
         }
         if (AEA_DYEABLE_PATTERN_MIXINS.contains(mixinClassName)) {
             return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled");
@@ -162,13 +150,16 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
                     && isLoadedDuringMixinScan(FTB_ULTIMINE_MOD_ID, mixinClassName);
         }
         if (MATTER_MASS_ONLY_MIXINS.contains(mixinClassName)) {
-            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED, "matterMassPatternProviderEnabled");
+            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED, ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED_KEY);
         }
         if (AE2CT_COMPAT_MIXINS.contains(mixinClassName)) {
             return isLoadedDuringMixinScan(AE2CT_MOD_ID, mixinClassName);
         }
         if (NEOECOAE_COMPAT_MIXINS.contains(mixinClassName)) {
             return isLoadedDuringMixinScan(NEOECOAE_MOD_ID, mixinClassName);
+        }
+        if (USELESS_MOD_COMPAT_MIXINS.contains(mixinClassName)) {
+            return isLoadedDuringMixinScan(USELESS_MOD_ID, mixinClassName);
         }
         return true;
     }

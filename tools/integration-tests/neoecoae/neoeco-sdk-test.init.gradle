@@ -1,0 +1,27 @@
+// 可选 NeoEco 集成验收：追加完整原始模组及真实前置，不修改永久构建配置。
+gradle.afterProject { project ->
+    if (project != project.rootProject) {
+        return
+    }
+    def integrationJars = [
+        project.file('reference-sources/neoecoae-21.2.0-beta4.jar'),
+        project.file('reference-sources/ldlib2-neoforge-1.21.1-2.2.8-all.jar')
+    ]
+    integrationJars.each { jar ->
+        if (!jar.isFile()) {
+            throw new GradleException("真实 NeoEco 验证所需模组不存在：${jar}")
+        }
+    }
+    project.dependencies.add('testImplementation', project.files(integrationJars))
+    project.sourceSets.test.java.srcDir(project.file('tools/integration-tests/neoecoae/src'))
+    project.tasks.register('reportNeoEcoTestClasspath') {
+        doLast {
+            ['testCompileClasspath', 'testRuntimeClasspath'].each { configurationName ->
+                def hits = project.configurations.getByName(configurationName).files.findAll {
+                    it.name.toLowerCase().contains('neoeco') || it.name.toLowerCase().contains('ldlib2')
+                }
+                println "${configurationName} 集成模组=${hits}"
+            }
+        }
+    }
+}

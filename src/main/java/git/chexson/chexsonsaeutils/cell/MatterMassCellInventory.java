@@ -8,6 +8,7 @@ import appeng.api.storage.cells.CellState;
 import appeng.api.storage.cells.ISaveProvider;
 import appeng.api.storage.cells.StorageCell;
 import git.chexson.chexsonsaeutils.item.mattermass.MatterMassItem;
+import git.chexson.chexsonsaeutils.mattermassstore.MatterMassStore;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;

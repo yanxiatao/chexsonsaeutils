@@ -1,0 +1,10 @@
+// 可选直连化学验收：复用项目版本坐标，追加完整模组，不修改永久构建配置。
+gradle.afterProject { project ->
+    if (project != project.rootProject) {
+        return
+    }
+    project.dependencies.add('testImplementation', "mekanism:Mekanism:${project.property('mekanism_version')}")
+    project.dependencies.add('testImplementation',
+            "curse.maven:applied-mekanistics-574300:${project.property('appmek_file_id')}")
+    project.sourceSets.test.java.srcDir(project.file('tools/integration-tests/directprocessing/src'))
+}

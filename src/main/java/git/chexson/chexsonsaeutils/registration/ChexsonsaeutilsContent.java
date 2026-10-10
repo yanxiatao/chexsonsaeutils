@@ -7,7 +7,7 @@ import appeng.api.upgrades.Upgrades;
 import appeng.blockentity.AEBaseBlockEntity;
 import appeng.core.definitions.AEItems;
 import com.mojang.logging.LogUtils;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.cell.CellRegistration;
 import git.chexson.chexsonsaeutils.cell.InfinityCellItem;
 import git.chexson.chexsonsaeutils.block.crafting.AEDirectProcessingMachineBlock;
@@ -16,47 +16,34 @@ import git.chexson.chexsonsaeutils.block.crafting.ExtremeAssemblerBlock;
 import git.chexson.chexsonsaeutils.block.debug.AutoItemGenBlock;
 import git.chexson.chexsonsaeutils.block.custompatternprovider.CustomPatternProviderBlock;
 import git.chexson.chexsonsaeutils.block.mattermassprovider.MatterMassPatternProviderBlock;
+import git.chexson.chexsonsaeutils.bootstrap.mattermass.MatterMassPatternProviderMenuRegistration;
 import git.chexson.chexsonsaeutils.blockentity.debug.AutoItemGenBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.bootstrap.patternprovider.CustomPatternProviderBlockEntityRegistration;
 import git.chexson.chexsonsaeutils.blockentity.mattermassprovider.MatterMassPatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.ExtremeAssemblerBlockEntity;
 import git.chexson.chexsonsaeutils.cell.MatterMassCellRegistration;
-import git.chexson.chexsonsaeutils.client.gui.mattermassprovider.MatterMassPatternProviderScreen;
-import git.chexson.chexsonsaeutils.crafting.mattermass.EncodedMatterMassPattern;
-import git.chexson.chexsonsaeutils.crafting.mattermass.MatterMassPatternItem;
-import git.chexson.chexsonsaeutils.item.custompatternprovider.CustomPatternProviderItem;
-import git.chexson.chexsonsaeutils.item.mattermass.MatterMassItem;
-import git.chexson.chexsonsaeutils.menu.mattermass.MatterMassViewMenuHost;
-import git.chexson.chexsonsaeutils.menu.mattermassprovider.MatterMassPatternProviderMenu;
-import git.chexson.chexsonsaeutils.client.gui.custompatternprovider.CustomPatternProviderScreen;
-import git.chexson.chexsonsaeutils.client.gui.implementations.AEDirectProcessingMachineScreen;
-import git.chexson.chexsonsaeutils.client.gui.implementations.ExtremeAssemblerScreen;
-import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
-import git.chexson.chexsonsaeutils.client.gui.implementations.ParallelCraftingCPUScreen;
+import git.chexson.chexsonsaeutils.crafting.mattermass.MatterMassPatternRegistration;
+import git.chexson.chexsonsaeutils.item.mattermass.MatterMassRegistration;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMockRecipe;
-import git.chexson.chexsonsaeutils.crafting.custompattern.EncodedCustomPattern;
-import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternItem;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingRecipeRegistration;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternRegistration;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ExtremeAssemblerMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
-import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
 import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeMenu;
-import git.chexson.chexsonsaeutils.client.gui.custompatternencoder.CustomPatternEncoderScreen;
-import git.chexson.chexsonsaeutils.client.gui.custompatternupgrade.CustomPatternUpgradeScreen;
-import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
+import git.chexson.chexsonsaeutils.bootstrap.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
-import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPartItem;
-import appeng.client.gui.style.StyleManager;
-import com.mojang.serialization.Codec;
+import git.chexson.chexsonsaeutils.bootstrap.patternprovider.CustomPatternProviderPartRegistration;
+import git.chexson.chexsonsaeutils.bootstrap.patternprovider.CustomPatternProviderRegistration;
 import net.minecraft.core.component.DataComponentType;
-import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
@@ -64,15 +51,12 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.MenuType;
-import net.minecraft.world.item.crafting.RecipeSerializer;
-import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
-import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import org.slf4j.Logger;
@@ -83,20 +67,16 @@ public final class ChexsonsaeutilsContent {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(Chexsonsaeutils.MODID);
-    public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(Chexsonsaeutils.MODID);
+    public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(ModIds.MODID);
+    public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(ModIds.MODID);
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES =
-            DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, Chexsonsaeutils.MODID);
+            DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, ModIds.MODID);
     public static final DeferredRegister<MenuType<?>> MENU_TYPES =
-            DeferredRegister.create(Registries.MENU, Chexsonsaeutils.MODID);
-    public static final DeferredRegister<RecipeType<?>> RECIPE_TYPES =
-            DeferredRegister.create(Registries.RECIPE_TYPE, Chexsonsaeutils.MODID);
-    public static final DeferredRegister<RecipeSerializer<?>> RECIPE_SERIALIZERS =
-            DeferredRegister.create(Registries.RECIPE_SERIALIZER, Chexsonsaeutils.MODID);
+            DeferredRegister.create(Registries.MENU, ModIds.MODID);
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS =
-            DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Chexsonsaeutils.MODID);
+            DeferredRegister.create(Registries.CREATIVE_MODE_TAB, ModIds.MODID);
     public static final DeferredRegister<DataComponentType<?>> DATA_COMPONENT_TYPES =
-            DeferredRegister.create(Registries.DATA_COMPONENT_TYPE, Chexsonsaeutils.MODID);
+            DeferredRegister.create(Registries.DATA_COMPONENT_TYPE, ModIds.MODID);
 
     public static final RegisteredBlock<ExtremeAssemblerBlock> EXTREME_ASSEMBLER =
             registerBlockWithItem("extreme_assembler", ExtremeAssemblerBlock::new);
@@ -124,67 +104,18 @@ public final class ChexsonsaeutilsContent {
             registerBlockWithItem("auto_item_gen", AutoItemGenBlock::new);
     public static final Supplier<AutoItemGenBlock> AUTO_ITEM_GEN_BLOCK = AUTO_ITEM_GEN.block();
     public static final Supplier<Item> AUTO_ITEM_GEN_ITEM = AUTO_ITEM_GEN.item();
-    public static final Supplier<CustomPatternProviderBlock> CUSTOM_PATTERN_PROVIDER_BLOCK =
-            BLOCKS.register("custom_pattern_provider", CustomPatternProviderBlock::new);
-    public static final Supplier<Item> CUSTOM_PATTERN_PROVIDER_ITEM =
-            ITEMS.register("custom_pattern_provider",
-                    () -> new CustomPatternProviderItem(CUSTOM_PATTERN_PROVIDER_BLOCK.get(), new Item.Properties()));
-    /** 定制样板供应器面板（阶段 3）：PartItem 工厂创建面板实例，模型经 PartModels 注册。 */
-    public static final Supplier<Item> CUSTOM_PATTERN_PROVIDER_PART_ITEM =
-            ITEMS.register("custom_pattern_provider_part",
-                    () -> new CustomPatternProviderPartItem(new Item.Properties()));
-    public static final Supplier<CustomPatternItem> CUSTOM_PATTERN_ITEM =
-            ITEMS.register("custom_pattern", CustomPatternItem::createItem);
     public static final RegisteredBlock<MatterMassPatternProviderBlock> MATTER_MASS_PATTERN_PROVIDER =
             registerBlockWithItem("matter_mass_pattern_provider", MatterMassPatternProviderBlock::new);
     public static final Supplier<MatterMassPatternProviderBlock> MATTER_MASS_PATTERN_PROVIDER_BLOCK =
             MATTER_MASS_PATTERN_PROVIDER.block();
     public static final Supplier<Item> MATTER_MASS_PATTERN_PROVIDER_ITEM =
             MATTER_MASS_PATTERN_PROVIDER.item();
-    public static final Supplier<MatterMassItem> MATTER_MASS_ITEM =
-            ITEMS.register("matter_mass", () -> new MatterMassItem(new Item.Properties().stacksTo(1)));
-    public static final Supplier<MatterMassPatternItem> MATTER_MASS_PATTERN_ITEM =
-            ITEMS.register("matter_mass_pattern", MatterMassPatternItem::createItem);
-    public static final Supplier<DataComponentType<EncodedCustomPattern>> ENCODED_CUSTOM_PATTERN =
-            DATA_COMPONENT_TYPES.register("encoded_custom_pattern",
-                    () -> DataComponentType.<EncodedCustomPattern>builder()
-                            .persistent(EncodedCustomPattern.CODEC)
-                            .networkSynchronized(EncodedCustomPattern.STREAM_CODEC)
-                            .build());
-    /** 定制样板供应器的已扩展样板页数（拆除保留闭环：BE NBT → 掉落物品组件 → 放置/捕获读回）。 */
-    public static final Supplier<DataComponentType<Integer>> CUSTOM_PATTERN_PAGES =
-            DATA_COMPONENT_TYPES.register("custom_pattern_pages",
-                    () -> DataComponentType.<Integer>builder()
-                            .persistent(Codec.INT)
-                            .networkSynchronized(ByteBufCodecs.VAR_INT)
-                            .build());
-    /** 物质团内容物外部存储索引（内容物不进组件，保证样板上报 key 与产物 key 一致）。 */
-    public static final Supplier<DataComponentType<java.util.UUID>> MATTER_MASS_UUID =
-            DATA_COMPONENT_TYPES.register("matter_mass_uuid",
-                    () -> DataComponentType.<java.util.UUID>builder()
-                            .persistent(net.minecraft.core.UUIDUtil.CODEC)
-                            .networkSynchronized(net.minecraft.core.UUIDUtil.STREAM_CODEC)
-                            .build());
-    public static final Supplier<DataComponentType<EncodedMatterMassPattern>> ENCODED_MATTER_MASS_PATTERN =
-            DATA_COMPONENT_TYPES.register("encoded_matter_mass_pattern",
-                    () -> DataComponentType.<EncodedMatterMassPattern>builder()
-                            .persistent(EncodedMatterMassPattern.CODEC)
-                            .networkSynchronized(EncodedMatterMassPattern.STREAM_CODEC)
-                            .build());
     public static final Supplier<BlockEntityType<AutoItemGenBlockEntity>> AUTO_ITEM_GEN_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("auto_item_gen",
                     () -> {
                         var block = AUTO_ITEM_GEN_BLOCK.get();
                         return BlockEntityType.Builder.of(AutoItemGenBlockEntity::new, block).build(null);
                     });
-    public static final Supplier<RecipeType<DirectProcessingMockRecipe>> DIRECT_PROCESSING_MOCK_RECIPE_TYPE =
-            RECIPE_TYPES.register("direct_processing_mock", DirectProcessingMockRecipe::createType);
-    public static final Supplier<RecipeSerializer<DirectProcessingMockRecipe>>
-            DIRECT_PROCESSING_MOCK_RECIPE_SERIALIZER = RECIPE_SERIALIZERS.register(
-                    "direct_processing_mock",
-                    DirectProcessingMockRecipe::createSerializer
-            );
-
     public static final Supplier<BlockEntityType<ExtremeAssemblerBlockEntity>>
             EXTREME_ASSEMBLER_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
                     "extreme_assembler",
@@ -209,14 +140,6 @@ public final class ChexsonsaeutilsContent {
                             AE2_PARALLEL_CPU_TOOL_BLOCK.get()
                     ).build(null)
              );
-    public static final Supplier<BlockEntityType<CustomPatternProviderBlockEntity>>
-            CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
-                    "custom_pattern_provider",
-                    () -> BlockEntityType.Builder.of(
-                            CustomPatternProviderBlockEntity::new,
-                            CUSTOM_PATTERN_PROVIDER_BLOCK.get()
-                    ).build(null)
-            );
 
     public static final Supplier<BlockEntityType<MatterMassPatternProviderBlockEntity>>
             MATTER_MASS_PATTERN_PROVIDER_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
@@ -239,10 +162,6 @@ public final class ChexsonsaeutilsContent {
             MENU_TYPES.register("custom_pattern_encoder", () -> CustomPatternEncoderMenu.TYPE);
     public static final Supplier<MenuType<CustomPatternUpgradeMenu>> CUSTOM_PATTERN_UPGRADE_MENU =
             MENU_TYPES.register("custom_pattern_upgrade", () -> CustomPatternUpgradeMenu.TYPE);
-    public static final Supplier<MenuType<MatterMassPatternProviderMenu>> MATTER_MASS_PATTERN_PROVIDER_MENU =
-            MENU_TYPES.register("matter_mass_pattern_provider", () -> MatterMassPatternProviderMenu.TYPE);
-    public static final Supplier<MenuType<appeng.menu.me.common.MEStorageMenu>> MATTER_MASS_VIEW_MENU =
-            MENU_TYPES.register("matter_mass_view", () -> MatterMassViewMenuHost.TYPE);
     public static final Supplier<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> MULTI_LEVEL_EMITTER_MENU =
             MENU_TYPES.register(
                     MultiLevelEmitterMenu.registrationKey(),
@@ -258,13 +177,13 @@ public final class ChexsonsaeutilsContent {
                         output.accept(EXTREME_ASSEMBLER_ITEM.get());
                         output.accept(AE_DIRECT_PROCESSING_MACHINE_ITEM.get());
                         output.accept(AE2_PARALLEL_CPU_TOOL_ITEM.get());
-                        output.accept(CUSTOM_PATTERN_ITEM.get());
-                        output.accept(CUSTOM_PATTERN_PROVIDER_ITEM.get());
-                        output.accept(CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
+                        output.accept(CustomPatternRegistration.CUSTOM_PATTERN_ITEM.get());
+                        output.accept(CustomPatternProviderRegistration.CUSTOM_PATTERN_PROVIDER_ITEM.get());
+                        output.accept(CustomPatternProviderPartRegistration.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
                         output.accept(INFINITY_CELL_ITEM.get());
                         output.accept(MATTER_MASS_PATTERN_PROVIDER_ITEM.get());
-                        output.accept(MATTER_MASS_ITEM.get());
-                        output.accept(MATTER_MASS_PATTERN_ITEM.get());
+                        output.accept(MatterMassRegistration.MATTER_MASS_ITEM.get());
+                        output.accept(MatterMassPatternRegistration.MATTER_MASS_PATTERN_ITEM.get());
                         if (!FMLLoader.isProduction()) {
                             output.accept(AUTO_ITEM_GEN_ITEM.get());
                         }
@@ -279,10 +198,24 @@ public final class ChexsonsaeutilsContent {
         ITEMS.register(modEventBus);
         BLOCK_ENTITY_TYPES.register(modEventBus);
         MENU_TYPES.register(modEventBus);
-        RECIPE_TYPES.register(modEventBus);
-        RECIPE_SERIALIZERS.register(modEventBus);
+        // mock 配方两枚把手自持在 crafting.directprocessing 宿主（D7-1），本处只 dispatch 一次
+        DirectProcessingRecipeRegistration.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
         DATA_COMPONENT_TYPES.register(modEventBus);
+        // 定制样板三枚把手自持在 crafting.custompattern 宿主（D7-2），本处只 dispatch 一次
+        CustomPatternRegistration.register(modEventBus);
+        // 面板把手自持在 parts.custompatternprovider 宿主（D7-3），本处只 dispatch 一次
+        CustomPatternProviderPartRegistration.register(modEventBus);
+        // 定制样板供应器方块／物品把手自持在 parts.custompatternprovider 宿主（D7-4），本处只 dispatch 一次
+        CustomPatternProviderRegistration.register(modEventBus);
+        // 定制样板供应器方块实体类型把手自持在 blockentity.custompatternprovider 宿主（D7-6），本处只 dispatch 一次
+        CustomPatternProviderBlockEntityRegistration.register(modEventBus);
+        // 物质团样板物品／编码组件把手自持在 crafting.mattermass 宿主（M1-B），本处只 dispatch 一次
+        MatterMassPatternRegistration.register(modEventBus);
+        // 物质团供应器菜单把手自持在 block.mattermassprovider 宿主（M1-C），本处只 dispatch 一次
+        MatterMassPatternProviderMenuRegistration.register(modEventBus);
+        // 物质团物品／查看菜单／UUID 三枚把手自持在 item.mattermass 宿主（M2-A），本处只 dispatch 一次
+        MatterMassRegistration.register(modEventBus);
     }
 
     public static void registerCommonContent() {
@@ -299,7 +232,7 @@ public final class ChexsonsaeutilsContent {
         }
         if (ChexsonsaeutilsCompatibilityConfig.boolValue(
                 ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED)) {
-            MatterMassCellRegistration.bootstrap(MATTER_MASS_ITEM);
+            MatterMassCellRegistration.bootstrap(MatterMassRegistration.MATTER_MASS_ITEM);
         }
         // 面板模型注册（PartModels 冻结发生在客户端模型加载阶段，common setup 注册安全）
         PartModels.registerModels(CustomPatternProviderPart.MODELS);
@@ -341,19 +274,19 @@ public final class ChexsonsaeutilsContent {
         // 定制样板供应器：ITEM/ENERGY capability 透传到首个可用方向的相邻机器（无参版兜底）
         event.registerBlockEntity(
                 Capabilities.ItemHandler.BLOCK,
-                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                CustomPatternProviderBlockEntityRegistration.CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
                 (blockEntity, side) -> blockEntity.getFilteredExternalItemHandler()
         );
         event.registerBlockEntity(
                 Capabilities.EnergyStorage.BLOCK,
-                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                CustomPatternProviderBlockEntityRegistration.CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
                 (blockEntity, side) -> blockEntity.getMachineEnergyHandler()
         );
         // B1 修复：AE2 InitCapabilityProviders 只自动注册 AE2 自己的 BE，本项目 BE 需手动注册
         // 网格节点能力——未注册则线缆无法发现 BE、节点永不入网（pushPattern 恒失败）
         event.registerBlockEntity(
                 AECapabilities.IN_WORLD_GRID_NODE_HOST,
-                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                CustomPatternProviderBlockEntityRegistration.CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
                 (blockEntity, context) -> blockEntity
         );
         // 物质团供应器：仅网格节点能力（无任何对外输入输出）
@@ -362,32 +295,6 @@ public final class ChexsonsaeutilsContent {
                 MATTER_MASS_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
                 (blockEntity, context) -> blockEntity
         );
-    }
-
-    public static void registerClientScreens(RegisterMenuScreensEvent event) {
-        registerMultiLevelEmitterClientBindings();
-        event.register(EXTREME_ASSEMBLER_MENU.get(), ExtremeAssemblerScreen::new);
-        event.register(AE_DIRECT_PROCESSING_MACHINE_MENU.get(), AEDirectProcessingMachineScreen::new);
-        event.<ParallelCraftingCPUMenu, ParallelCraftingCPUScreen>register(
-                AE2_PARALLEL_CPU_TOOL_CPU_MENU.get(),
-                (menu, playerInventory, title) ->
-                new ParallelCraftingCPUScreen(
-                        menu,
-                        playerInventory,
-                        title,
-                        StyleManager.loadStyleDoc("/screens/chexson_parallel_cpu.json")
-                )
-        );
-        event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new);
-        event.register(CUSTOM_PATTERN_ENCODER_MENU.get(), CustomPatternEncoderScreen::new);
-        event.register(CUSTOM_PATTERN_UPGRADE_MENU.get(), CustomPatternUpgradeScreen::new);
-        event.register(CUSTOM_PATTERN_PROVIDER_MENU.get(), CustomPatternProviderScreen::new);
-        event.register(MATTER_MASS_PATTERN_PROVIDER_MENU.get(), MatterMassPatternProviderScreen::new);
-        event.<appeng.menu.me.common.MEStorageMenu,
-                appeng.client.gui.me.common.MEStorageScreen<appeng.menu.me.common.MEStorageMenu>>register(
-                        MATTER_MASS_VIEW_MENU.get(),
-                        (menu, inv, title) -> new appeng.client.gui.me.common.MEStorageScreen<>(menu, inv, title,
-                                StyleManager.loadStyleDoc("/screens/terminals/portable_item_cell.json")));
     }
 
     public static String emitterRegistryPath() {
@@ -399,7 +306,7 @@ public final class ChexsonsaeutilsContent {
     }
 
     public static String screenBindingKey() {
-        return MultiLevelEmitterScreen.registrationKey();
+        return MultiLevelEmitterItem.SCREEN_BINDING_KEY;
     }
 
     public static String runtimePartType() {
@@ -470,17 +377,17 @@ public final class ChexsonsaeutilsContent {
     }
 
     private static void registerCustomPatternProviderBootstrap() {
-        CustomPatternProviderBlock block = CUSTOM_PATTERN_PROVIDER_BLOCK.get();
+        CustomPatternProviderBlock block = CustomPatternProviderRegistration.CUSTOM_PATTERN_PROVIDER_BLOCK.get();
         // 无方块级 ticker：推送/抽取由网格 Ticker 驱动
         block.setBlockEntity(
                 CustomPatternProviderBlockEntity.class,
-                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                CustomPatternProviderBlockEntityRegistration.CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
                 null,
                 null
         );
         AEBaseBlockEntity.registerBlockEntityItem(
-                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
-                CUSTOM_PATTERN_PROVIDER_ITEM.get()
+                CustomPatternProviderBlockEntityRegistration.CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                CustomPatternProviderRegistration.CUSTOM_PATTERN_PROVIDER_ITEM.get()
         );
     }
 
@@ -514,18 +421,6 @@ public final class ChexsonsaeutilsContent {
                 menuBindingKey(),
                 screenBindingKey(),
                 MultiLevelEmitterMenu.hasRegisteredMenuBindings()
-        );
-    }
-
-    private static void registerMultiLevelEmitterClientBindings() {
-        MultiLevelEmitterScreen.registerClientBindings(
-                MULTI_LEVEL_EMITTER_MENU.get(),
-                (menu, slotIndex, threshold, maxValue) -> menu.commitThreshold(slotIndex, threshold, maxValue)
-        );
-        LOGGER.info(
-                "Registered MultiLevelEmitter client bindings: screenKey={}, clientBindingsReady={}",
-                screenBindingKey(),
-                MultiLevelEmitterScreen.hasClientBindingsRegistered()
         );
     }
 

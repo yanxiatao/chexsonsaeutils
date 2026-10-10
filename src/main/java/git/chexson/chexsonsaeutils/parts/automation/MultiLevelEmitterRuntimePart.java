@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils.parts.automation;
 
+import git.chexson.chexsonsaeutils.parts.automation.model.MultiLevelEmitterRules;
+
 import appeng.api.config.FuzzyMode;
 import appeng.api.config.RedstoneMode;
 import appeng.api.config.Settings;
@@ -14,7 +16,7 @@ import appeng.core.definitions.AEItems;
 import appeng.parts.automation.StorageLevelEmitterPart;
 import appeng.util.ConfigInventory;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
+import git.chexson.chexsonsaeutils.parts.automation.model.MultiLevelEmitterDefinition;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompileResult;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionFormatter;
@@ -54,15 +56,16 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     public static final int DEFAULT_VISIBLE_SLOT_COUNT = 1;
     private static final ThreadLocal<MultiLevelEmitterRuntimePart> PUBLISHED_MENU_RUNTIME = new ThreadLocal<>();
 
+    private final MultiLevelEmitterMenuOpener menuOpener;
     private ConfigInventory configInventory;
     private int configuredItemCount = DEFAULT_VISIBLE_SLOT_COUNT;
     private Map<Integer, Long> thresholds = new LinkedHashMap<>();
-    private List<MultiLevelEmitterPart.ComparisonMode> comparisonModes = List.of();
-    private List<MultiLevelEmitterPart.LogicRelation> relations = List.of();
-    private List<MultiLevelEmitterPart.MatchingMode> requestedMatchingModes = List.of();
-    private List<MultiLevelEmitterPart.MatchingMode> matchingModes = List.of();
-    private List<MultiLevelEmitterPart.CraftingMode> requestedCraftingModes = List.of();
-    private List<MultiLevelEmitterPart.CraftingMode> craftingModes = List.of();
+    private List<MultiLevelEmitterRules.ComparisonMode> comparisonModes = List.of();
+    private List<MultiLevelEmitterRules.LogicRelation> relations = List.of();
+    private List<MultiLevelEmitterRules.MatchingMode> requestedMatchingModes = List.of();
+    private List<MultiLevelEmitterRules.MatchingMode> matchingModes = List.of();
+    private List<MultiLevelEmitterRules.CraftingMode> requestedCraftingModes = List.of();
+    private List<MultiLevelEmitterRules.CraftingMode> craftingModes = List.of();
     private String appliedExpressionText = "";
     private MultiLevelEmitterExpressionOwnership expressionOwnership = MultiLevelEmitterExpressionOwnership.AUTO;
     private MultiLevelEmitterExpressionCompileResult expressionCompileResult;
@@ -74,8 +77,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private boolean lastKnownCraftingCardInstalled;
     private HolderLookup.Provider lastKnownSnapshotProvider = RegistryAccess.EMPTY;
 
-    public MultiLevelEmitterRuntimePart(IPartItem<?> partItem) {
+    public MultiLevelEmitterRuntimePart(IPartItem<?> partItem, MultiLevelEmitterMenuOpener menuOpener) {
         super(partItem);
+        this.menuOpener = Objects.requireNonNull(menuOpener, "menuOpener");
         applyConfigurationState(DEFAULT_VISIBLE_SLOT_COUNT, null, null, null, false);
     }
 
@@ -87,7 +91,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         publishForMenuOpen(this);
         try {
             if (player instanceof ServerPlayer serverPlayer) {
-                MultiLevelEmitterMenu.openMenu(serverPlayer, this);
+                menuOpener.openMenu(serverPlayer, this);
             }
         } finally {
             consumePublishedMenuRuntime();
@@ -135,8 +139,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     public void applyConfiguration(
             int configuredItemCount,
             Map<Integer, Long> persistedThresholds,
-            List<MultiLevelEmitterPart.ComparisonMode> persistedComparisons,
-            List<MultiLevelEmitterPart.LogicRelation> persistedRelations
+            List<MultiLevelEmitterRules.ComparisonMode> persistedComparisons,
+            List<MultiLevelEmitterRules.LogicRelation> persistedRelations
     ) {
         applyConfigurationState(
                 configuredItemCount,
@@ -170,9 +174,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         if (slotIndex < 0 || slotIndex >= configuredItemCount) {
             return;
         }
-        List<MultiLevelEmitterPart.ComparisonMode> updatedModes = new ArrayList<>(comparisonModes);
-        MultiLevelEmitterPart.ComparisonMode current = updatedModes.get(slotIndex);
-        updatedModes.set(slotIndex, MultiLevelEmitterMenu.nextComparisonMode(current));
+        List<MultiLevelEmitterRules.ComparisonMode> updatedModes = new ArrayList<>(comparisonModes);
+        MultiLevelEmitterRules.ComparisonMode current = updatedModes.get(slotIndex);
+        updatedModes.set(slotIndex, MultiLevelEmitterRules.nextComparisonMode(current));
         applyConfiguration(configuredItemCount, thresholds, updatedModes, relations);
     }
 
@@ -180,9 +184,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         if (slotIndex < 0 || slotIndex >= configuredItemCount) {
             return;
         }
-        List<MultiLevelEmitterPart.MatchingMode> updatedModes = new ArrayList<>(requestedMatchingModes);
-        MultiLevelEmitterPart.MatchingMode current = updatedModes.get(slotIndex);
-        updatedModes.set(slotIndex, MultiLevelEmitterPart.nextMatchingMode(current));
+        List<MultiLevelEmitterRules.MatchingMode> updatedModes = new ArrayList<>(requestedMatchingModes);
+        MultiLevelEmitterRules.MatchingMode current = updatedModes.get(slotIndex);
+        updatedModes.set(slotIndex, MultiLevelEmitterRules.nextMatchingMode(current));
         applyConfigurationState(
                 configuredItemCount,
                 thresholds,
@@ -200,9 +204,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         if (slotIndex < 0 || slotIndex >= configuredItemCount) {
             return;
         }
-        List<MultiLevelEmitterPart.CraftingMode> updatedModes = new ArrayList<>(requestedCraftingModes);
-        MultiLevelEmitterPart.CraftingMode current = updatedModes.get(slotIndex);
-        updatedModes.set(slotIndex, MultiLevelEmitterPart.nextCraftingMode(current));
+        List<MultiLevelEmitterRules.CraftingMode> updatedModes = new ArrayList<>(requestedCraftingModes);
+        MultiLevelEmitterRules.CraftingMode current = updatedModes.get(slotIndex);
+        updatedModes.set(slotIndex, MultiLevelEmitterRules.nextCraftingMode(current));
         applyConfigurationState(
                 configuredItemCount,
                 thresholds,
@@ -301,21 +305,21 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     public boolean evaluateConfiguredOutput(List<Long> observedValues, boolean networkActive) {
         List<Long> normalizedObservedValues =
                 MultiLevelEmitterUtils.normalizeObservedValuesForSlotCount(observedValues, configuredItemCount);
-        List<MultiLevelEmitterPart.SlotEvaluation> slotResults =
-                MultiLevelEmitterPart.evaluateSlotComparisonsWithParticipation(
+        List<MultiLevelEmitterRules.SlotEvaluation> slotResults =
+                MultiLevelEmitterRules.evaluateSlotComparisonsWithParticipation(
                         normalizedObservedValues,
                         thresholds,
                         comparisonModes
                 );
-        MultiLevelEmitterPart.AggregationResult evaluationResult;
+        MultiLevelEmitterRules.AggregationResult evaluationResult;
         if (compiledExpressionPlan != null) {
             evaluationResult = compiledExpressionPlan.evaluateParticipating(slotResults);
         } else if (expressionIsInvalid()) {
-            evaluationResult = new MultiLevelEmitterPart.AggregationResult(normalizedObservedValues.size(), false);
+            evaluationResult = new MultiLevelEmitterRules.AggregationResult(normalizedObservedValues.size(), false);
         } else {
-            evaluationResult = MultiLevelEmitterPart.evaluateFinalResultWithParticipation(slotResults, relations);
+            evaluationResult = MultiLevelEmitterRules.evaluateFinalResultWithParticipation(slotResults, relations);
         }
-        return MultiLevelEmitterPart.resolveEmitterState(
+        return MultiLevelEmitterRules.resolveEmitterState(
                 networkActive,
                 normalizedObservedValues.size(),
                 evaluationResult,
@@ -324,9 +328,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     }
 
     public boolean evaluateConfiguredOutput(IGrid grid, boolean networkActive) {
-        List<MultiLevelEmitterPart.SlotEvaluation> slotResults = readSlotEvaluations(grid);
+        List<MultiLevelEmitterRules.SlotEvaluation> slotResults = readSlotEvaluations(grid);
         if (compiledExpressionPlan != null) {
-            return MultiLevelEmitterPart.resolveEmitterState(
+            return MultiLevelEmitterRules.resolveEmitterState(
                     networkActive,
                     configuredItemCount,
                     compiledExpressionPlan.evaluateParticipating(slotResults),
@@ -334,25 +338,25 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             );
         }
         if (expressionIsInvalid()) {
-            return MultiLevelEmitterPart.resolveEmitterState(
+            return MultiLevelEmitterRules.resolveEmitterState(
                     networkActive,
                     configuredItemCount,
                     false,
                     currentRedstoneMode()
             );
         }
-        return MultiLevelEmitterPart.resolveEmitterState(
+        return MultiLevelEmitterRules.resolveEmitterState(
                 networkActive,
                 configuredItemCount,
-                MultiLevelEmitterPart.evaluateFinalResultWithParticipation(slotResults, relations),
+                MultiLevelEmitterRules.evaluateFinalResultWithParticipation(slotResults, relations),
                 currentRedstoneMode()
         );
     }
 
-    private List<MultiLevelEmitterPart.SlotEvaluation> readSlotEvaluations(IGrid grid) {
+    private List<MultiLevelEmitterRules.SlotEvaluation> readSlotEvaluations(IGrid grid) {
         KeyCounter inventory = grid.getStorageService().getCachedInventory();
         ICraftingService craftingService = grid.getCraftingService();
-        List<MultiLevelEmitterPart.SlotEvaluation> slotResults = new ArrayList<>(configuredItemCount);
+        List<MultiLevelEmitterRules.SlotEvaluation> slotResults = new ArrayList<>(configuredItemCount);
         for (int slot = 0; slot < configuredItemCount; slot++) {
             slotResults.add(slotEvaluationForGridSlot(
                     slot,
@@ -397,11 +401,11 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         return new LinkedHashMap<>(thresholds);
     }
 
-    public List<MultiLevelEmitterPart.ComparisonMode> comparisonModes() {
+    public List<MultiLevelEmitterRules.ComparisonMode> comparisonModes() {
         return List.copyOf(comparisonModes);
     }
 
-    public List<MultiLevelEmitterPart.LogicRelation> relations() {
+    public List<MultiLevelEmitterRules.LogicRelation> relations() {
         return List.copyOf(relations);
     }
 
@@ -421,29 +425,29 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         }
     }
 
-    public MultiLevelEmitterPart.MatchingMode matchingModeForSlot(int slotIndex) {
+    public MultiLevelEmitterRules.MatchingMode matchingModeForSlot(int slotIndex) {
         if (slotIndex < 0 || slotIndex >= configuredItemCount) {
-            return MultiLevelEmitterPart.MatchingMode.STRICT;
+            return MultiLevelEmitterRules.MatchingMode.STRICT;
         }
         return slotIndex < matchingModes.size()
                 ? matchingModes.get(slotIndex)
-                : MultiLevelEmitterPart.MatchingMode.STRICT;
+                : MultiLevelEmitterRules.MatchingMode.STRICT;
     }
 
-    public MultiLevelEmitterPart.CraftingMode craftingModeForSlot(int slotIndex) {
+    public MultiLevelEmitterRules.CraftingMode craftingModeForSlot(int slotIndex) {
         if (slotIndex < 0 || slotIndex >= configuredItemCount) {
-            return MultiLevelEmitterPart.CraftingMode.NONE;
+            return MultiLevelEmitterRules.CraftingMode.NONE;
         }
         return slotIndex < craftingModes.size()
                 ? craftingModes.get(slotIndex)
-                : MultiLevelEmitterPart.CraftingMode.NONE;
+                : MultiLevelEmitterRules.CraftingMode.NONE;
     }
 
     public boolean hasDuplicateEmitToCraftTarget(int slotIndex) {
         if (slotIndex < 0 || slotIndex >= configuredItemCount) {
             return false;
         }
-        if (craftingModeForSlot(slotIndex) != MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
+        if (craftingModeForSlot(slotIndex) != MultiLevelEmitterRules.CraftingMode.EMIT_TO_CRAFT) {
             return false;
         }
         AEKey targetKey = ensureConfigInventory().getKey(slotIndex);
@@ -454,7 +458,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
             if (candidate == slotIndex) {
                 continue;
             }
-            if (craftingModeForSlot(candidate) != MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
+            if (craftingModeForSlot(candidate) != MultiLevelEmitterRules.CraftingMode.EMIT_TO_CRAFT) {
                 continue;
             }
             if (Objects.equals(targetKey, ensureConfigInventory().getKey(candidate))) {
@@ -478,7 +482,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
 
     private ConfigInventory ensureConfigInventory() {
         if (configInventory == null) {
-            configInventory = ConfigInventory.configTypes(MultiLevelEmitterMenu.SLOT_CAPACITY)
+            configInventory = ConfigInventory.configTypes(MultiLevelEmitterDefinition.SLOT_CAPACITY)
                     .changeListener(this::onConfigInventoryChanged)
                     .build();
         }
@@ -505,10 +509,10 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private void applyConfigurationState(
             int configuredItemCount,
             Map<Integer, Long> persistedThresholds,
-            List<MultiLevelEmitterPart.ComparisonMode> persistedComparisons,
-            List<MultiLevelEmitterPart.LogicRelation> persistedRelations,
-            List<MultiLevelEmitterPart.MatchingMode> persistedMatchingModes,
-            List<MultiLevelEmitterPart.CraftingMode> persistedCraftingModes,
+            List<MultiLevelEmitterRules.ComparisonMode> persistedComparisons,
+            List<MultiLevelEmitterRules.LogicRelation> persistedRelations,
+            List<MultiLevelEmitterRules.MatchingMode> persistedMatchingModes,
+            List<MultiLevelEmitterRules.CraftingMode> persistedCraftingModes,
             String persistedExpressionText,
             MultiLevelEmitterExpressionOwnership persistedOwnership,
             boolean refreshRuntimeState
@@ -516,17 +520,17 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         int previousSlotCount = this.configuredItemCount;
         int normalizedSlotCount = Math.max(
                 DEFAULT_VISIBLE_SLOT_COUNT,
-                Math.min(MultiLevelEmitterMenu.SLOT_CAPACITY, configuredItemCount)
+                Math.min(MultiLevelEmitterDefinition.SLOT_CAPACITY, configuredItemCount)
         );
         this.configuredItemCount = normalizedSlotCount;
         this.thresholds = new LinkedHashMap<>(
-                MultiLevelEmitterPart.normalizeThresholdsForSlotCount(persistedThresholds, normalizedSlotCount)
+                MultiLevelEmitterRules.normalizeThresholdsForSlotCount(persistedThresholds, normalizedSlotCount)
         );
         this.comparisonModes = List.copyOf(
-                MultiLevelEmitterPart.normalizeComparisonModesForSlotCount(persistedComparisons, normalizedSlotCount)
+                MultiLevelEmitterRules.normalizeComparisonModesForSlotCount(persistedComparisons, normalizedSlotCount)
         );
         this.relations = List.copyOf(
-                MultiLevelEmitterPart.normalizeRelationsForSlotCount(persistedRelations, normalizedSlotCount)
+                MultiLevelEmitterRules.normalizeRelationsForSlotCount(persistedRelations, normalizedSlotCount)
         );
         boolean fuzzyCardInstalled = hasFuzzyCardInstalled();
         boolean craftingCardInstalled = hasCraftingCardInstalled();
@@ -541,14 +545,14 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 craftingCardInstalled
         ));
         this.matchingModes = List.copyOf(
-                MultiLevelEmitterPart.normalizeMatchingModesForSlotCount(
+                MultiLevelEmitterRules.normalizeMatchingModesForSlotCount(
                         requestedMatchingModes,
                         normalizedSlotCount,
                         fuzzyCardInstalled
                 )
         );
         this.craftingModes = List.copyOf(
-                MultiLevelEmitterPart.normalizeCraftingModesForSlotCount(
+                MultiLevelEmitterRules.normalizeCraftingModesForSlotCount(
                         requestedCraftingModes,
                         normalizedSlotCount,
                         craftingCardInstalled
@@ -567,8 +571,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private void applyConfigurationState(
             int configuredItemCount,
             Map<Integer, Long> persistedThresholds,
-            List<MultiLevelEmitterPart.ComparisonMode> persistedComparisons,
-            List<MultiLevelEmitterPart.LogicRelation> persistedRelations,
+            List<MultiLevelEmitterRules.ComparisonMode> persistedComparisons,
+            List<MultiLevelEmitterRules.LogicRelation> persistedRelations,
             boolean refreshRuntimeState
     ) {
         applyConfigurationState(
@@ -606,11 +610,11 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         HolderLookup.Provider effectiveProvider = resolveSnapshotProvider(provider);
         data.putInt(NBT_CONFIGURED_ITEM_COUNT, configuredItemCount);
         ensureConfigInventory().writeToChildTag(data, NBT_CONFIG, effectiveProvider);
-        MultiLevelEmitterPart.writeThresholdsToNbt(thresholds, data, NBT_REPORTING_VALUES);
-        MultiLevelEmitterUtils.writeEnumListToNBT(comparisonModes, data, NBT_COMPARISON_MODES, MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL);
-        MultiLevelEmitterUtils.writeEnumListToNBT(relations, data, NBT_LOGIC_RELATIONS, MultiLevelEmitterPart.LogicRelation.OR);
-        MultiLevelEmitterUtils.writeEnumListToNBT(requestedMatchingModes, data, NBT_MATCHING_MODES, MultiLevelEmitterPart.MatchingMode.STRICT);
-        MultiLevelEmitterUtils.writeEnumListToNBT(requestedCraftingModes, data, NBT_CRAFTING_MODES, MultiLevelEmitterPart.CraftingMode.NONE);
+        MultiLevelEmitterRules.writeThresholdsToNbt(thresholds, data, NBT_REPORTING_VALUES);
+        MultiLevelEmitterUtils.writeEnumListToNBT(comparisonModes, data, NBT_COMPARISON_MODES, MultiLevelEmitterRules.ComparisonMode.GREATER_OR_EQUAL);
+        MultiLevelEmitterUtils.writeEnumListToNBT(relations, data, NBT_LOGIC_RELATIONS, MultiLevelEmitterRules.LogicRelation.OR);
+        MultiLevelEmitterUtils.writeEnumListToNBT(requestedMatchingModes, data, NBT_MATCHING_MODES, MultiLevelEmitterRules.MatchingMode.STRICT);
+        MultiLevelEmitterUtils.writeEnumListToNBT(requestedCraftingModes, data, NBT_CRAFTING_MODES, MultiLevelEmitterRules.CraftingMode.NONE);
         data.putString(NBT_EXPRESSION_TEXT, appliedExpressionText);
         data.putString(NBT_EXPRESSION_OWNERSHIP, expressionOwnership.name());
     }
@@ -649,11 +653,11 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         suppressConfigInventoryCallback = previous;
         applyConfigurationState(
                 Math.max(DEFAULT_VISIBLE_SLOT_COUNT, data.getInt(NBT_CONFIGURED_ITEM_COUNT)),
-                MultiLevelEmitterPart.readThresholdsFromNbt(data, NBT_REPORTING_VALUES),
-                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_COMPARISON_MODES, MultiLevelEmitterPart.ComparisonMode::fromPersisted),
-                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_LOGIC_RELATIONS, MultiLevelEmitterPart.LogicRelation::fromPersisted),
-                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_MATCHING_MODES, MultiLevelEmitterPart.MatchingMode::fromPersisted),
-                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_CRAFTING_MODES, MultiLevelEmitterPart.CraftingMode::fromPersisted),
+                MultiLevelEmitterRules.readThresholdsFromNbt(data, NBT_REPORTING_VALUES),
+                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_COMPARISON_MODES, MultiLevelEmitterRules.ComparisonMode::fromPersisted),
+                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_LOGIC_RELATIONS, MultiLevelEmitterRules.LogicRelation::fromPersisted),
+                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_MATCHING_MODES, MultiLevelEmitterRules.MatchingMode::fromPersisted),
+                MultiLevelEmitterUtils.readEnumListFromNBT(data, NBT_CRAFTING_MODES, MultiLevelEmitterRules.CraftingMode::fromPersisted),
                 readPersistedExpressionText(data),
                 readPersistedExpressionOwnership(data),
                 refreshRuntimeState
@@ -751,24 +755,24 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         return keys;
     }
 
-    private MultiLevelEmitterPart.SlotEvaluation slotEvaluationForGridSlot(
+    private MultiLevelEmitterRules.SlotEvaluation slotEvaluationForGridSlot(
             int slot,
             AEKey key,
             KeyCounter inventory,
             ICraftingService craftingService
     ) {
         if (key == null) {
-            return MultiLevelEmitterPart.SlotEvaluation.inactive();
+            return MultiLevelEmitterRules.SlotEvaluation.inactive();
         }
 
         if (isCraftingExpressionParticipatingSlot(slot)) {
-            return MultiLevelEmitterPart.SlotEvaluation.participating(
+            return MultiLevelEmitterRules.SlotEvaluation.participating(
                     craftingService != null && craftingService.isRequesting(key)
             );
         }
 
-        return MultiLevelEmitterPart.SlotEvaluation.participating(
-                MultiLevelEmitterPart.evaluateComparison(
+        return MultiLevelEmitterRules.SlotEvaluation.participating(
+                MultiLevelEmitterRules.evaluateComparison(
                         readStorageCountedAmount(slot, inventory, key),
                         thresholds.getOrDefault(slot, 1L),
                         comparisonModeForSlot(slot)
@@ -779,9 +783,9 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private List<AEKey> emitWhileCraftingKeys() {
         List<AEKey> keys = new ArrayList<>(configuredItemCount);
         for (int slot = 0; slot < configuredItemCount; slot++) {
-            MultiLevelEmitterPart.CraftingMode craftingMode = craftingModeForSlot(slot);
-            if (craftingMode != MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING
-                    && craftingMode != MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
+            MultiLevelEmitterRules.CraftingMode craftingMode = craftingModeForSlot(slot);
+            if (craftingMode != MultiLevelEmitterRules.CraftingMode.EMIT_WHILE_CRAFTING
+                    && craftingMode != MultiLevelEmitterRules.CraftingMode.EMIT_TO_CRAFT) {
                 continue;
             }
             AEKey key = ensureConfigInventory().getKey(slot);
@@ -799,7 +803,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     private Set<AEKey> emitToCraftKeys() {
         Set<AEKey> keys = new LinkedHashSet<>(configuredItemCount);
         for (int slot = 0; slot < configuredItemCount; slot++) {
-            if (craftingModeForSlot(slot) != MultiLevelEmitterPart.CraftingMode.EMIT_TO_CRAFT) {
+            if (craftingModeForSlot(slot) != MultiLevelEmitterRules.CraftingMode.EMIT_TO_CRAFT) {
                 continue;
             }
             AEKey key = ensureConfigInventory().getKey(slot);
@@ -811,20 +815,20 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     }
 
     private boolean isCraftingExpressionParticipatingSlot(int slot) {
-        return MultiLevelEmitterPart.isExpressionParticipatingCraftingMode(craftingModeForSlot(slot));
+        return MultiLevelEmitterRules.isExpressionParticipatingCraftingMode(craftingModeForSlot(slot));
     }
 
     private long readStorageCountedAmount(int slot, KeyCounter inventory, AEKey key) {
-        MultiLevelEmitterPart.MatchingMode matchingMode = matchingModeForSlot(slot);
-        return matchingMode == MultiLevelEmitterPart.MatchingMode.STRICT
+        MultiLevelEmitterRules.MatchingMode matchingMode = matchingModeForSlot(slot);
+        return matchingMode == MultiLevelEmitterRules.MatchingMode.STRICT
                 ? inventory.get(key)
                 : readFuzzyAmount(inventory, key, toFuzzyMode(matchingMode));
     }
 
-    private MultiLevelEmitterPart.ComparisonMode comparisonModeForSlot(int slot) {
+    private MultiLevelEmitterRules.ComparisonMode comparisonModeForSlot(int slot) {
         return slot < comparisonModes.size()
                 ? comparisonModes.get(slot)
-                : MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
+                : MultiLevelEmitterRules.ComparisonMode.GREATER_OR_EQUAL;
     }
 
 
@@ -833,7 +837,7 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         for (int slot = 0; slot < configuredItemCount; slot++) {
             if (isStorageCountingSlot(slot)
                     && config.getKey(slot) != null
-                    && matchingModeForSlot(slot) != MultiLevelEmitterPart.MatchingMode.STRICT) {
+                    && matchingModeForSlot(slot) != MultiLevelEmitterRules.MatchingMode.STRICT) {
                 return true;
             }
         }
@@ -841,48 +845,48 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
     }
 
     private boolean isStorageCountingSlot(int slot) {
-        return craftingModeForSlot(slot) == MultiLevelEmitterPart.CraftingMode.NONE;
+        return craftingModeForSlot(slot) == MultiLevelEmitterRules.CraftingMode.NONE;
     }
 
-    private List<MultiLevelEmitterPart.MatchingMode> reconcileRequestedMatchingModes(
-            List<MultiLevelEmitterPart.MatchingMode> persistedMatchingModes,
+    private List<MultiLevelEmitterRules.MatchingMode> reconcileRequestedMatchingModes(
+            List<MultiLevelEmitterRules.MatchingMode> persistedMatchingModes,
             int normalizedSlotCount,
             boolean fuzzyCardInstalled
     ) {
-        List<MultiLevelEmitterPart.MatchingMode> requestedModes =
-                new ArrayList<>(MultiLevelEmitterPart.normalizeRequestedMatchingModesForSlotCount(
+        List<MultiLevelEmitterRules.MatchingMode> requestedModes =
+                new ArrayList<>(MultiLevelEmitterRules.normalizeRequestedMatchingModesForSlotCount(
                         persistedMatchingModes,
                         normalizedSlotCount
                 ));
         if (cardCapabilityStateInitialized && lastKnownFuzzyCardInstalled && !fuzzyCardInstalled) {
             for (int slot = 0; slot < requestedModes.size(); slot++) {
-                requestedModes.set(slot, MultiLevelEmitterPart.MatchingMode.STRICT);
+                requestedModes.set(slot, MultiLevelEmitterRules.MatchingMode.STRICT);
             }
         }
         return requestedModes;
     }
 
-    private List<MultiLevelEmitterPart.CraftingMode> reconcileRequestedCraftingModes(
-            List<MultiLevelEmitterPart.CraftingMode> persistedCraftingModes,
+    private List<MultiLevelEmitterRules.CraftingMode> reconcileRequestedCraftingModes(
+            List<MultiLevelEmitterRules.CraftingMode> persistedCraftingModes,
             int normalizedSlotCount,
             boolean craftingCardInstalled
     ) {
-        List<MultiLevelEmitterPart.CraftingMode> requestedModes =
-                new ArrayList<>(MultiLevelEmitterPart.normalizeRequestedCraftingModesForSlotCount(
+        List<MultiLevelEmitterRules.CraftingMode> requestedModes =
+                new ArrayList<>(MultiLevelEmitterRules.normalizeRequestedCraftingModesForSlotCount(
                         persistedCraftingModes,
                         normalizedSlotCount
                 ));
         if (cardCapabilityStateInitialized && lastKnownCraftingCardInstalled && !craftingCardInstalled) {
             for (int slot = 0; slot < requestedModes.size(); slot++) {
-                requestedModes.set(slot, MultiLevelEmitterPart.CraftingMode.NONE);
+                requestedModes.set(slot, MultiLevelEmitterRules.CraftingMode.NONE);
             }
             return requestedModes;
         }
         if (cardCapabilityStateInitialized && !lastKnownCraftingCardInstalled && craftingCardInstalled) {
             ConfigInventory config = ensureConfigInventory();
             for (int slot = 0; slot < requestedModes.size(); slot++) {
-                if (requestedModes.get(slot) == MultiLevelEmitterPart.CraftingMode.NONE && config.getKey(slot) != null) {
-                    requestedModes.set(slot, MultiLevelEmitterPart.CraftingMode.EMIT_WHILE_CRAFTING);
+                if (requestedModes.get(slot) == MultiLevelEmitterRules.CraftingMode.NONE && config.getKey(slot) != null) {
+                    requestedModes.set(slot, MultiLevelEmitterRules.CraftingMode.EMIT_WHILE_CRAFTING);
                 }
             }
         }
@@ -897,8 +901,8 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
         return amount;
     }
 
-    private static FuzzyMode toFuzzyMode(MultiLevelEmitterPart.MatchingMode matchingMode) {
-        return switch (matchingMode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : matchingMode) {
+    private static FuzzyMode toFuzzyMode(MultiLevelEmitterRules.MatchingMode matchingMode) {
+        return switch (matchingMode == null ? MultiLevelEmitterRules.MatchingMode.STRICT : matchingMode) {
             case STRICT -> throw new IllegalArgumentException("STRICT does not map to an AE2 fuzzy mode");
             case IGNORE_ALL -> FuzzyMode.IGNORE_ALL;
             case PERCENT_99 -> FuzzyMode.PERCENT_99;

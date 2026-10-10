@@ -33,7 +33,7 @@ import appeng.api.stacks.KeyCounter;
 import appeng.core.settings.TickRates;
 import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.me.helpers.MachineSource;
-import git.chexson.chexsonsaeutils.cell.MatterMassStore;
+import git.chexson.chexsonsaeutils.mattermassstore.MatterMassStore;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
 import git.chexson.chexsonsaeutils.crafting.mattermass.MatterMassPatternDetails;
@@ -86,8 +86,9 @@ public class MatterMassPatternProviderLogic extends CustomPatternProviderLogic {
     private boolean converting;
 
     public MatterMassPatternProviderLogic(IManagedGridNode mainNode, MatterMassPatternProviderHost host,
-            int patternInventorySize) {
-        super(mainNode, host, patternInventorySize);
+            int patternInventorySize,
+            git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderIntegrationFactory integrationFactory) {
+        super(mainNode, host, patternInventorySize, integrationFactory);
         this.mmHost = host;
         this.mmMainNode = mainNode;
         this.mmActionSource = new MachineSource(mainNode::getNode);

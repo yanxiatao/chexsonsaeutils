@@ -6,7 +6,7 @@ import net.minecraft.world.item.ItemStack;
 import appeng.api.implementations.items.IStorageComponent;
 import appeng.items.parts.PartItem;
 import git.chexson.chexsonsaeutils.item.custompatternprovider.CustomPatternExpandableItem;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternRegistration;
 
 /**
  * 定制样板供应器面板物品（阶段 3 I1 修复）。
@@ -51,7 +51,7 @@ public class CustomPatternProviderPartItem extends PartItem<CustomPatternProvide
      */
     @Override
     public int getBytes(ItemStack stack) {
-        int pages = Math.max(1, stack.getOrDefault(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), 1));
+        int pages = Math.max(1, stack.getOrDefault(CustomPatternRegistration.CUSTOM_PATTERN_PAGES.get(), 1));
         return pages * BYTES_PER_PAGE;
     }
 }

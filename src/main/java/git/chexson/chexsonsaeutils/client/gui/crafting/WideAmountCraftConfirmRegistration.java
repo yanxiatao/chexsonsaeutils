@@ -1,0 +1,39 @@
+package git.chexson.chexsonsaeutils.client.gui.crafting;
+
+import appeng.menu.me.crafting.CraftConfirmMenu;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.mixin.minecraft.client.MenuScreensAccessor;
+import net.minecraft.client.gui.screens.MenuScreens;
+import org.slf4j.Logger;
+
+/**
+ * M2 客户端注册：把 AE2 的 {@code CraftConfirmMenu.TYPE} 绑定的屏覆盖成我们的
+ * {@link WideAmountCraftConfirmScreen}，让超 {@code long} 的缺料能显示真值。
+ *
+ * <p>必须在 {@code FMLClientSetupEvent} 的 {@code enqueueWork} 里跑（此时
+ * {@code RegisterMenuScreensEvent} 已把 AE2 的注册应用到 {@code MenuScreens} 表），
+ * 直接覆盖同键。仅在合成续投功能开启时装载——关闭时保持 AE2 原生屏，足迹最小。
+ */
+public final class WideAmountCraftConfirmRegistration {
+
+    private static final Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+
+    private WideAmountCraftConfirmRegistration() {
+    }
+
+    public static void register() {
+        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(
+                ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled")) {
+            return;
+        }
+        try {
+            MenuScreens.ScreenConstructor<CraftConfirmMenu, WideAmountCraftConfirmScreen> constructor =
+                    WideAmountCraftConfirmScreen::new;
+            MenuScreensAccessor.chexsonsaeutils$getScreens().put(CraftConfirmMenu.TYPE, constructor);
+            LOGGER.info("[chexsonsaeutils] 合成确认屏已替换为宽域显示版（WideAmountCraftConfirmScreen）");
+        } catch (RuntimeException e) {
+            // 覆盖失败不致命：退回 AE2 原生确认屏，只是超 long 数量仍按 Long.MAX 显示。
+            LOGGER.warn("[chexsonsaeutils] 宽域合成确认屏注册失败，沿用 AE2 原生屏", e);
+        }
+    }
+}

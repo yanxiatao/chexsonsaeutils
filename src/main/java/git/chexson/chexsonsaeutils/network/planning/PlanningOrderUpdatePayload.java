@@ -1,8 +1,7 @@
 package git.chexson.chexsonsaeutils.network.planning;
 
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.config.PlanningAlgorithmOrderService;
-import git.chexson.chexsonsaeutils.crafting.solve.PlanningAlgorithmId;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -21,7 +20,7 @@ public record PlanningOrderUpdatePayload(
         List<String> ids
 ) implements CustomPacketPayload {
     public static final Type<PlanningOrderUpdatePayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "planning_order_update")
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "planning_order_update")
     );
     public static final StreamCodec<RegistryFriendlyByteBuf, PlanningOrderUpdatePayload> STREAM_CODEC =
             StreamCodec.ofMember(PlanningOrderUpdatePayload::write, PlanningOrderUpdatePayload::decode);
@@ -41,18 +40,21 @@ public record PlanningOrderUpdatePayload(
     }
 
     private static void writeIds(RegistryFriendlyByteBuf buffer, List<String> ids) {
+        if (ids.size() > PlanningOrderProtocol.MAX_PLANNING_ALGORITHM_IDS) {
+            throw new IllegalArgumentException("Planning algorithm ID count too large for network: " + ids.size());
+        }
         buffer.writeVarInt(ids.size());
-        ids.forEach(buffer::writeUtf);
+        ids.forEach(id -> buffer.writeUtf(id, PlanningOrderProtocol.MAX_PLANNING_ID_LENGTH));
     }
 
     private static List<String> readIds(RegistryFriendlyByteBuf buffer) {
         int count = buffer.readVarInt();
-        if (count < 0 || count > 16) {
+        if (count < 0 || count > PlanningOrderProtocol.MAX_PLANNING_ALGORITHM_IDS) {
             throw new IllegalArgumentException("Invalid planning algorithm ID count: " + count);
         }
         List<String> ids = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
-            ids.add(buffer.readUtf(64));
+            ids.add(buffer.readUtf(PlanningOrderProtocol.MAX_PLANNING_ID_LENGTH));
         }
         return ids;
     }
@@ -73,7 +75,7 @@ public record PlanningOrderUpdatePayload(
                         service.snapshot());
                 return;
             }
-            final List<PlanningAlgorithmId> order;
+            final List<String> order;
             try {
                 order = PlanningOrderProtocol.decode(payload.ids());
             } catch (IllegalArgumentException exception) {

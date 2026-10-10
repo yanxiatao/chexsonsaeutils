@@ -61,7 +61,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.fml.ModList;
+
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.IItemHandlerModifiable;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
@@ -95,8 +95,8 @@ import appeng.util.inv.AppEngInternalInventory;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
 import git.chexson.chexsonsaeutils.integration.CustomPatternEnergyInjector;
-import git.chexson.chexsonsaeutils.integration.appflux.AppFluxEnergyInjectorImpl;
-import git.chexson.chexsonsaeutils.integration.extendedae_plus.EapWirelessBridgeHelper;
+
+
 
 /**
  * 定制样板供应器的样板供应逻辑（继承 AE2 PatternProviderLogic）。
@@ -203,6 +203,7 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
      */
     @Nullable
     private final CustomPatternEnergyInjector energyInjector;
+    private final CustomPatternProviderIntegration integration;
 
     private YesNo redstoneState = YesNo.UNDECIDED;
 
@@ -211,13 +212,8 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
     @Nullable
     private GenericStack unlockStack;
 
-    @Nullable
-    public CustomPatternProviderLogic(IManagedGridNode mainNode, CustomPatternProviderLogicHost host) {
-        this(mainNode, host, 9);
-    }
-
     public CustomPatternProviderLogic(IManagedGridNode mainNode, CustomPatternProviderLogicHost host,
-            int patternInventorySize) {
+            int patternInventorySize, CustomPatternProviderIntegrationFactory integrationFactory) {
         super(mainNode, host, patternInventorySize);
         this.host = host;
         this.mainNode = mainNode;
@@ -233,7 +229,8 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
                 // 返回栏单格超堆叠总闸：懒读配置，切换开关不重建库存实例
                 ChexsonsaeutilsCompatibilityConfig::customPatternProviderOverstackReturnEnabled);
         // 需求 7：appflux 感应卡灌电注入器（未装 appflux 时为 null）
-        this.energyInjector = AppFluxEnergyInjectorImpl.create(host, mainNode, actionSource);
+        this.integration = integrationFactory.create(host, mainNode, actionSource);
+        this.energyInjector = integration.energyInjector();
         // R2 硬性要求：覆盖父类构造器注册的 Ticker（ManagedGridNode.addService 为
         // putInstance 覆盖语义）。父类 Ticker 驱动父类 doWork（sendStacksOut 依赖
         // sendDirection + 相邻方块适配器，sendDirection 为 null 且 sendList 非空时
@@ -1106,9 +1103,8 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             // NoClassDefFoundError。桥接委托给 EapWirelessBridgeHelper（仅引用本项目
             // 类，恒存在），辅助类只在 EAP 加载时被加载执行。客户端跳过（镜像 EAP
             // 守卫：node 为 null 时按服务端处理）。
-            if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)
-                    && ModList.get().isLoaded("extendedae_plus")) {
-                EapWirelessBridgeHelper.handleDelayedInit(CustomPatternProviderLogic.this);
+            if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)) {
+                integration.handleDelayedInit(CustomPatternProviderLogic.this);
             }
             if (!mainNode.isActive()) {
                 return TickRateModulation.SLEEP;
@@ -1147,9 +1143,8 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             // 改 SLOWER 保活——否则设备进入 SLEEP 后网格不再调用 tickingRequest，
             // 无线状态永不刷新。同样经 EapWirelessBridgeHelper 类加载隔离
             // （见 HEAD 注释：热路径字节码不得引用 EAP 接口类）。
-            if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)
-                    && ModList.get().isLoaded("extendedae_plus")) {
-                if (EapWirelessBridgeHelper.updateWirelessLink(CustomPatternProviderLogic.this)
+            if (!(node != null && node.getLevel() != null && node.getLevel().isClientSide)) {
+                if (integration.updateWirelessLink(CustomPatternProviderLogic.this)
                         && result == TickRateModulation.SLEEP) {
                     result = TickRateModulation.SLOWER;
                 }

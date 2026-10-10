@@ -123,11 +123,11 @@ public final class MachineRecipeIndex {
         }
         Map<AEKey, Long> normalizedOutputs = DirectProcessingStackSupport.stackAmounts(outputs);
         for (RecipeSignature candidate : candidates) {
-            Integer inputRatio = DirectProcessingStackSupport.deriveExecutionCount(
+            Long inputRatio = DirectProcessingStackSupport.deriveExecutionCount(
                     inputs,
                     candidate.inputs()
             );
-            if (inputRatio == null || inputRatio <= 0) {
+            if (inputRatio == null || inputRatio <= 0L) {
                 continue;
             }
             List<GenericStack> scaledOutputs = DirectProcessingStackSupport.scaleStacks(

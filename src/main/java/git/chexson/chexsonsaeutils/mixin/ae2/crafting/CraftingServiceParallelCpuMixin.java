@@ -8,7 +8,6 @@ import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.crafting.ICraftingRequester;
 import appeng.api.networking.crafting.ICraftingSubmitResult;
-import appeng.api.networking.crafting.ICraftingWatcherNode;
 import appeng.api.networking.crafting.UnsuitableCpus;
 import appeng.api.networking.energy.IEnergyService;
 import appeng.api.networking.security.IActionSource;
@@ -16,16 +15,15 @@ import appeng.api.stacks.AEKey;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
-import appeng.me.helpers.InterestManager;
-import appeng.me.helpers.StackWatcher;
 import appeng.me.service.CraftingService;
 import com.google.common.collect.ImmutableSet;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
+import git.chexson.chexsonsaeutils.bigint.ClampedMath;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.NativeSourceCpuHandle;
-import git.chexson.chexsonsaeutils.crafting.ParallelActiveCpuHandle;
+import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelActiveCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuResolver;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
@@ -52,7 +50,8 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 
-@Mixin(value = CraftingService.class, priority = 1200, remap = false)
+// HEAD 回调按 Mixin 优先级升序插入：先处理本 CPU，避免第三方将宽域计划误判为离线。
+@Mixin(value = CraftingService.class, priority = 900, remap = false)
 public abstract class CraftingServiceParallelCpuMixin
         implements ParallelCraftingContinuationSubmitter, SourceCpuResolver {
 
@@ -64,9 +63,6 @@ public abstract class CraftingServiceParallelCpuMixin
 
     @Shadow(remap = false)
     private Set<AEKey> currentlyCrafting;
-
-    @Shadow(remap = false)
-    private InterestManager<StackWatcher<ICraftingWatcherNode>> interestManager;
 
     @Shadow(remap = false)
     private Set<CraftingCPUCluster> craftingCPUClusters;
@@ -222,7 +218,7 @@ public abstract class CraftingServiceParallelCpuMixin
             return;
         }
 
-        if (!(target instanceof ParallelCraftingCPU)) {
+        if (target != null && !(target instanceof ParallelCraftingCPU)) {
             return;
         }
 
@@ -235,6 +231,9 @@ public abstract class CraftingServiceParallelCpuMixin
 
         ICraftingSubmitResult result = chexsonsaeutils$getSyncedParallelCpuGrid()
                 .submitJob(job, requestingMachine, target, prioritizePower, src);
+        if (target == null && result == null) {
+            return;
+        }
         chexsonsaeutils$registerFormalMachineSubmitResult(job, requestingMachine, target, result);
         cir.setReturnValue(result == null ? CraftingSubmitResult.CPU_OFFLINE : result);
     }
@@ -321,7 +320,7 @@ public abstract class CraftingServiceParallelCpuMixin
                 original
         );
         if (parallelInserted > 0L) {
-            inserted.set(saturatedAdd(original, parallelInserted));
+            inserted.set(ClampedMath.addUp(original, parallelInserted));
         }
     }
 
@@ -474,10 +473,10 @@ public abstract class CraftingServiceParallelCpuMixin
             parallelUnsuitable = new UnsuitableCpus(0, 0, 0, 0);
         }
         return CraftingSubmitResult.noSuitableCpu(new UnsuitableCpus(
-                saturatedAdd(nativeUnsuitable.offline(), parallelUnsuitable.offline()),
-                saturatedAdd(nativeUnsuitable.busy(), parallelUnsuitable.busy()),
-                saturatedAdd(nativeUnsuitable.tooSmall(), parallelUnsuitable.tooSmall()),
-                saturatedAdd(nativeUnsuitable.excluded(), parallelUnsuitable.excluded())
+                ClampedMath.addUp(nativeUnsuitable.offline(), parallelUnsuitable.offline()),
+                ClampedMath.addUp(nativeUnsuitable.busy(), parallelUnsuitable.busy()),
+                ClampedMath.addUp(nativeUnsuitable.tooSmall(), parallelUnsuitable.tooSmall()),
+                ClampedMath.addUp(nativeUnsuitable.excluded(), parallelUnsuitable.excluded())
         ));
     }
 
@@ -494,29 +493,13 @@ public abstract class CraftingServiceParallelCpuMixin
     }
 
     @Unique
-    private static int saturatedAdd(int left, int right) {
-        if (right > 0 && left >= Integer.MAX_VALUE - right) {
-            return Integer.MAX_VALUE;
-        }
-        return left + right;
-    }
-
-    @Unique
-    private static long saturatedAdd(long left, long right) {
-        if (right > 0L && left >= Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        return left + right;
-    }
-
-    @Unique
     private void chexsonsaeutils$registerFormalMachineSubmitResult(
             @Nullable ICraftingPlan job,
             @Nullable ICraftingRequester requestingMachine,
             @Nullable ICraftingCPU target,
             @Nullable ICraftingSubmitResult result
     ) {
-        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")
+        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY)
                 || result == null
                 || !result.successful()) {
             return;

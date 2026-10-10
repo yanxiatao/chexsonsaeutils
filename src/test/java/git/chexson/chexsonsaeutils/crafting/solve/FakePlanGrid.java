@@ -27,6 +27,7 @@ import appeng.api.storage.AEKeyFilter;
 import appeng.api.storage.MEStorage;
 import appeng.api.util.AEColor;
 import git.chexson.chexsonsaeutils.crafting.color.PatternDetailsColorAccessor;
+import git.chexson.chexsonsaeutils.crafting.graphplan.graph.ProviderPatternOrder;
 import com.google.common.collect.ImmutableSet;
 import net.minecraft.CrashReportCategory;
 import net.minecraft.core.Direction;
@@ -88,11 +89,18 @@ public final class FakePlanGrid {
     }
 
     /** Minimal crafting pattern: outputs {@code outputCount} of {@code output} per run. */
-    public static final class FakePattern implements IPatternDetails, PatternDetailsColorAccessor {
+    public static final class FakePattern implements IPatternDetails, PatternDetailsColorAccessor,
+            PrioritizedPattern {
         private final AEItemKey definition;
         private final List<GenericStack> outputs;
         private final IInput[] inputs;
         private final int color;
+        /**
+         * 模拟提供者的机器优先级（{@code ICraftingProvider#getPatternPriority()}）：默认 0＝并列，
+         * 并列项的次序由 {@code ProviderPatternOrder} 的稳定键定死（台账 #140）。要表达
+         * "清单序＝提供者有意排的序"，就把它声明成递减优先级——AE2 真网格上那份序正是这么来的。
+         */
+        private int priority;
 
         private FakePattern(AEKey output, long outputCount, Map<? extends AEKey, Long> inputs) {
             this(AEItemKey.of(Items.PAPER), List.of(new GenericStack(output, outputCount)),
@@ -115,6 +123,20 @@ public final class FakePlanGrid {
 
         public static FakePattern crafting(AEKey output, long outputCount, Map<? extends AEKey, Long> inputs) {
             return new FakePattern(output, outputCount, inputs);
+        }
+
+        /**
+         * 声明这张样板所在提供者的机器优先级（在喂进网格<b>之前</b>调用）。
+         * 只在"清单序对用例有意义"的夹具上用：并列（默认 0）时那份序不再由清单决定。
+         */
+        public FakePattern withPriority(int priority) {
+            this.priority = priority;
+            return this;
+        }
+
+        @Override
+        public int priority() {
+            return this.priority;
         }
 
         public static FakePattern of(AEKey output, long outputCount, IInput... inputs) {
@@ -219,6 +241,19 @@ public final class FakePlanGrid {
             return new FakeInput(stacks, multiplier, Map.of(), accepted::contains);
         }
 
+        /**
+         * 声明顺位 + <b>逐候选各自分自己的每发量</b> + 只收指名那一枚的 {@code isValid}。
+         *
+         * <p>台账 #201 探针图那一格的取料点形状：首位是一枚无生产者、{@code isValid} 又不收的
+         * 幽灵键，真付得到的那一枚排在它后面且每发件数不同——既有 {@link #multi} 把所有候选
+         * 钉成每发 1 枚，正是那一型在旧夹具上量不到的原因。
+         */
+        public static FakeInput ordered(long multiplier, List<GenericStack> candidates,
+                java.util.Collection<AEKey> accepts) {
+            var accepted = Set.copyOf(accepts);
+            return new FakeInput(List.copyOf(candidates), multiplier, Map.of(), accepted::contains);
+        }
+
         /** Single-candidate input whose isValid accepts every item variant of the template's item. */
         public static FakeInput anyVariant(AEItemKey template, long multiplier) {
             return new FakeInput(List.of(new GenericStack(template, 1)), multiplier, Map.of(),
@@ -275,9 +310,9 @@ public final class FakePlanGrid {
         public final FakeRequester requester;
 
         private FakeGrid(Map<AEKey, Long> inventory, Map<AEKey, List<IPatternDetails>> patterns,
-                Predicate<AEKey> emittable, Map<AEKey, List<AEKey>> fuzzyCraftables) {
+                java.util.Set<AEKey> emittable) {
             this.storage = new FakeStorage(inventory);
-            this.crafting = new FakeCraftingService(patterns, emittable, fuzzyCraftables);
+            this.crafting = new FakeCraftingService(patterns, emittable);
             this.node = new FakeNode(this);
             this.requester = new FakeRequester(node);
         }
@@ -349,9 +384,9 @@ public final class FakePlanGrid {
 
         public static final class Builder {
             private final Map<AEKey, Long> inventory = new HashMap<>();
-            private final Map<AEKey, List<IPatternDetails>> patterns = new HashMap<>();
+            /** 样板登记簿：键＝样板的 primary output（＝AE2 的 {@code craftableItems} 键），值为该键的清单。 */
+            private final Map<AEKey, List<IPatternDetails>> patterns = new java.util.LinkedHashMap<>();
             private final java.util.Set<AEKey> emittable = new java.util.HashSet<>();
-            private final Map<AEKey, List<AEKey>> fuzzyCraftables = new HashMap<>();
 
             public Builder storage(Map<AEKey, Long> inv) {
                 inventory.putAll(inv);
@@ -368,18 +403,8 @@ public final class FakePlanGrid {
                 return this;
             }
 
-            /**
-             * Registers the ordered fuzzy craftable substitutes the tree
-             * planner's {@code findCraftedStack} consults for {@code candidate}
-             * (mirrors {@code NetworkCraftingProviders.getFuzzyCraftable}).
-             */
-            public Builder fuzzyCraftable(AEKey candidate, AEKey... craftables) {
-                fuzzyCraftables.put(candidate, List.of(craftables));
-                return this;
-            }
-
             public FakeGrid build() {
-                return new FakeGrid(inventory, patterns, emittable::contains, fuzzyCraftables);
+                return new FakeGrid(inventory, patterns, emittable);
             }
         }
     }
@@ -422,16 +447,32 @@ public final class FakePlanGrid {
         }
     }
 
-    public static final class FakeCraftingService implements ICraftingService {
-        private final Map<AEKey, List<IPatternDetails>> patterns;
-        private final Predicate<AEKey> emittable;
-        private final Map<AEKey, List<AEKey>> fuzzyCraftables;
+    /**
+     * 测试侧给样板打"机器优先级"标记的接口。
+     *
+     * <p>真网格上这份优先级挂在<b>提供者</b>（{@code ICraftingProvider#getPatternPriority()}）而不是样板上，
+     * 替身没有提供者对象可问，所以由样板自己带一个读数；不带标记的按 AE2 的默认优先级 0
+     * （＝与所有默认优先级并列，交给稳定键定序）。
+     */
+    public interface PrioritizedPattern {
+        int priority();
+    }
 
-        private FakeCraftingService(Map<AEKey, List<IPatternDetails>> patterns, Predicate<AEKey> emittable,
-                Map<AEKey, List<AEKey>> fuzzyCraftables) {
+    public static final class FakeCraftingService implements ICraftingService,
+            ProviderPatternOrder.PatternPrioritySource {
+        private final Map<AEKey, List<IPatternDetails>> patterns;
+        private final java.util.Set<AEKey> emittable;
+
+        private FakeCraftingService(Map<AEKey, List<IPatternDetails>> patterns,
+                java.util.Set<AEKey> emittable) {
             this.patterns = patterns;
             this.emittable = emittable;
-            this.fuzzyCraftables = fuzzyCraftables;
+        }
+
+        /** 并列项定序（台账 #140）在测试里也要走真收集点：这份清单的优先级来源就是上面那个标记。 */
+        @Override
+        public int patternPriority(IPatternDetails pattern) {
+            return pattern instanceof PrioritizedPattern prioritized ? prioritized.priority() : 0;
         }
 
         @Override
@@ -455,15 +496,25 @@ public final class FakePlanGrid {
         public void refreshGlobalCraftingProvider(ICraftingProvider provider) {
         }
 
+        /**
+         * 与 AE2 的 {@code NetworkCraftingProviders#getFuzzyCraftable}（:138-139）同一条宇宙：
+         * 在<b>同主键</b>（{@code AEKey#getPrimaryKey}，item 就是那个 {@code Item} 实例）的那些
+         * <b>样板产出键</b>（＝{@code craftableItemsList} 的成员，不含纯可发射的键）里，
+         * 交回第一个过 filter 的键。
+         *
+         * <p>AE2 这一趟走的是 {@code KeyCounter} 的哈希遍历序（不可损伤的 item 是
+         * {@code AEKey2LongMap.OpenHashMap}，可损伤的是 {@code FuzzySearch.KeyComparator}：
+         * <b>受损的排在前面</b>，损伤档并列才按 {@code hashCode}），本替身按<b>登记序</b>交回：
+         * 这一份序是"别人家的序"，
+         * 用例若要钉住它就必须把成员逐个登记清楚——规划侧不再吃它（台账 #143，
+         * {@code ProviderPatternOrder.FuzzyClassView} 自己按稳定键排）。
+         */
         @Override
         public AEKey getFuzzyCraftable(AEKey whatToCraft, AEKeyFilter filter) {
-            var candidates = fuzzyCraftables.get(whatToCraft);
-            if (candidates == null) {
-                return null;
-            }
-            for (var candidate : candidates) {
-                if (filter.matches(candidate)) {
-                    return candidate;
+            var primaryKey = whatToCraft.getPrimaryKey();
+            for (var craftable : patterns.keySet()) {
+                if (craftable.getPrimaryKey() == primaryKey && filter.matches(craftable)) {
+                    return craftable;
                 }
             }
             return null;
@@ -489,22 +540,28 @@ public final class FakePlanGrid {
 
         @Override
         public boolean canEmitFor(AEKey someItem) {
-            return emittable.test(someItem);
+            return emittable.contains(someItem);
         }
 
+        /**
+         * 与 AE2 的 {@code NetworkCraftingProviders#getCraftables}（:102-119）同形：
+         * <b>可合成</b>（样板的登记键＝primary output）∪ <b>可发射</b>。
+         * 交回的集合本身是哈希序——规划侧读它的那一步按稳定键重排（台账 #143）。
+         */
         @Override
         public Set<AEKey> getCraftables(AEKeyFilter filter) {
-            Set<AEKey> craftable = new HashSet<>();
-            for (List<IPatternDetails> patternList : patterns.values()) {
-                for (IPatternDetails pattern : patternList) {
-                    for (GenericStack output : pattern.getOutputs()) {
-                        if (filter.matches(output.what())) {
-                            craftable.add(output.what());
-                        }
-                    }
+            Set<AEKey> craftables = new java.util.LinkedHashSet<>();
+            for (AEKey output : patterns.keySet()) {
+                if (filter.matches(output)) {
+                    craftables.add(output);
                 }
             }
-            return Set.copyOf(craftable);
+            for (AEKey emitable : emittable) {
+                if (filter.matches(emitable)) {
+                    craftables.add(emitable);
+                }
+            }
+            return Set.copyOf(craftables);
         }
 
         @Override
@@ -525,6 +582,11 @@ public final class FakePlanGrid {
 
     public static final class FakeNode implements IGridNode {
         private final IGrid grid;
+        /**
+         * 节点宿主；默认 {@code null} 表示「无宿主」，与既有全部规划用例的口径一致。
+         * 只给需要按宿主身份枚举网格的读侧用例（如真值供给快照）覆写。
+         */
+        public Object owner;
 
         private FakeNode(IGrid grid) {
             this.grid = grid;
@@ -543,7 +605,7 @@ public final class FakePlanGrid {
 
         @Override
         public Object getOwner() {
-            return null;
+            return this.owner;
         }
 
         @Override

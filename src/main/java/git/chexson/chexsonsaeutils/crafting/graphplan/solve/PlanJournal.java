@@ -7,8 +7,11 @@ import org.jetbrains.annotations.Nullable;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
-import git.chexson.chexsonsaeutils.crafting.numeric.ByteAccount;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideKeyCounter;
+import git.chexson.chexsonsaeutils.bigint.ByteAccount;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.bigint.WideCraftCounter;
+import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
+import git.chexson.chexsonsaeutils.bigint.WideMath;
 import git.chexson.chexsonsaeutils.crafting.recursive.RingId;
 
 /**
@@ -19,7 +22,7 @@ import git.chexson.chexsonsaeutils.crafting.recursive.RingId;
  *
  * <p>条目两态：set 语义写（{@code cacheFuzzy} 的零标记、{@code used} 峰值、
  * {@code recursiveInternalItems}）记旧值——absent 与 0 值零标记必须可区分；
- * add 语义写（working/emitted/missing/ringExtractions 热路径）记带符号增量——
+ * add 语义写（working/emitted/missing/ringExtractions/crafts 热路径）记带符号增量——
  * 省掉旧值快照的溢出侧表+主表双查，undo 反向 add 即精确恢复（含宽值；加到 0
  * 时键位自动移除与 absent 等价）。全量 {@code copy()}/{@code restore()} 已退役：
  * restore 会打破 delta 不变式（当前值 = mark + Σ增量），所有回滚点统一走日志。
@@ -40,17 +43,25 @@ public final class PlanJournal {
     static final int MISSING = 4;
     static final int RING_EXTRACTIONS = 5;
     static final int RECURSIVE_INTERNAL = 6;
+    /**
+     * 份数条目：与 AEKey 账本同为 <b>add 语义</b>（带符号增量放 {@code deltas} 列，
+     * 样板身份放 {@code refs} 列），undo 反向 add 即精确恢复——含宽域值落回 long 域
+     * 的降级（{@code WideCraftCounter} 自己管侧表）。此前它记旧值，所以要区分
+     * 「原本缺位」与「原本某个 long 值」两态；改宽域后旧值可能是 BigInteger，
+     * 增量口径省掉那一整格稀有列，也与 working/emitted/missing 完全同构。
+     */
     static final int CRAFTS = 7;
-    /** {@code crafts} 条目原本缺位（undo 时移除键位）。 */
-    static final int CRAFTS_ABSENT = 12;
+    /** 份数条目且增量本身超 {@code long}（环宏宽域发射向量）：增量放稀有列 {@code objOlds}。 */
+    static final int CRAFTS_WIDE = 14;
     static final int RING_FAILED = 8;
+    /** 留种还种轮数已按 {@code ringId} 记账（undo 时移除，环宏回滚后可重新还）。 */
+    static final int RING_SEED_REPAID = 13;
     /** {@code addStackBytes} 的一体条目：double 旧读数 + apb 桶增量。 */
     static final int BYTE_STACK = 9;
     /** {@code addStackBytes} 的宽域桶增量条目（乘积本身溢出 long 的稀有路径）。 */
     static final int BYTE_STACK_WIDE = 10;
     /** {@code addBytes(double)} 的 double 读数恢复条目（无 apb 桶变化）。 */
     static final int BYTE_PLAIN = 11;
-    static final int INPUT_ALLOCATION = 13;
 
     /** delta 条目标志：{@code deltas} 存带符号增量，undo 时反向 add。 */
     static final int DELTA_FLAG = 64;
@@ -59,10 +70,10 @@ public final class PlanJournal {
     static final int LEDGER_MASK = 63;
 
     private final WideKeyCounter[] counters;
-    private final it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<IPatternDetails> crafts;
+    private final WideCraftCounter crafts;
     private final Set<RingId> failedRingMacros;
+    private final Set<RingId> repaidRingSeeds;
     private final ByteAccount byteAccount;
-    private final java.util.List<GraphPlanningState.InputAllocation> inputAllocations;
 
     /**
      * 跨 attempt 复用的底层数组。一次 solve 里 attempt 是串行的，且 attempt
@@ -88,12 +99,13 @@ public final class PlanJournal {
             return arena;
         }
 
-        private int[] kinds = new int[1 << 16];
-        private int[] keyIds = new int[1 << 16];
-        private Object[] refs = new Object[1 << 16];
-        private long[] deltas = new long[1 << 16];
-        private double[] doubleOlds = new double[1 << 15];
-        private Object[] objOlds = new Object[1 << 14];
+        // 小计划按需扩容；大计划仍按线程复用已经增长的数组。
+        private int[] kinds = new int[1 << 10];
+        private int[] keyIds = new int[1 << 10];
+        private Object[] refs = new Object[1 << 10];
+        private long[] deltas = new long[1 << 10];
+        private double[] doubleOlds = new double[1 << 9];
+        private Object[] objOlds = new Object[1 << 8];
         /** 上一次用到的最高水位——复用时只清这段前缀，不清整表。 */
         private int refsHighWater;
         private int objHighWater;
@@ -112,14 +124,14 @@ public final class PlanJournal {
     private Object[] objOlds;
 
     PlanJournal(WideKeyCounter[] counters,
-            it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<IPatternDetails> crafts,
-            Set<RingId> failedRingMacros, ByteAccount byteAccount,
-            java.util.List<GraphPlanningState.InputAllocation> inputAllocations, Arena arena) {
+            WideCraftCounter crafts,
+            Set<RingId> failedRingMacros, Set<RingId> repaidRingSeeds,
+            ByteAccount byteAccount, Arena arena) {
         this.counters = counters;
         this.crafts = crafts;
         this.failedRingMacros = failedRingMacros;
+        this.repaidRingSeeds = repaidRingSeeds;
         this.byteAccount = byteAccount;
-        this.inputAllocations = inputAllocations;
         this.arena = arena;
         this.kinds = arena.kinds;
         this.keyIds = arena.keyIds;
@@ -127,8 +139,8 @@ public final class PlanJournal {
         this.deltas = arena.deltas;
         this.doubleOlds = arena.doubleOlds;
         this.objOlds = arena.objOlds;
-        // 只清上一次真正用到的前缀：清整表是 64K + 16K 次写，而一次规划通常只用到
-        // 几千格。size 从 0 起算，undo 只读 size 以下，所以水位之上的残值读不到，
+        // 只清上一次真正用到的引用前缀。size 从 0 起算，undo 只读 size 以下，
+        // 水位之上的残值读不到，
         // 清理的唯一目的是释放 GC 引用。
         java.util.Arrays.fill(this.refs, 0, Math.min(arena.refsHighWater, this.refs.length), null);
         java.util.Arrays.fill(this.objOlds, 0, Math.min(arena.objHighWater, this.objOlds.length), null);
@@ -168,15 +180,12 @@ public final class PlanJournal {
         switch (kind) {
             case UNMODIFIED, WORKING, USED, EMITTED, MISSING, RING_EXTRACTIONS, RECURSIVE_INTERNAL ->
                 undoCounter(kind, this.keyIds[index], popObj());
-            case CRAFTS -> this.crafts.put((IPatternDetails) key, this.deltas[index]);
-            case CRAFTS_ABSENT -> this.crafts.removeLong(key);
+            case CRAFTS -> this.crafts.add((IPatternDetails) key, -this.deltas[index]);
+            // 宽域发射向量的回滚：增量在稀有列，反向相加后账本自己决定要不要降回窄域
+            case CRAFTS_WIDE -> this.crafts.add((IPatternDetails) key,
+                    PlanAmount.of(((java.math.BigInteger) popObj()).negate()));
             case RING_FAILED -> this.failedRingMacros.remove((RingId) key);
-            case INPUT_ALLOCATION -> {
-                if (this.inputAllocations.isEmpty()
-                        || this.inputAllocations.removeLast() != key) {
-                    throw new IllegalStateException("input allocation journal out of sync");
-                }
-            }
+            case RING_SEED_REPAID -> this.repaidRingSeeds.remove((RingId) key);
             case BYTE_PLAIN -> this.byteAccount.setAe2Bytes(popDouble());
             case BYTE_STACK -> {
                 this.byteAccount.setAe2Bytes(popDouble());
@@ -295,34 +304,100 @@ public final class PlanJournal {
     }
 
     /**
+     * set 语义写入<b>宽域</b>值：旧值仍按 {@link #counterSet} 那三态（absent / 0 标记 / 宽值）
+     * 忠实记录，撤销即原样恢复。快路径（值在 {@code long} 域）逐字退回 {@code counterSet}——
+     * 非溢出键的日志形状一字不变，只有真越界那一格才占稀有列。
+     */
+    void counterSetExact(int ledger, int keyId, PlanAmount value) {
+        if (value.isFast()) {
+            counterSet(ledger, keyId, value.fastValue());
+            return;
+        }
+        var counter = this.counters[ledger];
+        var wide = counter.overflowOfById(keyId);
+        if (wide != null) {
+            appendKey(ledger, keyId, 0L);
+            pushObj(wide);
+        } else if (counter.containsKeyById(keyId)) {
+            appendKey(ledger | FAST_OLD_FLAG, keyId, counter.rawFastById(keyId));
+        } else {
+            appendKey(ledger, keyId, 0L);
+            pushObj(null);
+        }
+        counter.setExactById(keyId, value.exactValue());
+    }
+
+    /**
      * add 语义写入（working/emitted/missing/ringExtractions 热路径）——
      * 记带符号增量而非旧值，省掉旧值快照的溢出侧表+主表双查；
      * undo 反向 add 即精确恢复。
      */
     void counterAddDelta(int ledger, int keyId, long delta) {
+        if (delta == Long.MIN_VALUE) {
+            // MIN 的反向增量不能留在 long 列，否则撤销时负号回绕。
+            counterAddExact(ledger, keyId, PlanAmount.of(delta));
+            return;
+        }
         appendKey(ledger | DELTA_FLAG, keyId, delta);
         this.counters[ledger].addById(keyId, delta);
     }
 
-    void craftsMerge(IPatternDetails details, long times) {
-        // addTo 一次查表：既累加又交回旧值（缺位时交回 defaultReturnValue 0），
-        // 所以 undo 只需区分「原本缺位」与「原本某个 long 值」。
-        long previous = this.crafts.addTo(details, times);
-        if (previous != 0L && ((previous ^ (previous + times)) & (times ^ (previous + times))) < 0) {
-            this.crafts.put(details, previous);
-            throw new PlanningOverflowException("craft count overflow at " + details);
+    /** 宽增量一次记账；保存旧值以复用既有精确回滚语义，不按 long 大小拆笔。 */
+    void counterAddDelta(int ledger, int keyId, PlanAmount delta) {
+        if (delta.isFast()) {
+            counterAddDelta(ledger, keyId, delta.fastValue());
+            return;
         }
-        append(previous == 0L ? CRAFTS_ABSENT : CRAFTS, details, previous);
+        counterAddExact(ledger, keyId, delta);
     }
 
-    void inputAllocation(GraphPlanningState.InputAllocation allocation) {
-        append(INPUT_ALLOCATION, allocation, 0L);
-        this.inputAllocations.add(allocation);
+    /** 保存旧值的增量写入；与 addById 一致，合计为零时恢复为缺位。 */
+    private void counterAddExact(int ledger, int keyId, PlanAmount delta) {
+        var value = this.counters[ledger].getAmountById(keyId).add(delta);
+        counterSetExact(ledger, keyId, value);
+        if (value.signum() == 0) {
+            // add 到零必须移除键；set 的零标记仅供库存缓存语义使用。
+            this.counters[ledger].removeById(keyId);
+        }
+    }
+
+    /** 宽份数物料费：整数桶一笔入账，double 旧值仍逐位保存供撤销。 */
+    void stackBytes(AEKey key, long amount, PlanAmount multiplier) {
+        var product = WideMath.mul(amount, multiplier);
+        append(BYTE_STACK_WIDE, key, 0L);
+        pushDouble(this.byteAccount.ae2Bytes());
+        pushObj(product.exactValue());
+        this.byteAccount.addBytes((double) amount * multiplier.exactValue().doubleValue()
+                / key.getType().getAmountPerByte() * 8);
+        this.byteAccount.addBucketWide(key.getAmountPerByte(), product.exactValue());
+    }
+
+    void craftsMerge(IPatternDetails details, long times) {
+        // 增量条目：样板身份走 refs 列（AEKey 账本走 keyIds 列），带符号发数走 deltas 列。
+        // 越界由 WideCraftCounter 自己提升到侧表，日志侧不需要分支——回滚反向 add 即精确恢复。
+        append(CRAFTS, details, times);
+        this.crafts.add(details, times);
+    }
+
+    /** 宽域发数版：增量本身超 {@code long}（环宏发射向量）时把真值压进稀有列。 */
+    void craftsMerge(IPatternDetails details, PlanAmount times) {
+        if (times.isFast()) {
+            craftsMerge(details, times.fastValue());
+            return;
+        }
+        append(CRAFTS_WIDE, details, 0L);
+        pushObj(times.exactValue());
+        this.crafts.add(details, times);
     }
 
     void ringFailed(RingId ringId) {
         append(RING_FAILED, ringId, 0L);
         this.failedRingMacros.add(ringId);
+    }
+
+    void ringSeedRepaid(RingId ringId) {
+        append(RING_SEED_REPAID, ringId, 0L);
+        this.repaidRingSeeds.add(ringId);
     }
 
     void stackBytes(AEKey key, long amount, long multiplier) {

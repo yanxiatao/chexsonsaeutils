@@ -6,7 +6,7 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideMath;
+import git.chexson.chexsonsaeutils.bigint.WideMath;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -73,8 +73,9 @@ public final class HostBatchRemainders {
         return Map.copyOf(remainders);
     }
 
-    private static boolean hasAnyRemainderKey(IMolecularAssemblerSupportedPattern supportedPattern) {
-        for (var input : supportedPattern.getInputs()) {
+    /** 声明输入没有任何回流容器时，仿真结果必为空，可省略构造合成容器。 */
+    private static boolean hasAnyRemainderKey(IPatternDetails patternDetails) {
+        for (var input : patternDetails.getInputs()) {
             if (input == null || input.getPossibleInputs() == null) {
                 continue;
             }
@@ -82,17 +83,26 @@ public final class HostBatchRemainders {
                 if (possible == null || possible.what() == null) {
                     continue;
                 }
-                try {
-                    if (input.getRemainingKey(possible.what()) != null) {
-                        return true;
-                    }
-                } catch (RuntimeException ignored) {
-                    // 配方求值异常则按有回流处理，走完整仿真由上游判定。
+                if (slotReturnsContainer(input, possible.what())) {
                     return true;
                 }
             }
         }
         return false;
+    }
+
+    /** 判断候选是否具有容器回流，用于仿真快路径；执行侧的整批回流账保持宽域精确值。 */
+    public static boolean slotReturnsContainer(@Nullable IPatternDetails.IInput slot,
+            @Nullable AEKey candidate) {
+        if (slot == null || candidate == null) {
+            return false;
+        }
+        try {
+            return slot.getRemainingKey(candidate) != null;
+        } catch (RuntimeException ignored) {
+            // 配方求值异常则按有回流处理：仿真那条路交给上游判定，申报那条路照"有回流"夹住。
+            return true;
+        }
     }
 
     private static @Nullable KeyCounter[] createSingleRunInputHolders(

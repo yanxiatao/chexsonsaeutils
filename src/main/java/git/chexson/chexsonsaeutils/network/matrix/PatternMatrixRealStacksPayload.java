@@ -7,9 +7,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixRealStack;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixTarget;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 
 import java.util.List;
 
@@ -25,7 +23,7 @@ public record PatternMatrixRealStacksPayload(
 ) implements CustomPacketPayload {
 
     public static final Type<PatternMatrixRealStacksPayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "pattern_matrix_real_stacks")
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "pattern_matrix_real_stacks")
     );
 
     public static final StreamCodec<RegistryFriendlyByteBuf, PatternMatrixRealStacksPayload> STREAM_CODEC =

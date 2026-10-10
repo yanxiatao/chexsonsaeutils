@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.graphplan;
 
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.stacks.AEItemKey;
@@ -7,15 +8,17 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import git.chexson.chexsonsaeutils.crafting.graphplan.convert.Ae2PlanConverter;
 import git.chexson.chexsonsaeutils.crafting.graphplan.graph.GraphCompiler;
+import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
 import git.chexson.chexsonsaeutils.crafting.graphplan.solve.LinearPlanner;
 import git.chexson.chexsonsaeutils.crafting.solve.FakePlanGrid.FakeGrid;
 import git.chexson.chexsonsaeutils.crafting.solve.FakePlanGrid.FakeInput;
 import git.chexson.chexsonsaeutils.crafting.solve.FakePlanGrid.FakePattern;
 import git.chexson.chexsonsaeutils.crafting.solve.FakePlanGrid;
-import git.chexson.chexsonsaeutils.crafting.solve.FastCraftingCalculation;
+import git.chexson.chexsonsaeutils.crafting.solve.Ae2TreePlanReference;
 import git.chexson.chexsonsaeutils.crafting.solve.OrderedPlanningReplay;
 import git.chexson.chexsonsaeutils.crafting.solve.PlanningAlgorithmId;
 import git.chexson.chexsonsaeutils.crafting.solve.PlanningProvenance;
+import git.chexson.chexsonsaeutils.crafting.recursive.RecursivePlanContract;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -31,10 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Level-1 (graph planning) equivalence checks against the level-2 optimized
- * tree path. Both engines run on the same synthetic grid and the resulting
- * plans must match field by field, including bytes — the graph solver
- * reproduces the tree planner site by site, so any drift shows up here.
+ * 图规划与 AE2 原生树的等价对拍：两套引擎跑同一份合成网格，产出的计划必须
+ * 逐字段一致（含 bytes）——图求解器是按树的语义逐处复现的，任何漂移都从这里露出来。
  */
 final class GraphPlanningEquivalenceTest {
 
@@ -54,10 +55,10 @@ final class GraphPlanningEquivalenceTest {
     private static final AEItemKey WHEAT = AEItemKey.of(Items.WHEAT);
     private static final AEItemKey SAND = AEItemKey.of(Items.SAND);
 
-    private static ICraftingPlan runFast(FakeGrid grid, AEKey output, long amount, CalculationStrategy strategy) {
-        var calc = new FastCraftingCalculation(
-                null, grid, grid.requester, new GenericStack(output, amount), strategy, 0L);
-        return calc.run();
+    /** 参照面：AE2 原生树（离线一次性算完，见 {@link Ae2TreePlanReference}）。 */
+    private static ICraftingPlan runTree(FakeGrid grid, AEKey output, long amount, CalculationStrategy strategy) {
+        return new Ae2TreePlanReference(
+                grid, grid.requester, new GenericStack(output, amount), strategy).run();
     }
 
     private static ICraftingPlan runGraph(FakeGrid grid, AEKey output, long amount, CalculationStrategy strategy) {
@@ -68,10 +69,11 @@ final class GraphPlanningEquivalenceTest {
         return Ae2PlanConverter.toPlan(result, graph);
     }
 
-    private static ICraftingPlan assertGraphMatchesFast(FakeGrid grid, AEKey output, long amount, CalculationStrategy strategy) {
-        var fast = runFast(grid, output, amount, strategy);
+    private static ICraftingPlan assertGraphMatchesNativeTree(
+            FakeGrid grid, AEKey output, long amount, CalculationStrategy strategy) {
+        var tree = runTree(grid, output, amount, strategy);
         var graph = runGraph(grid, output, amount, strategy);
-        FakePlanGrid.assertPlansEqual(fast, graph);
+        FakePlanGrid.assertPlansEqual(tree, graph);
         return graph;
     }
 
@@ -97,7 +99,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, consumer)
                 .build();
 
-        // 对拍基准是递归树（环压缩）：fast 树的 notRecursive 对「输入=主产物键」
+        // 对拍基准是递归树（环压缩）：原生树对「输入=主产物键」
         // 的自增殖样板判死，能算的是递归环路径——与 modpack 的 fallback 一致。
         // 除 bytes 外逐字段对拍（bytes 口径差异见探针行，待专项对齐）。
         var graph = GraphCompiler.compile(grid.crafting, grid.storage.getCachedInventory(), TOP, null);
@@ -313,7 +315,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, altProvider)
                 .build();
 
-        assertGraphMatchesFast(grid, TOP, 5, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, TOP, 5, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     @Test
@@ -324,7 +326,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironFromGold)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     @Test
@@ -335,7 +337,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironFromGold)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 200_000, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, IRON, 200_000, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     // ------------------------------------------------------------------
@@ -355,7 +357,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, topFromMid)
                 .build();
 
-        assertGraphMatchesFast(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     // ------------------------------------------------------------------
@@ -370,7 +372,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironFromGold)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     // ------------------------------------------------------------------
@@ -385,7 +387,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironFromGold)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 32, CalculationStrategy.CRAFT_LESS);
+        assertGraphMatchesNativeTree(grid, IRON, 32, CalculationStrategy.CRAFT_LESS);
     }
 
     @Test
@@ -396,7 +398,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironFromGold)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 16, CalculationStrategy.CRAFT_LESS);
+        assertGraphMatchesNativeTree(grid, IRON, 16, CalculationStrategy.CRAFT_LESS);
     }
 
     @Test
@@ -407,7 +409,25 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironFromGold)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 32, CalculationStrategy.CRAFT_LESS);
+        assertGraphMatchesNativeTree(grid, IRON, 32, CalculationStrategy.CRAFT_LESS);
+    }
+
+    @Test
+    void s5CraftLessLooseBoundFromSharedRawMaterialStillFindsExactMaximum() {
+        // 两条分支共用金库存：独立分支上界为 11，整张配方实际最多只能做 5。
+        var inputs = new java.util.LinkedHashMap<AEKey, Long>();
+        inputs.put(DIAMOND, 1L);
+        inputs.put(REDSTONE, 1L);
+        var grid = FakeGrid.builder()
+                .storage(Map.of(GOLD, 11L))
+                .pattern(IRON, FakePattern.crafting(IRON, 1, inputs))
+                .pattern(DIAMOND, FakePattern.crafting(DIAMOND, 1, Map.of(GOLD, 1L)))
+                .pattern(REDSTONE, FakePattern.crafting(REDSTONE, 1, Map.of(GOLD, 1L)))
+                .build();
+
+        var plan = assertGraphMatchesNativeTree(grid, IRON, 32, CalculationStrategy.CRAFT_LESS);
+        assertEquals(5L, plan.finalOutput().amount());
+        assertEquals(10L, plan.usedItems().get(GOLD));
     }
 
     // ------------------------------------------------------------------
@@ -442,7 +462,7 @@ final class GraphPlanningEquivalenceTest {
         assertEquals(10L, plan.patternTimes().get(qFromP));
         assertEquals(20L, plan.usedItems().get(REDSTONE));
 
-        assertGraphMatchesFast(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     @Test
@@ -463,7 +483,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, topFromBoth)
                 .build();
 
-        assertGraphMatchesFast(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     // ------------------------------------------------------------------
@@ -480,7 +500,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironInBucket)
                 .build();
 
-        ICraftingPlan plan = assertGraphMatchesFast(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        ICraftingPlan plan = assertGraphMatchesNativeTree(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
         assertNotNull(plan);
         assertFalse(plan.simulation());
         // Returned buckets keep the network pool whole: peak extraction of one.
@@ -500,7 +520,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironInBucket)
                 .build();
 
-        ICraftingPlan plan = assertGraphMatchesFast(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        ICraftingPlan plan = assertGraphMatchesNativeTree(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
         assertNotNull(plan);
         assertTrue(plan.simulation());
         assertEquals(1L, plan.missingItems().get(BUCKET));
@@ -528,7 +548,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, topFromBoth)
                 .build();
 
-        ICraftingPlan plan = assertGraphMatchesFast(grid, TOP, 5, CalculationStrategy.REPORT_MISSING_ITEMS);
+        ICraftingPlan plan = assertGraphMatchesNativeTree(grid, TOP, 5, CalculationStrategy.REPORT_MISSING_ITEMS);
         assertNotNull(plan);
         assertFalse(plan.simulation());
         assertEquals(5L, plan.patternTimes().get(ironFromTool));
@@ -610,7 +630,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, topFromEither)
                 .build();
 
-        ICraftingPlan plan = assertGraphMatchesFast(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        ICraftingPlan plan = assertGraphMatchesNativeTree(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
         assertNotNull(plan);
         assertFalse(plan.simulation());
         assertEquals(10L, plan.patternTimes().get(topFromEither));
@@ -628,7 +648,11 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, topFromEither)
                 .build();
 
-        ICraftingPlan plan = assertGraphMatchesFast(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        // 这一格不与原生树对拍：AE2 的模糊槽按它自己的类视图"整槽一键"付满
+        // （本夹具里直接 copper×10），而我方图按样板声明的候选顺位先耗尽首选、
+        // 不够才落到备选（amethyst×4 + copper×6）。这是台账 #46/#146 定下的自有口径，
+        // 树那一腿的模糊序我们管不到（见 ProviderPatternOrder 类抬头"管不到 AE2 的树路"）。
+        ICraftingPlan plan = runGraph(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
         assertNotNull(plan);
         assertFalse(plan.simulation());
         assertEquals(4L, plan.usedItems().get(A_ITEM));
@@ -641,17 +665,22 @@ final class GraphPlanningEquivalenceTest {
         // findCraftedStack replaces the slot's node key with GOLD before
         // recursing, so demand flows into GOLD's pattern and the slot's bytes
         // land on GOLD.
+        //
+        // 台账 #143 把这一对夹具改成 AE2 的真形状：模糊代用的宇宙是
+        // {@code craftableItemsList}（按 {@code AEKey#getPrimaryKey} 分族），
+        // 所以候选必须与代用键<b>同 item</b>（旧夹具用 SLIME_BALL 代用 GOLD_INGOT，
+        // 实机 AE2 永远不会这样配对）。
+        AEItemKey subGold = componentKey(Items.GOLD_INGOT, "sub");
         FakePattern goldFromRedstone = FakePattern.crafting(GOLD, 1, Map.of(REDSTONE, 2L));
         FakePattern topFromEither = FakePattern.of(TOP, 1,
-                FakeInput.multi(1, SUB_ITEM, GOLD));
+                FakeInput.multi(1, subGold, GOLD));
         FakeGrid grid = FakeGrid.builder()
                 .storage(Map.of(REDSTONE, 100L))
-                .fuzzyCraftable(SUB_ITEM, GOLD)
                 .pattern(GOLD, goldFromRedstone)
                 .pattern(TOP, topFromEither)
                 .build();
 
-        ICraftingPlan plan = assertGraphMatchesFast(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        ICraftingPlan plan = assertGraphMatchesNativeTree(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
         assertNotNull(plan);
         assertFalse(plan.simulation());
         assertEquals(10L, plan.patternTimes().get(topFromEither));
@@ -675,7 +704,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironFromTool)
                 .build();
 
-        ICraftingPlan plan = assertGraphMatchesFast(grid, IRON, 12, CalculationStrategy.REPORT_MISSING_ITEMS);
+        ICraftingPlan plan = assertGraphMatchesNativeTree(grid, IRON, 12, CalculationStrategy.REPORT_MISSING_ITEMS);
         assertNotNull(plan);
         assertFalse(plan.simulation());
         // AE2's fuzzy order draws the most damaged variant first.
@@ -701,7 +730,8 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, ironFromTools)
                 .build();
 
-        ICraftingPlan plan = assertGraphMatchesFast(grid, IRON, 8,
+        // 同上：dense 模糊槽的候选×变体顺位是我方口径，AE2 树在那儿整槽一键。
+        ICraftingPlan plan = runGraph(grid, IRON, 8,
                 CalculationStrategy.REPORT_MISSING_ITEMS);
         assertNotNull(plan);
         assertFalse(plan.simulation());
@@ -722,7 +752,7 @@ final class GraphPlanningEquivalenceTest {
                 .storage(Map.of(tool50, 12L))
                 .build();
 
-        assertGraphMatchesFast(grid, tool100, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, tool100, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     // ------------------------------------------------------------------
@@ -745,7 +775,7 @@ final class GraphPlanningEquivalenceTest {
         assertEquals(0L, plan.usedItems().get(GOLD));
         assertEquals(10L, plan.emittedItems().get(GOLD));
 
-        assertGraphMatchesFast(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     /** dense emittable 位图必须在库存不足后保持 exact emittedItems 口径。 */
@@ -758,7 +788,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, topFromIron)
                 .build();
 
-        ICraftingPlan plan = assertGraphMatchesFast(grid, TOP, 4,
+        ICraftingPlan plan = assertGraphMatchesNativeTree(grid, TOP, 4,
                 CalculationStrategy.REPORT_MISSING_ITEMS);
         assertNotNull(plan);
         assertFalse(plan.simulation());
@@ -780,7 +810,7 @@ final class GraphPlanningEquivalenceTest {
         assertEquals(4L, plan.usedItems().get(GOLD));
         assertEquals(6L, plan.emittedItems().get(GOLD));
 
-        assertGraphMatchesFast(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     // ------------------------------------------------------------------
@@ -800,7 +830,7 @@ final class GraphPlanningEquivalenceTest {
         assertTrue(plan.simulation());
         assertEquals(20L, plan.missingItems().get(GOLD));
 
-        assertGraphMatchesFast(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, TOP, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     @Test
@@ -809,7 +839,7 @@ final class GraphPlanningEquivalenceTest {
                 .storage(Map.of(GOLD, 50L))
                 .build();
 
-        assertGraphMatchesFast(grid, GOLD, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, GOLD, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     // ------------------------------------------------------------------
@@ -817,17 +847,19 @@ final class GraphPlanningEquivalenceTest {
     // ------------------------------------------------------------------
 
     @Test
-    void multiRouteGraphMatchesFast() {
+    void multiRouteGraphMatchesNativeTree() {
         // Multiple routes for one key are supported since level-1 phase 4:
         // routes fire greedily in registration order like the tree planner.
-        FakePattern ironFromGold = FakePattern.crafting(IRON, 1, Map.of(GOLD, 2L));
+        // 台账 #140：清单里并列（同优先级）那一段不再保证"喂进来的序"，要表达有意的先后
+        // 就声明递减的提供者优先级——那正是 AE2 交这份序的依据。
+        FakePattern ironFromGold = FakePattern.crafting(IRON, 1, Map.of(GOLD, 2L)).withPriority(1);
         FakePattern ironFromDiamond = FakePattern.crafting(IRON, 1, Map.of(DIAMOND, 3L));
         FakeGrid grid = FakeGrid.builder()
                 .storage(Map.of(GOLD, 10L, DIAMOND, 10L))
                 .pattern(IRON, ironFromGold, ironFromDiamond)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 5, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, IRON, 5, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     @Test
@@ -849,9 +881,9 @@ final class GraphPlanningEquivalenceTest {
         // the same firing's 1-gold return lands, so the last firing runs one
         // gold short — exactly the native per-item conclusion, with none of
         // the closed form's negative insert (1*times − 2*(times−1) < 0).
-        var fast = runFast(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
-        assertEquals(1L, fast.missingItems().get(GOLD));
-        assertEquals(0L, fast.missingItems().get(REDSTONE));
+        var tree = runTree(grid, IRON, 10, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertEquals(1L, tree.missingItems().get(GOLD));
+        assertEquals(0L, tree.missingItems().get(REDSTONE));
     }
 
     @Test
@@ -914,7 +946,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(GOLD, goldFromIron)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 1, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, IRON, 1, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     @Test
@@ -927,7 +959,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(IRON, selfRef)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 1, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, IRON, 1, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     @Test
@@ -961,15 +993,16 @@ final class GraphPlanningEquivalenceTest {
         // F itself: the resolved node key re-enters F, every pattern is
         // filtered (selfBlocked leaf), and the request goes missing — the
         // tree's findCraftedStack + notRecursive behavior.
+        // 同 #143 那条夹具改形：候选与代用键必须同 item（这里用 IRON_INGOT 的组件变体）。
+        AEItemKey subIron = componentKey(Items.IRON_INGOT, "sub");
         FakePattern selfFeeding = FakePattern.of(IRON, 1,
-                FakeInput.multi(1, SUB_ITEM, IRON));
+                FakeInput.multi(1, subIron, IRON));
         FakeGrid grid = FakeGrid.builder()
                 .storage(Map.of())
-                .fuzzyCraftable(SUB_ITEM, IRON)
                 .pattern(IRON, selfFeeding)
                 .build();
 
-        assertGraphMatchesFast(grid, IRON, 1, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertGraphMatchesNativeTree(grid, IRON, 1, CalculationStrategy.REPORT_MISSING_ITEMS);
     }
 
     @Test
@@ -1021,7 +1054,7 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, topFromMid)
                 .build();
 
-        var plan = assertGraphMatchesFast(grid, TOP, 4096, CalculationStrategy.REPORT_MISSING_ITEMS);
+        var plan = assertGraphMatchesNativeTree(grid, TOP, 4096, CalculationStrategy.REPORT_MISSING_ITEMS);
         assertTrue(plan.bytes() > 50 * M, () -> "input-site bytes collapsed: " + plan.bytes());
     }
 
@@ -1036,9 +1069,128 @@ final class GraphPlanningEquivalenceTest {
                 .pattern(TOP, topFromMid)
                 .build();
 
-        var plan = assertGraphMatchesFast(grid, TOP, 4096, CalculationStrategy.REPORT_MISSING_ITEMS);
+        var plan = assertGraphMatchesNativeTree(grid, TOP, 4096, CalculationStrategy.REPORT_MISSING_ITEMS);
         assertTrue(plan.bytes() > 50 * M, () -> "input-site bytes collapsed: " + plan.bytes());
     }
 
+    /**
+     * 模糊槽整归首选本体族：首选候选能自产时，即使第二个候选在库里摆着，也不许跨族改道。
+     *
+     * <p>旧口径按"池子里还剩多少"逐份削，跨族拆份在整除处必掉余量且掉的份没人补产
+     * （实机 {@code share=1199245817} 对实耗 {@code 1199245818＝3×399748606}，
+     * 尾段 {@code stored=1} 谁也拿不到，5 张任务僵死）。
+     */
+    @Test
+    void fuzzySlotPaysWholeSlotToFirstProducibleCandidate() {
+        FakePattern ironFromSand = FakePattern.crafting(IRON, 1, Map.of(SAND, 1L));
+        FakePattern topFromEither = FakePattern.of(TOP, 1L,
+                FakeInput.multi(1L, IRON, B_ITEM));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(B_ITEM, 5L, SAND, 8L))
+                .pattern(IRON, ironFromSand)
+                .pattern(TOP, topFromEither)
+                .build();
+
+        var plan = runGraph(grid, TOP, 2L, CalculationStrategy.REPORT_MISSING_ITEMS);
+
+        assertEquals(0L, plan.usedItems().get(B_ITEM),
+                () -> "首选族能自产，就不该去动第二个候选的存量, used="
+                        + FakePlanGrid.toPlain(plan.usedItems()));
+        assertEquals(2L, plan.patternTimes().getOrDefault(ironFromSand, 0L),
+                () -> "整槽 2 份都得由铁矿的生产链承担, times=" + plan.patternTimes());
+    }
+
+    /**
+     * 规划定版的配给表（"这一格哪个键几份"）必须自己撑得住：某键写下的份数不得超过
+     * "这张任务表自产的量 + 计划已从网络提走的量"。
+     *
+     * <p>实机形态是 {@code refinedstorage:silicon hole=960 used=0 miss=0}：守恒闸门按图上
+     * 展开后的候选宇宙判"够"，提交期又按 AE2 原始候选表重算一份归属，两个宇宙对不上，
+     * 计划就带着"少产 960 枚硅"出门了——尾段那一格永远取不到料，lane 停在
+     * {@code extractNull} 上不动。
+     */
+    @Test
+    void plannedMaterialPlanIsBoundedByThePlansOwnSupply() {
+        // 自增殖环把计划推到递归出口，配给表才随任务表一起下发。
+        FakePattern ironDoubling = FakePattern.of(IRON, 2L,
+                new FakeInput(IRON, 1L), new FakeInput(SAND, 1L));
+        // 模糊槽 [铁矿, 铜锭]：每发 2 份，两种各摆 1 枚，规划得把 2 份拆给两个键。
+        FakePattern topFromAny = FakePattern.of(TOP, 1L,
+                FakeInput.multi(2L, IRON, B_ITEM));
+        FakeGrid grid = FakeGrid.builder()
+                .storage(Map.of(IRON, 1L, B_ITEM, 1L, SAND, 8L))
+                .pattern(IRON, ironDoubling)
+                .pattern(TOP, topFromAny)
+                .build();
+
+        var plan = runGraph(grid, TOP, 1L, CalculationStrategy.REPORT_MISSING_ITEMS);
+        assertTrue(plan instanceof RecursivePlanContract,
+                () -> "期望递归出口: " + plan.getClass().getSimpleName());
+        var material = ((RecursivePlanContract) plan).chexsonsaeutils$planMaterialPlan();
+        var supply = new HashMap<AEKey, Long>();
+        for (var entry : plan.patternTimes().entrySet()) {
+            long times = entry.getValue() == null ? 0L : entry.getValue();
+            if (entry.getKey() == null || times <= 0L || entry.getKey().getOutputs() == null) {
+                continue;
+            }
+            for (var output : entry.getKey().getOutputs()) {
+                if (output != null && output.what() != null && output.amount() > 0L) {
+                    supply.merge(output.what(), output.amount() * times, Long::sum);
+                }
+            }
+        }
+        for (var entry : plan.usedItems()) {
+            if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                supply.merge(entry.getKey(), entry.getLongValue(), Long::sum);
+            }
+        }
+        long assigned = 0L;
+        for (var task : material.entrySet()) {
+            // 配给账换宽域账本后的等价读法：逐在册键取窄视图读数（本用例量级远未越界）
+            var share = task.getValue();
+            for (AEKey unit : share.keys()) {
+                long amount = share.getLong(unit);
+                assigned += amount;
+                long source = supply.getOrDefault(unit, 0L);
+                assertTrue(source >= amount, () -> "配给无来源: " + unit
+                        + " assigned=" + amount + " supply=" + source
+                        + " material=" + describeMaterialPlan(material));
+            }
+        }
+        assertTrue(assigned > 0L, () -> "计划没带配给表: " + describeMaterialPlan(material));
+        // 下界等式（任务 #49 复现点）：配给表给某 pattern 某族的份数，必须等于该 pattern
+        // 发射向量按同一条付款规则真吃的那一族的份数。TOP 槽 multi(2, 铁矿, 铜锭) 首选族
+        // 铁矿可自产 ⇒ 整槽 2×times 份都必须记在铁矿族上，拆给铜锭一族即规划算料错。
+        long topTimes = plan.patternTimes().getOrDefault(topFromAny, 0L);
+        var topAssigned = material.get(topFromAny);
+        assertNotNull(topAssigned, () -> "TOP 没进配给表: " + describeMaterialPlan(material));
+        Object ironFamily = IRON.getPrimaryKey();
+        long ironShare = 0L;
+        for (AEKey unit : topAssigned.keys()) {
+            if (ironFamily.equals(unit.getPrimaryKey())) {
+                ironShare += topAssigned.getLong(unit);
+            }
+        }
+        assertEquals(2L * topTimes, ironShare,
+                () -> "付款族份额 != 发射向量应吃份数: TOP 配给=" + describeMaterialPlan(material)
+                        + " times=" + topTimes);
+    }
+
+    /**
+     * 配给表的失败信息读数：账本换 {@link WideKeyCounter} 后默认 {@code toString} 只有对象身份，
+     * 这里按「样板 → 键=份数」展开（纯诊断，不参与判据）。
+     */
+    private static String describeMaterialPlan(
+            Map<IPatternDetails, WideKeyCounter> material) {
+        var described = new StringBuilder("{");
+        for (var task : material.entrySet()) {
+            described.append('\n').append(task.getKey().getDefinition()).append("={");
+            for (AEKey key : task.getValue().keys()) {
+                described.append(key).append('=').append(task.getValue().getLong(key)).append(", ");
+            }
+            described.append("},");
+        }
+        return described.append('}').toString();
+    }
 
 }

@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.parts.custompatternprovider;
 
+
 import java.util.EnumSet;
 import java.util.List;
 
@@ -37,13 +38,13 @@ import appeng.menu.locator.MenuLocators;
 import appeng.parts.AEBasePart;
 import appeng.parts.PartModel;
 import appeng.util.SettingsFrom;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogic;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderState;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternRegistration;
 
 /**
  * 定制样板供应器面板（阶段 3）。
@@ -69,7 +70,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
 
     /** 面板模型清单：base 为本 mod 自建（parent ae2:part/pattern_provider_base），状态灯复用 ae2 接口三态。 */
     public static final List<ResourceLocation> MODELS = List.of(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "part/custom_pattern_provider_base"),
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "part/custom_pattern_provider_base"),
             ResourceLocation.fromNamespaceAndPath(AppEngBase.MOD_ID, "part/interface_on"),
             ResourceLocation.fromNamespaceAndPath(AppEngBase.MOD_ID, "part/interface_off"),
             ResourceLocation.fromNamespaceAndPath(AppEngBase.MOD_ID, "part/interface_has_channel")
@@ -95,10 +96,10 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
     private CustomPatternProviderState createState() {
         return new CustomPatternProviderState(CustomPatternProviderPart.class, this.getMainNode(), this,
                 UpgradeInventories.forMachine(
-                        () -> ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get(),
+                        () -> getPartItem().asItem(),
                         CustomPatternProviderState.UPGRADE_SLOTS,
                         this::saveChanges
-                ));
+                ), new git.chexson.chexsonsaeutils.integration.patternprovider.CustomPatternProviderIntegrationFactoryImpl());
     }
 
     @Override
@@ -158,7 +159,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
         } else if (mode == SettingsFrom.DISMANTLE_ITEM) {
             // I1 修复：拆除写回——IPart.addPartDrop 默认实现经本方法生成掉落栈组件，
             // 把当前 pages 写入 CUSTOM_PATTERN_PAGES（闭环保留，与放置读回对称）
-            builder.set(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), patternState.pages());
+            builder.set(CustomPatternRegistration.CUSTOM_PATTERN_PAGES.get(), patternState.pages());
         }
     }
 
@@ -171,7 +172,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
             // I1 修复：放置读回——PartPlacement.placePart 以放置物品的组件映射调用本方法，
             // 把扩容后的 CUSTOM_PATTERN_PAGES 注入面板（方块版对应 updateCustomBlockEntityTag 读回）
             patternState.initPages(input.getOrDefault(
-                    ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), 1));
+                    CustomPatternRegistration.CUSTOM_PATTERN_PAGES.get(), 1));
         }
     }
 
@@ -211,7 +212,7 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
 
     @Override
     public ItemStack getMainMenuIcon() {
-        return new ItemStack(ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
+        return new ItemStack(getPartItem().asItem());
     }
 
     @Override
@@ -352,4 +353,17 @@ public class CustomPatternProviderPart extends AEBasePart implements CustomPatte
                 CustomPatternProviderPart.class
         );
     }
+    @Override
+    public net.minecraft.world.inventory.MenuType<? extends appeng.menu.AEBaseMenu> getMainMenuType() {
+        return CustomPatternProviderMenu.TYPE;
+    }
+
+    @Override
+    public appeng.menu.locator.MenuHostLocator getMainMenuLocator() {
+        return appeng.menu.locator.MenuLocators.forPart(this);
+    }
+
+    @Override
+    public Direction getPartSide() { return getSide(); }
+
 }

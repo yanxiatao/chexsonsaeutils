@@ -1,6 +1,7 @@
 package git.chexson.chexsonsaeutils.crafting.hostbatch;
 
 import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.AEKey;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
@@ -8,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,6 +35,23 @@ class HostChainSegmenterTest {
         assertEquals(2, segments.size());
         assertTrue(segments.contains(Set.of(version2, version3)));
         assertTrue(segments.contains(Set.of(wrongVersion2)));
+    }
+
+    /**
+     * 夹顶值就是顶：同键先记 {@code Long.MAX_VALUE} 再记 5，读数必须停在顶上而不是回绕成 4。
+     * 该口按 {@code amount <= 0} 早退，负方向夹底那一半在这里走不到——算术契约（双向饱和）
+     * 由 {@code bigint/ClampedMathTest} 钉，本条只钉这一个调用点的替换结果。
+     */
+    @Test
+    void mergeStackPinsSaturatedTotalAtLongTopInsteadOfWrappingAround() {
+        AEKey shard = AEItemKey.of(Items.AMETHYST_SHARD);
+        Map<AEKey, Long> target = new LinkedHashMap<>();
+
+        HostChainSegmenter.mergeStack(target, shard, Long.MAX_VALUE);
+        HostChainSegmenter.mergeStack(target, shard, 5L);
+
+        assertEquals(Long.MAX_VALUE, target.get(shard).longValue(),
+                () -> "saturated merge must stay on the ceiling, path=HostChainSegmenter.mergeStack");
     }
 
     private static AEItemKey componentKey(Item item, String value) {

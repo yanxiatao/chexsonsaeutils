@@ -9,9 +9,7 @@ import appeng.api.stacks.GenericStack;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.ItemMenuHostLocator;
 import appeng.menu.locator.MenuLocators;
-import git.chexson.chexsonsaeutils.cell.MatterMassStore;
-import git.chexson.chexsonsaeutils.menu.mattermass.MatterMassViewMenuHost;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+import git.chexson.chexsonsaeutils.mattermassstore.MatterMassStore;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -55,14 +53,14 @@ public class MatterMassItem extends Item implements IMenuItem {
     /** @return 物质团 UUID（无组件时 null）。 */
     @Nullable
     public static UUID getUuid(ItemStack stack) {
-        return stack.get(ChexsonsaeutilsContent.MATTER_MASS_UUID.get());
+        return stack.get(MatterMassRegistration.MATTER_MASS_UUID.get());
     }
 
     /** 构造一个物质团栈（名字 + UUID；内容物在外部存储中按 UUID 维护）。 */
     public static ItemStack createStack(Component name, UUID uuid) {
-        var stack = new ItemStack(ChexsonsaeutilsContent.MATTER_MASS_ITEM.get());
+        var stack = new ItemStack(MatterMassRegistration.MATTER_MASS_ITEM.get());
         stack.set(DataComponents.CUSTOM_NAME, name);
-        stack.set(ChexsonsaeutilsContent.MATTER_MASS_UUID.get(), uuid);
+        stack.set(MatterMassRegistration.MATTER_MASS_UUID.get(), uuid);
         return stack;
     }
 
@@ -96,7 +94,7 @@ public class MatterMassItem extends Item implements IMenuItem {
             releaseContents(serverPlayer, stack, hand, uuid);
             return InteractionResultHolder.consume(player.getItemInHand(hand));
         }
-        MenuOpener.open(ChexsonsaeutilsContent.MATTER_MASS_VIEW_MENU.get(), player,
+        MenuOpener.open(MatterMassRegistration.MATTER_MASS_VIEW_MENU.get(), player,
                 MenuLocators.forHand(player, hand));
         return InteractionResultHolder.success(stack);
     }

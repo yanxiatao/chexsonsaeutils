@@ -4,10 +4,10 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
-import git.chexson.chexsonsaeutils.crafting.numeric.Ae2Amounts;
-import git.chexson.chexsonsaeutils.crafting.numeric.PlanAmount;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideKeyCounter;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideMath;
+import git.chexson.chexsonsaeutils.bigint.Ae2Amounts;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
+import git.chexson.chexsonsaeutils.bigint.WideMath;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import java.math.BigInteger;
 import java.util.Collection;
@@ -31,7 +31,8 @@ public record CompressedRing(
         KeyCounter catalysts,
         Map<IPatternDetails, Long> executionRatio,
         Set<AEKey> entryPoints,
-        boolean calculable
+        boolean calculable,
+        Map<IPatternDetails, PatternFlow> memberFlows
 ) {
 
     private static final int MIN_RATIO_PASSES = 64;
@@ -124,8 +125,29 @@ public record CompressedRing(
                 catalysts,
                 executionRatio,
                 Collections.unmodifiableSet(new LinkedHashSet<>(netOutputs.keySet())),
-                calculable
+                calculable,
+                Collections.unmodifiableMap(new LinkedHashMap<>(flows))
         );
+    }
+
+    /**
+     * 按"实际派发给每个成员的发射数"回算环的净流量：正数=净产出，负数=净消耗。
+     *
+     * <p>{@link #netInputs()} 与 {@link #netOutputs()} 是按整数周期（executionRatio）
+     * 聚合的口径；求解器逐成员取整派发时，分数缩放下每个成员的余数会各自进位，
+     * 于是"交付的任务表实际吃掉多少"与"账本记了多少"分家——差额既没记进 usedItems
+     * 也没记进 missingItems，执行期就是无源缺口。净流量必须由派发向量本身给出。
+     */
+    public Map<AEKey, BigInteger> netFlowOf(Map<IPatternDetails, Long> firings) {
+        Map<AEKey, BigInteger> net = new LinkedHashMap<>();
+        if (firings == null || firings.isEmpty()) {
+            return net;
+        }
+        for (var entry : memberFlows.entrySet()) {
+            entry.getValue().addScaledNet(net, firings.getOrDefault(entry.getKey(), 0L));
+        }
+        net.values().removeIf(v -> v.signum() == 0);
+        return net;
     }
 
     @Nullable
@@ -196,7 +218,8 @@ public record CompressedRing(
                 new KeyCounter(),
                 Map.of(),
                 Set.of(),
-                false
+                false,
+                Map.of()
         );
     }
 
@@ -237,7 +260,7 @@ public record CompressedRing(
         return primary;
     }
 
-    private static final class PatternFlow {
+    public static final class PatternFlow {
         private final Map<AEKey, BigInteger> inputs = new LinkedHashMap<>();
         private final Map<AEKey, BigInteger> outputs = new LinkedHashMap<>();
 
@@ -247,6 +270,28 @@ public record CompressedRing(
 
         private void addOutput(AEKey key, long amount) {
             this.outputs.merge(key, BigInteger.valueOf(amount), BigInteger::add);
+        }
+
+        /** 该样板执行 {@code times} 次的净贡献（产出-消耗）累加进 {@code net}。 */
+        public void addScaledNet(Map<AEKey, BigInteger> net, long times) {
+            if (times <= 0L) {
+                return;
+            }
+            addScaledNet(net, BigInteger.valueOf(times));
+        }
+
+        /**
+         * 同上，但发数本身可超 {@code long}：环宏的宽域发射向量按这份真值算净流量，
+         * 与 {@code crafts} 里记下的发数逐字同源，不留"账上记真值、沙盒进截断值"的差额。
+         */
+        public void addScaledNet(Map<AEKey, BigInteger> net, BigInteger multiplier) {
+            if (multiplier == null || multiplier.signum() <= 0) {
+                return;
+            }
+            this.outputs.forEach((key, amount) ->
+                    net.merge(key, amount.multiply(multiplier), BigInteger::add));
+            this.inputs.forEach((key, amount) ->
+                    net.merge(key, amount.multiply(multiplier).negate(), BigInteger::add));
         }
 
         private BigInteger net(AEKey key) {

@@ -1,10 +1,13 @@
 package git.chexson.chexsonsaeutils.crafting.parallelcpu;
 
 import appeng.api.config.Actionable;
+import appeng.api.networking.IGrid;
 import appeng.api.stacks.AEKey;
+import git.chexson.chexsonsaeutils.bigint.ClampedMath;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import org.jetbrains.annotations.Nullable;
 
+import java.math.BigInteger;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -73,6 +76,27 @@ public final class ParallelCpuWaitingIndex {
         return insertIntoLanesAndGetResult(what, amount, mode).physicalInserted();
     }
 
+    /** 同网真实产物直送宽域 CPU；快照允许到账后刷新索引，不遍历与产物无关的任务。 */
+    BigInteger claimDeclaredOutputs(AEKey what, BigInteger available, IGrid sourceGrid) {
+        var candidates = lanesByKey.get(what);
+        if (available.signum() <= 0 || candidates == null || candidates.isEmpty()) {
+            return BigInteger.ZERO;
+        }
+        BigInteger remaining = available;
+        for (var candidate : List.copyOf(candidates)) {
+            if (candidate instanceof ParallelCraftingLaneState lane
+                    && lane.cluster().grid() == sourceGrid) {
+                remaining = remaining.subtract(lane.logic().claimDeclaredOutput(what, remaining));
+                lane.cluster().wakeLane(lane);
+                refreshLane(lane);
+                if (remaining.signum() <= 0) {
+                    break;
+                }
+            }
+        }
+        return available.subtract(remaining);
+    }
+
     public InsertResult insertIntoLanesAndGetResult(
             @Nullable AEKey what,
             long amount,
@@ -116,8 +140,8 @@ public final class ParallelCpuWaitingIndex {
             long acceptedPhysical = Math.min(Math.max(0L, laneResult.physicalInserted()), remaining);
             long acceptedAccounted = Math.min(Math.max(0L, laneResult.accounted()), remaining);
             if (acceptedAccounted > 0L) {
-                physicalInserted = saturatedAdd(physicalInserted, acceptedPhysical);
-                accounted = saturatedAdd(accounted, acceptedAccounted);
+                physicalInserted = ClampedMath.addUp(physicalInserted, acceptedPhysical);
+                accounted = ClampedMath.addUp(accounted, acceptedAccounted);
                 if (lane instanceof ParallelCraftingLaneState laneState) {
                     laneState.cluster().wakeLane(laneState);
                 }
@@ -144,8 +168,8 @@ public final class ParallelCpuWaitingIndex {
                     remaining
             );
             if (accepted > 0L) {
-                physicalInserted = saturatedAdd(physicalInserted, accepted);
-                accounted = saturatedAdd(accounted, accepted);
+                physicalInserted = ClampedMath.addUp(physicalInserted, accepted);
+                accounted = ClampedMath.addUp(accounted, accepted);
             }
         }
         return new InsertResult(physicalInserted, accounted);
@@ -300,7 +324,7 @@ public final class ParallelCpuWaitingIndex {
             if (entry == null || entry.getKey() == null || entry.getLongValue() <= 0L) {
                 continue;
             }
-            snapshot.merge(entry.getKey(), entry.getLongValue(), ParallelCpuWaitingIndex::saturatedAdd);
+            snapshot.merge(entry.getKey(), entry.getLongValue(), ClampedMath::addUp);
         }
         return snapshot.isEmpty() ? Collections.emptyMap() : Map.copyOf(snapshot);
     }
@@ -311,7 +335,7 @@ public final class ParallelCpuWaitingIndex {
         }
         long previous = requestedAmounts.getOrDefault(key, 0L);
         long next = delta > 0L
-                ? saturatedAdd(previous, delta)
+                ? ClampedMath.addUp(previous, delta)
                 : previous <= -delta ? 0L : previous + delta;
         if (next <= 0L) {
             requestedAmounts.remove(key);
@@ -330,10 +354,4 @@ public final class ParallelCpuWaitingIndex {
         return new LinkedHashSet<>();
     }
 
-    private static long saturatedAdd(long left, long right) {
-        if (left >= Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        return left + right;
-    }
 }

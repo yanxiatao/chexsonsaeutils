@@ -14,7 +14,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerContainerEvent;
 
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
-import git.chexson.chexsonsaeutils.cell.MatterMassStore;
+import git.chexson.chexsonsaeutils.mattermassstore.MatterMassStore;
 import git.chexson.chexsonsaeutils.item.mattermass.MatterMassItem;
 
 /**
@@ -77,8 +77,7 @@ public final class MatterMassMergeHandler {
             for (int i = 1; i < cluster.size(); i++) {
                 var other = cluster.get(i);
                 // 取走其余团内容物并删除其条目，再并入幸存者条目（总量相加）
-                var otherContents = store.takeAll(other.uuid());
-                store.append(survivor.uuid(), otherContents);
+                store.transferAll(survivor.uuid(), other.uuid());
                 other.slots().set(other.index(), ItemStack.EMPTY);
                 merged = true;
             }

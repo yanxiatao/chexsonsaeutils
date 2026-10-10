@@ -7,8 +7,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixTarget;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 
 import java.util.List;
 
@@ -25,7 +24,7 @@ public record PatternMatrixMatchesPayload(
 ) implements CustomPacketPayload {
 
     public static final Type<PatternMatrixMatchesPayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "pattern_matrix_matches")
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "pattern_matrix_matches")
     );
 
     public static final StreamCodec<RegistryFriendlyByteBuf, PatternMatrixMatchesPayload> STREAM_CODEC =
@@ -40,26 +39,18 @@ public record PatternMatrixMatchesPayload(
             );
 
     public static PatternMatrixMatchesPayload of(int containerId, int matchCount, long[] bits) {
-        int usedWords = trailingWordCount(bits);
-        Long[] words = new Long[usedWords];
-        for (int index = 0; index < usedWords; index++) {
+        Long[] words = new Long[bits.length];
+        for (int index = 0; index < bits.length; index++) {
             words[index] = bits[index];
         }
         return new PatternMatrixMatchesPayload(containerId, matchCount, List.of(words));
     }
 
     /**
-     * 去掉尾部空字以压缩包体。至少保留一个字：本方法只服务于「有查询」的回包，
-     * 零命中时若下发空数组，客户端会把它当成取消过滤而不是过滤后无结果。
+     * 长度语义（D6b 两侧同一把尺）：{@code matchBits} 就是生产者的全长位图，写侧不裁尾、
+     * 读侧不补回，往返逐字相等。「取消过滤」由空查询腿显式下发空集合表达，
+     * 带查询的零命中腿下发全长零位图，两者不再靠裁尾后的长度差异区分。
      */
-    private static int trailingWordCount(long[] bits) {
-        int last = bits.length;
-        while (last > 1 && bits[last - 1] == 0L) {
-            last--;
-        }
-        return last;
-    }
-
     public long[] bitsArray() {
         long[] bits = new long[matchBits.size()];
         for (int index = 0; index < bits.length; index++) {

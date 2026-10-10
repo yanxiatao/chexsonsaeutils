@@ -1,7 +1,7 @@
 package git.chexson.chexsonsaeutils.menu.implementations;
 
-import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
-import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.model.MultiLevelEmitterDefinition;
+import git.chexson.chexsonsaeutils.parts.automation.model.MultiLevelEmitterRules;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompileResult;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 
 public final class MultiLevelEmitterScreen {
 
-    private static final String REGISTRATION_KEY = MultiLevelEmitterItem.SCREEN_BINDING_KEY;
+    private static final String REGISTRATION_KEY = MultiLevelEmitterDefinition.SCREEN_BINDING_KEY;
     private static final String FUZZY_MODE_KEY = "gui.chexsonsaeutils.multi_level_emitter.fuzzy_mode";
     private static final String CRAFTING_MODE_KEY = "gui.chexsonsaeutils.multi_level_emitter.crafting_mode";
     private static final String CRAFTING_LOCK_HELPER_KEY =
@@ -54,10 +54,10 @@ public final class MultiLevelEmitterScreen {
             boolean marked,
             long threshold,
             boolean thresholdLocked,
-            MultiLevelEmitterPart.ComparisonMode comparisonMode,
+            MultiLevelEmitterRules.ComparisonMode comparisonMode,
             boolean comparisonLocked,
-            MultiLevelEmitterPart.MatchingMode matchingMode,
-            MultiLevelEmitterPart.CraftingMode craftingMode,
+            MultiLevelEmitterRules.MatchingMode matchingMode,
+            MultiLevelEmitterRules.CraftingMode craftingMode,
             boolean showFuzzyControl,
             boolean emphasizeFuzzyMode,
             String fuzzyShortLabel,
@@ -227,9 +227,9 @@ public final class MultiLevelEmitterScreen {
         return Math.max(0, Math.min(currentScrollOffset, maxScrollOffset));
     }
 
-    public static String comparisonModeLabel(MultiLevelEmitterPart.ComparisonMode mode) {
-        MultiLevelEmitterPart.ComparisonMode effective =
-                mode == null ? MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL : mode;
+    public static String comparisonModeLabel(MultiLevelEmitterRules.ComparisonMode mode) {
+        MultiLevelEmitterRules.ComparisonMode effective =
+                mode == null ? MultiLevelEmitterRules.ComparisonMode.GREATER_OR_EQUAL : mode;
         return switch (effective) {
             case GREATER_OR_EQUAL -> ">=";
             case LESS_THAN -> "<";
@@ -238,9 +238,9 @@ public final class MultiLevelEmitterScreen {
         };
     }
 
-    public static String fuzzyShortLabel(MultiLevelEmitterPart.MatchingMode mode) {
-        MultiLevelEmitterPart.MatchingMode effective =
-                mode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : mode;
+    public static String fuzzyShortLabel(MultiLevelEmitterRules.MatchingMode mode) {
+        MultiLevelEmitterRules.MatchingMode effective =
+                mode == null ? MultiLevelEmitterRules.MatchingMode.STRICT : mode;
         return switch (effective) {
             case STRICT -> "STR";
             case IGNORE_ALL -> "*";
@@ -251,15 +251,15 @@ public final class MultiLevelEmitterScreen {
         };
     }
 
-    public static Component fuzzyTooltip(MultiLevelEmitterPart.MatchingMode mode) {
+    public static Component fuzzyTooltip(MultiLevelEmitterRules.MatchingMode mode) {
         return Component.translatable(FUZZY_MODE_KEY)
                 .append("\n")
                 .append(Component.translatable(fuzzyModeDetailKey(mode)));
     }
 
-    public static String craftingShortLabel(MultiLevelEmitterPart.CraftingMode mode) {
-        MultiLevelEmitterPart.CraftingMode effective =
-                mode == null ? MultiLevelEmitterPart.CraftingMode.NONE : mode;
+    public static String craftingShortLabel(MultiLevelEmitterRules.CraftingMode mode) {
+        MultiLevelEmitterRules.CraftingMode effective =
+                mode == null ? MultiLevelEmitterRules.CraftingMode.NONE : mode;
         return switch (effective) {
             case NONE -> "OFF";
             case EMIT_WHILE_CRAFTING -> "REQ";
@@ -268,7 +268,7 @@ public final class MultiLevelEmitterScreen {
     }
 
     public static Component craftingTooltip(
-            MultiLevelEmitterPart.CraftingMode mode,
+            MultiLevelEmitterRules.CraftingMode mode,
             boolean marked,
             boolean duplicateEmitToCraftTarget
     ) {
@@ -358,9 +358,9 @@ public final class MultiLevelEmitterScreen {
         Component craftingLockTooltip = craftingLockTooltip();
         List<SlotView> slots = new ArrayList<>(visibleSlots);
         for (int slotIndex = 0; slotIndex < visibleSlots; slotIndex++) {
-            MultiLevelEmitterPart.MatchingMode matchingMode = menu.matchingModeForSlot(slotIndex);
+            MultiLevelEmitterRules.MatchingMode matchingMode = menu.matchingModeForSlot(slotIndex);
             boolean marked = menu.hasMarkedItem(slotIndex);
-            MultiLevelEmitterPart.CraftingMode craftingMode = menu.craftingModeForSlot(slotIndex);
+            MultiLevelEmitterRules.CraftingMode craftingMode = menu.craftingModeForSlot(slotIndex);
             boolean duplicateEmitToCraftTarget = menu.duplicateEmitToCraftTarget(slotIndex);
             slots.add(new SlotView(
                     slotIndex,
@@ -368,17 +368,17 @@ public final class MultiLevelEmitterScreen {
                     menu.isSlotConfigured(slotIndex),
                     marked,
                     menu.thresholdForSlot(slotIndex),
-                    craftingCardInstalled && craftingMode != MultiLevelEmitterPart.CraftingMode.NONE,
+                    craftingCardInstalled && craftingMode != MultiLevelEmitterRules.CraftingMode.NONE,
                     menu.comparisonModeForSlot(slotIndex),
-                    craftingCardInstalled && craftingMode != MultiLevelEmitterPart.CraftingMode.NONE,
+                    craftingCardInstalled && craftingMode != MultiLevelEmitterRules.CraftingMode.NONE,
                     matchingMode,
                     craftingMode,
                     menu.hasFuzzyCardInstalled(),
-                    matchingMode != MultiLevelEmitterPart.MatchingMode.STRICT,
+                    matchingMode != MultiLevelEmitterRules.MatchingMode.STRICT,
                     fuzzyShortLabel(matchingMode),
                     fuzzyTooltip(matchingMode),
                     craftingCardInstalled,
-                    craftingCardInstalled && craftingMode != MultiLevelEmitterPart.CraftingMode.NONE,
+                    craftingCardInstalled && craftingMode != MultiLevelEmitterRules.CraftingMode.NONE,
                     craftingShortLabel(craftingMode),
                     craftingTooltip(craftingMode, marked, duplicateEmitToCraftTarget),
                     duplicateEmitToCraftTarget
@@ -413,9 +413,9 @@ public final class MultiLevelEmitterScreen {
         return safeConfigured + "/" + safeTotal;
     }
 
-    private static String fuzzyModeDetailKey(MultiLevelEmitterPart.MatchingMode mode) {
-        MultiLevelEmitterPart.MatchingMode effective =
-                mode == null ? MultiLevelEmitterPart.MatchingMode.STRICT : mode;
+    private static String fuzzyModeDetailKey(MultiLevelEmitterRules.MatchingMode mode) {
+        MultiLevelEmitterRules.MatchingMode effective =
+                mode == null ? MultiLevelEmitterRules.MatchingMode.STRICT : mode;
         return switch (effective) {
             case STRICT -> FUZZY_MODE_KEY + ".strict";
             case IGNORE_ALL -> FUZZY_MODE_KEY + ".ignore_all";
@@ -426,9 +426,9 @@ public final class MultiLevelEmitterScreen {
         };
     }
 
-    private static Component craftingModeDetail(MultiLevelEmitterPart.CraftingMode mode) {
-        MultiLevelEmitterPart.CraftingMode effective =
-                mode == null ? MultiLevelEmitterPart.CraftingMode.NONE : mode;
+    private static Component craftingModeDetail(MultiLevelEmitterRules.CraftingMode mode) {
+        MultiLevelEmitterRules.CraftingMode effective =
+                mode == null ? MultiLevelEmitterRules.CraftingMode.NONE : mode;
         return switch (effective) {
             case NONE -> Component.translatable(CRAFTING_MODE_KEY + ".disabled");
             case EMIT_WHILE_CRAFTING -> Component.translatable(CRAFTING_MODE_KEY + ".while_crafting");

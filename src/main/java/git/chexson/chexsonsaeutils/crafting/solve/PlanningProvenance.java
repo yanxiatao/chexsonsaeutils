@@ -24,9 +24,7 @@ import java.util.Map;
  */
 public final class PlanningProvenance {
 
-    public static final String FROZEN_ROUTE = "frozen_route";
     public static final String GRAPH = "graph";
-    public static final String FAST = "fast";
     public static final String NATIVE = "native";
 
     public record Info(long millis, String solver, long requestStartNanos, long calculationCompletedNanos) {
@@ -116,8 +114,7 @@ public final class PlanningProvenance {
 
     public static String solverTranslationKey(String solver) {
         return switch (solver) {
-            case FROZEN_ROUTE, GRAPH -> "gui.chexsonsaeutils.solver.graph";
-            case FAST -> "gui.chexsonsaeutils.solver.fast";
+            case GRAPH -> "gui.chexsonsaeutils.solver.graph";
             default -> "gui.chexsonsaeutils.solver.native";
         };
     }

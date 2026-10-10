@@ -3,7 +3,7 @@ package git.chexson.chexsonsaeutils.block.crafting;
 import appeng.block.AEBaseEntityBlock;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.menu.implementations.ExtremeAssemblerMenu;
 import git.chexson.chexsonsaeutils.blockentity.crafting.ExtremeAssemblerBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
@@ -33,7 +33,7 @@ public class ExtremeAssemblerBlock extends AEBaseEntityBlock<ExtremeAssemblerBlo
         }
         if (!level.isClientSide()) {
             MenuOpener.open(
-                    Chexsonsaeutils.EXTREME_ASSEMBLER_MENU.get(),
+                    ExtremeAssemblerMenu.TYPE,
                     player,
                     MenuLocators.forBlockEntity(blockEntity)
             );

@@ -49,12 +49,13 @@ public final class CustomPatternProviderState {
      * @param upgrades   宿主构造的本机升级库存（机器物品两侧不同，故由宿主注入）
      */
     public CustomPatternProviderState(Class<?> logOwner, IManagedGridNode mainNode,
-            CustomPatternProviderLogicHost host, IUpgradeInventory upgrades) {
+            CustomPatternProviderLogicHost host, IUpgradeInventory upgrades,
+            CustomPatternProviderIntegrationFactory integrationFactory) {
         this.logger = LoggerFactory.getLogger(logOwner);
         this.host = host;
         this.upgrades = upgrades;
         this.logic = new CustomPatternProviderLogic(mainNode, host,
-                ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages() * PATTERN_SLOTS_PER_PAGE);
+                ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages() * PATTERN_SLOTS_PER_PAGE, integrationFactory);
     }
 
     public CustomPatternProviderLogic logic() {

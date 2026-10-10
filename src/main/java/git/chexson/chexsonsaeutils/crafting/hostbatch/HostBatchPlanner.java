@@ -42,7 +42,7 @@ public final class HostBatchPlanner {
      * 链分段 + 批次化 + 写回。任何异常只记日志并放弃替换——原生计划不受影响。
      */
     /**
-     * 图路径入口：直接对聚合求解器产出的 crafts map 做宿主批重写。
+     * 图路径入口：直接对图规划求解器（{@code LinearPlanner}）产出的 crafts map 做宿主批重写。
      *
      * <p>与原生路径的 {@code rewriteCrafts(state, calculation, amount)} 相比，
      * 不需要 {@code CraftingSimulationState}（图路径用 {@code GraphPlanningState}
@@ -84,7 +84,7 @@ public final class HostBatchPlanner {
         // 1) 配置总开关
         if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(
                 ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED,
-                "formalMachinePlanningAggregationEnabled")) {
+                ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY)) {
             return "gate:configOff";
         }
         if (grid == null || craftingService == null || level == null || crafts.isEmpty()) {
@@ -228,8 +228,8 @@ public final class HostBatchPlanner {
      * 直出前先 String.format（SLF4J 只认 {} 占位，此前 %d 原样漏出）。
      */
     static void diag(String format, Object... args) {
-        if (git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphDiagnostics.active()) {
-            git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphDiagnostics.log(format, args);
+        if (git.chexson.chexsonsaeutils.crafting.graphplan.diag.GraphDiagnostics.active()) {
+            git.chexson.chexsonsaeutils.crafting.graphplan.diag.GraphDiagnostics.log(format, args);
             return;
         }
         LOGGER.info("[hostBatch] " + (args.length == 0 ? format : String.format(format, args)));
@@ -252,7 +252,7 @@ public final class HostBatchPlanner {
         // 1) 配置总开关（持久键沿用 formalMachinePlanningAggregationEnabled）。
         if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(
                 ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED,
-                "formalMachinePlanningAggregationEnabled")) {
+                ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY)) {
             return;
         }
         // 2) armed gate：递归路径 preliminary 阶段恒 false（补种/环记账

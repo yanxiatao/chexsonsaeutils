@@ -46,7 +46,7 @@ public class MatterMassPatternItem extends EncodedPatternItem<MatterMassPatternD
     public static ItemStack createPatternStack(List<GenericStack> sparseInputs, List<GenericStack> sparseOutputs,
             UUID massUuid) {
         var stack = new ItemStack(
-                git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent.MATTER_MASS_PATTERN_ITEM.get());
+                MatterMassPatternRegistration.MATTER_MASS_PATTERN_ITEM.get());
         MatterMassPatternDetails.encode(stack, sparseInputs, sparseOutputs, massUuid);
         return stack;
     }

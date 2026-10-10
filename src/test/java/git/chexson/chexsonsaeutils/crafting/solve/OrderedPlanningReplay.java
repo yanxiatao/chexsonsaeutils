@@ -24,6 +24,6 @@ public final class OrderedPlanningReplay {
         order.addFirst(first);
         return new OrderedPlanningCalculation(
                 null, grid, requester, output, strategy, order,
-                true, true, 0L, 0L, true);
+                true, 0L);
     }
 }

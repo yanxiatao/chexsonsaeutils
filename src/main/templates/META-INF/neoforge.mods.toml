@@ -73,7 +73,8 @@ side = "BOTH"
 [[dependencies.${mod_id}]]
 modId = "neoecoae"
 type = "optional"
-versionRange = "[21.2.0-preview14,21.2.0-preview15)"
+# 与编译期 jar 同一来源：gradle.properties 的 neoecoae_version
+versionRange = "[${neoecoae_version},)"
 ordering = "AFTER"
 side = "BOTH"
 

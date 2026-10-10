@@ -3,15 +3,15 @@ package git.chexson.chexsonsaeutils.menu.implementations;
 import appeng.helpers.InventoryAction;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.implementations.MenuTypeBuilder;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.blockentity.crafting.ExtremeAssemblerBlockEntity;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixEntry;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixEntry;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixInteraction;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixMenuLink;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixRealStack;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixClientView;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixServerTarget;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixTarget;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixRealStack;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixServerTarget;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixTarget;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -27,7 +27,7 @@ public class ExtremeAssemblerMenu extends AEBaseMenu
     public static final MenuType<ExtremeAssemblerMenu> TYPE = MenuTypeBuilder
             .create(ExtremeAssemblerMenu::new, ExtremeAssemblerBlockEntity.class)
             .buildUnregistered(Objects.requireNonNull(
-                    ResourceLocation.tryParse(Chexsonsaeutils.MODID + ":extreme_assembler")
+                    ResourceLocation.tryParse(ModIds.MODID + ":extreme_assembler")
             ));
 
     private final ExtremeAssemblerBlockEntity host;

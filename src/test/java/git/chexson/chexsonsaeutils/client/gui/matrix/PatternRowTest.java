@@ -1,8 +1,8 @@
 package git.chexson.chexsonsaeutils.client.gui.matrix;
 
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixClientView;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixEntry;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixRealStack;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixEntry;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixRealStack;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSearch;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;

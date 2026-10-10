@@ -11,9 +11,11 @@ import appeng.api.networking.energy.IEnergyService;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEKey;
 import appeng.crafting.execution.CraftingSubmitResult;
+import git.chexson.chexsonsaeutils.bigint.ClampedMath;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import org.jetbrains.annotations.Nullable;
 
+import java.math.BigInteger;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -83,7 +85,8 @@ public final class ParallelCraftingCpuGrid {
 
         if (target instanceof ParallelCraftingCPU parallelCpu) {
             if (!hasCpu(parallelCpu)) {
-                return CraftingSubmitResult.CPU_OFFLINE;
+                return parallelCpu.cluster().offlineSubmission(grid,
+                        clusters.contains(parallelCpu.cluster()) ? "cpu-no-longer-visible" : "cluster-not-registered");
             }
             if (parallelCpu.isActiveVirtualCpu()) {
                 return CraftingSubmitResult.CPU_BUSY;
@@ -111,7 +114,9 @@ public final class ParallelCraftingCpuGrid {
 
         if (target instanceof ParallelCraftingCPU parallelCpu) {
             if (!hasCpu(parallelCpu)) {
-                return CraftingSubmitResult.CPU_OFFLINE;
+                return parallelCpu.cluster().offlineSubmission(grid,
+                        clusters.contains(parallelCpu.cluster()) ? "partial-cpu-no-longer-visible"
+                                : "partial-cluster-not-registered");
             }
             if (parallelCpu.isActiveVirtualCpu()) {
                 return CraftingSubmitResult.CPU_BUSY;
@@ -224,6 +229,11 @@ public final class ParallelCraftingCpuGrid {
 
     void refreshLane(ParallelCraftingLane lane) {
         waitingIndex.refreshLane(lane);
+    }
+
+    /** 机器合并批次后的真实产物按同网欠量直接入 CPU；剩余量仍由机器送回网络。 */
+    BigInteger claimDeclaredOutputs(AEKey what, BigInteger available) {
+        return waitingIndex.claimDeclaredOutputs(what, available, grid);
     }
 
     void removeLane(ParallelCraftingLane lane) {
@@ -342,7 +352,7 @@ public final class ParallelCraftingCpuGrid {
     private int activeLaneCount() {
         int count = 0;
         for (ParallelCraftingCpuCluster cluster : clusters) {
-            count = saturatedAdd(count, cluster.activeLaneCount());
+            count = ClampedMath.addUp(count, cluster.activeLaneCount());
         }
         return count;
     }
@@ -376,20 +386,6 @@ public final class ParallelCraftingCpuGrid {
             return Math.floorMod(startIndex, size);
         }
         return Math.floorMod(startIndex + visitedCount, size);
-    }
-
-    private static int saturatedAdd(int left, int right) {
-        if (right > 0 && left >= Integer.MAX_VALUE - right) {
-            return Integer.MAX_VALUE;
-        }
-        return left + right;
-    }
-
-    private static long saturatedAdd(long left, long right) {
-        if (right > 0L && left >= Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        return left + right;
     }
 
     private record AutoSelectionResult(

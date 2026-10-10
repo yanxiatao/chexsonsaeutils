@@ -8,7 +8,8 @@ import net.neoforged.fml.ModList;
 
 import appeng.api.upgrades.Upgrades;
 import com.glodblock.github.appflux.common.AFSingletons;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+import git.chexson.chexsonsaeutils.bootstrap.patternprovider.CustomPatternProviderPartRegistration;
+import git.chexson.chexsonsaeutils.bootstrap.patternprovider.CustomPatternProviderRegistration;
 
 /**
  * appflux 兼容注册（需求 7）：感应卡可安装到定制样板供应器。
@@ -38,10 +39,12 @@ public final class AppFluxCompat {
         }
         try {
             // 定制样板供应器同样支持感应卡（共用 CustomPatternProviderLogicHost.getUpgrades() 判定）
-            Upgrades.add(AFSingletons.INDUCTION_CARD, ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get(), 1,
+            Upgrades.add(AFSingletons.INDUCTION_CARD,
+                    CustomPatternProviderRegistration.CUSTOM_PATTERN_PROVIDER_ITEM.get(), 1,
                     "block.chexsonsaeutils.custom_pattern_provider");
             // 定制样板供应器面板同样支持感应卡（面板有升级槽）
-            Upgrades.add(AFSingletons.INDUCTION_CARD, ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get(), 1,
+            Upgrades.add(AFSingletons.INDUCTION_CARD,
+                    CustomPatternProviderPartRegistration.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get(), 1,
                     "item.chexsonsaeutils.custom_pattern_provider_part");
         } catch (Throwable e) {
             // appflux 版本 API 变化时降级：感应卡功能不可用，但不阻断本 mod

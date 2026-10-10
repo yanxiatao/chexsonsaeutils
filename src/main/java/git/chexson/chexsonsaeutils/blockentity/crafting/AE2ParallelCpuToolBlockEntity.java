@@ -11,11 +11,13 @@ import appeng.api.storage.ITerminalHost;
 import appeng.api.storage.MEStorage;
 import appeng.api.storage.SupplierStorage;
 import appeng.api.util.IConfigManager;
+import appeng.block.AEBaseEntityBlock;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.menu.ISubMenu;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.crafting.hostcpu.ParallelCpuHost;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
+import git.chexson.chexsonsaeutils.integration.hostbatch.ProviderBatchCapabilitiesFactoryImpl;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -23,9 +25,11 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 
-public class AE2ParallelCpuToolBlockEntity extends AENetworkedBlockEntity implements ITerminalHost {
+public class AE2ParallelCpuToolBlockEntity extends AENetworkedBlockEntity
+        implements ITerminalHost, ParallelCpuHost {
 
-    private final ParallelCraftingCpuCluster parallelCpuCluster = new ParallelCraftingCpuCluster(this);
+    private final ParallelCraftingCpuCluster parallelCpuCluster = new ParallelCraftingCpuCluster(
+            this, new ProviderBatchCapabilitiesFactoryImpl());
     private final IConfigManager configManager = IConfigManager.builder(this::onConfigChanged)
             .registerSetting(Settings.CPU_SELECTION_MODE, CpuSelectionMode.ANY)
             .build();
@@ -35,7 +39,7 @@ public class AE2ParallelCpuToolBlockEntity extends AENetworkedBlockEntity implem
     });
 
     public AE2ParallelCpuToolBlockEntity(BlockPos pos, BlockState blockState) {
-        super(Chexsonsaeutils.AE2_PARALLEL_CPU_TOOL_BLOCK_ENTITY.get(), pos, blockState);
+        super(((AEBaseEntityBlock<?>) blockState.getBlock()).getBlockEntityType(), pos, blockState);
         this.getMainNode().setIdlePowerUsage(0.0);
     }
 
@@ -75,6 +79,7 @@ public class AE2ParallelCpuToolBlockEntity extends AENetworkedBlockEntity implem
                 && getGrid() != null;
     }
 
+    @Override
     public boolean canProcessParallelCpuJobs() {
         return isParallelCpuProviderActive() && getMainNode().isActive();
     }
@@ -119,7 +124,7 @@ public class AE2ParallelCpuToolBlockEntity extends AENetworkedBlockEntity implem
 
     @Override
     public ItemStack getMainMenuIcon() {
-        return Chexsonsaeutils.AE2_PARALLEL_CPU_TOOL_ITEM.get().getDefaultInstance();
+        return getItemFromBlockEntity().getDefaultInstance();
     }
 
     public void refreshParallelCpuProvider() {

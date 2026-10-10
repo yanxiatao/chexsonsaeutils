@@ -6,6 +6,7 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.KeyCounter;
+import git.chexson.chexsonsaeutils.bigint.WideCeilings;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import it.unimi.dsi.fastutil.ints.Int2LongMaps;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
@@ -51,7 +52,6 @@ import java.util.concurrent.TimeUnit;
 public final class InfinityCellStore {
     private static final Logger LOG = LoggerFactory.getLogger(InfinityCellStore.class);
     private static final int FORMAT_VERSION = 1;
-    private static final BigInteger LONG_MAX = BigInteger.valueOf(Long.MAX_VALUE);
     private static final long SAVE_WAIT_SECONDS = 30;
     private static final InfinityCellStore GLOBAL = new InfinityCellStore();
     private static final ExecutorService SAVE_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
@@ -540,7 +540,7 @@ public final class InfinityCellStore {
                 return;
             }
             var previous = exactAmount(keyId);
-            if (amount.compareTo(LONG_MAX) <= 0) {
+            if (amount.compareTo(WideCeilings.LONG_ACCOUNT) <= 0) {
                 amounts.put(keyId, amount.longValue());
                 overflowAmounts.remove(keyId);
             } else {
@@ -571,6 +571,14 @@ public final class InfinityCellStore {
             return overflowAmounts.get(keyId);
         }
 
+        /**
+         * 对网络报的 {@code long} 读数：溢出键刻意饱和成 {@code Long.MAX_VALUE}。
+         *
+         * <p>AE2 的 {@code MEStorage}/{@code KeyCounter} 只装得下 {@code long}，这是接口事实；
+         * 报小不报大 ⇒ "够不够这一批" 只会低估、不会假通过。真值（{@link #exactAmount(int)}）
+         * 由规划侧经 {@code WideSupplySource} 旁路读回，不在这里改口径——动它等于改所有 mod
+         * 看到的网络读数。
+         */
         private long visibleAmount(int keyId) {
             return overflowAmounts.containsKey(keyId) ? Long.MAX_VALUE : amounts.get(keyId);
         }
@@ -602,7 +610,7 @@ public final class InfinityCellStore {
             var overflow = overflowAmounts.get(keyId);
             if (overflow != null) {
                 var updated = overflow.subtract(BigInteger.valueOf(delta));
-                if (updated.compareTo(LONG_MAX) > 0) {
+                if (updated.compareTo(WideCeilings.LONG_ACCOUNT) > 0) {
                     overflowAmounts.put(keyId, updated);
                     amounts.put(keyId, Long.MAX_VALUE);
                 } else if (updated.signum() > 0) {
@@ -645,7 +653,9 @@ public final class InfinityCellStore {
                 return;
             }
             var updated = BigInteger.valueOf(totalLong).add(delta);
-            if (updated.bitLength() < 63) {
+            // 与同类那条 long 腿（Math.addExact 越界才切实值）共用一把尺：bitLength() <= 63 才装得进
+            // long；旧写法 < 63 把 2^62..2^63-1 整段白拒，同一个不变式上凭空多出第二把尺
+            if (updated.bitLength() <= 63) {
                 totalLong = updated.longValue();
             } else {
                 totalBig = updated;

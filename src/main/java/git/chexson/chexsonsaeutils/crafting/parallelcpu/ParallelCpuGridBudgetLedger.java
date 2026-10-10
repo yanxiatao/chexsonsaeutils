@@ -7,10 +7,6 @@ import java.util.Set;
 
 public final class ParallelCpuGridBudgetLedger {
 
-    public static final long DEFAULT_MAX_PATTERN_PUSHES_PER_TICK = 1_048_576L;
-    public static final long DEFAULT_MAX_PROVIDER_CHECKS_PER_TICK = 8_388_608L;
-    public static final long DEFAULT_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK = 1_048_576L;
-    public static final long DEFAULT_MAX_REINJECT_PATTERN_INPUTS_PER_TICK = 1_048_576L;
     public static final long DEFAULT_TICK_BUDGET_NANOS = 20_000_000L;
     public static final long HARD_MAX_TICK_BUDGET_NANOS = 45_000_000L;
 
@@ -19,10 +15,6 @@ public final class ParallelCpuGridBudgetLedger {
     private long currentTick = Long.MIN_VALUE;
     private long tickStartNanos;
     private long laneSliceDeadlineNanos = -1L;
-    private long patternPushesUsed;
-    private long providerChecksUsed;
-    private long extractPatternInputsUsed;
-    private long reinjectPatternInputsUsed;
 
     public ParallelCpuGridBudgetLedger() {
         this(Limits.defaults());
@@ -35,63 +27,7 @@ public final class ParallelCpuGridBudgetLedger {
     public void resetForTick(long tick, long startNanos) {
         currentTick = tick;
         tickStartNanos = Math.max(0L, startNanos);
-        patternPushesUsed = 0L;
-        providerChecksUsed = 0L;
-        extractPatternInputsUsed = 0L;
-        reinjectPatternInputsUsed = 0L;
         exhaustedTypes.clear();
-    }
-
-    public boolean tryClaimPatternPush() {
-        patternPushesUsed++;
-        return true;
-    }
-
-    public long claimPatternPushes(long requested) {
-        if (requested <= 0L) {
-            return 0L;
-        }
-        patternPushesUsed = saturatingAdd(patternPushesUsed, requested);
-        return requested;
-    }
-
-    public boolean tryClaimProviderCheck() {
-        providerChecksUsed++;
-        return true;
-    }
-
-    public long claimProviderChecks(long requested) {
-        if (requested <= 0L) {
-            return 0L;
-        }
-        providerChecksUsed = saturatingAdd(providerChecksUsed, requested);
-        return requested;
-    }
-
-    public boolean tryClaimExtractPatternInputs() {
-        extractPatternInputsUsed++;
-        return true;
-    }
-
-    public long claimExtractPatternInputs(long requested) {
-        if (requested <= 0L) {
-            return 0L;
-        }
-        extractPatternInputsUsed = saturatingAdd(extractPatternInputsUsed, requested);
-        return requested;
-    }
-
-    public boolean tryClaimReinjectPatternInputs() {
-        reinjectPatternInputsUsed++;
-        return true;
-    }
-
-    public long claimReinjectPatternInputs(long requested) {
-        if (requested <= 0L) {
-            return 0L;
-        }
-        reinjectPatternInputsUsed = saturatingAdd(reinjectPatternInputsUsed, requested);
-        return requested;
     }
 
     public boolean hasTimeBudget(long nowNanos) {
@@ -146,49 +82,14 @@ public final class ParallelCpuGridBudgetLedger {
         return limits;
     }
 
-    public Snapshot snapshot() {
-        return new Snapshot(
-                currentTick,
-                patternPushesUsed,
-                providerChecksUsed,
-                extractPatternInputsUsed,
-                reinjectPatternInputsUsed,
-                limits.maxPatternPushesPerTick(),
-                limits.maxProviderChecksPerTick(),
-                limits.maxExtractPatternInputsPerTick(),
-                limits.maxReinjectPatternInputsPerTick(),
-                limits.tickBudgetNanos(),
-                exhaustedTypes()
-        );
-    }
-
-    private static long saturatingAdd(long left, long right) {
-        if (right > 0L && left > Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        return left + right;
-    }
-
     public enum BudgetType {
-        PATTERN_PUSH,
-        PROVIDER_CHECK,
-        EXTRACT_PATTERN_INPUTS,
-        REINJECT_PATTERN_INPUTS,
         TIME
     }
 
     public record Limits(
-            long maxPatternPushesPerTick,
-            long maxProviderChecksPerTick,
-            long maxExtractPatternInputsPerTick,
-            long maxReinjectPatternInputsPerTick,
             long tickBudgetNanos
     ) {
         public Limits {
-            maxPatternPushesPerTick = Math.max(1L, maxPatternPushesPerTick);
-            maxProviderChecksPerTick = Math.max(1L, maxProviderChecksPerTick);
-            maxExtractPatternInputsPerTick = Math.max(1L, maxExtractPatternInputsPerTick);
-            maxReinjectPatternInputsPerTick = Math.max(1L, maxReinjectPatternInputsPerTick);
             tickBudgetNanos = Math.max(1L, Math.min(HARD_MAX_TICK_BUDGET_NANOS, tickBudgetNanos));
         }
 
@@ -196,38 +97,11 @@ public final class ParallelCpuGridBudgetLedger {
             if (settings == null) {
                 return defaults();
             }
-            return new Limits(
-                    settings.maxPatternPushesPerTickPerGrid(),
-                    settings.maxProviderChecksPerTickPerGrid(),
-                    settings.maxExtractPatternInputsPerTickPerGrid(),
-                    settings.maxReinjectPatternInputsPerTickPerGrid(),
-                    settings.tickBudgetNanosPerGrid()
-            );
+            return new Limits(settings.tickBudgetNanosPerGrid());
         }
 
         public static Limits defaults() {
-            return new Limits(
-                    DEFAULT_MAX_PATTERN_PUSHES_PER_TICK,
-                    DEFAULT_MAX_PROVIDER_CHECKS_PER_TICK,
-                    DEFAULT_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK,
-                    DEFAULT_MAX_REINJECT_PATTERN_INPUTS_PER_TICK,
-                    DEFAULT_TICK_BUDGET_NANOS
-            );
+            return new Limits(DEFAULT_TICK_BUDGET_NANOS);
         }
-    }
-
-    public record Snapshot(
-            long currentTick,
-            long patternPushesUsed,
-            long providerChecksUsed,
-            long extractPatternInputsUsed,
-            long reinjectPatternInputsUsed,
-            long maxPatternPushesPerTick,
-            long maxProviderChecksPerTick,
-            long maxExtractPatternInputsPerTick,
-            long maxReinjectPatternInputsPerTick,
-            long tickBudgetNanos,
-            Set<BudgetType> exhaustedTypes
-    ) {
     }
 }

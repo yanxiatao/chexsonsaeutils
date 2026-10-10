@@ -8,7 +8,8 @@ import net.neoforged.fml.ModList;
 
 import appeng.api.upgrades.Upgrades;
 import com.extendedae_plus.init.ModItems;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+import git.chexson.chexsonsaeutils.bootstrap.patternprovider.CustomPatternProviderPartRegistration;
+import git.chexson.chexsonsaeutils.bootstrap.patternprovider.CustomPatternProviderRegistration;
 
 /**
  * ExtendedAE_Plus 兼容注册：频道卡可安装到定制样板供应器。
@@ -36,9 +37,11 @@ public final class ExtendedAePlusCompat {
         }
         try {
             String patternProviderGroup = "group.pattern_provider.name";
-            Upgrades.add(ModItems.CHANNEL_CARD.get(), ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get(), 1,
+            Upgrades.add(ModItems.CHANNEL_CARD.get(),
+                    CustomPatternProviderRegistration.CUSTOM_PATTERN_PROVIDER_ITEM.get(), 1,
                     patternProviderGroup);
-            Upgrades.add(ModItems.CHANNEL_CARD.get(), ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get(), 1,
+            Upgrades.add(ModItems.CHANNEL_CARD.get(),
+                    CustomPatternProviderPartRegistration.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get(), 1,
                     patternProviderGroup);
         } catch (Throwable e) {
             // ExtendedAE_Plus 版本 API 变化时降级：频道卡功能不可用，但不阻断本 mod

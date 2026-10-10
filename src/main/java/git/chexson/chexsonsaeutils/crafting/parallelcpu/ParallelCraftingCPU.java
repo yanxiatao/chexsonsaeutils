@@ -9,7 +9,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-public final class ParallelCraftingCPU implements ICraftingCPU {
+public final class ParallelCraftingCPU implements ICraftingCPU, git.chexson.chexsonsaeutils.crafting.contract.NativePartialSubmitPolicy {
 
     private final ParallelCraftingCpuCluster cluster;
     @Nullable
@@ -44,6 +44,11 @@ public final class ParallelCraftingCPU implements ICraftingCPU {
     @Nullable
     public ParallelCraftingLaneState lane() {
         return laneId == null ? null : cluster.findLaneState(laneId);
+    }
+
+    @Override
+    public boolean supportsNativePartialSubmit() {
+        return false;
     }
 
     @Override

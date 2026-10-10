@@ -12,9 +12,7 @@ import java.util.Objects;
  */
 public final class FixedPlanningAlgorithmOrder {
     private static final List<PlanningAlgorithm> DEFAULTS = List.of(
-            PlanningAlgorithm.FROZEN_ROUTE,
             PlanningAlgorithm.GRAPH,
-            PlanningAlgorithm.OPTIMIZED_TREE,
             PlanningAlgorithm.NATIVE_AE2
     );
 

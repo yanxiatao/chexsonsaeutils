@@ -7,14 +7,21 @@ import appeng.menu.guisync.GuiSync;
 import appeng.menu.me.crafting.CraftingPlanSummary;
 import git.chexson.chexsonsaeutils.crafting.solve.ConfirmMenuProvenanceRegistry;
 import git.chexson.chexsonsaeutils.crafting.solve.MenuProvenanceHost;
+import git.chexson.chexsonsaeutils.crafting.solve.PartialPlanMissingSummary;
+import git.chexson.chexsonsaeutils.bigint.WideAmountMenuSource;
 import git.chexson.chexsonsaeutils.crafting.solve.PlanningProvenance;
+import git.chexson.chexsonsaeutils.crafting.recursive.WideAmountPlanCarrier;
+import git.chexson.chexsonsaeutils.bigint.WideLedgerSnapshot;
+import git.chexson.chexsonsaeutils.bigint.WidePlanLedgerCodec;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingPlanSummary;
 import appeng.api.networking.crafting.ICraftingCPU;
+import appeng.api.networking.crafting.CraftingSubmitErrorCode;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.crafting.ICraftingRequester;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.crafting.ICraftingSubmitResult;
 import appeng.api.networking.security.IActionSource;
+import appeng.core.AELog;
 import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationSubmitBridge;
 import net.minecraft.world.entity.player.Inventory;
@@ -30,7 +37,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = CraftConfirmMenu.class, remap = false)
 public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
-        implements CraftingContinuationSubmitBridge.ContinuationModeHost, MenuProvenanceHost {
+        implements CraftingContinuationSubmitBridge.ContinuationModeHost, MenuProvenanceHost, WideAmountMenuSource {
     @Unique
     private static final String chexsonSetContinuationMode = "chexsonSetContinuationMode";
 
@@ -56,6 +63,20 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
 
     @GuiSync(9211)
     public String chexsonsaeutils$provenanceSolver = "";
+
+    /**
+     * M1：超 {@code long} 的计划数量的宽域真值，编码后随菜单同步到客户端确认屏。
+     *
+     * AE2 的 {@code CraftingPlanSummaryEntry} 数量字段是 {@code long}，图规划出账时
+     * 已被 {@code Ae2Amounts.toLong} 饱和成 {@code Long.MAX_VALUE}，真值经普通通道丢失。
+     * 宽域账由图规划出口直接挂在计划对象上（{@link WideAmountPlanCarrier}），这里读本菜单
+     * {@link #result} 的载体，用 {@link WidePlanLedgerCodec} 编成
+     * {@code kind|base64(AEKey)|decimal} 字符串同步。
+     * 键取 9212（避开 AE2 本类的 1/2/3/6/7/8 与上面 provenance 的 9210/9211）。
+     * 无溢出键时恒为空串——客户端据此原样沿用 AE2 显示，观感零变。
+     */
+    @GuiSync(9212)
+    public String chexsonsaeutils$wideAmounts = "";
 
     protected CraftConfirmMenuContinuationMixin(MenuType<?> menuType, int id, Inventory playerInventory, Object host) {
         super(menuType, id, playerInventory, host);
@@ -95,6 +116,7 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
                 && enhanced.chexsonsaeutils$solver().isEmpty()) {
             enhanced.chexsonsaeutils$setProvenance(provenance.millis(), provenance.solver());
         }
+        chexsonsaeutils$syncWideAmounts();
     }
 
     /**
@@ -111,6 +133,9 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
             remap = false
     )
     private void chexsonsaeutils$publishProvenanceBeforePlanPacket(CallbackInfo ci) {
+        // 宽域账与 provenance 是否命中无关：只要有溢出键就要下发（图规划缺料真值），
+        // 故先无条件同步，再处理 provenance。
+        chexsonsaeutils$syncWideAmounts();
         if (this.result == null) {
             return;
         }
@@ -127,7 +152,33 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
     }
 
     /**
-     * 每次重新规划时清空上一轮 provenance 并重登记（HEAD——其他 mod 在
+     * AE2 的 {@code fromJob} 只在 {@code simulation && !canEmitFor(key)} 时才算缺口，
+     * 并把计划申报的缺料直接累进"可用数量"——于是海量级残缺计划里"网里有样板能产"的那批
+     * 缺口既不上屏、又被当成存量报。这里在返回值落字段之前把缺口挪回 missing 那一栏，
+     * packet 与 {@code this.plan} 拿到的都是还原后的概要。
+     */
+    @Redirect(
+            method = "broadcastChanges",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lappeng/menu/me/crafting/CraftingPlanSummary;fromJob"
+                            + "(Lappeng/api/networking/IGrid;Lappeng/api/networking/security/IActionSource;"
+                            + "Lappeng/api/networking/crafting/ICraftingPlan;)"
+                            + "Lappeng/menu/me/crafting/CraftingPlanSummary;"
+            ),
+            remap = false
+    )
+    private CraftingPlanSummary chexsonsaeutils$revealDeclaredMissing(
+            appeng.api.networking.IGrid grid,
+            IActionSource actionSource,
+            ICraftingPlan job
+    ) {
+        return PartialPlanMissingSummary.revealDeclaredMissing(
+                CraftingPlanSummary.fromJob(grid, actionSource, job), job);
+    }
+
+    /**
+     * 每次重新规划时清空上一轮 provenance 与宽域账并重登记（HEAD——其他 mod 在
      * HEAD 取消 planJob 时，注入顺序按 mixin 优先级，我们仍有机会执行；
      * 真正的保底登记在构造 TAIL）。
      */
@@ -141,7 +192,32 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
         }
         this.chexsonsaeutils$provenanceMillis = -1L;
         this.chexsonsaeutils$provenanceSolver = "";
+        this.chexsonsaeutils$wideAmounts = "";
         ConfirmMenuProvenanceRegistry.register(getPlayer(), this);
+    }
+
+    /**
+     * 服务端：读本菜单当前计划自带的宽域载体，编码写进同步字段。无溢出键（含计划根本没有
+     * 载体——AE2 原生计划、别的规划 mod 接管的计划）时置空串，客户端原样沿用 AE2 显示。
+     */
+    @Unique
+    private void chexsonsaeutils$syncWideAmounts() {
+        if (isClientSide()) {
+            return;
+        }
+        WideLedgerSnapshot snapshot = WideAmountPlanCarrier.resolveWideLedgers(this.result);
+        if (snapshot.isEmpty()) {
+            this.chexsonsaeutils$wideAmounts = "";
+            return;
+        }
+        this.chexsonsaeutils$wideAmounts =
+                WidePlanLedgerCodec.encode(snapshot, getPlayer().level().registryAccess());
+    }
+
+    /** 客户端经 {@link WideAmountMenuSource} 读取 M1 同步字段（字段编译期不在 AE2 类上）。 */
+    @Override
+    public String chexsonsaeutils$syncedWideAmounts() {
+        return this.chexsonsaeutils$wideAmounts == null ? "" : this.chexsonsaeutils$wideAmounts;
     }
 
     @Override
@@ -216,9 +292,15 @@ public abstract class CraftConfirmMenuContinuationMixin extends AEBaseMenu
             boolean prioritizePower,
             IActionSource src
     ) {
-        return CraftingContinuationSubmitBridge.withContinuationMode(
+        ICraftingSubmitResult submitResult = CraftingContinuationSubmitBridge.withContinuationMode(
                 chexsonsaeutils$continuationMode,
                 () -> craftingService.submitJob(plan, requester, target, prioritizePower, src)
         );
+        if (submitResult.errorCode() == CraftingSubmitErrorCode.CPU_OFFLINE) {
+            AELog.warn("[chexsonsaeutils-submit] Confirmation rejected: targetType=%s, mode=%s, detail=%s",
+                    target == null ? "auto" : target.getClass().getName(),
+                    chexsonsaeutils$continuationMode, submitResult.errorDetail());
+        }
+        return submitResult;
     }
 }

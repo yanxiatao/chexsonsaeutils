@@ -19,9 +19,6 @@ public record MachineRecipeConfigImportRequest(
 ) {
     public static final int MAX_NETWORK_RECIPE_TYPE_IDS = 256;
     public static final int MAX_NETWORK_SIGNATURES = 8_192;
-    private static final StreamCodec<RegistryFriendlyByteBuf, List<MachineRecipeImportedSignature>>
-            SIGNATURE_HINTS_STREAM_CODEC =
-            MachineRecipeImportedSignature.STREAM_CODEC.apply(ByteBufCodecs.list(MAX_NETWORK_SIGNATURES));
     public static final StreamCodec<RegistryFriendlyByteBuf, MachineRecipeConfigImportRequest> STREAM_CODEC =
             StreamCodec.of(
                     (data, request) -> request.writeToNetwork(data),
@@ -44,10 +41,12 @@ public record MachineRecipeConfigImportRequest(
         ByteBufCodecs.STRING_UTF8.encode(data, ioMode);
         ByteBufCodecs.STRING_UTF8.encode(data, keyTypes);
         data.writeBoolean(enabled);
+        // D6b：线上不再传「解析后的 list 再由读侧 toJson 重写」的中间形状——写侧 parse 只作合法性与
+        // 条数上限校验，串本体逐字过线，读侧按同一把尺复验；往返字段值恒等于下发串，不做字符串级往返假设。
         List<MachineRecipeImportedSignature> signatureHints =
                 MachineRecipeImportedSignature.parseJson(data.registryAccess(), signatureHintsJson);
         ensureWithinBound("signatureHints", signatureHints.size(), MAX_NETWORK_SIGNATURES);
-        SIGNATURE_HINTS_STREAM_CODEC.encode(data, signatureHints);
+        ByteBufCodecs.STRING_UTF8.encode(data, signatureHintsJson);
     }
 
     private static MachineRecipeConfigImportRequest readFromNetwork(RegistryFriendlyByteBuf data) {
@@ -58,7 +57,10 @@ public record MachineRecipeConfigImportRequest(
         String ioMode = ByteBufCodecs.STRING_UTF8.decode(data);
         String keyTypes = ByteBufCodecs.STRING_UTF8.decode(data);
         boolean enabled = data.readBoolean();
-        List<MachineRecipeImportedSignature> signatureHints = SIGNATURE_HINTS_STREAM_CODEC.decode(data);
+        String signatureHintsJson = ByteBufCodecs.STRING_UTF8.decode(data);
+        List<MachineRecipeImportedSignature> parsedHints =
+                MachineRecipeImportedSignature.parseJson(data.registryAccess(), signatureHintsJson);
+        ensureWithinBound("signatureHints", parsedHints.size(), MAX_NETWORK_SIGNATURES);
         return new MachineRecipeConfigImportRequest(
                 machineItemId,
                 machineBlockId,
@@ -67,7 +69,7 @@ public record MachineRecipeConfigImportRequest(
                 ioMode,
                 keyTypes,
                 enabled,
-                MachineRecipeImportedSignature.toJson(data.registryAccess(), signatureHints)
+                signatureHintsJson
         );
     }
 

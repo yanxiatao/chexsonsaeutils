@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
+import git.chexson.chexsonsaeutils.bigint.ClampedMath;
+
 public record ProcessingLatencyOrigin(long acceptedTickSum, int acceptedPushCount) {
 
     public ProcessingLatencyOrigin {
@@ -18,7 +20,7 @@ public record ProcessingLatencyOrigin(long acceptedTickSum, int acceptedPushCoun
             return this;
         }
         return new ProcessingLatencyOrigin(
-                saturatingAdd(acceptedTickSum, other.acceptedTickSum),
+                ClampedMath.add(acceptedTickSum, other.acceptedTickSum),
                 saturatingAdd(acceptedPushCount, other.acceptedPushCount)
         );
     }
@@ -29,16 +31,6 @@ public record ProcessingLatencyOrigin(long acceptedTickSum, int acceptedPushCoun
         }
         long returnedTickSum = saturatingMultiply(returnedTick, acceptedPushCount);
         return Math.max(0L, (returnedTickSum - acceptedTickSum) / acceptedPushCount);
-    }
-
-    private static long saturatingAdd(long left, long right) {
-        if (right > 0L && left > Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        if (right < 0L && left < Long.MIN_VALUE - right) {
-            return Long.MIN_VALUE;
-        }
-        return left + right;
     }
 
     private static int saturatingAdd(int left, int right) {

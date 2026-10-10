@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.menu.matrix;
 import appeng.api.inventories.InternalInventory;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixEntry;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.Test;

@@ -6,16 +6,16 @@ import appeng.menu.SlotSemantics;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.slot.RestrictedInputSlot;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixClientView;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixEntry;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixEntry;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixInteraction;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixMenuLink;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixRealStack;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixServerTarget;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixTarget;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixRealStack;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixServerTarget;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixTarget;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -32,7 +32,7 @@ public class AEDirectProcessingMachineMenu extends AEBaseMenu
     public static final MenuType<AEDirectProcessingMachineMenu> TYPE = MenuTypeBuilder
             .create(AEDirectProcessingMachineMenu::new, AEDirectProcessingMachineBlockEntity.class)
             .buildUnregistered(Objects.requireNonNull(
-                    ResourceLocation.tryParse(Chexsonsaeutils.MODID + ":ae_direct_processing_machine")
+                    ResourceLocation.tryParse(ModIds.MODID + ":ae_direct_processing_machine")
             ));
 
     @GuiSync(40)

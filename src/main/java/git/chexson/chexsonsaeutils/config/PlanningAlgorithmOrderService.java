@@ -1,7 +1,5 @@
 package git.chexson.chexsonsaeutils.config;
 
-import git.chexson.chexsonsaeutils.crafting.solve.PlanningAlgorithmId;
-
 import java.util.List;
 import java.util.Objects;
 
@@ -20,13 +18,13 @@ public final class PlanningAlgorithmOrderService {
         this(PlanningServerConfig.order());
     }
 
-    public PlanningAlgorithmOrderService(List<PlanningAlgorithmId> order) {
+    public PlanningAlgorithmOrderService(List<String> order) {
         this(order, ignored -> {
         });
     }
 
     PlanningAlgorithmOrderService(
-            List<PlanningAlgorithmId> order,
+            List<String> order,
             OrderPersistence persistence
     ) {
         this.snapshot = new Snapshot(0L, order);
@@ -45,7 +43,7 @@ public final class PlanningAlgorithmOrderService {
         return this.snapshot.revision();
     }
 
-    public List<PlanningAlgorithmId> order() {
+    public List<String> order() {
         return this.snapshot.order();
     }
 
@@ -53,7 +51,7 @@ public final class PlanningAlgorithmOrderService {
         return reload(PlanningServerConfig.order());
     }
 
-    public Snapshot reload(List<PlanningAlgorithmId> order) {
+    public Snapshot reload(List<String> order) {
         Snapshot replacement = new Snapshot(0L, order);
         synchronized (this.updateLock) {
             Snapshot current = this.snapshot;
@@ -62,8 +60,8 @@ public final class PlanningAlgorithmOrderService {
         }
     }
 
-    public UpdateResult update(List<PlanningAlgorithmId> order, long expectedRevision) {
-        List<PlanningAlgorithmId> validated = PlanningServerConfig.requireCompleteOrder(order);
+    public UpdateResult update(List<String> order, long expectedRevision) {
+        List<String> validated = PlanningServerConfig.requireCompleteOrder(order);
         synchronized (this.updateLock) {
             Snapshot current = this.snapshot;
             if (expectedRevision < 0L) {
@@ -78,7 +76,7 @@ public final class PlanningAlgorithmOrderService {
 
     private UpdateResult persistAndPublish(
             Snapshot current,
-            List<PlanningAlgorithmId> order
+            List<String> order
     ) {
         try {
             this.persistence.save(order);
@@ -108,7 +106,7 @@ public final class PlanningAlgorithmOrderService {
         }
     }
 
-    public record Snapshot(long revision, List<PlanningAlgorithmId> order) {
+    public record Snapshot(long revision, List<String> order) {
         public Snapshot {
             if (revision < 0L) {
                 throw new IllegalArgumentException("Revision must not be negative");
@@ -119,6 +117,6 @@ public final class PlanningAlgorithmOrderService {
 
     @FunctionalInterface
     interface OrderPersistence {
-        void save(List<PlanningAlgorithmId> order);
+        void save(List<String> order);
     }
 }

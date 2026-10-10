@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.network.directprocessing;
 
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -19,7 +19,7 @@ public record DirectProcessingJeiImportPayload(
 ) implements CustomPacketPayload {
 
     public static final Type<DirectProcessingJeiImportPayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "direct_processing_jei_import")
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "direct_processing_jei_import")
     );
     public static final StreamCodec<RegistryFriendlyByteBuf, DirectProcessingJeiImportPayload> STREAM_CODEC =
             StreamCodec.composite(

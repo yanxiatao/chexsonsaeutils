@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.client.gui.matrix;
 
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixClientView;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
 
 import java.util.ArrayList;
 import java.util.List;

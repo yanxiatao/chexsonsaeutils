@@ -1,36 +1,19 @@
 package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
-import net.neoforged.fml.ModList;
-
-import java.util.ArrayList;
 import java.util.List;
 
 public final class MachineAdapterRegistry {
 
-    private static final String MEKANISM_MOD_ID = "mekanism";
-    private static final String EXTENDED_CRAFTING_MOD_ID = "extendedcrafting";
     private static final MachineAdapterRegistry EMPTY = new MachineAdapterRegistry(List.of());
 
     private final List<MachineRecipeAdapter> adapters;
 
     public MachineAdapterRegistry(List<MachineRecipeAdapter> adapters) {
-        this.adapters = List.copyOf(adapters == null ? List.of() : adapters);
+        this.adapters = List.copyOf(adapters);
     }
 
     public static MachineAdapterRegistry empty() {
         return EMPTY;
-    }
-
-    public static MachineAdapterRegistry directProcessingDefaults() {
-        List<MachineRecipeAdapter> adapters = new ArrayList<>();
-        ModList modList = ModList.get();
-        if (modList != null && modList.isLoaded(MEKANISM_MOD_ID)) {
-            adapters.add(MekanismAdapterHolder.create());
-        }
-        if (modList != null && modList.isLoaded(EXTENDED_CRAFTING_MOD_ID)) {
-            adapters.add(ExtendedCraftingAdapterHolder.create());
-        }
-        return adapters.isEmpty() ? EMPTY : new MachineAdapterRegistry(adapters);
     }
 
     public List<RecipeTypeCandidate> resolveCandidates(MachineIdentity identity) {
@@ -39,34 +22,16 @@ public final class MachineAdapterRegistry {
         }
         for (MachineRecipeAdapter adapter : adapters) {
             List<RecipeTypeCandidate> candidates = adapter.resolveCandidates(identity);
-            if (candidates != null && !candidates.isEmpty()) {
+            if (!candidates.isEmpty()) {
                 return List.copyOf(candidates);
             }
         }
         return List.of();
     }
 
+    /** 机器配方类型适配契约，由装配层提供实现并确定首命中优先级。 */
     public interface MachineRecipeAdapter {
+        /** 根据绑定机器识别候选类型；不支持时返回空列表，首个非空结果终止后续适配。 */
         List<RecipeTypeCandidate> resolveCandidates(MachineIdentity identity);
-    }
-
-    private static final class MekanismAdapterHolder {
-        private MekanismAdapterHolder() {
-        }
-
-        private static MachineRecipeAdapter create() {
-            return new git.chexson.chexsonsaeutils.crafting.directprocessing.mekanism
-                    .MekanismMachineRecipeTypeAdapter();
-        }
-    }
-
-    private static final class ExtendedCraftingAdapterHolder {
-        private ExtendedCraftingAdapterHolder() {
-        }
-
-        private static MachineRecipeAdapter create() {
-            return new git.chexson.chexsonsaeutils.crafting.directprocessing.extendedcrafting
-                    .ExtendedCraftingMachineRecipeTypeAdapter();
-        }
     }
 }

@@ -7,8 +7,8 @@ import appeng.menu.AEBaseMenu;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.FakeSlot;
 import appeng.menu.slot.RestrictedInputSlot;
-import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
-import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterPart;
+import git.chexson.chexsonsaeutils.parts.automation.model.MultiLevelEmitterDefinition;
+import git.chexson.chexsonsaeutils.parts.automation.model.MultiLevelEmitterRules;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterUtils;
 import git.chexson.chexsonsaeutils.parts.automation.expression.MultiLevelEmitterExpressionCompiler;
@@ -30,9 +30,9 @@ import java.util.function.Supplier;
 
 public final class MultiLevelEmitterMenu {
 
-    private static final String REGISTRATION_KEY = MultiLevelEmitterItem.MENU_BINDING_KEY;
+    private static final String REGISTRATION_KEY = MultiLevelEmitterDefinition.MENU_BINDING_KEY;
     private static final Component MENU_TITLE = Component.translatable("item.chexsonsaeutils.multi_level_emitter");
-    public static final int SLOT_CAPACITY = 64;
+    public static final int SLOT_CAPACITY = MultiLevelEmitterDefinition.SLOT_CAPACITY;
     private static final int MIN_CONFIGURED_SLOTS = 1;
     private static final String ACTION_SET_CONFIGURED_SLOT_COUNT = "setConfiguredSlotCount";
     private static final String ACTION_COMMIT_THRESHOLD = "commitThreshold";
@@ -160,11 +160,11 @@ public final class MultiLevelEmitterMenu {
         return slotIndex > highestConfigured;
     }
 
-    public static List<MultiLevelEmitterPart.ComparisonMode> resetAllComparisonsToGreaterOrEqual(int slots) {
+    public static List<MultiLevelEmitterRules.ComparisonMode> resetAllComparisonsToGreaterOrEqual(int slots) {
         int count = Math.max(0, slots);
-        List<MultiLevelEmitterPart.ComparisonMode> modes = new ArrayList<>(count);
+        List<MultiLevelEmitterRules.ComparisonMode> modes = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
-            modes.add(MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL);
+            modes.add(MultiLevelEmitterRules.ComparisonMode.GREATER_OR_EQUAL);
         }
         return modes;
     }
@@ -180,18 +180,6 @@ public final class MultiLevelEmitterMenu {
             compacted[i] = i;
         }
         return compacted;
-    }
-
-    public static MultiLevelEmitterPart.ComparisonMode nextComparisonMode(MultiLevelEmitterPart.ComparisonMode current) {
-        MultiLevelEmitterPart.ComparisonMode effective = current == null
-                ? MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL
-                : current;
-        return switch (effective) {
-            case GREATER_OR_EQUAL -> MultiLevelEmitterPart.ComparisonMode.LESS_THAN;
-            case LESS_THAN -> MultiLevelEmitterPart.ComparisonMode.EQUAL;
-            case EQUAL -> MultiLevelEmitterPart.ComparisonMode.NOT_EQUAL;
-            case NOT_EQUAL -> MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
-        };
     }
 
     public record ThresholdPayload(int slotIndex, long rawThreshold, long maxValue) {
@@ -371,35 +359,35 @@ public final class MultiLevelEmitterMenu {
             return runtimePart.thresholds().getOrDefault(slotIndex, 1L);
         }
 
-        public MultiLevelEmitterPart.ComparisonMode comparisonModeForSlot(int slotIndex) {
+        public MultiLevelEmitterRules.ComparisonMode comparisonModeForSlot(int slotIndex) {
             if (slotIndex < 0 || slotIndex >= totalSlotCapacity()) {
-                return MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
+                return MultiLevelEmitterRules.ComparisonMode.GREATER_OR_EQUAL;
             }
             if (runtimePart == null) {
-                return MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
+                return MultiLevelEmitterRules.ComparisonMode.GREATER_OR_EQUAL;
             }
-            List<MultiLevelEmitterPart.ComparisonMode> modes = runtimePart.comparisonModes();
+            List<MultiLevelEmitterRules.ComparisonMode> modes = runtimePart.comparisonModes();
             return slotIndex < modes.size()
                     ? modes.get(slotIndex)
-                    : MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
+                    : MultiLevelEmitterRules.ComparisonMode.GREATER_OR_EQUAL;
         }
 
-        public MultiLevelEmitterPart.MatchingMode matchingModeForSlot(int slotIndex) {
+        public MultiLevelEmitterRules.MatchingMode matchingModeForSlot(int slotIndex) {
             if (slotIndex < 0 || slotIndex >= totalSlotCapacity()) {
-                return MultiLevelEmitterPart.MatchingMode.STRICT;
+                return MultiLevelEmitterRules.MatchingMode.STRICT;
             }
             if (runtimePart == null) {
-                return MultiLevelEmitterPart.MatchingMode.STRICT;
+                return MultiLevelEmitterRules.MatchingMode.STRICT;
             }
             return runtimePart.matchingModeForSlot(slotIndex);
         }
 
-        public MultiLevelEmitterPart.CraftingMode craftingModeForSlot(int slotIndex) {
+        public MultiLevelEmitterRules.CraftingMode craftingModeForSlot(int slotIndex) {
             if (slotIndex < 0 || slotIndex >= totalSlotCapacity()) {
-                return MultiLevelEmitterPart.CraftingMode.NONE;
+                return MultiLevelEmitterRules.CraftingMode.NONE;
             }
             if (runtimePart == null) {
-                return MultiLevelEmitterPart.CraftingMode.NONE;
+                return MultiLevelEmitterRules.CraftingMode.NONE;
             }
             return runtimePart.craftingModeForSlot(slotIndex);
         }

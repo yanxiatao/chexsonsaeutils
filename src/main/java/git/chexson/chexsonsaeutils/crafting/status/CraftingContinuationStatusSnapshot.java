@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.status;
 
+import git.chexson.chexsonsaeutils.crafting.contract.CraftingContinuationWaitingBranch;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;

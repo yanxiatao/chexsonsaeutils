@@ -10,7 +10,12 @@ import java.util.Map;
 public final class ParallelCpuProviderBackoff {
 
     private final Map<ICraftingProvider, ProviderState> busyProviderStates = new IdentityHashMap<>();
-    private final Map<ICraftingProvider, Map<IPatternDetails, ProviderState>> rejectedPatternStates =
+    /**
+     * 拒收退避表：键是<b>腿 + 样板</b>（{@link RejectedPushKey}）。申报批与 k 倍 holder 是两种能力，
+     * "这台机器现在不接申报批"必须只记在申报腿那一桶里——同一 tick 的 holder 路照旧要判 READY
+     * （实机 lane 09a75f4a 那一型：申报腿的拒收把 holder 路一起堵死，于是 {@code pushed=0}）。
+     */
+    private final Map<ICraftingProvider, Map<RejectedPushKey, ProviderState>> rejectedPushStates =
             new IdentityHashMap<>();
     private final int baseBackoffTicks;
     private final int maxBackoffTicks;
@@ -23,8 +28,8 @@ public final class ParallelCpuProviderBackoff {
     public ProviderAvailability checkProvider(
             ICraftingProvider provider,
             IPatternDetails pattern,
-            long currentTick,
-            ParallelCpuGridBudgetLedger budgetLedger
+            PushLeg leg,
+            long currentTick
     ) {
         if (provider == null) {
             return ProviderAvailability.BACKED_OFF;
@@ -34,14 +39,10 @@ public final class ParallelCpuProviderBackoff {
         if (busyState != null && busyState.shouldSkip(currentTick)) {
             return ProviderAvailability.BACKED_OFF;
         }
-        Map<IPatternDetails, ProviderState> patternStates = rejectedPatternStates.get(provider);
-        ProviderState rejectedState = patternStates == null ? null : patternStates.get(pattern);
+        Map<RejectedPushKey, ProviderState> pushStates = rejectedPushStates.get(provider);
+        ProviderState rejectedState = pushStates == null ? null : pushStates.get(key(leg, pattern));
         if (rejectedState != null && rejectedState.shouldSkip(currentTick)) {
             return ProviderAvailability.BACKED_OFF;
-        }
-
-        if (budgetLedger != null && !budgetLedger.tryClaimProviderCheck()) {
-            return ProviderAvailability.BUDGET_EXHAUSTED;
         }
 
         if (provider.isBusy()) {
@@ -53,33 +54,41 @@ public final class ParallelCpuProviderBackoff {
         return ProviderAvailability.READY;
     }
 
-    public void recordPushRejected(ICraftingProvider provider, IPatternDetails pattern, long currentTick) {
-        Map<IPatternDetails, ProviderState> patternStates = rejectedPatternStates.computeIfAbsent(
+    public void recordPushRejected(
+            ICraftingProvider provider, IPatternDetails pattern, PushLeg leg, long currentTick) {
+        Map<RejectedPushKey, ProviderState> pushStates = rejectedPushStates.computeIfAbsent(
                 provider, ignored -> new HashMap<>());
-        recordUnavailable(patternStates.computeIfAbsent(pattern, ignored -> new ProviderState()), currentTick);
+        recordUnavailable(pushStates.computeIfAbsent(
+                key(leg, pattern), ignored -> new ProviderState()), currentTick);
     }
 
-    public void recordPushAccepted(ICraftingProvider provider, IPatternDetails pattern) {
-        Map<IPatternDetails, ProviderState> patternStates = rejectedPatternStates.get(provider);
-        if (patternStates == null) {
+    public void recordPushAccepted(ICraftingProvider provider, IPatternDetails pattern, PushLeg leg) {
+        Map<RejectedPushKey, ProviderState> pushStates = rejectedPushStates.get(provider);
+        if (pushStates == null) {
             return;
         }
-        patternStates.remove(pattern);
-        if (patternStates.isEmpty()) {
-            rejectedPatternStates.remove(provider);
+        // 清账只清<b>这一条腿</b>那一桶：holder 推成功不许顺手解掉申报腿的退避，反向同理。
+        pushStates.remove(key(leg, pattern));
+        if (pushStates.isEmpty()) {
+            rejectedPushStates.remove(provider);
         }
     }
 
     public void clear() {
         busyProviderStates.clear();
-        rejectedPatternStates.clear();
+        rejectedPushStates.clear();
     }
 
     public int trackedProviderCount() {
         java.util.Set<ICraftingProvider> providers = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
         providers.addAll(busyProviderStates.keySet());
-        providers.addAll(rejectedPatternStates.keySet());
+        providers.addAll(rejectedPushStates.keySet());
         return providers.size();
+    }
+
+    /** 退避表的拒收键：先认腿再认样板；样板那一级仍用 {@code IPatternDetails} 的 equals/hashCode（与改前同尺）。 */
+    private static RejectedPushKey key(PushLeg leg, IPatternDetails pattern) {
+        return new RejectedPushKey(leg, pattern);
     }
 
     private void recordBusy(ICraftingProvider provider, long currentTick) {
@@ -114,11 +123,28 @@ public final class ParallelCpuProviderBackoff {
         return (int) Math.min(maxBackoffTicks, delay);
     }
 
+    /**
+     * 推送的两条<b>能力腿</b>：退避表按这一维分桶。
+     *
+     * <ul>
+     *   <li>{@link #DECLARED}＝「单发原型 + 份数声明」批（{@code DeclaredBatchHost#pushDeclaredBatch}）；</li>
+     *   <li>{@link #HOLDER}＝k 倍 holder 与 NeoEco 批（{@code ICraftingProvider#pushPattern} 那一形态）。</li>
+     * </ul>
+     *
+     * <p>机器忙（{@code isBusy}）那一本表<b>不分腿</b>：它是机器此刻的物理状态，两条腿都进不去。
+     */
+    public enum PushLeg {
+        DECLARED,
+        HOLDER
+    }
+
     public enum ProviderAvailability {
         READY,
         BUSY,
-        BACKED_OFF,
-        BUDGET_EXHAUSTED
+        BACKED_OFF
+    }
+
+    private record RejectedPushKey(PushLeg leg, IPatternDetails pattern) {
     }
 
     private static final class ProviderState {

@@ -19,7 +19,6 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.pattern.AEProcessingPattern;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
  * 定制样板的样板详情实现（IPatternDetails）。
@@ -47,7 +46,7 @@ public class CustomProcessingPattern implements IPatternDetails {
     public CustomProcessingPattern(AEItemKey definition) {
         this.definition = definition;
 
-        var encodedPattern = definition.get(ChexsonsaeutilsContent.ENCODED_CUSTOM_PATTERN.get());
+        var encodedPattern = definition.get(CustomPatternRegistration.ENCODED_CUSTOM_PATTERN.get());
         if (encodedPattern == null) {
             throw new IllegalArgumentException("Given item does not encode a frame pattern: " + definition);
         } else if (encodedPattern.containsMissingContent()) {
@@ -94,7 +93,7 @@ public class CustomProcessingPattern implements IPatternDetails {
                             .formatted(slotMapping.length, sparseInputs.size()));
         }
 
-        stack.set(ChexsonsaeutilsContent.ENCODED_CUSTOM_PATTERN.get(), new EncodedCustomPattern(
+        stack.set(CustomPatternRegistration.ENCODED_CUSTOM_PATTERN.get(), new EncodedCustomPattern(
                 sparseInputs, sparseOutputs, slotMapping, extractSlots, overflowStacks));
     }
 
@@ -211,7 +210,7 @@ public class CustomProcessingPattern implements IPatternDetails {
             @Nullable Exception cause, TooltipFlag flags) {
         var tooltip = new PatternDetailsTooltip(PatternDetailsTooltip.OUTPUT_TEXT_PRODUCES);
 
-        var encodedPattern = stack.get(ChexsonsaeutilsContent.ENCODED_CUSTOM_PATTERN.get());
+        var encodedPattern = stack.get(CustomPatternRegistration.ENCODED_CUSTOM_PATTERN.get());
         if (encodedPattern != null) {
             encodedPattern.sparseInputs().stream().filter(Objects::nonNull).forEach(tooltip::addInput);
             encodedPattern.sparseOutputs().stream().filter(Objects::nonNull).forEach(tooltip::addOutput);

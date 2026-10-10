@@ -57,12 +57,12 @@ public record MachineRecipeImportedStack(
 
     @Nullable
     public static MachineRecipeImportedStack fromItemStack(@Nullable ItemStack stack) {
-        return fromGenericStack(DirectProcessingStackConverterRegistry.directProcessingDefaults().convert(stack));
+        return fromGenericStack(DirectProcessingStackConverterRegistry.builtins().convert(stack));
     }
 
     @Nullable
     public static MachineRecipeImportedStack fromFluidStack(@Nullable FluidStack stack) {
-        return fromGenericStack(DirectProcessingStackConverterRegistry.directProcessingDefaults().convert(stack));
+        return fromGenericStack(DirectProcessingStackConverterRegistry.builtins().convert(stack));
     }
 
     @Nullable

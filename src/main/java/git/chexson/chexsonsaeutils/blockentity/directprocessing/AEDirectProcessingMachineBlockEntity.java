@@ -12,17 +12,18 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
+import appeng.block.AEBaseEntityBlock;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.helpers.patternprovider.PatternContainer;
 import appeng.me.helpers.MachineSource;
 import appeng.me.service.CraftingService;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.bigint.ClampedMath;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.blockentity.crafting.DecodedPatternEntryCache;
-import git.chexson.chexsonsaeutils.blockentity.crafting.DirtySlotPatternRefreshScheduler;
-import git.chexson.chexsonsaeutils.blockentity.crafting.PatternSlotStore;
+import git.chexson.chexsonsaeutils.menu.matrix.DecodedPatternEntryCache;
+import git.chexson.chexsonsaeutils.menu.matrix.DirtySlotPatternRefreshScheduler;
+import git.chexson.chexsonsaeutils.menu.matrix.PatternSlotStore;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackSupport;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
@@ -49,6 +50,7 @@ import git.chexson.chexsonsaeutils.crafting.CraftingOutputRouter;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuResolver;
 import git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoBatchHost;
+import git.chexson.chexsonsaeutils.integration.directprocessing.DirectProcessingAssembly;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixDisplay;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSearch;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSource;
@@ -140,7 +142,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private final Map<Integer, AEItemKey> patternDefinitionsBySlot = new LinkedHashMap<>();
     private final Map<AEItemKey, Set<Integer>> slotsByPatternDefinition = new LinkedHashMap<>();
 
-    private MachineRecipeIndexBuilder discoveryService = MachineRecipeIndexBuilder.fromConfig();
+    private MachineRecipeIndexBuilder discoveryService = DirectProcessingAssembly.createMachineRecipeIndexBuilder();
     private MachineRecipeIndex recipeIndex = MachineRecipeIndex.empty();
     private ProcessingExecutionBudget budgetController = createConfiguredBudgetController();
     private long discoveryEpoch;
@@ -170,7 +172,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private boolean machineRecipeIndexRefreshPending;
 
     public AEDirectProcessingMachineBlockEntity(BlockPos pos, BlockState blockState) {
-        super(Chexsonsaeutils.AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY.get(), pos, blockState);
+        super(((AEBaseEntityBlock<?>) blockState.getBlock()).getBlockEntityType(), pos, blockState);
         this.getMainNode()
                 .setIdlePowerUsage(0.0)
                 .addService(ICraftingProvider.class, this);
@@ -239,7 +241,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         observedRecipeReloadEpoch = MachineRecipeReloadTracker.recipeReloadEpoch();
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled();
-        discoveryService = MachineRecipeIndexBuilder.fromConfig();
+        discoveryService = DirectProcessingAssembly.createMachineRecipeIndexBuilder();
         markMachineRecipeIndexDirty();
         markAllPatternsDirty();
     }
@@ -309,19 +311,40 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     @Override
+    public long maxPushExecutions(IPatternDetails pattern) {
+        // 执行计数与整批工时都已换 long，本机不再按 int 记份数，于是回报上限与
+        // 声明批走同一条容量口径。
+        return chexsonsaeutils$getNeoEcoBatchCapacity(pattern);
+    }
+
+    @Override
     public long chexsonsaeutils$getNeoEcoBatchCapacity(IPatternDetails pattern) {
         PatternCompatibility compatibility = pattern == null
                 ? null
                 : compatibilityCache.get(pattern.getDefinition(), recipeIndex.version());
         if (compatibility == null || !compatibility.supported()
+                || compatibility.signature() == null
                 || !getMainNode().isActive()
                 || pendingOutputRetryDelayTicks > 0
                 || pendingOutputBatches.size() >= configMaxPendingOutputBatches()
                 || executionQueue.remainingCapacity() <= 0) {
             return 0L;
         }
-        long tickCapacity = Integer.MAX_VALUE / (long) Math.max(1, getCurrentOperationTicks());
-        return Math.min(Integer.MAX_VALUE, tickCapacity);
+        // 一次 push 只占一个任务槽，份数本身没有队列上界；真能夹住份数的是
+        // 「整批工时 = 份数 × 每发 tick」与「产出 = 份数 × 每发量」这两处 long 乘法，
+        // 越界即 compileNeoEcoBatch 拒收，所以容量按它们反推。
+        // 这里原来挂的是 Math.min(Integer.MAX_VALUE, ...)：当年执行计数与工时都是 int，
+        // 份数一过 2.1e9 乘法就溢出成负数，要么整批拒收要么饱和提速，于是干脆用 int
+        // 上限兜住。两处都换 long 后，兜底改成 long 上界反推——仍然拒收真装不下的份数，
+        // 但不再在 2.1e9 处凭空夹断（状态屏上那份恒为 2.1T 的读数就是这个夹子）。
+        long tickCapacity = Long.MAX_VALUE / (long) Math.max(1, getCurrentOperationTicks());
+        long payloadCapacity = Long.MAX_VALUE;
+        for (GenericStack output : compatibility.signature().outputs()) {
+            if (output != null && output.amount() > 0L) {
+                payloadCapacity = Math.min(payloadCapacity, Long.MAX_VALUE / output.amount());
+            }
+        }
+        return Math.min(tickCapacity, payloadCapacity);
     }
 
     @Override
@@ -404,7 +427,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     @Override
     public PatternContainerGroup getTerminalGroup() {
         return new PatternContainerGroup(
-                appeng.api.stacks.AEItemKey.of(Chexsonsaeutils.AE_DIRECT_PROCESSING_MACHINE_ITEM.get()),
+                appeng.api.stacks.AEItemKey.of(getItemFromBlockEntity()),
                 getName(),
                 List.of(Component.translatable(
                         "block.chexsonsaeutils.ae_direct_processing_machine.pattern_slots_summary",
@@ -437,7 +460,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     public void completeProcessingTask(ProcessingTask task, @Nullable ProcessingLatencyOrigin latencyOrigin) {
         completedTaskCount++;
         if (task != null) {
-            completedLogicalExecutionCount = saturatingAdd(completedLogicalExecutionCount, task.executionCount());
+            completedLogicalExecutionCount = ClampedMath.add(completedLogicalExecutionCount, task.executionCount());
         }
         enqueuePendingOutput(
                 task.buildOutputPayload(),
@@ -891,7 +914,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             return;
         }
         observedGenericDiscoveryEnabled = currentGenericDiscoveryEnabled;
-        discoveryService = MachineRecipeIndexBuilder.fromConfig();
+        discoveryService = DirectProcessingAssembly.createMachineRecipeIndexBuilder();
         discoveryEpoch++;
         invalidatePatternExposureForIndexChange();
         saveChanges();
@@ -1132,16 +1155,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return left.merge(right);
     }
 
-    private static long saturatingAdd(long left, long right) {
-        if (right > 0L && left > Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        if (right < 0L && left < Long.MIN_VALUE - right) {
-            return Long.MIN_VALUE;
-        }
-        return left + right;
-    }
-
     private void recordPushPatternCacheLookupNanos(long startedAtNanos) {
         long elapsedNanos = System.nanoTime() - startedAtNanos;
         pushPatternCacheLookupNanosMax = Math.max(pushPatternCacheLookupNanosMax, elapsedNanos);
@@ -1156,9 +1169,9 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             return;
         }
         long latencyTicks = latencyOrigin.averageLatencyTicks(currentLevel.getGameTime());
-        pushToAeReturnLatencyTicksTotal = saturatingAdd(pushToAeReturnLatencyTicksTotal, latencyTicks);
+        pushToAeReturnLatencyTicksTotal = ClampedMath.add(pushToAeReturnLatencyTicksTotal, latencyTicks);
         pushToAeReturnLatencyTicksMax = Math.max(pushToAeReturnLatencyTicksMax, latencyTicks);
-        pushToAeReturnLatencySampleCount = saturatingAdd(
+        pushToAeReturnLatencySampleCount = ClampedMath.add(
                 pushToAeReturnLatencySampleCount,
                 latencyOrigin.acceptedPushCount()
         );

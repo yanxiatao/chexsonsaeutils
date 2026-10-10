@@ -8,9 +8,7 @@ import java.util.Objects;
 
 /** 客户端显示模型；协议标识显式一一映射到 common PlanningAlgorithmId。 */
 public enum PlanningAlgorithm {
-    FROZEN_ROUTE(PlanningAlgorithmId.FROZEN_ROUTE),
     GRAPH(PlanningAlgorithmId.GRAPH),
-    OPTIMIZED_TREE(PlanningAlgorithmId.FAST),
     NATIVE_AE2(PlanningAlgorithmId.NATIVE);
 
     private static final Map<PlanningAlgorithmId, PlanningAlgorithm> BY_PROTOCOL_ID = buildReverseMapping();

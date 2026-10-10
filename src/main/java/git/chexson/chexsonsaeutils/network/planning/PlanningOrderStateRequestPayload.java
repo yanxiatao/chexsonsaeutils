@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.network.planning;
 
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.config.PlanningAlgorithmOrderService;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -13,7 +13,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 /** 客户端请求当前服务端权威排序。 */
 public record PlanningOrderStateRequestPayload(long requestId) implements CustomPacketPayload {
     public static final Type<PlanningOrderStateRequestPayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "planning_order_state_request")
+            ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "planning_order_state_request")
     );
     public static final StreamCodec<RegistryFriendlyByteBuf, PlanningOrderStateRequestPayload> STREAM_CODEC =
             StreamCodec.ofMember(PlanningOrderStateRequestPayload::write, PlanningOrderStateRequestPayload::decode);

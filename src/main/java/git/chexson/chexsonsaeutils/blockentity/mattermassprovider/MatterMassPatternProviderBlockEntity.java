@@ -28,7 +28,7 @@ import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.helpers.mattermassprovider.MatterMassPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.mattermassprovider.MatterMassPatternProviderLogic;
 import git.chexson.chexsonsaeutils.helpers.mattermassprovider.ReturnMode;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+
 
 /**
  * 物质团供应器方块实体。
@@ -50,11 +50,12 @@ public class MatterMassPatternProviderBlockEntity extends AENetworkedBlockEntity
     private static final String NBT_RETURN_MODE = "returnMode";
 
     /** 每页样板槽数量：与定制样板供应器一致（4 行 x 9 列）。 */
-    public static final int PATTERN_SLOTS_PER_PAGE = 36;
+    public static final int PATTERN_SLOTS_PER_PAGE = MatterMassPatternProviderHost.PATTERN_SLOTS_PER_PAGE;
 
     private final MatterMassPatternProviderLogic logic = new MatterMassPatternProviderLogic(
             this.getMainNode(), this,
-            ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages() * PATTERN_SLOTS_PER_PAGE);
+            ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages() * PATTERN_SLOTS_PER_PAGE,
+            new git.chexson.chexsonsaeutils.integration.patternprovider.CustomPatternProviderIntegrationFactoryImpl());
 
     /** 已解锁样板页数：默认 1，范围 [1, maxCustomPatternPages()]。 */
     private int pages = 1;
@@ -65,7 +66,7 @@ public class MatterMassPatternProviderBlockEntity extends AENetworkedBlockEntity
     private ReturnMode returnMode = ReturnMode.NETWORK;
 
     public MatterMassPatternProviderBlockEntity(BlockPos pos, BlockState blockState) {
-        super(ChexsonsaeutilsContent.MATTER_MASS_PATTERN_PROVIDER_BLOCK_ENTITY.get(), pos, blockState);
+        super(((appeng.block.AEBaseEntityBlock<?>) blockState.getBlock()).getBlockEntityType(), pos, blockState);
         this.getMainNode()
                 .setFlags(GridFlags.REQUIRE_CHANNEL)
                 .setIdlePowerUsage(0.0);
@@ -176,16 +177,21 @@ public class MatterMassPatternProviderBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public AEItemKey getTerminalIcon() {
-        return AEItemKey.of(ChexsonsaeutilsContent.MATTER_MASS_PATTERN_PROVIDER_ITEM.get());
+        return AEItemKey.of(getItemFromBlockEntity());
     }
 
     @Override
     public ItemStack getMainMenuIcon() {
-        return new ItemStack(ChexsonsaeutilsContent.MATTER_MASS_PATTERN_PROVIDER_ITEM.get());
+        return new ItemStack(getItemFromBlockEntity());
     }
 
     @Override
     public Set<Direction> getGridConnectableSides(BlockOrientation orientation) {
         return EnumSet.allOf(Direction.class);
     }
+    @Override
+    public net.minecraft.world.inventory.MenuType<? extends appeng.menu.AEBaseMenu> getMainMenuType() {
+        return git.chexson.chexsonsaeutils.menu.mattermassprovider.MatterMassPatternProviderMenu.TYPE;
+    }
+
 }

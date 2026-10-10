@@ -11,7 +11,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import appeng.api.implementations.items.IStorageComponent;
 import git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.item.custompatternprovider.CustomPatternExpandableItem;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternRegistration;
 
 /**
  * 定制样板供应器物品（阶段 2）。
@@ -48,7 +48,7 @@ public class CustomPatternProviderItem extends BlockItem implements IStorageComp
      */
     @Override
     public int getBytes(ItemStack stack) {
-        int pages = Math.max(1, stack.getOrDefault(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), 1));
+        int pages = Math.max(1, stack.getOrDefault(CustomPatternRegistration.CUSTOM_PATTERN_PAGES.get(), 1));
         return pages * BYTES_PER_PAGE;
     }
 
@@ -56,7 +56,7 @@ public class CustomPatternProviderItem extends BlockItem implements IStorageComp
     protected boolean updateCustomBlockEntityTag(
             BlockPos pos, Level level, Player player, ItemStack stack, BlockState state) {
         // 正常放置路径：物品组件里的已解锁页数写回 BE（拆除保留闭环）
-        int pages = stack.getOrDefault(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), 1);
+        int pages = stack.getOrDefault(CustomPatternRegistration.CUSTOM_PATTERN_PAGES.get(), 1);
         if (level.getBlockEntity(pos) instanceof CustomPatternProviderBlockEntity blockEntity) {
             blockEntity.setPages(pages);
         }

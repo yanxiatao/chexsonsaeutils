@@ -11,6 +11,8 @@ import org.jetbrains.annotations.Nullable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
 import git.chexson.chexsonsaeutils.crafting.recursive.CompressedRing;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.crafting.material.PlanningSupplyTruth;
 
 /**
  * Immutable level-1 planning snapshot compiled once per calculation and shared
@@ -57,7 +59,7 @@ public final class CraftGraph {
      * attempt/求解不再为同一键反复哈希。键集合编译期封闭（产出/输入/
      * 候选/余料/库存/宏净流量），迟到键按需追加，语义与各自编号一致。
      */
-    private final git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex;
+    private final git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex;
     /**
      * 图拓扑的稠密键视图。模糊类成员按 AE2 贪婪顺序预译为 int[]，
      * emittable 预译为位图；同一编译图的库存新鲜化只重建数量数组，
@@ -68,6 +70,14 @@ public final class CraftGraph {
     /** 当前库存快照的 id → amount 视图；仅数量随 withStock 更新。 */
     @Nullable
     private final long[] denseStock;
+    /**
+     * 规划侧只读真值供给（与 {@link #stock} 同一请求生命周期；编译缓存命中时随请求注入）。
+     *
+     * <p>{@link #stock()} 的逐键 {@code long} 是 AE2 的口径事实：我们无限盘的溢出键在那里
+     * 永远长成 {@code Long.MAX_VALUE}。供需判据要区分「真只有这么多」与「被 long 截断」，
+     * 就读这里——{@link PlanningSupplyTruth#supplyOf} 未命中宽域键时逐字退回 {@code stock} 的读数。
+     */
+    private PlanningSupplyTruth supplyTruth = PlanningSupplyTruth.EMPTY;
     private final boolean multiplePaths;
     @Nullable
     private final String declineReason;
@@ -112,7 +122,7 @@ public final class CraftGraph {
             Map<AEKey, Long> stock,
             Set<AEKey> emittable,
             Map<AEKey, List<AEKey>> classVariants,
-            @Nullable git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex,
+            @Nullable git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex,
             boolean multiplePaths,
             @Nullable String declineReason,
             int craftingForTargetCount,
@@ -136,7 +146,7 @@ public final class CraftGraph {
             Map<AEKey, Long> stock,
             Set<AEKey> emittable,
             Map<AEKey, List<AEKey>> classVariants,
-            @Nullable git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex,
+            @Nullable git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex,
             boolean multiplePaths,
             @Nullable String declineReason,
             int craftingForTargetCount,
@@ -159,7 +169,7 @@ public final class CraftGraph {
             Map<AEKey, Long> stock,
             Set<AEKey> emittable,
             Map<AEKey, List<AEKey>> classVariants,
-            @Nullable git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex,
+            @Nullable git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex,
             @Nullable DenseKeyView denseKeyView,
             @Nullable long[] denseStock,
             boolean multiplePaths,
@@ -187,14 +197,12 @@ public final class CraftGraph {
     }
 
     private static long[] denseStock(
-            git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex,
+            git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex,
             Map<AEKey, Long> stock) {
         var amounts = new long[keyIndex.size()];
-        for (var entry : stock.entrySet()) {
-            int id = keyIndex.lookup(entry.getKey());
-            if (id >= 0) {
-                amounts[id] = entry.getValue();
-            }
+        // 键索引只含求解工作集：按索引取库存，避免整网库存再做一轮哈希查找。
+        for (int id = 0; id < amounts.length; id++) {
+            amounts[id] = stock.getOrDefault(keyIndex.keyOf(id), 0L);
         }
         return amounts;
     }
@@ -229,6 +237,80 @@ public final class CraftGraph {
                 : CycleKind.COMPRESSIBLE;
     }
 
+    /** 留种量只依赖环定义，编译期就定了：算一次存着。 */
+    private Map<AEKey, Long> retainedSeedsCache;
+    /** 留种宽域真值账（与饱和 {@code long} 视图并行，见 {@link #retainedSeedsWide()}）。 */
+    private Map<AEKey, PlanAmount> retainedSeedsWideCache;
+
+    /**
+     * 留种唯一的一条规则：<b>网络里要留下来的那一份，不是可花库存</b>。
+     *
+     * <p>求解侧据此把该键的<b>可花量</b>从沙盒里扣住（{@code working}），而
+     * {@code stock()}/{@code reservableStock} 照旧看得见它——环还得拿它起步。
+     * 于是"把这颗种补回来"成了规划自己的事：消费端拿不到那份库存，就去打火环宏，
+     * 环宏的原料（钻石那一类）在同一次闭式解里跟主链争同一份料。
+     *
+     * <p>事后补种不可能成立：解完的账本已经把每一枚料排死了，补的那一发只能靠
+     * "剩下的"，而剩下的恰好是零。
+     *
+     * <p><b>本视图是饱和 {@code long} 读数</b>：同族催化物累加越出 {@code long} 时顶在
+     * {@code Long.MAX_VALUE}——那是哨兵不是量。判据侧要真值读 {@link #retainedSeedsWide()}。
+     */
+    public Map<AEKey, Long> retainedSeeds() {
+        if (retainedSeedsCache != null) {
+            return retainedSeedsCache;
+        }
+        var retained = new java.util.LinkedHashMap<AEKey, Long>();
+        for (var entry : retainingRingsByCatalyst().entrySet()) {
+            AEKey catalyst = entry.getKey();
+            var ring = entry.getValue();
+            if (catalyst == null || ring == null || ring.catalysts() == null) {
+                continue;
+            }
+            long seedAmount = ring.catalysts().get(catalyst);
+            if (seedAmount <= 0L) {
+                continue;
+            }
+            long held = retained.getOrDefault(catalyst, 0L);
+            retained.put(catalyst, seedAmount > Long.MAX_VALUE - held
+                    ? Long.MAX_VALUE : held + seedAmount);
+        }
+        return retainedSeedsCache = Map.copyOf(retained);
+    }
+
+    /**
+     * 留种<b>宽域真值</b>账（#218）：与 {@link #retainedSeeds()} 同一规则同一来源，
+     * 累加走 {@code PlanAmount}，越出 {@code long} 的那一截如实留着——判据（起步预留、
+     * 还种轮数）必须在真值域里比，不许先读饱和视图再相减。
+     */
+    public Map<AEKey, PlanAmount> retainedSeedsWide() {
+        if (retainedSeedsWideCache != null) {
+            return retainedSeedsWideCache;
+        }
+        var retained = new java.util.LinkedHashMap<AEKey, PlanAmount>();
+        for (var entry : retainingRingsByCatalyst().entrySet()) {
+            AEKey catalyst = entry.getKey();
+            var ring = entry.getValue();
+            if (catalyst == null || ring == null || ring.catalysts() == null) {
+                continue;
+            }
+            long seedAmount = ring.catalysts().get(catalyst);
+            if (seedAmount <= 0L) {
+                continue;
+            }
+            var held = retained.getOrDefault(catalyst, PlanAmount.ZERO);
+            retained.put(catalyst, held.add(PlanAmount.of(seedAmount)));
+        }
+        return retainedSeedsWideCache = Map.copyOf(retained);
+    }
+
+    /** 单键版宽域留种读数（无留种记录即零）。 */
+    public PlanAmount retainedSeedAmount(AEKey catalyst) {
+        return catalyst == null
+                ? PlanAmount.ZERO
+                : retainedSeedsWide().getOrDefault(catalyst, PlanAmount.ZERO);
+    }
+
     /**
      * Graph-owned retaining rings indexed by catalyst key. Each SCC macro
      * already carries the complete compressed-ring flow needed by retention.
@@ -243,7 +325,8 @@ public final class CraftGraph {
                 }
                 var ring = new CompressedRing(
                         macro.netInputs(), macro.netOutputs(), macro.catalysts(), macro.executionRatio(),
-                        Collections.unmodifiableSet(new LinkedHashSet<>(macro.netOutputs().keySet())), true);
+                        Collections.unmodifiableSet(new LinkedHashSet<>(macro.netOutputs().keySet())), true,
+                        macro.memberFlows());
                 for (var seed : macro.startupSeeds().entrySet()) {
                     if (macro.netOutputs().get(seed.getKey()) > 0L) {
                         retaining.putIfAbsent(seed.getKey(), ring);
@@ -266,6 +349,31 @@ public final class CraftGraph {
         return stock;
     }
 
+    /** 本次请求的真值供给（只读；从未注入即 {@link PlanningSupplyTruth#EMPTY}，等价于纯 {@code long} 口径）。 */
+    public PlanningSupplyTruth supplyTruth() {
+        return this.supplyTruth;
+    }
+
+    /**
+     * 按请求注入真值供给：与 {@link #withStock(Map)} 的库存新鲜化同一时机、同一线程假设
+     * （编译图可跨请求共享，注入的是一请求一值的只读快照）。
+     */
+    public void attachSupplyTruth(PlanningSupplyTruth supplyTruth) {
+        this.supplyTruth = supplyTruth;
+    }
+
+    /**
+     * 该键的<b>供给真值</b>（宽域）：命中无限盘溢出键给 {@link PlanAmount} 的 BigInteger，
+     * 否则逐字退回 {@link #stock()} 那份 {@code long} 读数。
+     *
+     * <p>任何拿它当"这一键最多能提供多少"的判据都必须<b>先在这个数域里算完除法</b>再窄化：
+     * 先 {@code toLong} 再 {@code / 每发用量}，等于把真值截成天花板之后还嫌它太大——
+     * 放大出来的那份用量就这么没了。
+     */
+    public PlanAmount supplyAmount(AEKey key) {
+        return supplyTruth.supplyOf(key, stock.getOrDefault(key, 0L));
+    }
+
     /**
      * 编译缓存命中时的库存新鲜化：共享全部不可变拓扑字段，仅替换库存快照。
      * 求解单线程，安全。
@@ -280,6 +388,7 @@ public final class CraftGraph {
                 keyIndex == null ? null : denseStock(keyIndex, freshStock),
                 multiplePaths, declineReason, craftingForTargetCount, rootRoutesCount);
         fresh.routeSelection = this.routeSelection;
+        fresh.supplyTruth = this.supplyTruth;
         return fresh;
     }
 
@@ -296,7 +405,7 @@ public final class CraftGraph {
      * 求解侧复用它之后，账本 id 在建图时一次定死，attempt 内不再哈希。
      */
     @Nullable
-    public git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex() {
+    public git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex() {
         return keyIndex;
     }
 
@@ -353,24 +462,29 @@ public final class CraftGraph {
     public record DenseKeyView(int[][] classMemberIdsByKeyId, long[] emittableBits) {
 
         private static DenseKeyView create(
-                git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex,
+                git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex,
                 Map<AEKey, List<AEKey>> classVariants,
                 Set<AEKey> emittable) {
             int size = keyIndex.size();
             var classIds = new int[size][];
+            var sharedClassIds = new java.util.IdentityHashMap<List<AEKey>, int[]>();
             for (var entry : classVariants.entrySet()) {
                 int keyId = keyIndex.lookup(entry.getKey());
                 if (keyId < 0) {
                     continue;
                 }
                 var members = entry.getValue();
-                var memberIds = new int[members.size()];
-                for (int x = 0; x < memberIds.length; x++) {
-                    int memberId = keyIndex.lookup(members.get(x));
-                    if (memberId < 0) {
-                        throw new IllegalStateException("dense key view missing fuzzy member");
+                var memberIds = sharedClassIds.get(members);
+                if (memberIds == null) {
+                    memberIds = new int[members.size()];
+                    for (int x = 0; x < memberIds.length; x++) {
+                        int memberId = keyIndex.lookup(members.get(x));
+                        if (memberId < 0) {
+                            throw new IllegalStateException("dense key view missing fuzzy member");
+                        }
+                        memberIds[x] = memberId;
                     }
-                    memberIds[x] = memberId;
+                    sharedClassIds.put(members, memberIds);
                 }
                 classIds[keyId] = memberIds;
             }

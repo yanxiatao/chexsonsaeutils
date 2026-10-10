@@ -51,6 +51,15 @@ final class NeoEcoBatchOutputBufferTest {
         assertEquals(2, target.size());
     }
 
+    @Test
+    void assemblerWideBufferMergesProductsAndRemaindersWithoutClamping() {
+        var target = new git.chexson.chexsonsaeutils.bigint.WideKeyCounter();
+        assertTrue(NeoEcoBatchOutputBuffer.append(target,
+                List.of(new GenericStack(OUTPUT, 4L)), List.of(new GenericStack(OUTPUT, 2L)), Long.MAX_VALUE));
+        assertEquals(java.math.BigInteger.valueOf(Long.MAX_VALUE).multiply(java.math.BigInteger.valueOf(6L)),
+                target.getExact(OUTPUT));
+    }
+
     private static AEItemKey namedOutput(String name) {
         ItemStack stack = new ItemStack(Items.AMETHYST_SHARD);
         stack.set(DataComponents.CUSTOM_NAME, Component.literal(name));

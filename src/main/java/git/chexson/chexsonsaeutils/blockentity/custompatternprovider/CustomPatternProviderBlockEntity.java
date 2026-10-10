@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.blockentity.custompatternprovider;
 
+
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -27,15 +28,15 @@ import appeng.api.orientation.BlockOrientation;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.UpgradeInventories;
+import appeng.block.crafting.PatternProviderBlock;
 import appeng.block.crafting.PushDirection;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.util.SettingsFrom;
-import git.chexson.chexsonsaeutils.block.custompatternprovider.CustomPatternProviderBlock;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogic;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderState;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+
 
 /**
  * 定制样板供应器方块实体（阶段 2）。
@@ -57,10 +58,13 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
         implements CustomPatternProviderHost {
 
+    /** 推送方向属性（复用 AE2 的属性实例，blockstates 变体名 push_direction）。 */
+    public static final net.minecraft.world.level.block.state.properties.EnumProperty<PushDirection> PUSH_DIRECTION = PatternProviderBlock.PUSH_DIRECTION;
+
     private final CustomPatternProviderState patternState = createState();
 
     public CustomPatternProviderBlockEntity(BlockPos pos, BlockState blockState) {
-        super(ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(), pos, blockState);
+        super(((appeng.block.AEBaseEntityBlock<?>) blockState.getBlock()).getBlockEntityType(), pos, blockState);
         // ICraftingProvider 与 IGridTickable 服务由 logic 注册（字段初始化先于本构造器体）
         this.getMainNode()
                 .setFlags(GridFlags.REQUIRE_CHANNEL)
@@ -73,10 +77,10 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     private CustomPatternProviderState createState() {
         return new CustomPatternProviderState(CustomPatternProviderBlockEntity.class, this.getMainNode(), this,
                 UpgradeInventories.forMachine(
-                        () -> ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get(),
+                        () -> getItemFromBlockEntity(),
                         CustomPatternProviderState.UPGRADE_SLOTS,
                         this::saveChanges
-                ));
+                ), new git.chexson.chexsonsaeutils.integration.patternprovider.CustomPatternProviderIntegrationFactoryImpl());
     }
 
     @Override
@@ -278,7 +282,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
      */
     @Override
     public EnumSet<Direction> getTargets() {
-        var pushDirection = getBlockState().getValue(CustomPatternProviderBlock.PUSH_DIRECTION);
+        var pushDirection = getBlockState().getValue(PUSH_DIRECTION);
         if (pushDirection == PushDirection.ALL) {
             return EnumSet.allOf(Direction.class);
         }
@@ -297,12 +301,12 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public AEItemKey getTerminalIcon() {
-        return AEItemKey.of(ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get());
+        return AEItemKey.of(getItemFromBlockEntity());
     }
 
     @Override
     public ItemStack getMainMenuIcon() {
-        return new ItemStack(ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get());
+        return new ItemStack(getItemFromBlockEntity());
     }
 
     /**
@@ -311,7 +315,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
      */
     @Override
     public Set<Direction> getGridConnectableSides(BlockOrientation orientation) {
-        var pushDirection = getBlockState().getValue(CustomPatternProviderBlock.PUSH_DIRECTION).getDirection();
+        var pushDirection = getBlockState().getValue(PUSH_DIRECTION).getDirection();
         if (pushDirection == null) {
             return EnumSet.allOf(Direction.class);
         }
@@ -336,7 +340,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
         super.exportSettings(mode, builder, player);
         if (mode == SettingsFrom.MEMORY_CARD) {
             getLogic().exportSettings(builder);
-            var pushDirection = getBlockState().getValue(CustomPatternProviderBlock.PUSH_DIRECTION);
+            var pushDirection = getBlockState().getValue(PUSH_DIRECTION);
             builder.set(AEComponents.EXPORTED_PUSH_DIRECTION, pushDirection);
         }
     }
@@ -355,9 +359,14 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
                 var level = getLevel();
                 if (level != null) {
                     level.setBlockAndUpdate(getBlockPos(), getBlockState().setValue(
-                            CustomPatternProviderBlock.PUSH_DIRECTION, pushDirection));
+                            PUSH_DIRECTION, pushDirection));
                 }
             }
         }
     }
+    @Override
+    public net.minecraft.world.inventory.MenuType<? extends appeng.menu.AEBaseMenu> getMainMenuType() {
+        return git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu.TYPE;
+    }
+
 }

@@ -5,6 +5,7 @@ import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.storage.IStorageService;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
+import git.chexson.chexsonsaeutils.bigint.ClampedMath;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -42,9 +43,9 @@ public final class CraftingOutputRouter {
                 continue;
             }
             stackResults.add(stackResult);
-            acceptedBySourceCpu = saturatedAdd(acceptedBySourceCpu, stackResult.acceptedBySourceCpu());
-            acceptedByAnyCpu = saturatedAdd(acceptedByAnyCpu, stackResult.acceptedByAnyCpu());
-            insertedIntoAe = saturatedAdd(insertedIntoAe, stackResult.insertedIntoAe());
+            acceptedBySourceCpu = ClampedMath.addUp(acceptedBySourceCpu, stackResult.acceptedBySourceCpu());
+            acceptedByAnyCpu = ClampedMath.addUp(acceptedByAnyCpu, stackResult.acceptedByAnyCpu());
+            insertedIntoAe = ClampedMath.addUp(insertedIntoAe, stackResult.insertedIntoAe());
             if (stackResult.remainingAmount() > 0L && stackResult.key() != null) {
                 remainingPayload.add(new GenericStack(stackResult.key(), stackResult.remainingAmount()));
             }
@@ -83,7 +84,7 @@ public final class CraftingOutputRouter {
                 key,
                 genericStack.amount(),
                 acceptedBySourceCpu,
-                saturatedAdd(acceptedBySourceCpu, insertedIntoAe),
+                ClampedMath.addUp(acceptedBySourceCpu, insertedIntoAe),
                 insertedIntoAe,
                 attemptedAeFallback,
                 remaining
@@ -109,7 +110,7 @@ public final class CraftingOutputRouter {
                 continue;
             }
             stackResults.add(stackResult);
-            acceptedBySourceCpu = saturatedAdd(acceptedBySourceCpu, stackResult.acceptedBySourceCpu());
+            acceptedBySourceCpu = ClampedMath.addUp(acceptedBySourceCpu, stackResult.acceptedBySourceCpu());
             if (stackResult.remainingAmount() > 0L && stackResult.key() != null) {
                 remainingPayload.add(new GenericStack(stackResult.key(), stackResult.remainingAmount()));
             }
@@ -180,13 +181,6 @@ public final class CraftingOutputRouter {
             return 0L;
         }
         return Math.min(limit, accepted);
-    }
-
-    private static long saturatedAdd(long left, long right) {
-        if (right > 0L && left >= Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        return left + right;
     }
 
     public record RoutingResult(

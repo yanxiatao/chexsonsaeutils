@@ -1,5 +1,8 @@
 package git.chexson.chexsonsaeutils.crafting.status;
 
+import git.chexson.chexsonsaeutils.crafting.contract.CraftingContinuationWaitingBranch;
+import git.chexson.chexsonsaeutils.crafting.contract.CraftingContinuationWaitingDetail;
+
 import appeng.api.config.Actionable;
 import appeng.api.features.IPlayerRegistry;
 import appeng.api.networking.IGrid;

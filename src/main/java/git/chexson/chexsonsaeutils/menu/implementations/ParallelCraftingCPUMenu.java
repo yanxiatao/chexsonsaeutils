@@ -7,7 +7,7 @@ import appeng.menu.guisync.GuiSync;
 import appeng.menu.guisync.PacketWritable;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.me.crafting.CraftingCPUMenu;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -39,7 +39,7 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
             .create(ParallelCraftingCPUMenu::new, AE2ParallelCpuToolBlockEntity.class)
             .withMenuTitle(ignored -> Component.translatable("block.chexsonsaeutils.ae2_parallel_cpu_tool"))
             .buildUnregistered(Objects.requireNonNull(
-                    ResourceLocation.tryParse(Chexsonsaeutils.MODID + ":ae2_parallel_cpu_tool_cpu")
+                    ResourceLocation.tryParse(ModIds.MODID + ":ae2_parallel_cpu_tool_cpu")
             ));
 
     private final WeakHashMap<ICraftingCPU, Integer> cpuSerialMap = new WeakHashMap<>();

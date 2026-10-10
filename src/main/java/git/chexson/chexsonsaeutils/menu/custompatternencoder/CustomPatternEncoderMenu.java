@@ -19,13 +19,13 @@ import appeng.api.stacks.GenericStack;
 import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.implementations.MenuTypeBuilder;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
 import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigConverter;
 import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigConverterImpl;
 import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigHost;
 import git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternEncoderUpdatePayload;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternRegistration;
 
 /**
  * 定制样板编码菜单（原地编辑供应器原样板）。
@@ -40,13 +40,13 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * 抽取槽位经 set_extract_slots 客户端动作到达 setExtractSlotsFromClient；
  * 两者都写回供应器样板槽并回推 {@code CustomPatternEncoderUpdatePayload} 回显。
  */
-public class CustomPatternEncoderMenu extends AEBaseMenu {
+public class CustomPatternEncoderMenu extends AEBaseMenu implements git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternEncoderSyncTarget {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CustomPatternEncoderMenu.class);
 
     public static final MenuType<CustomPatternEncoderMenu> TYPE = MenuTypeBuilder
             .create(CustomPatternEncoderMenu::new, CustomPatternConfigHost.class)
-            .buildUnregistered(ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "custom_pattern_encoder"));
+            .buildUnregistered(ResourceLocation.fromNamespaceAndPath(ModIds.MODID, "custom_pattern_encoder"));
 
     /**
      * 输入展示槽语义组：虚拟只读槽（InaccessibleSlot）用于在编码界面左侧渲染当前
@@ -248,7 +248,7 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
             }
         } else if (details instanceof CustomProcessingPattern customPattern) {
             // 定制样板：按当前映射/抽取槽位重编码组件
-            newStack = new ItemStack(ChexsonsaeutilsContent.CUSTOM_PATTERN_ITEM.get());
+            newStack = new ItemStack(CustomPatternRegistration.CUSTOM_PATTERN_ITEM.get());
             try {
                 CustomProcessingPattern.encode(newStack, customPattern.getSparseInputs(),
                         customPattern.getSparseOutputs(), this.host.getSlotMapping(),
@@ -298,15 +298,7 @@ public class CustomPatternEncoderMenu extends AEBaseMenu {
             // 供应器缺失（被拆/卸载）：无法返回，仅关闭当前界面
             return;
         }
-        if (provider instanceof git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity be) {
-            appeng.menu.MenuOpener.open(
-                    git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu.TYPE,
-                    getPlayer(), appeng.menu.locator.MenuLocators.forBlockEntity(be));
-        } else if (provider instanceof git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart part) {
-            appeng.menu.MenuOpener.open(
-                    git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu.TYPE,
-                    getPlayer(), appeng.menu.locator.MenuLocators.forPart(part));
-        }
+        provider.openMenu(getPlayer(), provider.getMainMenuLocator());
     }
 
     /**

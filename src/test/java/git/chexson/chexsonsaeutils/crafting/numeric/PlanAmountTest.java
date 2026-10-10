@@ -8,8 +8,71 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.bigint.Ae2Amounts;
 
 class PlanAmountTest {
+
+    @Test
+    void arithmeticMatchesExactReferenceAtBoundariesAndRandomValues() {
+        long[] edges = {Long.MIN_VALUE, Long.MIN_VALUE + 1, -16, -1, 0, 1, 16,
+                Long.MAX_VALUE - 1, Long.MAX_VALUE};
+        for (long left : edges) {
+            for (long right : edges) {
+                assertArithmetic(left, right);
+            }
+        }
+        var random = new java.util.Random(0x20261007L);
+        for (int sample = 0; sample < 10_000; sample++) {
+            assertArithmetic(random.nextLong(), random.nextLong());
+        }
+    }
+
+    private static void assertArithmetic(long left, long right) {
+        var a = BigInteger.valueOf(left);
+        var b = BigInteger.valueOf(right);
+        var x = PlanAmount.of(left);
+        var y = PlanAmount.of(right);
+        assertEquals(a.add(b), x.add(y).exactValue());
+        assertEquals(a.subtract(b), x.subtract(y).exactValue());
+        var product = a.multiply(b);
+        assertEquals(product, x.multiply(y).exactValue());
+        assertEquals(product.bitLength() < Long.SIZE,
+                git.chexson.chexsonsaeutils.bigint.WideMath.mulFitsLong(left, right));
+        if (right != 0) {
+            var qr = a.divideAndRemainder(b);
+            assertEquals(qr[0], x.divide(y).exactValue());
+            assertEquals(qr[1], x.remainder(y).exactValue());
+            assertEquals(qr[1].signum() != 0 && qr[1].signum() == b.signum()
+                    ? qr[0].add(BigInteger.ONE) : qr[0], x.ceilDiv(y).exactValue());
+            assertEquals(qr[1].signum() != 0 && qr[1].signum() != b.signum()
+                    ? qr[0].subtract(BigInteger.ONE) : qr[0], x.floorDiv(y).exactValue());
+        }
+    }
+
+    @Test
+    void identityOperationsReuseWideOperandsAndMixedComparisonIsExact() {
+        var amount = PlanAmount.of(BigInteger.TEN.pow(100));
+        assertSame(amount, amount.add(PlanAmount.ZERO));
+        assertSame(amount, PlanAmount.ZERO.add(amount));
+        assertSame(amount, amount.subtract(PlanAmount.ZERO));
+        assertSame(amount, amount.multiply(PlanAmount.ONE));
+        assertSame(amount, PlanAmount.ONE.multiply(amount));
+        assertSame(amount, amount.divide(PlanAmount.ONE));
+        assertSame(amount, amount.ceilDiv(PlanAmount.ONE));
+        assertSame(amount, amount.floorDiv(PlanAmount.ONE));
+        assertSame(PlanAmount.ZERO, amount.subtract(amount));
+        assertSame(PlanAmount.ZERO, amount.multiply(PlanAmount.ZERO));
+        for (long value : new long[] {Long.MIN_VALUE, -1, 0, 1, Long.MAX_VALUE}) {
+            var narrow = PlanAmount.of(value);
+            assertTrue(narrow.compareTo(amount) < 0);
+            assertTrue(amount.compareTo(narrow) > 0);
+            assertTrue(narrow.compareTo(amount.negate()) > 0);
+            assertTrue(amount.negate().compareTo(narrow) < 0);
+            assertEquals(Long.hashCode(value), narrow.hashCode());
+        }
+        assertEquals(amount.exactValue().hashCode(), amount.hashCode());
+    }
 
     @Test
     void smallValuesAreCachedAndFast() {

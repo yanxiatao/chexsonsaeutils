@@ -25,6 +25,7 @@ import net.neoforged.neoforge.fluids.FluidStack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public final class MekanismRecipeShapeSupport
         implements DirectProcessingExternalRecipeShapeRegistry.ExternalRecipeShapeSupport {
@@ -34,9 +35,7 @@ public final class MekanismRecipeShapeSupport
     private final DirectProcessingStackConverterRegistry stackConverters;
 
     public MekanismRecipeShapeSupport(DirectProcessingStackConverterRegistry stackConverters) {
-        this.stackConverters = stackConverters == null
-                ? DirectProcessingStackConverterRegistry.directProcessingDefaults()
-                : stackConverters;
+        this.stackConverters = Objects.requireNonNull(stackConverters, "stackConverters");
     }
 
     @Override

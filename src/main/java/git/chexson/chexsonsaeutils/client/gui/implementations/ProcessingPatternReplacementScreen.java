@@ -54,7 +54,6 @@ public final class ProcessingPatternReplacementScreen<C extends PatternEncodingT
     private static final int TAG_COLUMN_WIDTH = 74;
     private static final int CONTENT_DIVIDER_X = TAG_COLUMN_WIDTH + 8;
     private static final int ITEM_GRID_X = CONTENT_DIVIDER_X + 6;
-    private static final int ITEM_GRID_WIDTH = GROUPED_CONTENT_WIDTH - ITEM_GRID_X - SECTION_PADDING;
     private static final int ICON_COLUMNS = 5;
     private static final int ICON_CELL_SIZE = 18;
     private static final int ICON_INSET = 1;

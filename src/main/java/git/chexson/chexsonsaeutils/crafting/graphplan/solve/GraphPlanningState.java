@@ -9,10 +9,12 @@ import appeng.api.crafting.IPatternDetails;
 import org.jetbrains.annotations.Nullable;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
-import git.chexson.chexsonsaeutils.crafting.numeric.Ae2Amounts;
-import git.chexson.chexsonsaeutils.crafting.numeric.ByteAccount;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideKeyCounter;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideMath;
+import git.chexson.chexsonsaeutils.bigint.Ae2Amounts;
+import git.chexson.chexsonsaeutils.bigint.ByteAccount;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.bigint.WideCraftCounter;
+import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
+import git.chexson.chexsonsaeutils.bigint.WideMath;
 import git.chexson.chexsonsaeutils.crafting.recursive.RingId;
 
 /**
@@ -38,6 +40,9 @@ import git.chexson.chexsonsaeutils.crafting.recursive.RingId;
  * <li>The AEKey ledgers are {@link WideKeyCounter}s: long fast path, BigInteger
  * side table only for keys that truly overflow. Exits narrow through
  * {@link Ae2Amounts#toKeyCounter} (saturation + negative scan).</li>
+ * <li>份数账（{@code crafts}）同样是宽域账本（{@link WideCraftCounter}）：一张样板
+ * 跨站点累加或环宏发射向量超界时如实记账，饱和只代表值只出现在交回 AE2
+ * {@code patternTimes} 的那份字典上。</li>
  * </ul>
  */
 public final class GraphPlanningState {
@@ -52,42 +57,59 @@ public final class GraphPlanningState {
     @Nullable
     private final long[] stockByKeyId;
     /**
+     * 本次请求的真值供给：只在<b>种子那一眼</b>起作用——沙盒账本本来就是宽域的，
+     * 但起步量从 {@code long} 库存写进来就永远顶在 {@link Long#MAX_VALUE}。
+     * {@code EMPTY} 即今日口径，逐字不变。
+     */
+    private final git.chexson.chexsonsaeutils.crafting.material.PlanningSupplyTruth supplyTruth;
+    /**
      * 七张账本共用一张键内化表：id 一次解析后全程数组寻址。若每张表各自编号，
      * 一次 extract 就要为同一个键做七次哈希，比原先更糟。
      */
-    private final git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex;
+    private final git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex;
     private final WideKeyCounter unmodified;
     private final WideKeyCounter working;
     private final WideKeyCounter used;
     private final WideKeyCounter emitted;
     private final WideKeyCounter missing;
     /**
-     * 样板次数账本：fastutil 原语表，{@code addTo} 一次查表既加值又交回旧值
-     * （此前 {@code get} + {@code merge} 查两次并装箱一个 Long，点火热路径每次都走）。
-     * 仍实现 {@code Map<IPatternDetails, Long>}，出口侧口径不变。
+     * 样板份数账本（宽域）：{@code long} 快路径 + BigInteger 溢出侧表，范式与七张 AEKey 账本
+     * 一致。旧实现是裸 {@code Object2LongOpenHashMap}，越界只能抛
+     * {@code PlanningOverflowException} 把整条规划打死；现在同一张样板跨站点累加、或环宏
+     * 发射向量本身超界时，份数如实记账。
+     * {@link #crafts()} 交回的仍是该账本的饱和 {@code long} 视图（AE2 {@code patternTimes}
+     * 那份代表值），判据侧必须读 {@link #craftsWide()}。
      */
-    private final it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<IPatternDetails> crafts =
-            new it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<>();
+    private final WideCraftCounter crafts = new WideCraftCounter();
     private final WideKeyCounter ringExtractions;
     /** Retention reserve — the tree planner's recursiveInternalItems ledger. */
     private final WideKeyCounter recursiveInternalItems;
     private final Set<RingId> failedRingMacros = new HashSet<>();
+    /** 留种还种已记账的环（按 ringId，同一环整趟只还一次；随 journal 回滚）。 */
+    private final Set<RingId> repaidRingSeeds = new HashSet<>();
     private final ByteAccount byteAccount = new ByteAccount();
     /** bytes 构成分诊断：节点费与物料费分账（attempt 末尾探针用）。 */
     private double nodeBytesAccum;
     private double stackBytesAccum;
-    private final List<InputAllocation> inputAllocations = new java.util.ArrayList<>();
     private final PlanJournal journal;
 
     public GraphPlanningState(Map<AEKey, Long> stock, Map<AEKey, List<AEKey>> classVariants) {
         this(stock, classVariants, new PlanJournal.Arena(),
-                new git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex());
+                new git.chexson.chexsonsaeutils.bigint.KeyIndex());
+    }
+
+    /** 带真值供给的最简口：非稠密图（含离线用例）也从这里吃无限磁盘的 BigInteger 读数。 */
+    public GraphPlanningState(Map<AEKey, Long> stock, Map<AEKey, List<AEKey>> classVariants,
+            git.chexson.chexsonsaeutils.crafting.material.PlanningSupplyTruth supplyTruth) {
+        this(stock, classVariants, new PlanJournal.Arena(),
+                new git.chexson.chexsonsaeutils.bigint.KeyIndex(),
+                null, null, supplyTruth);
     }
 
     public GraphPlanningState(Map<AEKey, Long> stock, Map<AEKey, List<AEKey>> classVariants,
             PlanJournal.Arena journalArena) {
         this(stock, classVariants, journalArena,
-                new git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex());
+                new git.chexson.chexsonsaeutils.bigint.KeyIndex());
     }
 
     /**
@@ -96,19 +118,38 @@ public final class GraphPlanningState {
      */
     public GraphPlanningState(Map<AEKey, Long> stock, Map<AEKey, List<AEKey>> classVariants,
             PlanJournal.Arena journalArena,
-            git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex) {
+            git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex) {
         this(stock, classVariants, journalArena, keyIndex, null, null);
     }
 
+    /** 带共享键表与稠密视图、不带真值供给的口：起步量就是网络的 {@code long} 读数。 */
     public GraphPlanningState(Map<AEKey, Long> stock, Map<AEKey, List<AEKey>> classVariants,
             PlanJournal.Arena journalArena,
-            git.chexson.chexsonsaeutils.crafting.numeric.KeyIndex keyIndex,
+            git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex,
             @Nullable int[][] classMemberIdsByKeyId,
             @Nullable long[] stockByKeyId) {
+        this(stock, classVariants, journalArena, keyIndex, classMemberIdsByKeyId, stockByKeyId,
+                git.chexson.chexsonsaeutils.crafting.material.PlanningSupplyTruth.EMPTY);
+    }
+
+    /**
+     * @param supplyTruth 本次请求的<b>真值供给</b>（无限磁盘溢出键的 BigInteger 读数）；
+     *                    {@link git.chexson.chexsonsaeutils.crafting.material.PlanningSupplyTruth#EMPTY}
+     *                    即今日口径。沙盒账本本来就是宽域的，缺的只是<b>起步那一眼</b>：
+     *                    种子从 {@code long} 库存写进来，这一格最高就只有 {@code Long.MAX_VALUE}，
+     *                    计划于是永远不敢申报 &gt; long 的用量。这里把它接上。
+     */
+    public GraphPlanningState(Map<AEKey, Long> stock, Map<AEKey, List<AEKey>> classVariants,
+            PlanJournal.Arena journalArena,
+            git.chexson.chexsonsaeutils.bigint.KeyIndex keyIndex,
+            @Nullable int[][] classMemberIdsByKeyId,
+            @Nullable long[] stockByKeyId,
+            git.chexson.chexsonsaeutils.crafting.material.PlanningSupplyTruth supplyTruth) {
         this.stock = stock;
         this.classVariants = classVariants;
         this.classMemberIdsByKeyId = classMemberIdsByKeyId;
         this.stockByKeyId = stockByKeyId;
+        this.supplyTruth = supplyTruth;
         this.keyIndex = keyIndex;
         this.unmodified = new WideKeyCounter(keyIndex);
         this.working = new WideKeyCounter(keyIndex);
@@ -120,7 +161,7 @@ public final class GraphPlanningState {
         this.journal = new PlanJournal(
                 new WideKeyCounter[] { unmodified, working, used, emitted, missing, ringExtractions,
                         recursiveInternalItems },
-                crafts, failedRingMacros, byteAccount, inputAllocations, journalArena);
+                crafts, failedRingMacros, repaidRingSeeds, byteAccount, journalArena);
     }
 
     /** 键的稠密 id——热路径调用方（站点 / 样板产出）应在编译期解析一次后复用。 */
@@ -145,6 +186,16 @@ public final class GraphPlanningState {
 
     public void recordRingExtraction(AEKey key, long amount) {
         if (amount > 0) {
+            journal.counterAddDelta(PlanJournal.RING_EXTRACTIONS, idOf(key), amount);
+        }
+    }
+
+    /**
+     * 宽域留种预留一次记账，不按 long 大小拆笔；旧值由 journal 精确保存供回滚。
+     * 窄增量复用 long 日志列，只有宽增量保存旧值对象。
+     */
+    public void recordRingExtraction(AEKey key, PlanAmount amount) {
+        if (amount != null && amount.signum() > 0) {
             journal.counterAddDelta(PlanJournal.RING_EXTRACTIONS, idOf(key), amount);
         }
     }
@@ -177,6 +228,15 @@ public final class GraphPlanningState {
         journal.ringFailed(ringId);
     }
 
+    /** 这一环的留种轮数是否已经记进发射向量（整趟只还一次）。 */
+    public boolean hasRingSeedRepaid(RingId ringId) {
+        return this.repaidRingSeeds.contains(ringId);
+    }
+
+    public void markRingSeedRepaid(RingId ringId) {
+        journal.ringSeedRepaid(ringId);
+    }
+
     /** Legacy AE2 double accumulator view — bit-identical to the tree planner. */
     public double bytes() {
         return this.byteAccount.ae2Bytes();
@@ -187,35 +247,20 @@ public final class GraphPlanningState {
         return this.byteAccount;
     }
 
+    /**
+     * 份数的饱和 {@code long} 视图——交回 AE2 {@code patternTimes} 与按 long 计数的场合用。
+     *
+     * <p><b>判据侧禁止读这里</b>：超界样板在本视图上读回的是 {@code Long.MAX_VALUE} 代表值，
+     * 拿它算供需会把 1e19 发截成 9.2e18 发，闸门就此假通过。供需判定一律走
+     * {@link #craftsWide()}。
+     */
     public Map<IPatternDetails, Long> crafts() {
+        return crafts.longView();
+    }
+
+    /** 份数宽账（精确值）：守恒闸门、毛账与出口旁路账的唯一取数点。 */
+    public WideCraftCounter craftsWide() {
         return crafts;
-    }
-
-    public List<InputAllocation> inputAllocations() {
-        return List.copyOf(inputAllocations);
-    }
-
-    public void recordInputAllocation(
-            IPatternDetails consumer,
-            int inputSlot,
-            AEKey exactKey,
-            long templateAmount,
-            long units
-    ) {
-        if (consumer != null && inputSlot >= 0 && exactKey != null
-                && templateAmount > 0L && units > 0L) {
-            journal.inputAllocation(new InputAllocation(
-                    consumer, inputSlot, exactKey, templateAmount, units));
-        }
-    }
-
-    public record InputAllocation(
-            IPatternDetails consumer,
-            int inputSlot,
-            AEKey exactKey,
-            long templateAmount,
-            long units
-    ) {
     }
 
     /** 内部宽账本直读（convert 的 id 形态快遍历用；调用方不得写）。 */
@@ -275,11 +320,7 @@ public final class GraphPlanningState {
         }
         var members = classVariants.get(what);
         if (members == null) {
-            long amount = stockAmount(what, id);
-            journal.counterSet(PlanJournal.UNMODIFIED, id, amount);
-            if (amount > 0) {
-                journal.counterAddDelta(PlanJournal.WORKING, id, amount);
-            }
+            seedStock(id, what);
             return;
         }
         // 「整类已拉取」只探首成员：整类拉取会给每个成员（含首成员）写
@@ -291,11 +332,7 @@ public final class GraphPlanningState {
         }
         boolean pulledAny = false;
         for (var member : members) {
-            int memberId = idOf(member);
-            long amount = stock.getOrDefault(member, 0L);
-            journal.counterSet(PlanJournal.UNMODIFIED, memberId, amount);
-            if (amount > 0) {
-                journal.counterAddDelta(PlanJournal.WORKING, memberId, amount);
+            if (seedStock(idOf(member), member)) {
                 pulledAny = true;
             }
         }
@@ -310,10 +347,7 @@ public final class GraphPlanningState {
         }
         boolean pulledAny = false;
         for (int memberId : memberIds) {
-            long amount = stockAmount(null, memberId);
-            journal.counterSet(PlanJournal.UNMODIFIED, memberId, amount);
-            if (amount > 0) {
-                journal.counterAddDelta(PlanJournal.WORKING, memberId, amount);
+            if (seedStock(memberId, null)) {
                 pulledAny = true;
             }
         }
@@ -328,11 +362,125 @@ public final class GraphPlanningState {
                 : stock.getOrDefault(key != null ? key : keyIndex.keyOf(id), 0L);
     }
 
+    /**
+     * 把一个键的网络库存<b>真值</b>种进沙盒：UNMODIFIED 记绝对值、WORKING 起步同值；
+     * 返回是否种进了正数（调用方用它决定"整类有没有料"的 0 标记）。
+     *
+     * <p>窄值（装得进 {@code long}）逐字走原路——{@code set} + {@code delta} 两条日志的形状
+     * 一字不变，非溢出键的内存与回放开销零变化。只有真值越出 {@code long} 才两张账都换成
+     * {@code setExact}：这一格此刻必然不在册（整类只在首次被触碰时拉取），set 与 add 同解，
+     * 而增量日志的 {@code deltas} 列是 {@code long}，装不下宽值。
+     */
+    private boolean seedStock(int id, @Nullable AEKey key) {
+        var amount = stockAmountWide(key, id);
+        if (amount.isFast()) {
+            long narrow = amount.fastValue();
+            journal.counterSet(PlanJournal.UNMODIFIED, id, narrow);
+            if (narrow > 0L) {
+                journal.counterAddDelta(PlanJournal.WORKING, id, narrow);
+            }
+            return narrow > 0L;
+        }
+        journal.counterSetExact(PlanJournal.UNMODIFIED, id, amount);
+        journal.counterSetExact(PlanJournal.WORKING, id, amount);
+        return true;
+    }
+
+    /** 种子读数：命中溢出键给 {@link PlanAmount} 真值，否则逐字是今天那份 {@code long} 库存。 */
+    private PlanAmount stockAmountWide(@Nullable AEKey key, int id) {
+        if (supplyTruth.isEmpty()) {
+            return PlanAmount.of(stockAmount(key, id));
+        }
+        var resolved = key != null ? key : keyIndex.keyOf(id);
+        return supplyTruth.supplyOf(resolved, stockAmount(resolved, id));
+    }
+
+    /**
+     * 精确键的当前可用量只读视图，供终端输入的批量剪枝使用。
+     * 已拉取的键或族读取 working，未拉取则计入库存真值；不触发缓存、不写日志。
+     * 与提取入口相同，已忽略的目标和已预留种子不能再次算成可用库存。
+     * 调用方必须使用本状态内化表中的 keyId，不得把该读数推广为模糊槽总供给。
+     */
+    public PlanAmount availableExactByIdWide(AEKey key, int keyId) {
+        var available = working.getAmountById(keyId);
+        if (unmodified.containsKeyById(keyId)) {
+            return available.max(PlanAmount.ZERO);
+        }
+        int[] memberIds = classMemberIds(keyId);
+        if (memberIds != null) {
+            if (memberIds.length == 0 || unmodified.containsKeyById(memberIds[0])) {
+                return available.max(PlanAmount.ZERO);
+            }
+        } else {
+            var members = classVariants.get(key);
+            if (members != null && (members.isEmpty() || unmodified.containsKey(members.getFirst()))) {
+                return available.max(PlanAmount.ZERO);
+            }
+        }
+        return available.add(stockAmountWide(key, keyId)).max(PlanAmount.ZERO);
+    }
+
     @Nullable
     private int[] classMemberIds(int id) {
         return classMemberIdsByKeyId != null && id < classMemberIdsByKeyId.length
                 ? classMemberIdsByKeyId[id]
                 : null;
+    }
+
+    /**
+     * 把留种那一份从<b>可花库存</b>里扣住：只减 {@code working}，{@code unmodified} 不动。
+     *
+     * <p>消费者于是拿不到它，只能去打火环宏补一颗；而环起步那份由
+     * {@code reservableStock}（读网络库存快照）照常 reserve 得到。扣下去的这一份同时
+     * 记进 {@code used} 峰值——它会被物理提进 CPU，作业跑完由 {@code storeItems} 倒回网络，
+     * 这才是"提取进 CPU 用完还得还种"。
+     */
+    public void holdBackRetainedSeeds(Map<AEKey, Long> retained) {
+        for (var entry : retained.entrySet()) {
+            holdBackRetainedSeed(entry.getKey(), entry.getValue());
+        }
+    }
+
+    /** 宽域版留种账（{@code CraftGraph.retainedSeedsWide()}）：真值扣真值，不读饱和视图。 */
+    public void holdBackRetainedSeedsWide(Map<AEKey, PlanAmount> retained) {
+        for (var entry : retained.entrySet()) {
+            holdBackRetainedSeed(entry.getKey(), entry.getValue());
+        }
+    }
+
+    /** 单键版：把 {@code amount} 枚留种从可花账里扣回去（{@code working} 不足时按现有量夹住）。 */
+    public void holdBackRetainedSeed(AEKey key, long amount) {
+        if (key == null || amount <= 0L) {
+            return;
+        }
+        int id = idOf(key);
+        cacheFuzzy(key, id);
+        long held = Math.min(amount, working.getLongById(id));
+        if (held > 0L) {
+            journal.counterAddDelta(PlanJournal.WORKING, id, -held);
+            updateUsed(id);
+        }
+    }
+
+    /**
+     * 宽域留种按 min(需求, 可花库存) 一次扣回，供给与扣回量均不窄化。
+     * 提取峰值只在扣回后更新；窄值仍走原有 long 入口。
+     */
+    public void holdBackRetainedSeed(AEKey key, PlanAmount amount) {
+        if (key == null || amount == null || amount.signum() <= 0L) {
+            return;
+        }
+        if (amount.isFast()) {
+            holdBackRetainedSeed(key, amount.fastValue());
+            return;
+        }
+        int id = idOf(key);
+        cacheFuzzy(key, id);
+        var held = amount.min(working.getAmountById(id));
+        if (held.signum() > 0L) {
+            journal.counterAddDelta(PlanJournal.WORKING, id, held.negate());
+            updateUsed(id);
+        }
     }
 
     public long extract(AEKey what, long amount, boolean simulate) {
@@ -353,8 +501,33 @@ public final class GraphPlanningState {
         return extracted;
     }
 
+    /**
+     * 宽域精确取料：按 min(库存, 请求) 一次扣回，更新 requiredExtract 峰值。
+     * 窄值仍走 long 入口；宽值不拆轮，避免数量增大导致日志和循环线性膨胀。
+     */
+    public PlanAmount extractByIdWide(AEKey what, int id, PlanAmount amount) {
+        if (amount.signum() <= 0) {
+            return PlanAmount.ZERO;
+        }
+        if (amount.isFast()) {
+            return PlanAmount.of(extractById(what, id, amount.fastValue(), false));
+        }
+        cacheFuzzy(what, id);
+        var extracted = working.getAmountById(id).min(amount).max(PlanAmount.ZERO);
+        if (extracted.signum() > 0) {
+            journal.counterAddDelta(PlanJournal.WORKING, id, extracted.negate());
+        }
+        updateUsed(id);
+        return extracted;
+    }
+
     public void insert(AEKey what, long amount) {
         insertById(what, idOf(what), amount);
+    }
+
+    /** 宽域版 {@link #insert}：一笔产出可以 {@code > long}，窄值一次退回 long 版。 */
+    public void insert(AEKey what, PlanAmount amount) {
+        insertByIdWide(what, idOf(what), amount);
     }
 
     public void insertById(AEKey what, int id, long amount) {
@@ -362,6 +535,18 @@ public final class GraphPlanningState {
         if (amount != 0) {
             journal.counterAddDelta(PlanJournal.WORKING, id, amount);
         }
+    }
+
+    /**
+     * 宽域产出一次进入 working 账；同族库存仍在入账前按既有顺序拉取。
+     * 窄增量复用 long 日志列，宽增量保存旧值供精确回滚。
+     */
+    public void insertByIdWide(AEKey what, int id, PlanAmount amount) {
+        if (amount.signum() == 0) {
+            return;
+        }
+        cacheFuzzy(what, id);
+        journal.counterAddDelta(PlanJournal.WORKING, id, amount);
     }
 
     /**
@@ -398,7 +583,7 @@ public final class GraphPlanningState {
 
     /**
      * 找「该键的模糊类在沙盒里的第一个活成员」（类序，与 AE2 的贪婪模板迭代同序），
-     * 找不到返回 null。聚合核的模板提取每次只需要**一个**可提取来源：贪婪迭代
+     * 找不到返回 null。求解侧的模板提取每次只需要**一个**可提取来源：贪婪迭代
      * 「取到整模板就停」，第一个活成员就是它，后面的成员从不被消费——所以无需
      * 构建整个活变体列表（每键一次 ArrayList + 全类扫描，实机类有十几个变体）。
      *
@@ -447,8 +632,30 @@ public final class GraphPlanningState {
         }
     }
 
+    /**
+     * 宽域版 {@link #emitItems}：可发射（emittable）那一腿的需求可以越出 {@code long}。
+     * 这本账是守恒闸门的供给侧（{@code addToSupply(supply, state.emitted())}），
+     * 记成天花板就是把哨兵当量——闸门另一侧的需求是精确宽值，两侧读出两个数即假拒。
+     * 窄值一次退回 long 版。
+     */
+    public void emitItemsWide(AEKey what, PlanAmount amount) {
+        if (amount.signum() != 0) {
+            journal.counterAddDelta(PlanJournal.EMITTED, idOf(what), amount);
+        }
+    }
+
     public void addMissing(AEKey what, long amount) {
         if (amount != 0) {
+            journal.counterAddDelta(PlanJournal.MISSING, idOf(what), amount);
+        }
+    }
+
+    /**
+     * 宽域版 {@link #addMissing}：缺口同样记进守恒闸门的供给侧平衡项，
+     * 一笔 {@code > long} 的需求截成天花板就把"还差多少"报小了。窄值一次退回 long 版。
+     */
+    public void addMissingWide(AEKey what, PlanAmount amount) {
+        if (amount.signum() != 0) {
             journal.counterAddDelta(PlanJournal.MISSING, idOf(what), amount);
         }
     }
@@ -458,8 +665,15 @@ public final class GraphPlanningState {
      * 只在出口、无回滚语义的阶段调用。
      */
     public void reduceMissing(AEKey what, long amount) {
-        if (amount != 0) {
-            journal.counterAddDelta(PlanJournal.MISSING, idOf(what), -amount);
+        reduceMissingWide(what, PlanAmount.of(amount));
+    }
+
+    /**
+     * 宽域出口对账：缺口一次减去精确数量，清零时移除键，保留原有空账判据。
+     */
+    public void reduceMissingWide(AEKey what, PlanAmount amount) {
+        if (amount.signum() != 0) {
+            journal.counterAddDelta(PlanJournal.MISSING, idOf(what), amount.negate());
         }
     }
 
@@ -468,20 +682,37 @@ public final class GraphPlanningState {
      * （树侧这些量本该作为整模板提取出现在 used 里）。同样只在出口调用。
      */
     public void addUsedForReconciliation(AEKey what, long amount) {
-        int id = idOf(what);
-        long current = unmodified.getLongById(id) - working.getLongById(id);
-        long target = Math.max(current, 0L) + amount;
-        long unmod = unmodified.getLongById(id);
-        // used 的峰值口径：delta = unmodified − working ≥ target 时直接设
-        journal.counterSet(PlanJournal.USED, id, Math.max(used.getLongById(id), target));
+        addUsedForReconciliationWide(what, PlanAmount.of(amount));
     }
 
-    public void addCrafting(IPatternDetails details, long times) {
-        try {
-            journal.craftsMerge(details, times);
-        } catch (ArithmeticException overflowed) {
-            throw new PlanningOverflowException("craft count overflow at " + details);
+    /**
+     * 宽域版：used 的峰值口径是 {@code unmodified − working}，这两个读数在无限盘溢出键上
+     * 都是宽域真值。<b>先读饱和窄视图再相减</b>的两个方向都会错（{@code MAX − 5.78e18} 与
+     * 再叠一笔 {@code long} 补偿会直接回绕成负数），而 {@code counterSet} 是绝对赋值——
+     * 于是这本账里已有的 {@code > long} 真值被压回天花板，闸门供给侧凭空少一截即假拒。
+     * 全程走 {@link PlanAmount}，落账用 {@code counterSetExact}。
+     */
+    public void addUsedForReconciliationWide(AEKey what, PlanAmount amount) {
+        int id = idOf(what);
+        var current = unmodified.getAmountById(id).subtract(working.getAmountById(id));
+        if (current.signum() < 0) {
+            current = PlanAmount.ZERO;
         }
+        var target = current.add(amount);
+        journal.counterSetExact(PlanJournal.USED, id, target.max(used.getAmountById(id)));
+    }
+
+    /**
+     * 记一张样板执行 {@code times} 发。越界不再打死规划：份数账是宽域的，
+     * 超 {@code long} 的量如实入账（饱和只发生在 {@link #crafts()} 那份交回 AE2 的代表值上）。
+     */
+    public void addCrafting(IPatternDetails details, long times) {
+        journal.craftsMerge(details, times);
+    }
+
+    /** 宽域发数版：环宏发射向量本身超界时走这条，增量口径与 long 版逐字相同。 */
+    public void addCrafting(IPatternDetails details, PlanAmount times) {
+        journal.craftsMerge(details, times);
     }
 
     public void addBytes(double bytes) {
@@ -492,6 +723,23 @@ public final class GraphPlanningState {
     public void addStackBytes(AEKey key, long amount, long multiplier) {
         // Crafting storage is 8 times bigger than normal storage, this is intentional.
         this.stackBytesAccum += (double) amount * multiplier / key.getType().getAmountPerByte() * 8;
+        journal.stackBytes(key, amount, multiplier);
+    }
+
+    /**
+     * 宽份数的物料费一次写入精确整数桶，double 仅作诊断读数。
+     * 窄份数仍复用原浮点累加顺序；宽份数撤销时恢复旧 double 与精确桶增量。
+     */
+    public void addStackBytesWide(AEKey key, long amount, PlanAmount multiplier) {
+        if (multiplier.signum() == 0) {
+            return;
+        }
+        if (multiplier.isFast()) {
+            addStackBytes(key, amount, multiplier.fastValue());
+            return;
+        }
+        this.stackBytesAccum += (double) amount * multiplier.exactValue().doubleValue()
+                / key.getType().getAmountPerByte() * 8;
         journal.stackBytes(key, amount, multiplier);
     }
 
@@ -515,9 +763,69 @@ public final class GraphPlanningState {
         return extractTemplatesById(key, idOf(key), templateAmount, requestedUnits);
     }
 
-    /** id 形态热路径：站点携带自身键 id，整条提取链零哈希。 */
+    /**
+     * 整模板提取：件数落在 long 域时复用原单轮抽取。
+     * 乘积越域时以宽库存除以模板量，一次提取整份数；余料保留，返回份数不超过请求。
+     */
     public long extractTemplatesById(AEKey key, int keyId, long templateAmount, long requestedUnits) {
-        return extractTemplatesWithSourceById(key, keyId, templateAmount, requestedUnits).units();
+        if (requestedUnits <= 0L) {
+            return 0L;
+        }
+        if (templateAmount <= 1L || requestedUnits <= Long.MAX_VALUE / templateAmount) {
+            return extractTemplatesOnce(key, keyId, templateAmount, requestedUnits);
+        }
+        return extractTemplatesWide(key, keyId, templateAmount,
+                PlanAmount.of(requestedUnits)).fastValue();
+    }
+
+    /**
+     * 宽份数整模板提取：库存除以模板量后向下取整，取请求与可用份数的较小值。
+     * 一次扣回精确件数并更新用量峰值，避免嵌套的份数分轮与件数分轮。
+     */
+    public PlanAmount extractTemplatesByIdWide(AEKey key, int keyId, long templateAmount,
+            PlanAmount requestedUnits) {
+        if (requestedUnits.signum() <= 0L) {
+            return PlanAmount.ZERO;
+        }
+        if (requestedUnits.isFast()) {
+            return PlanAmount.of(extractTemplatesById(key, keyId, templateAmount,
+                    requestedUnits.fastValue()));
+        }
+        return extractTemplatesWide(key, keyId, templateAmount, requestedUnits);
+    }
+
+    /** 宽域库存按整模板一次提取；份数向下取整，余料留在同一沙盒中。 */
+    private PlanAmount extractTemplatesWide(AEKey key, int keyId, long templateAmount,
+            PlanAmount requestedUnits) {
+        if (templateAmount <= 0L) {
+            throw new IllegalArgumentException("template amount must be positive");
+        }
+        cacheFuzzy(key, keyId);
+        var template = PlanAmount.of(templateAmount);
+        var units = working.getAmountById(keyId).max(PlanAmount.ZERO)
+                .divide(template).min(requestedUnits);
+        if (units.signum() > 0) {
+            var total = template.multiply(units);
+            journal.counterAddDelta(PlanJournal.WORKING, keyId, total.negate());
+            updateUsed(keyId);
+        }
+        return units;
+    }
+
+    /** 单轮整模板提取（旧口径原样）：模拟抽 → 折算份数 → 真抽，份数不整除就退回。 */
+    private long extractTemplatesOnce(AEKey key, int keyId, long templateAmount, long requestedUnits) {
+        long maxTotal = WideMath.wideMul(templateAmount, requestedUnits);
+        long extracted = extractById(key, keyId, maxTotal, true);
+        long units = extracted / templateAmount;
+        maxTotal = WideMath.wideMul(templateAmount, units);
+        if (maxTotal == 0) {
+            return 0L;
+        }
+        long really = extractById(key, keyId, maxTotal, false);
+        if (really != maxTotal) {
+            throw new IllegalStateException("Failed to correctly extract whole number. Invalid simulation!");
+        }
+        return units;
     }
 
     /**
@@ -540,36 +848,29 @@ public final class GraphPlanningState {
         return extractedUnits;
     }
 
-    /**
-     * 与 {@link #extractTemplatesById} 相同，但同时返回真正被扣减的 exact variant。
-     * AggregateSolver 的输入见证必须记录这里选中的实体键，不能用编译期 GraphInput.key 代替。
-     */
-    public TemplateExtraction extractTemplatesWithSourceById(AEKey key, int keyId, long templateAmount,
-            long requestedUnits) {
-        long maxTotal = WideMath.wideMul(templateAmount, requestedUnits);
-        long extracted = extractById(key, keyId, maxTotal, true);
-        long units = extracted / templateAmount;
-        maxTotal = WideMath.wideMul(templateAmount, units);
-        if (maxTotal == 0) {
-            return TemplateExtraction.none();
-        }
-        long really = extractById(key, keyId, maxTotal, false);
-        if (really != maxTotal) {
-            throw new IllegalStateException("Failed to correctly extract whole number. Invalid simulation!");
-        }
-        return new TemplateExtraction(key, units);
-    }
-
-    public record TemplateExtraction(@Nullable AEKey sourceKey, long units) {
-        private static TemplateExtraction none() {
-            return new TemplateExtraction(null, 0L);
-        }
-    }
-
     private void updateUsed(int id) {
-        long delta = unmodified.getLongById(id) - working.getLongById(id);
-        if (delta > 0 && delta > used.getLongById(id)) {
-            journal.counterSet(PlanJournal.USED, id, delta);
+        if (unmodified.overflowOfById(id) == null && working.overflowOfById(id) == null
+                && used.overflowOfById(id) == null) {
+            long original = unmodified.rawFastById(id);
+            long current = working.rawFastById(id);
+            long extracted = original - current;
+            // 两个窄操作数相减仍可溢出；只有精确落在 long 时才走原始列。
+            if (((original ^ current) & (original ^ extracted)) >= 0) {
+                if (extracted > 0L && extracted > used.rawFastById(id)) {
+                    journal.counterSet(PlanJournal.USED, id, extracted);
+                }
+                return;
+            }
+        }
+        // 相减必须走宽域真值。旧口径读两个【饱和主表】再相减，两个方向都会记丢：
+        // working 还在溢出区（主表恒为 Long.MAX_VALUE）时差值恒报 0，抽走多少全隐身；
+        // 一旦 working 跌破天花板，又开始拿 Long.MAX_VALUE 反推，于是从真值 1.5e19 枚里
+        // 抽走 Long.MAX_VALUE 枚只记上 3.45e18 枚——少掉的 5.78e18 枚不是没抽，是记丢了。
+        // 这本账是守恒闸门与配给表的供给侧（addToSupply(supply, state.used())），
+        // 少记一截就把配得平的图判成"材料不闭合"整条拒掉。
+        var delta = unmodified.getAmountById(id).subtract(working.getAmountById(id));
+        if (delta.signum() > 0 && delta.compareTo(used.getAmountById(id)) > 0) {
+            journal.counterSetExact(PlanJournal.USED, id, delta);
         }
     }
 
@@ -582,11 +883,20 @@ public final class GraphPlanningState {
     /**
      * N4 出口体检：任一账本出现负值即 AE2 裸 {@code +=} 回绕的唯一可观测症状，
      * 调用方必须 DECLINE 回落，绝不让负数进 {@code CraftingPlan}。
+     *
+     * <p>份数账（{@code crafts}）也在检查域内：实机 2026-09-24 13:50 的取证行里躺着
+     * {@code times=-13216328854969394}，而这一本当时<b>不在</b>体检名单上，负发数于是
+     * 一路出了门（{@code Ae2Amounts.toLong} 只饱和不回绕，负值原样带下去）。
      */
     public boolean hasNegativeExitValues() {
         return hasNegative(unmodified) || hasNegative(working) || hasNegative(used)
                 || hasNegative(emitted) || hasNegative(missing) || hasNegative(ringExtractions)
-                || hasNegative(recursiveInternalItems);
+                || hasNegative(recursiveInternalItems) || crafts.hasNegative();
+    }
+
+    /** 负发数的点名串（样板 + 份数）；无负发数返回 {@code null}。只给出口的判决文本点名来源。 */
+    public @Nullable String negativeCraftDetails() {
+        return crafts.describeNegative();
     }
 
     private static boolean hasNegative(WideKeyCounter counter) {

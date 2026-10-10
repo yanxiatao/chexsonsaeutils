@@ -19,9 +19,10 @@ import appeng.api.storage.AEKeyFilter;
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.stream.JsonWriter;
 import com.mojang.logging.LogUtils;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.color.PatternColorHelper;
+import git.chexson.chexsonsaeutils.crafting.graphplan.graph.ProviderPatternOrder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -293,7 +294,8 @@ public final class GraphPlanCapture {
             while (keyCursor < this.keys.size() || patternCursor < this.patterns.size()) {
                 while (keyCursor < this.keys.size()) {
                     AEKey key = this.keys.get(keyCursor++);
-                    this.service.recordCraftingFor(key, this.service.delegate.getCraftingFor(key));
+                    // 记的是我们侧真正用的那份（并列项定序之后），回放侧读到同一份次序
+                    this.service.recordCraftingFor(key, this.service.stabilizedCraftingFor(key));
                 }
                 while (patternCursor < this.patterns.size()) {
                     indexOf(this.patterns.get(patternCursor++));
@@ -340,7 +342,7 @@ public final class GraphPlanCapture {
         json.name("processors").value(Runtime.getRuntime().availableProcessors());
         json.name("thread").value(Thread.currentThread().getName());
         json.name("mods").beginObject();
-        writeModVersion(json, Chexsonsaeutils.MODID);
+        writeModVersion(json, ModIds.MODID);
         writeModVersion(json, "ae2");
         writeModVersion(json, "neoforge");
         writeModVersion(json, "neoecoae");
@@ -499,11 +501,27 @@ public final class GraphPlanCapture {
     private record Query(String operation, AEKey key, @Nullable AEKey result) {
     }
 
-    private final class RecordingService implements ICraftingService {
+    private final class RecordingService implements ICraftingService,
+            ProviderPatternOrder.PatternPrioritySource {
         private final ICraftingService delegate;
 
         private RecordingService(ICraftingService delegate) {
             this.delegate = delegate;
+        }
+
+        /**
+         * 录制代理报的优先级穿回真网格（{@code delegate} 是 AE2 的 {@code CraftingService} 时
+         * 走 {@code getProviders}，否则按默认 0）：并列项定序在录制侧与实机侧必须是同一把尺，
+         * 否则工件里记下的路线序与实机真正用过的那份不同。
+         */
+        @Override
+        public int patternPriority(IPatternDetails pattern) {
+            return ProviderPatternOrder.observedPriority(delegate, pattern);
+        }
+
+        /** 我们侧真正用的那份清单＝并列项定过序的那份（台账 #140）。 */
+        private Collection<IPatternDetails> stabilizedCraftingFor(AEKey key) {
+            return ProviderPatternOrder.stabilized(this, this.delegate.getCraftingFor(key));
         }
 
         private void recordCraftingFor(AEKey key, Collection<IPatternDetails> result) {
@@ -517,7 +535,7 @@ public final class GraphPlanCapture {
 
         @Override
         public Collection<IPatternDetails> getCraftingFor(AEKey key) {
-            Collection<IPatternDetails> result = this.delegate.getCraftingFor(key);
+            var result = stabilizedCraftingFor(key);
             recordCraftingFor(key, result);
             queries.add(new Query("getCraftingFor", key, null));
             return result;

@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.recursive;
 
-import git.chexson.chexsonsaeutils.crafting.numeric.WideMath;
+import git.chexson.chexsonsaeutils.bigint.WideMath;
 
 /**
  * 环 scale 双轨载体：宽域整数闭式与 legacy double 链的分支收敛在
@@ -14,9 +14,5 @@ public record RingScale(long total, long divisor) {
 
     public long ceilScaled(long amount) {
         return WideMath.ceilMulDiv(amount, total, divisor);
-    }
-
-    public long floorScaled(long amount) {
-        return WideMath.floorMulDiv(amount, total, divisor);
     }
 }

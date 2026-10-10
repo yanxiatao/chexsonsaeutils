@@ -13,8 +13,8 @@ import net.neoforged.neoforge.items.IItemHandler;
 import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuHostLocator;
+
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
  * 物质团供应器宿主接口。
@@ -25,6 +25,12 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * UUID（玩家模式交付用）。
  */
 public interface MatterMassPatternProviderHost extends CustomPatternProviderLogicHost {
+
+    /** 每页样板槽数量：菜单与设备按同一口径划分页。 */
+    int PATTERN_SLOTS_PER_PAGE = 36;
+
+    /** 服务端切换产物返回目标并通知设备持久化。 */
+    void setReturnMode(ReturnMode mode);
 
     @Override
     MatterMassPatternProviderLogic getLogic();
@@ -55,14 +61,4 @@ public interface MatterMassPatternProviderHost extends CustomPatternProviderLogi
         return null;
     }
 
-    @Override
-    default void openMenu(Player player, MenuHostLocator locator) {
-        MenuOpener.open(ChexsonsaeutilsContent.MATTER_MASS_PATTERN_PROVIDER_MENU.get(), player, locator);
-    }
-
-    @Override
-    default void returnToMainMenu(Player player, ISubMenu subMenu) {
-        MenuOpener.returnTo(ChexsonsaeutilsContent.MATTER_MASS_PATTERN_PROVIDER_MENU.get(), player,
-                subMenu.getLocator());
-    }
 }

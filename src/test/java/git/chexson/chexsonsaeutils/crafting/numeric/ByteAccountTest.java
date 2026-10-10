@@ -10,6 +10,7 @@ import net.minecraft.world.item.Items;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import git.chexson.chexsonsaeutils.bigint.ByteAccount;
 
 class ByteAccountTest {
 

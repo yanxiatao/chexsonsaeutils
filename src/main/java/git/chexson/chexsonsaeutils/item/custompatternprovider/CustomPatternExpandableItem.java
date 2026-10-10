@@ -15,7 +15,7 @@ package git.chexson.chexsonsaeutils.item.custompatternprovider;
  * 实现要求：实现类应同时实现 {@link appeng.api.implementations.items.IStorageComponent}
  * （可放入扩容 GUI 存储槽），并携带 CUSTOM_PATTERN_PAGES
  * 组件语义（getOrDefault 读取、set 写入，见
- * {@link git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent#CUSTOM_PATTERN_PAGES}）。
+ * {@link git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternRegistration#CUSTOM_PATTERN_PAGES}）。
  */
 public interface CustomPatternExpandableItem {
 }

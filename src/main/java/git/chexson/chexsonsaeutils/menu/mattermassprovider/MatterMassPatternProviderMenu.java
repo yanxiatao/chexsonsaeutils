@@ -13,8 +13,8 @@ import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.slot.AppEngSlot;
 import appeng.menu.slot.RestrictedInputSlot;
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.blockentity.mattermassprovider.MatterMassPatternProviderBlockEntity;
+import git.chexson.chexsonsaeutils.modid.ModIds;
+
 import git.chexson.chexsonsaeutils.helpers.mattermassprovider.MatterMassPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.mattermassprovider.ReturnMode;
 import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeLocator;
@@ -35,7 +35,7 @@ public class MatterMassPatternProviderMenu extends AEBaseMenu {
     public static final MenuType<MatterMassPatternProviderMenu> TYPE = MenuTypeBuilder
             .create(MatterMassPatternProviderMenu::new, MatterMassPatternProviderHost.class)
             .buildUnregistered(Objects.requireNonNull(
-                    ResourceLocation.tryParse(Chexsonsaeutils.MODID + ":matter_mass_pattern_provider")
+                    ResourceLocation.tryParse(ModIds.MODID + ":matter_mass_pattern_provider")
             ));
 
     private final MatterMassPatternProviderHost mmHost;
@@ -141,11 +141,9 @@ public class MatterMassPatternProviderMenu extends AEBaseMenu {
         if (!isServerSide()) {
             return;
         }
-        if (mmHost instanceof MatterMassPatternProviderBlockEntity blockEntity) {
-            var values = ReturnMode.values();
-            var next = values[(blockEntity.getReturnMode().ordinal() + 1) % values.length];
-            blockEntity.setReturnMode(next);
-        }
+        var values = ReturnMode.values();
+        var next = values[(mmHost.getReturnMode().ordinal() + 1) % values.length];
+        mmHost.setReturnMode(next);
     }
 
     /** 服务端入口：打开扩容 GUI（复用定制样板供应器扩容体系）。 */
@@ -166,11 +164,11 @@ public class MatterMassPatternProviderMenu extends AEBaseMenu {
     private void updateSlotActivity() {
         var slots = getSlots(SlotSemantics.ENCODED_PATTERN);
         int unlockedSlots = Math.min(slots.size(),
-                this.pages * MatterMassPatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE);
+                this.pages * MatterMassPatternProviderHost.PATTERN_SLOTS_PER_PAGE);
         int slotId = 0;
         for (var slot : slots) {
             if (slot instanceof AppEngSlot appEngSlot) {
-                int slotPage = slotId / MatterMassPatternProviderBlockEntity.PATTERN_SLOTS_PER_PAGE;
+                int slotPage = slotId / MatterMassPatternProviderHost.PATTERN_SLOTS_PER_PAGE;
                 boolean unlocked = slotId < unlockedSlots;
                 appEngSlot.setSlotEnabled(unlocked);
                 appEngSlot.setActive(unlocked && slotPage == this.page);

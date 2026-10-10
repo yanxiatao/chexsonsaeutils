@@ -8,7 +8,7 @@ import appeng.core.AppEng;
 import appeng.core.network.serverbound.InventoryActionPacket;
 import appeng.helpers.InventoryAction;
 import appeng.menu.AEBaseMenu;
-import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixClientView;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixInteraction;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixMenuLink;
 import net.minecraft.client.gui.GuiGraphics;

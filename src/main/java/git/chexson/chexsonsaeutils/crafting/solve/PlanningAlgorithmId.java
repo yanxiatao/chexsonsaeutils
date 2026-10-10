@@ -5,9 +5,7 @@ import java.util.Optional;
 
 /** 可由服务端排序的规划算法及其稳定元数据。 */
 public enum PlanningAlgorithmId {
-    FROZEN_ROUTE(false),
     GRAPH(false),
-    FAST(false),
     NATIVE(true);
 
     private static final String TRANSLATION_PREFIX = "planning_algorithm.chexsonsaeutils.";

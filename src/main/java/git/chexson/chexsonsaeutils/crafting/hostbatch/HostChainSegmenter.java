@@ -8,10 +8,11 @@ import appeng.api.stacks.KeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
 import appeng.crafting.pattern.AECraftingPattern;
 import com.mojang.logging.LogUtils;
-import git.chexson.chexsonsaeutils.crafting.numeric.Ae2Amounts;
-import git.chexson.chexsonsaeutils.crafting.numeric.PlanAmount;
-import git.chexson.chexsonsaeutils.crafting.numeric.WideMath;
-import git.chexson.chexsonsaeutils.crafting.solve.DependencyGraphs;
+import git.chexson.chexsonsaeutils.bigint.Ae2Amounts;
+import git.chexson.chexsonsaeutils.bigint.ClampedMath;
+import git.chexson.chexsonsaeutils.bigint.PlanAmount;
+import git.chexson.chexsonsaeutils.bigint.WideMath;
+import git.chexson.chexsonsaeutils.crafting.depgraph.DependencyGraphs;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -202,7 +203,7 @@ final class HostChainSegmenter {
                     && comparePatternDefinitions(selectedPattern, candidate.pattern()) > 0) {
                 selectedPattern = candidate.pattern();
             }
-            aggregatedCraftCount = saturatingAdd(aggregatedCraftCount, candidate.craftCount());
+            aggregatedCraftCount = ClampedMath.add(aggregatedCraftCount, candidate.craftCount());
         }
         return new SelectedGraphNode(
                 base.definitionKey(),
@@ -1055,7 +1056,7 @@ final class HostChainSegmenter {
         if (target == null || key == null || amount <= 0L) {
             return;
         }
-        target.merge(key, amount, HostChainSegmenter::saturatingAdd);
+        target.merge(key, amount, ClampedMath::add);
     }
 
     private static void mergeStackMaps(Map<AEKey, Long> target, Map<AEKey, Long> source) {
@@ -1198,16 +1199,6 @@ final class HostChainSegmenter {
         return Ae2Amounts.toLong(
                 PlanAmount.of(startingAmount).subtract(consumed).max(PlanAmount.ZERO)
         );
-    }
-
-    static long saturatingAdd(long left, long right) {
-        if (right > 0L && left > Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        if (right < 0L && left < Long.MIN_VALUE - right) {
-            return Long.MIN_VALUE;
-        }
-        return left + right;
     }
 
     private static int saturatingIntMultiply(int left, int right) {

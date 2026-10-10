@@ -22,6 +22,57 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PlanJournalTest {
 
+    @Test
+    void hundredDigitLedgerRestoresNestedMarksAndExactBytes() {
+        var paper = key(Items.PAPER);
+        var wide = git.chexson.chexsonsaeutils.bigint.PlanAmount.of(java.math.BigInteger.TEN.pow(100));
+        var state = new GraphPlanningState(Map.of(paper, 17L), Map.of());
+        int outer = state.journal();
+        state.insert(paper, wide);
+        state.emitItemsWide(paper, wide);
+        state.addMissingWide(paper, wide);
+        state.recordRingExtraction(paper, wide);
+        state.addStackBytesWide(paper, 3L, wide);
+        assertEquals(wide.multiply(git.chexson.chexsonsaeutils.bigint.PlanAmount.of(24L))
+                .ceilDiv(git.chexson.chexsonsaeutils.bigint.PlanAmount.of(paper.getAmountPerByte())),
+                state.byteAccount().exactValue());
+        int inner = state.journal();
+        var units = wide.divide(git.chexson.chexsonsaeutils.bigint.PlanAmount.of(7L));
+        assertEquals(units, state.extractTemplatesByIdWide(paper, state.idOf(paper), 7L, units));
+        assertTrue(state.used().isEmpty(), "提取的是模拟产出，尚未触及原库存，不计 requiredExtract");
+        state.reduceMissingWide(paper, wide);
+        assertTrue(state.missing().isEmpty());
+        state.undoTo(inner);
+        assertEquals(wide.exactValue(), state.missing().getExact(paper));
+        assertTrue(state.used().isEmpty());
+        assertEquals(wide, state.extractByIdWide(paper, state.idOf(paper), wide));
+        state.undoTo(outer);
+        assertTrue(state.missing().isEmpty());
+        assertTrue(state.emitted().isEmpty());
+        assertTrue(state.ringExtractions().isEmpty());
+        assertEquals(0.0, state.bytes());
+        assertEquals(git.chexson.chexsonsaeutils.bigint.PlanAmount.ZERO, state.byteAccount().exactValue());
+        assertEquals(17L, state.extract(paper, Long.MAX_VALUE, false));
+    }
+
+    @Test
+    void negativeWideAndMinLongDeltasUndoExactly() {
+        var paper = key(Items.PAPER);
+        var state = new GraphPlanningState(Map.of(), Map.of());
+        var amount = git.chexson.chexsonsaeutils.bigint.PlanAmount.of(java.math.BigInteger.TEN.pow(100));
+        state.addMissingWide(paper, amount);
+        int mark = state.journal();
+        state.addMissing(paper, Long.MIN_VALUE);
+        state.reduceMissingWide(paper, amount);
+        assertEquals(java.math.BigInteger.valueOf(Long.MIN_VALUE), state.missing().getExact(paper));
+        state.undoTo(mark);
+        assertEquals(amount.exactValue(), state.missing().getExact(paper));
+        var empty = new GraphPlanningState(Map.of(), Map.of());
+        empty.insert(paper, amount.negate());
+        empty.undoTo(0);
+        assertEquals(0L, empty.extract(paper, Long.MAX_VALUE, true));
+    }
+
     private static AEItemKey key(net.minecraft.world.item.Item item) {
         return AEItemKey.of(new ItemStack(item));
     }
@@ -36,6 +87,7 @@ class PlanJournalTest {
         int mark = state.journal();
         state.addCrafting(pattern, 5);
         state.markRingMacroFailed(ringId);
+        state.markRingSeedRepaid(ringId);
         state.recordRingExtraction(paper, 3);
         state.recordInternalItem(paper, 7);
         state.emitItems(paper, 2);
@@ -44,11 +96,13 @@ class PlanJournalTest {
         state.extract(paper, 5, false);
         state.addBytes(16.0);
         state.addStackBytes(paper, 100, 1);
+        assertTrue(state.hasRingSeedRepaid(ringId), "还种轮数已按 ringId 记上");
 
         state.undoTo(mark);
 
         assertTrue(state.crafts().isEmpty(), "crafts 回滚到空");
         assertFalse(state.hasRingMacroFailed(ringId));
+        assertFalse(state.hasRingSeedRepaid(ringId), "环宏回滚后还种记账必须还原，否则重试不再加成");
         assertEquals(0, state.ringExtractions().getLong(paper));
         assertEquals(0, state.recursiveInternalItems().getLong(paper));
         assertTrue(state.emittedItems().isEmpty());

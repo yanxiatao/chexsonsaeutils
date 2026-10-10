@@ -4,8 +4,6 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
-import git.chexson.chexsonsaeutils.blockentity.crafting.DecodedPatternEntryCache;
-import git.chexson.chexsonsaeutils.blockentity.crafting.PatternSlotStore;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;

@@ -25,18 +25,15 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue DYEABLE_PATTERNS_ENABLED;
     public static final ModConfigSpec.IntValue RECURSIVE_RING_MAX_MEMBERS;
     public static final ModConfigSpec.BooleanValue ENHANCED_CRAFTING_STATUS_ENABLED;
+    public static final ModConfigSpec.ConfigValue<String> CRAFTING_AMOUNT_NUMBER_STYLE;
     public static final ModConfigSpec.BooleanValue BUILDING_GADGETS2_INTEGRATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FTB_ULTIMINE_MEMORY_CARD_ENABLED;
     public static final ModConfigSpec.BooleanValue PARALLEL_CRAFTING_CPU_ENABLED;
-    public static final ModConfigSpec.BooleanValue PARALLEL_CPU_FAST_PLANNING_ENABLED;
-    public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CPU_FAST_PLANNING_BUDGET_MILLIS;
-    public static final ModConfigSpec.BooleanValue PARALLEL_CPU_FAST_PLANNING_ANY_GRID_ENABLED;
     public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> GRAPH_PLANNING_BUDGET_MILLIS;
-    public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_ANY_GRID_ENABLED;
     public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_LEXICOGRAPHIC;
-    public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_DIAGNOSTICS;
     public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_TRACE;
+    public static final ModConfigSpec.BooleanValue PARALLEL_CPU_DIAGNOSTICS;
     public static final ModConfigSpec.BooleanValue GRAPH_PLAN_CAPTURE;
     public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_CLOSURE_GATE;
     public static final ModConfigSpec.ConfigValue<Integer> GRAPH_PLANNING_MAX_DEPTH;
@@ -72,6 +69,25 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_REINJECT_PATTERN_INPUTS_PER_TICK_PER_GRID;
 
+    // ---- 声明键与启动期回落读取共用的键名常量：键名字符串只在声明处出现一次 ----
+    // 治"改 accessor 名不报错、只静默关能力"：.define 的声明键与 featureEnabled/readInt 回落读取
+    // 引同一常量，任一处漂移编译即红，不会再让 TOML 静默读不到键。
+    // 覆盖"声明与回落读取同在本文件内"的 6 把键（private 足够）。
+    private static final String WIDE_AMOUNT_SOLVER_ENABLED_KEY = "wideAmountSolverEnabled";
+    private static final String GRAPH_PLANNING_CLOSURE_GATE_KEY = "graphPlanningClosureGateEnabled";
+    private static final String GRAPH_PLANNING_TRACE_KEY = "graphPlanningTrace";
+    private static final String PARALLEL_CPU_DIAGNOSTICS_KEY = "parallelCraftingCpuDiagnostics";
+    private static final String GRAPH_PLAN_CAPTURE_KEY = "graphPlanCapture";
+    private static final String GRAPH_PLANNING_MAX_DEPTH_KEY = "graphPlanningMaxDepth";
+    private static final String RECURSIVE_RING_MAX_MEMBERS_KEY = "recursiveRingMaxMembers";
+
+    // 入口 Chexsonsaeutils / mixin ChexsonsaeutilsMixinPlugin 与 CraftingServiceParallelCpuMixin /
+    // crafting.hostbatch.HostBatchPlanner 的跨文件回落读取也已收口：声明处 .define 与读取处第二参
+    // 引同一条 public 常量，11 处裸串字面量全部退场，键名漂移改为编译期报错。
+    public static final String FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY = "formalMachinePlanningAggregationEnabled";
+    public static final String PROCESSING_PATTERN_REPLACEMENT_ENABLED_KEY = "processingPatternReplacementEnabled";
+    public static final String MATTER_MASS_PATTERN_PROVIDER_ENABLED_KEY = "matterMassPatternProviderEnabled";
+
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
@@ -89,13 +105,13 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Optimizes planning for bulk crafting requests.",
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.formalMachinePlanningAggregationEnabled")
-                .define("formalMachinePlanningAggregationEnabled", true);
+                .define(FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED_KEY, true);
         PROCESSING_PATTERN_REPLACEMENT_ENABLED = builder
                 .comment("Enable AE2 processing pattern replacement feature bundle.",
                         "Allows dynamic pattern substitution based on available materials.",
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.processingPatternReplacementEnabled")
-                .define("processingPatternReplacementEnabled", true);
+                .define(PROCESSING_PATTERN_REPLACEMENT_ENABLED_KEY, true);
         MAX_CUSTOM_PATTERN_PAGES = builder
                 .comment("Maximum pattern pages of the custom pattern provider.",
                         "Each page holds 36 pattern slots; the pattern inventory capacity is pages * 36.",
@@ -137,7 +153,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "and the pattern decoder / cell handler / mixins are not loaded.",
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.matterMassPatternProviderEnabled")
-                .define("matterMassPatternProviderEnabled", true);
+                .define(MATTER_MASS_PATTERN_PROVIDER_ENABLED_KEY, true);
         MULTI_LEVEL_EMITTER_ENABLED = builder
                 .comment("Enable the multi-level emitter output logic.",
                         "Registered parts stay available for world compatibility;",
@@ -180,7 +196,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "per-item planning. Takes effect immediately."
                 )
                 .translation("configuration.chexsonsaeutils.recursiveRingMaxMembers")
-                .defineInRange("recursiveRingMaxMembers", 64, 1, Integer.MAX_VALUE);
+                .defineInRange(RECURSIVE_RING_MAX_MEMBERS_KEY, 64, 1, Integer.MAX_VALUE);
         ENHANCED_CRAFTING_STATUS_ENABLED = builder
                 .comment(
                         "Enable AEA enhanced crafting status migration.",
@@ -190,6 +206,15 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 )
                 .translation("configuration.chexsonsaeutils.enhancedCraftingStatusEnabled")
                 .define("enhancedCraftingStatusEnabled", true);
+        CRAFTING_AMOUNT_NUMBER_STYLE = builder
+                .comment(
+                        "Number style for the short amounts shown in the crafting confirm table.",
+                        "Allowed values: abbreviated (1.5K, 16Qi, 2De), scientific (1.50e3, 1.62e19).",
+                        "Only affects the in-cell column; tooltips always keep the full unabbreviated amount.",
+                        "Takes effect immediately."
+                )
+                .translation("configuration.chexsonsaeutils.craftingAmountNumberStyle")
+                .define("craftingAmountNumberStyle", "abbreviated");
         BUILDING_GADGETS2_INTEGRATION_ENABLED = builder
                 .comment(
                         "Enable AEA Building Gadgets 2 template-to-processing-pattern integration.",
@@ -218,34 +243,12 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuEnabled")
                 .define("parallelCraftingCpuEnabled", true);
-        PARALLEL_CPU_FAST_PLANNING_ENABLED = builder
-                .comment("Enable the parallel CPU fast crafting-plan calculation path.",
-                        "When the AE network hosts this mod's parallel CPU, crafting plans are",
-                        "computed on a dedicated fast path without AE2's per-tick time slicing,",
-                        "which is much faster for large jobs. On any failure the calculation",
-                        "automatically falls back to the native AE2 path. Takes effect immediately.")
-                .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningEnabled")
-                .define("parallelCpuFastPlanningEnabled", true);
-        PARALLEL_CPU_FAST_PLANNING_BUDGET_MILLIS = builder
-                .comment("Wall-clock budget in milliseconds for a single fast planning run.",
-                        "If the fast path exceeds it, the calculation falls back to the throttled",
-                        "native AE2 path. 0 disables the budget (run to completion).")
-                .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningBudgetMillis")
-                .defineInRange("parallelCpuFastPlanningBudgetMillis", 10_000, 0, Integer.MAX_VALUE);
-        PARALLEL_CPU_FAST_PLANNING_ANY_GRID_ENABLED = builder
-                .comment("Allow the fast crafting-plan calculation path on grids that do not host",
-                        "this mod's parallel CPU. When disabled (default), only grids with an",
-                        "active parallel CPU use the fast path. Enabling it detaches plain",
-                        "networks from AE2's per-tick time slicing as well, trading background",
-                        "thread CPU time for faster plans. Takes effect immediately.")
-                .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningAnyGridEnabled")
-                .define("parallelCpuFastPlanningAnyGridEnabled", false);
         GRAPH_PLANNING_ENABLED = builder
                 .comment("Enable the level-1 graph crafting-planning engine.",
                         "The planning neighbourhood is compiled once into an immutable graph and solved",
                         "linearly, reusing the graph across every probe. Anything the graph engine",
                         "cannot express yet (multiple routes, fuzzy variants, recursive patterns)",
-                        "falls back to the optimized tree path and then to the native AE2 path.",
+                        "falls back to the native AE2 path.",
                         "Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.graphPlanningEnabled")
                 .define("graphPlanningEnabled", true);
@@ -255,12 +258,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "back to the tree path. 0 disables the budget (run to completion).")
                 .translation("configuration.chexsonsaeutils.graphPlanningBudgetMillis")
                 .defineInRange("graphPlanningBudgetMillis", 10_000, 0, Integer.MAX_VALUE);
-        GRAPH_PLANNING_ANY_GRID_ENABLED = builder
-                .comment("Allow the graph planning engine on grids that do not host this mod's",
-                        "parallel CPU. When disabled (default), only grids with an active parallel",
-                        "CPU use the graph engine. Takes effect immediately.")
-                .translation("configuration.chexsonsaeutils.graphPlanningAnyGridEnabled")
-                .define("graphPlanningAnyGridEnabled", false);
         GRAPH_PLANNING_LEXICOGRAPHIC = builder
                 .comment("Experimental: at multi-route competition points the graph planner fires",
                         "every candidate route on a ledger copy and keeps the lexicographically",
@@ -270,16 +267,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.graphPlanningLexicographic")
                 .define("graphPlanningLexicographic", false);
-        GRAPH_PLANNING_DIAGNOSTICS = builder
-                .comment("Enable verbose level-1 graph planning diagnostics.",
-                        "When enabled, every graph planning request collects a per-pattern compile",
-                        "trace, root firing/missing accounting, plan conversion before/after and",
-                        "crafting-provider index synchronization events into a ThreadLocal buffer",
-                        "that is dumped to the log alongside the one-line summary. Useful for",
-                        "diagnosing wrong plans (e.g. missing items containing the target itself).",
-                        "Takes effect immediately.")
-                .translation("configuration.chexsonsaeutils.graphPlanningDiagnostics")
-                .define("graphPlanningDiagnostics", false);
         GRAPH_PLANNING_CLOSURE_GATE = builder
                 .comment("Post-solve material conservation gate for the level-1 graph planner:",
                         "before a solve result is accepted, every key is checked for",
@@ -289,15 +276,15 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "error in a closed-form shortcut can never ship an impossible plan.",
                         "Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.graphPlanningClosureGateEnabled")
-                .define("graphPlanningClosureGateEnabled", true);
+                .define(GRAPH_PLANNING_CLOSURE_GATE_KEY, true);
         GRAPH_PLANNING_TRACE = builder
-                .comment("Add per-site / per-key lines to the graph planning trace (requires",
-                        "graphPlanningDiagnostics). These scale with the site tree, so a large",
+                .comment("Add per-site / per-key lines to the graph planning trace.",
+                        "These scale with the site tree, so a large",
                         "modpack request produces tens of megabytes of text and the formatting",
                         "alone costs about a second — only turn this on to debug one request.",
                         "Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.graphPlanningTrace")
-                .define("graphPlanningTrace", false);
+                .define(GRAPH_PLANNING_TRACE_KEY, false);
         GRAPH_PLAN_CAPTURE = builder
                 .comment("Write a replayable planning fixture to logs/chexsonsaeutils-plan-capture-*.json",
                         "for every request that takes the graph path. The file records the crafting",
@@ -306,14 +293,19 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Debug aid only — leave it off during normal play.",
                         "Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.graphPlanCapture")
-                .define("graphPlanCapture", false);
+                .define(GRAPH_PLAN_CAPTURE_KEY, false);
+        PARALLEL_CPU_DIAGNOSTICS = builder
+                .comment("输出并行 CPU 的批处理、停滞、提交、恢复与正常 BigInteger 回执诊断。",
+                        "默认关闭，立即生效；真实提交失败和异常回执仍记录警告。")
+                .translation("configuration.chexsonsaeutils.parallelCraftingCpuDiagnostics")
+                .define(PARALLEL_CPU_DIAGNOSTICS_KEY, false);
         GRAPH_PLANNING_MAX_DEPTH = builder
                 .comment("Maximum planning recursion depth for the level-1 graph solver. Very deep",
                         "dependency chains beyond this depth decline and fall back to the tree path.",
                         "Ring compression keeps real-world graphs far below the default.",
                         "Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.graphPlanningMaxDepth")
-                .defineInRange("graphPlanningMaxDepth", 2048, 16, 1_048_576);
+                .defineInRange(GRAPH_PLANNING_MAX_DEPTH_KEY, 2048, 16, 1_048_576);
         WIDE_AMOUNT_SOLVER_ENABLED = builder
                 .comment("Use exact long/BigInteger arithmetic in the graph planning solver instead of",
                         "the double-based ring scaling chain and the 2^52 request cap. Amounts beyond",
@@ -321,7 +313,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Disabling restores the legacy cap and double chain as a safety fuse.",
                         "Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.wideAmountSolverEnabled")
-                .define("wideAmountSolverEnabled", true);
+                .define(WIDE_AMOUNT_SOLVER_ENABLED_KEY, true);
         PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK = builder
                 .comment("Maximum internal crafting lanes per tool block.",
                         "0 = unlimited (each lane holds one executing job's inventory;",
@@ -490,6 +482,16 @@ public final class ChexsonsaeutilsCompatibilityConfig {
         return SPEC.isLoaded() ? value.get() : value.getDefault();
     }
 
+    public static String stringValue(ModConfigSpec.ConfigValue<String> value) {
+        return SPEC.isLoaded() ? value.get() : value.getDefault();
+    }
+
+    // 确认表紧凑列计数方式的原始配置串（abbreviated 默认 / scientific）：config 只交出这个串，
+    // 把它解析成计数方式（含"认不出回缩写"的极性）由能力侧负责，config 不再引能力包类型。
+    public static String craftingAmountNumberStyleValue() {
+        return stringValue(CRAFTING_AMOUNT_NUMBER_STYLE);
+    }
+
     /**
      * 功能开关的双轨读取：SPEC 已加载读 SPEC；否则（Mixin 插件等启动早期阶段）
      * 直接解析启动期 TOML 回落。
@@ -503,21 +505,26 @@ public final class ChexsonsaeutilsCompatibilityConfig {
 
     /** 宽域（long/BigInteger）求解开关，默认开；关掉恢复 2^52 帽与 double 环 scale 链。 */
     public static boolean wideAmountSolverEnabled() {
-        return featureEnabled(WIDE_AMOUNT_SOLVER_ENABLED, "wideAmountSolverEnabled");
+        return featureEnabled(WIDE_AMOUNT_SOLVER_ENABLED, WIDE_AMOUNT_SOLVER_ENABLED_KEY);
     }
 
     /** 图求解后置守恒闸门开关（Phase 2d B4），默认开；关掉即回退无闸门行为。 */
     public static boolean graphPlanningClosureGateEnabled() {
-        return featureEnabled(GRAPH_PLANNING_CLOSURE_GATE, "graphPlanningClosureGateEnabled");
+        return featureEnabled(GRAPH_PLANNING_CLOSURE_GATE, GRAPH_PLANNING_CLOSURE_GATE_KEY);
     }
 
     /** 图求解递归深度上限（Phase 2d K6 退路），默认 2048。 */
     public static boolean graphPlanningTraceEnabled() {
-        return featureEnabled(GRAPH_PLANNING_TRACE, "graphPlanningTrace");
+        return featureEnabled(GRAPH_PLANNING_TRACE, GRAPH_PLANNING_TRACE_KEY);
     }
 
     public static boolean graphPlanCaptureEnabled() {
-        return featureEnabled(GRAPH_PLAN_CAPTURE, "graphPlanCapture");
+        return featureEnabled(GRAPH_PLAN_CAPTURE, GRAPH_PLAN_CAPTURE_KEY);
+    }
+
+    /** 执行期诊断统一开关；关闭时跳过周期快照与正常回执日志，保留真实错误。 */
+    public static boolean parallelCpuDiagnosticsEnabled() {
+        return featureEnabled(PARALLEL_CPU_DIAGNOSTICS, PARALLEL_CPU_DIAGNOSTICS_KEY);
     }
 
     public static int graphPlanningMaxDepth() {
@@ -525,7 +532,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
             return GRAPH_PLANNING_MAX_DEPTH.get();
         }
         return StartupConfigReader.readInt(
-                "graphPlanningMaxDepth", GRAPH_PLANNING_MAX_DEPTH.getDefault());
+                GRAPH_PLANNING_MAX_DEPTH_KEY, GRAPH_PLANNING_MAX_DEPTH.getDefault());
     }
 
     /** 递归环成员规模上限，超限环按不可算处理并回落逐件规划。 */
@@ -533,7 +540,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
         if (SPEC.isLoaded()) {
             return RECURSIVE_RING_MAX_MEMBERS.get();
         }
-        return StartupConfigReader.readInt("recursiveRingMaxMembers", RECURSIVE_RING_MAX_MEMBERS.getDefault());
+        return StartupConfigReader.readInt(RECURSIVE_RING_MAX_MEMBERS_KEY, RECURSIVE_RING_MAX_MEMBERS.getDefault());
     }
 
     public static ParallelCpuSettings parallelCpuSettings() {

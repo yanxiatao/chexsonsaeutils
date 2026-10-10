@@ -115,7 +115,9 @@ class RingContractionSelfReplicatingTest {
         var macros = RingContraction.contractPatterns(List.of(producer, recycler));
         assertFalse(macros.isEmpty());
         for (RingMacro macro : macros) {
-            assertEquals(Map.of(a, 2L), macro.startupSeeds());
+            // 数值逐字不变（2）；读数域随 #218 起步种量进 PlanAmount。
+            assertEquals(Map.of(a, git.chexson.chexsonsaeutils.bigint.PlanAmount.of(2L)),
+                    macro.startupSeeds());
         }
     }
 
@@ -137,7 +139,10 @@ class RingContractionSelfReplicatingTest {
 
         assertFalse(macros.isEmpty());
         for (RingMacro macro : macros) {
-            assertEquals(Map.of(a, 1L, b, 1L), macro.startupSeeds());
+            // 数值逐字不变（1, 1）；读数域随 #218 起步种量进 PlanAmount。
+            assertEquals(Map.of(a, git.chexson.chexsonsaeutils.bigint.PlanAmount.of(1L),
+                    b, git.chexson.chexsonsaeutils.bigint.PlanAmount.of(1L)),
+                    macro.startupSeeds());
         }
     }
 

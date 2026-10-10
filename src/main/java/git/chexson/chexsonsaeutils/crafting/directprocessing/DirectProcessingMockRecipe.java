@@ -1,7 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
-import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+import git.chexson.chexsonsaeutils.modid.ModIds;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.world.item.ItemStack;
@@ -20,8 +19,8 @@ public final class DirectProcessingMockRecipe extends SingleItemRecipe {
 
     public DirectProcessingMockRecipe(String group, Ingredient ingredient, ItemStack result) {
         super(
-                ChexsonsaeutilsContent.DIRECT_PROCESSING_MOCK_RECIPE_TYPE.get(),
-                ChexsonsaeutilsContent.DIRECT_PROCESSING_MOCK_RECIPE_SERIALIZER.get(),
+                DirectProcessingRecipeRegistration.DIRECT_PROCESSING_MOCK_RECIPE_TYPE.get(),
+                DirectProcessingRecipeRegistration.DIRECT_PROCESSING_MOCK_RECIPE_SERIALIZER.get(),
                 group,
                 ingredient,
                 result
@@ -62,7 +61,7 @@ public final class DirectProcessingMockRecipe extends SingleItemRecipe {
         return new RecipeType<>() {
             @Override
             public String toString() {
-                return Chexsonsaeutils.MODID + ":direct_processing_mock";
+                return ModIds.MODID + ":direct_processing_mock";
             }
         };
     }

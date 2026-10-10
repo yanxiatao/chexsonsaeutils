@@ -12,15 +12,13 @@ import appeng.api.stacks.KeyCounter;
 import appeng.crafting.CraftingCalculation;
 import appeng.menu.me.crafting.CraftingPlanSummary;
 import com.mojang.serialization.JsonOps;
-import git.chexson.chexsonsaeutils.crafting.graphplan.aggregate.AggregateSolver;
 import git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanPostProcessor;
-import git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanningBudget;
+import git.chexson.chexsonsaeutils.crafting.graphplan.diag.GraphPlanningBudget;
 import git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanningSession;
 import git.chexson.chexsonsaeutils.crafting.graphplan.graph.CraftGraph;
 import git.chexson.chexsonsaeutils.crafting.graphplan.graph.GraphCompiler;
 import git.chexson.chexsonsaeutils.crafting.graphplan.solve.LinearPlanner;
 import git.chexson.chexsonsaeutils.crafting.graphplan.solve.SolveResult;
-import git.chexson.chexsonsaeutils.crafting.graphplan.vm.TransactionalDemandVm;
 import git.chexson.chexsonsaeutils.crafting.recursive.RecursivePlanContract;
 import git.chexson.chexsonsaeutils.crafting.recursive.SelectedInputsPlan;
 import net.minecraft.world.level.Level;
@@ -35,6 +33,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.jetbrains.annotations.Nullable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -46,10 +45,7 @@ public final class RuntimeReplayRunner {
     public enum Planner {
         AE2_NATIVE("ae2-native", true),
         GRAPH("graph", true),
-        FROZEN_ROUTE("frozen-route", true),
         LINEAR("linear", false),
-        AGGREGATE("aggregate", false),
-        VM("vm", false),
         NEOECOAE("neoecoae", true);
 
         private final String commandName;
@@ -363,26 +359,20 @@ public final class RuntimeReplayRunner {
                     REQUESTER,
                     new GenericStack(fixture.target(), fixture.amount()),
                     CalculationStrategy.REPORT_MISSING_ITEMS).run());
-            case GRAPH -> productionGraphPlan(fixture, level, false);
-            case FROZEN_ROUTE -> productionGraphPlan(fixture, level, true);
+            case GRAPH -> productionGraphPlan(fixture, level);
             case LINEAR -> independentGraphPlan(fixture, graph -> LinearPlanner.solve(
                     graph, CalculationStrategy.REPORT_MISSING_ITEMS, fixture.amount()));
-            case AGGREGATE -> independentGraphPlan(fixture, graph -> AggregateSolver.solve(
-                    graph, CalculationStrategy.REPORT_MISSING_ITEMS, fixture.amount(), null));
-            case VM -> independentGraphPlan(fixture, graph -> TransactionalDemandVm.compile(graph).solve(
-                    CalculationStrategy.REPORT_MISSING_ITEMS, fixture.amount()));
             case NEOECOAE -> new CalculationResult(NeoEcoAeRuntimeAdapter.calculate(fixture));
         };
     }
 
     private static CalculationResult productionGraphPlan(
             CapturedPlanReplay.Loaded fixture,
-            Level level,
-            boolean frozenRoute
+            Level level
     ) {
         long started = System.nanoTime();
         GraphPlanningBudget budget = new GraphPlanningBudget(0L);
-        // 生产 OrderedPlanningCalculation 的递归 kernel 恒定启用 retention，与 frozenRoute 无关
+        // 生产 OrderedPlanningCalculation 的递归 kernel 恒定启用 retention
         GraphPlanningSession session = GraphPlanningSession.create(
                 fixture.craftingService(),
                 fixture.stock(),
@@ -395,12 +385,12 @@ public final class RuntimeReplayRunner {
                 fixture.grid());
         long compileCompleted = System.nanoTime();
 
-        boolean cyclic = session.graph().cycleKind() != CraftGraph.CycleKind.NONE;
-        var attempt = frozenRoute && !cyclic
-                ? session.solveAggregate(fixture.amount())
-                : session.solve(fixture.amount());
-        if (cyclic && (!attempt.handled() || attempt.plan() == null || attempt.plan().simulation())) {
-            attempt = session.solveExact(fixture.amount());
+        var attempt = session.solve(fixture.amount(), GraphPlanningSession.BudgetPolicy.ENFORCED);
+        // 免预算再解的触发判定与生产 kernel 共用会话层那一处，不再各写一遍条件。
+        // recursiveRequired 这里恒 false：回放腿按捕获夹具解一次图规划，没有"非交递归计划不可"
+        // 的那一型入口，因此只有夹具真成环时才拿得到豁免趟。
+        if (session.shouldRetryWithoutBudget(false, attempt)) {
+            attempt = session.solve(fixture.amount(), GraphPlanningSession.BudgetPolicy.EXEMPT);
         }
         if (!attempt.handled() || attempt.plan() == null) {
             throw new IllegalStateException(
@@ -431,7 +421,6 @@ public final class RuntimeReplayRunner {
         if (graph.hasDeclined()) {
             throw new IllegalStateException("graph compile declined: " + graph.declineReason());
         }
-
         long solveStarted = System.nanoTime();
         SolveResult result = calculation.solve(graph);
         long solveCompleted = System.nanoTime();
@@ -448,7 +437,6 @@ public final class RuntimeReplayRunner {
         if (retentionDecline != null) {
             throw new IllegalStateException("planner declined: " + retentionDecline);
         }
-
         long convertStarted = System.nanoTime();
         String conversionDecline = GraphPlanPostProcessor.conversionDecline(result);
         if (conversionDecline != null) {

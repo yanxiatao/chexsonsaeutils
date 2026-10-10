@@ -1,5 +1,8 @@
 package git.chexson.chexsonsaeutils.menu.matrix;
 
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixEntry;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixRealStack;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.Test;

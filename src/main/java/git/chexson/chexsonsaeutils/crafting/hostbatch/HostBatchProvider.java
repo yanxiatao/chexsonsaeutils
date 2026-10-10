@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.crafting.hostbatch;
 
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingProvider;
 import net.minecraft.core.BlockPos;
 
@@ -29,4 +30,16 @@ public interface HostBatchProvider extends ICraftingProvider {
      * @return 方块坐标，不应为 null
      */
     BlockPos getBlockPos();
+
+    /**
+     * 一次 {@code pushPattern} 能接受的发射份数上限。
+     * <p>
+     * 默认无上限（{@link Long.MAX_VALUE}）：份数在 CPU 侧本就是 long 账，宿主按 long 记
+     * 份数时无需覆写。真按 int 记份数的宿主必须自己覆写这道上界并写明原因——
+     * 回报过大时 CPU 会照那份数抽料申报，宿主 {@code pushPattern} 又整批拒收，
+     * 任务于是每轮重批同一份料却永远推不动。
+     */
+    default long maxPushExecutions(IPatternDetails pattern) {
+        return Long.MAX_VALUE;
+    }
 }

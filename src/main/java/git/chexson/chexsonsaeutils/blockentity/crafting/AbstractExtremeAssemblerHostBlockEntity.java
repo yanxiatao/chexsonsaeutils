@@ -10,6 +10,7 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
+import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.helpers.patternprovider.PatternContainer;
@@ -17,17 +18,22 @@ import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 import com.mojang.logging.LogUtils;
+import git.chexson.chexsonsaeutils.bigint.WideCeilings;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.CraftingOutputRouter;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchHost;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.DelegatingPatternDetails;
 import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchProvider;
 import git.chexson.chexsonsaeutils.crafting.persistence.ExtremeAssemblerPatternHostSavedData;
 import git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoBatchHost;
 import git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoBatchOutputBuffer;
+import git.chexson.chexsonsaeutils.menu.matrix.DecodedPatternEntryCache;
+import git.chexson.chexsonsaeutils.menu.matrix.DirtySlotPatternRefreshScheduler;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixDisplay;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSearch;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSource;
+import git.chexson.chexsonsaeutils.menu.matrix.PatternSlotStore;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -42,10 +48,10 @@ import net.neoforged.neoforge.items.IItemHandler;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Supplier;
 
 /**
  * 虚拟合成主机：样板提交时不做真实合成，直接按样板声明把输入转换为产出与容器残留，
@@ -54,11 +60,12 @@ import java.util.function.Supplier;
  */
 public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworkedBlockEntity
         implements PatternContainer, ICraftingProvider, InternalInventoryHost,
-        HostBatchProvider, NeoEcoBatchHost, PatternMatrixSource {
+        HostBatchProvider, DeclaredBatchHost, NeoEcoBatchHost, PatternMatrixSource {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private static final String NBT_VIRTUAL_PENDING_OUTPUTS = "virtualPendingOutputs";
+    private static final String NBT_VIRTUAL_AMOUNT_WIDE = "#virtualAmountWide";
 
     private static int configTotalPatternSlots() {
         return ChexsonsaeutilsCompatibilityConfig.intValue(
@@ -74,13 +81,12 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
             new PatternSlotStore(this, refreshScheduler, configTotalPatternSlots(), this::persistPatternSlot);
     protected final LocalPatternProviderFacade localPatternProviderFacade =
             new LocalPatternProviderFacade(this, patternStore, refreshScheduler, decodedPatternEntryCache);
-    private final Supplier<ItemStack> representativeItemSupplier;
     private final VirtualPatternInventoryContainer automationContainer = new VirtualPatternInventoryContainer(this);
     private final VirtualPatternItemHandler automationItemHandler = new VirtualPatternItemHandler(automationContainer);
     private final String patternSlotsSummaryTranslationKey;
 
     private boolean localOptimizationEnabled = true;
-    private final KeyCounter pendingVirtualOutputs = new KeyCounter();
+    private final WideKeyCounter pendingVirtualOutputs = new WideKeyCounter();
     private boolean virtualReturnStalled;
     private boolean externalPatternsLoaded;
     private boolean providerRefreshAfterReadyPending;
@@ -89,11 +95,9 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
             net.minecraft.world.level.block.entity.BlockEntityType<?> blockEntityType,
             BlockPos pos,
             BlockState blockState,
-            Supplier<ItemStack> representativeItemSupplier,
             String patternSlotsSummaryTranslationKey
     ) {
         super(blockEntityType, pos, blockState);
-        this.representativeItemSupplier = representativeItemSupplier;
         this.patternSlotsSummaryTranslationKey = patternSlotsSummaryTranslationKey;
         this.getMainNode()
                 .setIdlePowerUsage(0.0)
@@ -125,38 +129,35 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
     public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.saveAdditional(data, registries);
         if (!pendingVirtualOutputs.isEmpty()) {
-            ListTag pendingOutputsTag = new ListTag();
-            for (var entry : pendingVirtualOutputs) {
-                if (entry.getKey() == null || entry.getLongValue() <= 0L) {
-                    continue;
-                }
-                pendingOutputsTag.add(GenericStack.writeTag(
-                        registries,
-                        new GenericStack(entry.getKey(), entry.getLongValue())
-                ));
-            }
-            data.put(NBT_VIRTUAL_PENDING_OUTPUTS, pendingOutputsTag);
+            data.put(NBT_VIRTUAL_PENDING_OUTPUTS, writeVirtualOutputs(pendingVirtualOutputs, registries));
         } else {
             data.remove(NBT_VIRTUAL_PENDING_OUTPUTS);
         }
         saveCustomState(data, registries);
     }
 
+    /** 保留 GenericStack 条目结构，只对超 long 的数量附加精确值。 */
+    static ListTag writeVirtualOutputs(WideKeyCounter buffer, HolderLookup.Provider registries) {
+        ListTag pendingOutputsTag = new ListTag();
+        for (var key : buffer.keys()) {
+            BigInteger exact = buffer.getExact(key);
+            if (exact.signum() <= 0) {
+                continue;
+            }
+            CompoundTag entry = GenericStack.writeTag(registries,
+                    new GenericStack(key, exact.min(WideCeilings.LONG_ACCOUNT).longValueExact()));
+            if (exact.compareTo(WideCeilings.LONG_ACCOUNT) > 0) {
+                entry.putByteArray(NBT_VIRTUAL_AMOUNT_WIDE, exact.toByteArray());
+            }
+            pendingOutputsTag.add(entry);
+        }
+        return pendingOutputsTag;
+    }
+
     @Override
     public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
         super.loadTag(data, registries);
-        pendingVirtualOutputs.reset();
-        if (data.contains(NBT_VIRTUAL_PENDING_OUTPUTS, Tag.TAG_LIST)) {
-            for (Tag tag : data.getList(NBT_VIRTUAL_PENDING_OUTPUTS, Tag.TAG_COMPOUND)) {
-                if (!(tag instanceof CompoundTag stackTag)) {
-                    continue;
-                }
-                GenericStack stack = GenericStack.readTag(registries, stackTag);
-                if (stack != null && stack.what() != null && stack.amount() > 0L) {
-                    pendingVirtualOutputs.add(stack.what(), stack.amount());
-                }
-            }
-        }
+        readVirtualOutputs(pendingVirtualOutputs, data.getList(NBT_VIRTUAL_PENDING_OUTPUTS, Tag.TAG_COMPOUND), registries);
         virtualReturnStalled = false;
         externalPatternsLoaded = false;
         refreshScheduler.clear();
@@ -221,6 +222,22 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
         return acceptVirtualOutputs(aggregatedPattern, inputHolder);
     }
 
+    /** 与保存同源的读回入口；单批大数在重载后保持精确。 */
+    static void readVirtualOutputs(WideKeyCounter buffer, ListTag data, HolderLookup.Provider registries) {
+        buffer.clear();
+        for (Tag tag : data) {
+            if (!(tag instanceof CompoundTag stackTag)) {
+                continue;
+            }
+            GenericStack stack = GenericStack.readTag(registries, stackTag);
+            if (stack != null && stack.what() != null && stack.amount() > 0L) {
+                buffer.add(stack.what(), stackTag.contains(NBT_VIRTUAL_AMOUNT_WIDE, Tag.TAG_BYTE_ARRAY)
+                        ? new BigInteger(stackTag.getByteArray(NBT_VIRTUAL_AMOUNT_WIDE))
+                        : BigInteger.valueOf(stack.amount()));
+            }
+        }
+    }
+
     /**
      * 虚拟合成的核心：按样板声明把产出与容器残留并入缓冲。执行份数从
      * holder 实际量反推（多份推送一次进账 k 份产出），缓冲为空说明样板无
@@ -234,18 +251,32 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
         if (executions <= 0L) {
             return false;
         }
-        KeyCounter buffered = new KeyCounter();
-        for (GenericStack output : pattern.getOutputs()) {
-            if (output != null && output.what() != null && output.amount() > 0L) {
-                buffered.add(output.what(), saturatingMultiply(output.amount(), executions));
-            }
+        return bufferVirtualOutputs(pattern, inputHolder, executions, false);
+    }
+
+    /**
+     * 把 {@code executions} 发的产出与回流容器并入待回流缓冲。
+     *
+     * @param holderIsUnitPrototype {@code true} 表示 {@code inputHolder} 只是<b>一发</b>的原型材料，
+     *                              回流容器按「原型量 ÷ 模板量 × 份数」计（份数声明形态）；
+     *                              {@code false} 是老的 k 倍 holder，容器量直接从 holder 实量反推
+     */
+    private boolean bufferVirtualOutputs(
+            IMolecularAssemblerSupportedPattern pattern,
+            @Nullable KeyCounter[] inputHolder,
+            long executions,
+            boolean holderIsUnitPrototype
+    ) {
+        if (executions <= 0L) {
+            return false;
         }
-        appendVirtualRemainders(pattern, inputHolder, buffered);
+        WideKeyCounter buffered = virtualOutputs(pattern, inputHolder,
+                BigInteger.valueOf(executions), holderIsUnitPrototype);
         if (buffered.isEmpty()) {
             return false;
         }
-        for (var entry : buffered) {
-            pendingVirtualOutputs.add(entry.getKey(), entry.getLongValue());
+        for (var key : buffered.keys()) {
+            pendingVirtualOutputs.add(key, buffered.getExact(key));
         }
         // 不在 pushPattern 内即时 flush：CPU 侧 reserveExpectedWaiting 在
         // pushPattern 返回之后才登记 waitingFor，push 内同步 insert 会让
@@ -293,47 +324,35 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
     /**
      * 从 holder 实际量反推执行份数（neoecoae 式）：每槽
      * Σ(数量÷模板量)÷倍率，全槽取最小。单份推送得 1；k 份多推得 k；
-     * 聚合样板（倍率 1、模板量=整批量）天然得 1。holder 缺位按 1 份
-     * （兼容无输入样板与旧路径）。
+     * 聚合样板（倍率 1、模板量=整批量）天然得 1。无输入样板为 1 份；有输入但不足一发时拒收。
      */
-    private static long deriveHolderExecutions(
+    static long deriveHolderExecutions(
             IPatternDetails pattern,
             @Nullable KeyCounter[] inputHolder
     ) {
-        if (inputHolder == null) {
+        IPatternDetails.IInput[] inputs = pattern.getInputs();
+        if (inputs.length == 0) {
             return 1L;
         }
-        IPatternDetails.IInput[] inputs = pattern.getInputs();
-        int slots = Math.min(inputs.length, inputHolder.length);
-        long executions = Long.MAX_VALUE;
-        for (int slot = 0; slot < slots; slot++) {
-            KeyCounter holder = inputHolder[slot];
-            if (holder == null || holder.isEmpty()) {
-                continue;
-            }
-            long multiplier = Math.max(1L, inputs[slot].getMultiplier());
-            long templates = 0L;
-            for (var entry : holder) {
-                AEKey templateKey = entry.getKey();
-                long amount = entry.getLongValue();
-                if (templateKey == null || amount <= 0L) {
-                    continue;
-                }
-                templates += amount / templateAmountFor(inputs[slot], templateKey);
-            }
-            executions = Math.min(executions, templates / multiplier);
-        }
-        return executions == Long.MAX_VALUE ? 1L : Math.max(1L, executions);
-    }
-
-    private static long saturatingMultiply(long amount, long executions) {
-        if (amount <= 0L || executions <= 0L) {
+        if (inputHolder == null || inputHolder.length < inputs.length) {
             return 0L;
         }
-        if (amount > Long.MAX_VALUE / executions) {
-            return Long.MAX_VALUE;
+        BigInteger executions = BigInteger.valueOf(Long.MAX_VALUE);
+        for (int slot = 0; slot < inputs.length; slot++) {
+            KeyCounter holder = inputHolder[slot];
+            if (holder == null || holder.isEmpty() || inputs[slot].getMultiplier() <= 0L) {
+                return 0L;
+            }
+            BigInteger templates = BigInteger.ZERO;
+            for (var entry : holder) {
+                if (entry.getKey() != null && entry.getLongValue() > 0L) {
+                    templates = templates.add(BigInteger.valueOf(entry.getLongValue()
+                            / templateAmountFor(inputs[slot], entry.getKey())));
+                }
+            }
+            executions = executions.min(templates.divide(BigInteger.valueOf(inputs[slot].getMultiplier())));
         }
-        return amount * executions;
+        return executions.longValueExact();
     }
 
     /**
@@ -343,7 +362,7 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
     private static void appendVirtualRemainders(
             IPatternDetails pattern,
             @Nullable KeyCounter[] inputHolder,
-            KeyCounter buffer
+            WideKeyCounter buffer
     ) {
         if (inputHolder == null) {
             return;
@@ -378,6 +397,46 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
                     );
                 }
                 buffer.add(remainderKey, amount / templateAmount);
+            }
+        }
+    }
+
+    /**
+     * 份数声明形态的回流容器：{@code inputHolder} 是<b>一发</b>的原型材料，容器件数等于
+     * 「真实槽倍率」（一发用掉几份模板）× 声明份数。
+     *
+     * <p>与 CPU 侧 {@code ParallelBatchExtraction.addDeclaredReserves} 逐槽同值：那里的预期回流
+     * 是 {@code multiplier × 份数}，这里 {@code 原型的真实槽倍率 = multiplier}（原型按每发量提取）。
+     */
+    private static void appendDeclaredVirtualRemainders(
+            IPatternDetails pattern,
+            @Nullable KeyCounter[] unitPrototype,
+            WideKeyCounter buffer,
+            BigInteger executions
+    ) {
+        if (unitPrototype == null) {
+            return;
+        }
+        IPatternDetails.IInput[] inputs = pattern.getInputs();
+        int slots = Math.min(inputs.length, unitPrototype.length);
+        for (int slot = 0; slot < slots; slot++) {
+            KeyCounter holder = unitPrototype[slot];
+            if (holder == null || holder.isEmpty()) {
+                continue;
+            }
+            IPatternDetails.IInput input = inputs[slot];
+            for (var entry : holder) {
+                AEKey templateKey = entry.getKey();
+                long amount = entry.getLongValue();
+                if (templateKey == null || amount <= 0L) {
+                    continue;
+                }
+                AEKey remainderKey = input.getRemainingKey(templateKey);
+                if (remainderKey == null) {
+                    continue;
+                }
+                long perFiring = input.getMultiplier();
+                buffer.add(remainderKey, BigInteger.valueOf(perFiring).multiply(executions));
             }
         }
     }
@@ -418,7 +477,7 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
     @Override
     public PatternContainerGroup getTerminalGroup() {
         return new PatternContainerGroup(
-                AEItemKey.of(representativeItemSupplier.get()),
+                AEItemKey.of(getItemFromBlockEntity()),
                 getName(),
                 List.of(Component.translatable(
                         patternSlotsSummaryTranslationKey,
@@ -496,7 +555,7 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
         refreshScheduler.clear();
         decodedPatternEntryCache.clear();
         localPatternProviderFacade.clear();
-        pendingVirtualOutputs.reset();
+        pendingVirtualOutputs.clear();
         virtualReturnStalled = false;
         persistAllPatterns();
         clearCustomContent();
@@ -520,6 +579,88 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
     @Override
     public int getCurrentOperationTicks() {
         return 1;
+    }
+
+    /** 份数按 long 反推、产出走虚拟缓冲一次并入，没有直连机那种 int 执行计数上限。 */
+    @Override
+    public long maxPushExecutions(IPatternDetails pattern) {
+        return Long.MAX_VALUE;
+    }
+
+    /**
+     * 收样判据（与 {@link #pushPattern(IPatternDetails, KeyCounter[])} 同一条准入）：
+     * 认得的样板返回它自己，认不得的返回 {@code null}。
+     */
+    private @Nullable IMolecularAssemblerSupportedPattern acceptedSupportedPattern(IPatternDetails pattern) {
+        localPatternProviderFacade.refreshDirtyPatterns();
+        if (!getMainNode().isActive()
+                || !(pattern instanceof IMolecularAssemblerSupportedPattern supportedPattern)) {
+            return null;
+        }
+        if (supportedPattern instanceof HostBatchPattern aggregatedPattern) {
+            return aggregatedPattern.hostLocator().matches(this) ? supportedPattern : null;
+        }
+        return localPatternProviderFacade.contains(unwrapFormalDelegatingPattern(pattern))
+                ? supportedPattern
+                : null;
+    }
+
+    @Override
+    public boolean supportsDeclaredBatch(IPatternDetails pattern) {
+        return acceptedSupportedPattern(pattern) != null;
+    }
+
+    /** 虚拟产出及回流容器均使用宽域缓冲，声明发数没有 long 数值上界。 */
+    @Override
+    public boolean declaredBatchFiringsUnbounded() {
+        return true;
+    }
+
+    /** 未采用无界声明的调用方仍可读取准入状态；发数限制由宽域能力明确给出。 */
+    @Override
+    public BigInteger declaredBatchCapacity(IPatternDetails pattern) {
+        return acceptedSupportedPattern(pattern) == null
+                ? BigInteger.ZERO
+                : WideCeilings.LONG_ACCOUNT;
+    }
+
+    /** 按实收 BigInteger 发数构造整批精确产出；拒收时不修改缓冲。 */
+    @Override
+    public BigInteger pushDeclaredBatch(IPatternDetails pattern, KeyCounter[] unitPrototype,
+            BigInteger declaredExecutions) {
+        IMolecularAssemblerSupportedPattern supported = acceptedSupportedPattern(pattern);
+        if (supported == null || declaredExecutions == null || declaredExecutions.signum() <= 0) {
+            return BigInteger.ZERO;
+        }
+        WideKeyCounter buffered = virtualOutputs(supported, unitPrototype, declaredExecutions, true);
+        if (buffered.isEmpty()) {
+            return BigInteger.ZERO;
+        }
+        for (var key : buffered.keys()) {
+            pendingVirtualOutputs.add(key, buffered.getExact(key));
+        }
+        saveChanges();
+        return declaredExecutions;
+    }
+
+    /** 装配器实际使用的产出构造口；单批数量与同键回流都按 BigInteger 精确累加。 */
+    static WideKeyCounter virtualOutputs(IPatternDetails pattern, @Nullable KeyCounter[] holder,
+            BigInteger executions, boolean unitPrototype) {
+        var buffered = new WideKeyCounter();
+        if (executions.signum() <= 0) {
+            return buffered;
+        }
+        for (var output : pattern.getOutputs()) {
+            if (output != null && output.what() != null && output.amount() > 0L) {
+                buffered.add(output.what(), BigInteger.valueOf(output.amount()).multiply(executions));
+            }
+        }
+        if (unitPrototype) {
+            appendDeclaredVirtualRemainders(pattern, holder, buffered, executions);
+        } else {
+            appendVirtualRemainders(pattern, holder, buffered);
+        }
+        return buffered;
     }
 
     void recordLocalOptimizationHit() {
@@ -588,6 +729,30 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
      * 把缓冲的虚拟产出经网格存储归还。CraftingServiceStorage 会优先把匹配某 CPU
      * waitingFor 的物品路由给该 CPU（AE2 官方完成路径）；剩余部分回写缓冲下 tick 重试。
      */
+    /** 逐键扣除实际交付量；本轮未发出的宽域余额及拒收分段都留在缓冲。 */
+    static void accountVirtualDelivery(WideKeyCounter buffer,
+            List<GenericStack> sent, List<GenericStack> remaining) {
+        for (var stack : sent) {
+            buffer.subtract(stack.what(), stack.amount());
+        }
+        for (var stack : remaining) {
+            if (stack != null && stack.what() != null && stack.amount() > 0L) {
+                buffer.add(stack.what(), stack.amount());
+            }
+        }
+    }
+
+    static List<GenericStack> virtualOutputPayload(WideKeyCounter buffer) {
+        List<GenericStack> payload = new ArrayList<>(buffer.size());
+        for (var key : buffer.keys()) {
+            BigInteger amount = buffer.getExact(key);
+            if (amount.signum() > 0) {
+                payload.add(new GenericStack(key, amount.min(WideCeilings.LONG_ACCOUNT).longValueExact()));
+            }
+        }
+        return payload;
+    }
+
     private void flushPendingVirtualOutputs() {
         if (pendingVirtualOutputs.isEmpty()) {
             if (virtualReturnStalled) {
@@ -602,24 +767,11 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
         if (storageService == null) {
             return;
         }
-        List<GenericStack> payload = new ArrayList<>(pendingVirtualOutputs.size());
-        for (var entry : pendingVirtualOutputs) {
-            if (entry.getKey() == null || entry.getLongValue() <= 0L) {
-                continue;
-            }
-            payload.add(new GenericStack(entry.getKey(), entry.getLongValue()));
-        }
-        var routing = CraftingOutputRouter
-                .routePayload(storageService, actionSource, payload, null);
+        List<GenericStack> payload = virtualOutputPayload(pendingVirtualOutputs);
+        var routing = CraftingOutputRouter.routePayload(storageService, actionSource, payload, null);
         List<GenericStack> remaining = routing.remainingPayload();
-        pendingVirtualOutputs.reset();
-        boolean stalled = false;
-        for (GenericStack stack : remaining) {
-            if (stack != null && stack.what() != null && stack.amount() > 0L) {
-                pendingVirtualOutputs.add(stack.what(), stack.amount());
-                stalled = true;
-            }
-        }
+        accountVirtualDelivery(pendingVirtualOutputs, payload, remaining);
+        boolean stalled = !remaining.isEmpty();
         virtualReturnStalled = stalled;
         if (stalled) {
             // 产出回不去的唯一出口日志：网络 insert 未全收（存储满或

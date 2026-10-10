@@ -32,7 +32,7 @@ final class ActiveRouteSelectionTest {
         var consumer = new GraphPattern(null, N, 1, List.of(),
                 List.of(normalInput(T, GraphInput.Mode.NORMAL, null)));
         var macro = new RingMacro(RingId.of(T, List.of()),
-                counter(N, 1), new KeyCounter(), new KeyCounter(), Map.of(), true);
+                counter(N, 1), new KeyCounter(), new KeyCounter(), Map.of(), Map.of(), true);
         var graph = new CraftGraph(T,
                 Map.of(N, List.of(consumer)), Map.of(), List.of(), Map.of(T, List.of(macro)),
                 Map.of(), Map.of(), Map.of(), Set.of(), Map.of(), false, null, 0, 0);
@@ -67,7 +67,7 @@ final class ActiveRouteSelectionTest {
         var containerReturn = new GraphPattern(null, N, 1, List.of(),
                 List.of(normalInput(T, GraphInput.Mode.RETURNED, T)));
         var macro = new RingMacro(RingId.of(T, List.of()),
-                counter(N, 1), new KeyCounter(), new KeyCounter(), Map.of(), true);
+                counter(N, 1), new KeyCounter(), new KeyCounter(), Map.of(), Map.of(), true);
         var graph = new CraftGraph(T,
                 Map.of(N, List.of(containerReturn)), Map.of(), List.of(), Map.of(T, List.of(macro)),
                 Map.of(), Map.of(), Map.of(), Set.of(), Map.of(), false, null, 0, 0);
