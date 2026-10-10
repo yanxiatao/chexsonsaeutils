@@ -94,6 +94,8 @@ public class Chexsonsaeutils {
             NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenRender);
             NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenKeyPressed);
             NeoForge.EVENT_BUS.addListener(SlotNumberOverlay::onScreenClosing);
+            NeoForge.EVENT_BUS.addListener(
+                    git.chexson.chexsonsaeutils.client.gui.tooltip.ProcessingReplacementTooltips::onTooltip);
         }
     }
 
@@ -397,6 +399,7 @@ public class Chexsonsaeutils {
                 event.getServer().registryAccess()
         );
         GraphPlanCapture.awaitPendingWrites();
+        git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPackRulesRegistry.reset();
     }
 
     private static void saveInfinityCellStore(net.minecraft.server.level.ServerLevel level) {

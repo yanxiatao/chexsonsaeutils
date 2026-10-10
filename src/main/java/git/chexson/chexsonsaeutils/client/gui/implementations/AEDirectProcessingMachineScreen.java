@@ -1,5 +1,7 @@
 package git.chexson.chexsonsaeutils.client.gui.implementations;
 
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportBatches;
+import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixInteraction;
 import appeng.client.gui.style.StyleManager;
 import appeng.client.gui.widgets.AE2Button;
 import appeng.menu.SlotSemantics;
@@ -10,7 +12,6 @@ import git.chexson.chexsonsaeutils.client.integration.jei.JeiMachineRecipeTypeHi
 import git.chexson.chexsonsaeutils.client.integration.jei.JeiRuntimeHolder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedSignature;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReasonCode;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
@@ -18,7 +19,6 @@ import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.events.GuiEventListener;
-import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -31,16 +31,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * 直连处理机界面：样板区与归墟共用抄来的 ExtendedAE 装配矩阵，只把第四行烘焙格让给机器行，
- * 用来放绑定槽、绑定标签与配方类型摘要；JEI 导入按钮用 AE2 按钮材质贴在对话框右上角，
- * 额外按状态码统计全量样板的支持情况。
- */
+/** 直连处理机的实体样板页与机器标记页，共用现有背景并通过左侧按钮切换。 */
 public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirectProcessingMachineMenu> {
 
     private static final int MATRIX_COLUMNS = 9;
-    /** 少一行烘焙格来换机器行，滚动窗口随之从四行变三行。 */
-    private static final int MATRIX_ROWS = 3;
+    private static final int MATRIX_ROWS = 4;
     private static final int MATRIX_LEFT = 8;
     private static final int MATRIX_TOP = 31;
     /** 三行信息由样式文档定位，这里只负责填内容。 */
@@ -51,6 +46,12 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
 
     private final AE2Button importJeiButton;
     private List<JeiMachineRecipeTypeHint> currentJeiHints = List.of();
+    private final java.util.Map<MachineIdentity, List<JeiMachineRecipeTypeHint>> hintsByMachine = new java.util.LinkedHashMap<>();
+    private final AE2Button patternsButton;
+    private final AE2Button machinesButton;
+    private int hintRefreshFrames;
+    private final git.chexson.chexsonsaeutils.client.gui.matrix.MachineMarkerClientView machineView =
+            new git.chexson.chexsonsaeutils.client.gui.matrix.MachineMarkerClientView();
     private boolean suppressJeiTooltipUntilMouseLeave;
     private boolean dismissJeiTooltipThisFrame;
     private TooltipSource currentFrameTooltipSource = TooltipSource.NONE;
@@ -74,13 +75,41 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
                 MATRIX_COLUMNS,
                 MATRIX_ROWS,
                 MATRIX_LEFT,
-                MATRIX_TOP
+                MATRIX_TOP,
+                MatrixSearchMatchers.create()
         );
+        patternsButton = widgets.addButton("patterns_page",
+                Component.translatable("gui.chexsonsaeutils.ae_direct_processing_machine.patterns_page"),
+                button -> menu.selectMachinePage(false));
+        machinesButton = widgets.addButton("machines_page",
+                Component.translatable("gui.chexsonsaeutils.ae_direct_processing_machine.machines_page"),
+                button -> menu.selectMachinePage(true));
         this.importJeiButton = widgets.addButton(
                 "jei_import",
                 Component.literal("JEI"),
                 button -> importCurrentJeiHints()
         );
+    }
+
+    @Override
+    protected PatternMatrixClientView matrixViewForDisplay() {
+        return menu.machinePage ? machineView.update(menu.getSlots(SlotSemantics.MACHINE_INPUT).stream()
+                .map(Slot::getItem).toList()) : menu.matrixView();
+    }
+
+    @Override
+    protected long matrixActionId() {
+        return menu.machinePage ? PatternMatrixInteraction.MATRIX_MACHINE_ID : PatternMatrixInteraction.MATRIX_PATTERN_ID;
+    }
+
+    @Override
+    protected Component statusLine() {
+        if (!menu.machinePage) return super.statusLine();
+        var view = matrixViewForDisplay();
+        return view.filterActive()
+                ? Component.translatable("gui.chexsonsaeutils.matrix.machine_count_matched",
+                        view.matchCount(), view.getNonEmptySlots(), view.getTotalSlots())
+                : Component.translatable("gui.chexsonsaeutils.matrix.machine_count", view.getNonEmptySlots(), view.getTotalSlots());
     }
 
     @Override
@@ -94,10 +123,19 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
     protected void updateBeforeRender() {
         super.updateBeforeRender();
         refreshStatusCounts();
-        setTextContent(RECIPE_TYPES_TEXT, menu.getSummaryLine());
+        setTextHidden(RECIPE_TYPES_TEXT, true);
+        setTextHidden("binding_slot", true);
+        patternsButton.active = menu.machinePage;
+        machinesButton.active = !menu.machinePage;
+        importJeiButton.visible = menu.machinePage;
+        setTextHidden(PATTERN_COUNT_TEXT, false);
         setTextContent(PATTERN_COUNT_TEXT, statusLine());
-        setTextContent(PATTERN_STATUS_TEXT, getStatusLine());
-        currentJeiHints = collectCurrentJeiHints();
+        setTextHidden(PATTERN_STATUS_TEXT, menu.machinePage);
+        if (!menu.machinePage) setTextContent(PATTERN_STATUS_TEXT, getStatusLine());
+        if (hintRefreshFrames-- <= 0) {
+            currentJeiHints = collectCurrentJeiHints();
+            hintRefreshFrames = 20;
+        }
         importJeiButton.active = !currentJeiHints.isEmpty();
         importJeiButton.setMessage(Component.translatable(
                 "gui.chexsonsaeutils.ae_direct_processing_machine.jei_import_button",
@@ -106,18 +144,14 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
     }
 
     @Override
-    public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY, float partialTicks) {
-        super.drawBG(guiGraphics, offsetX, offsetY, mouseX, mouseY, partialTicks);
-        for (Slot slot : menu.getSlots(SlotSemantics.MACHINE_INPUT)) {
-            blitSlotCell(guiGraphics, offsetX, offsetY, slot);
-        }
-    }
-
-    @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         currentFrameTooltipSource = resolveTooltipSource(mouseX, mouseY);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
         try {
+            if (currentFrameTooltipSource == TooltipSource.RECIPE_TYPES) {
+                guiGraphics.renderTooltip(font, font.split(menu.getSummaryLine(), Math.min(280, width - 16)), mouseX, mouseY);
+                return;
+            }
             if (!shouldRenderJeiTooltip(mouseX, mouseY)) {
                 return;
             }
@@ -132,13 +166,29 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
     }
 
     @Override
+    public void drawFG(GuiGraphics graphics, int offsetX, int offsetY, int mouseX, int mouseY) {
+        super.drawFG(graphics, offsetX, offsetY, mouseX, mouseY);
+        if (!menu.machinePage) return;
+        int x = 8;
+        int y = imageHeight - 95;
+        int available = imageWidth - x - 8;
+        String summary = menu.getSummaryLine().getString();
+        if (font.width(summary) > available) {
+            summary = font.plainSubstrByWidth(summary, Math.max(0, available - font.width("…"))) + "…";
+        }
+        graphics.enableScissor(leftPos + x, topPos + y, leftPos + x + available, topPos + y + font.lineHeight);
+        graphics.drawString(font, summary, x, y, 0x404040, false);
+        graphics.disableScissor();
+    }
+
+    @Override
     protected List<Component> getTooltipFromContainerItem(ItemStack stack) {
         List<Component> tooltip = super.getTooltipFromContainerItem(stack);
         if (currentFrameTooltipSource != TooltipSource.SLOT_ITEM) {
             return tooltip;
         }
         Slot slot = getSlotUnderMouse();
-        if (!(slot instanceof AssemblerMatrixSlot cell)) {
+        if (menu.machinePage || !(slot instanceof AssemblerMatrixSlot cell)) {
             return tooltip;
         }
         int globalSlot = cell.getActuallySlot();
@@ -189,6 +239,7 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
                 case SUPPORTED_EXPLICIT, SUPPORTED_CONFIG, SUPPORTED_GENERIC -> supported++;
                 case NEEDS_CONFIG_MAPPING -> needsConfig++;
                 case UNSAFE_DYNAMIC -> unsafe++;
+                case PENDING_REFRESH -> { }
                 default -> unsupported++;
             }
         }
@@ -223,7 +274,7 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
     }
 
     private boolean shouldRenderJeiTooltip(int mouseX, int mouseY) {
-        if (!importJeiButton.isMouseOver(mouseX, mouseY)) {
+        if (!importJeiButton.visible || !importJeiButton.isMouseOver(mouseX, mouseY)) {
             suppressJeiTooltipUntilMouseLeave = false;
             return false;
         }
@@ -240,6 +291,10 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
         if (slot != null && slot.hasItem()) {
             return TooltipSource.SLOT_ITEM;
         }
+        if (menu.machinePage && mouseX >= leftPos + 8 && mouseX < leftPos + imageWidth - 7
+                && mouseY >= topPos + imageHeight - 95 && mouseY < topPos + imageHeight - 95 + font.lineHeight) {
+            return TooltipSource.RECIPE_TYPES;
+        }
         if (importJeiButton.isMouseOver(mouseX, mouseY)) {
             return TooltipSource.JEI_BUTTON;
         }
@@ -247,12 +302,24 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
     }
 
     private void importCurrentJeiHints() {
-        MachineRecipeConfigImportRequest request = buildJeiImportRequest();
-        if (request != null) {
-            PacketDistributor.sendToServer(new DirectProcessingJeiImportPayload(
-                    menu.getContainerIdForPayload(),
-                    request
-            ));
+        try {
+            collectCurrentJeiHints();
+            List<MachineRecipeConfigImportRequest> batches = new ArrayList<>();
+            for (var entry : hintsByMachine.entrySet()) {
+                MachineRecipeConfigImportRequest request = buildJeiImportRequest(entry.getKey(), entry.getValue());
+                if (request != null) batches.addAll(
+                        MachineRecipeImportBatches.split(
+                                minecraft.level.registryAccess(), request,
+                                JeiRuntimeHolder.collectSignatureHintsForMachine(
+                                        entry.getKey().machineItemId(), entry.getKey().blockId())));
+            }
+            for (MachineRecipeConfigImportRequest batch : batches) {
+                PacketDistributor.sendToServer(new DirectProcessingJeiImportPayload(menu.getContainerIdForPayload(), batch));
+            }
+        } catch (RuntimeException exception) {
+            com.mojang.logging.LogUtils.getLogger().error("无法构建直连处理机 JEI 导入包", exception);
+            getPlayer().displayClientMessage(Component.translatable(
+                    "gui.chexsonsaeutils.ae_direct_processing_machine.import_failed"), false);
         }
         dismissJeiTooltipThisFrame = true;
         clearJeiButtonFocus();
@@ -265,25 +332,27 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
     }
 
     private List<JeiMachineRecipeTypeHint> collectCurrentJeiHints() {
-        MachineIdentity identity = menu.getHost() == null
-                ? null
-                : MachineIdentity.fromBindingStack(menu.getHost().getMachineBindingStack());
-        if (identity == null || !JeiRuntimeHolder.hasRuntime()) {
-            return List.of();
+        hintsByMachine.clear();
+        if (!JeiRuntimeHolder.hasRuntime()) return List.of();
+        java.util.Map<ResourceLocation, JeiMachineRecipeTypeHint> types = new java.util.LinkedHashMap<>();
+        for (Slot slot : menu.getSlots(SlotSemantics.MACHINE_INPUT)) {
+            MachineIdentity identity = MachineIdentity.fromBindingStack(slot.getItem());
+            if (identity == null || hintsByMachine.containsKey(identity)) continue;
+            List<JeiMachineRecipeTypeHint> hints = JeiRuntimeHolder.collectVisibleHintsForMachine(
+                    identity.machineItemId(), identity.blockId());
+            hintsByMachine.put(identity, hints);
+            for (JeiMachineRecipeTypeHint hint : hints) types.putIfAbsent(hint.recipeTypeId(), hint);
         }
-        return JeiRuntimeHolder.collectVisibleHintsForMachine(identity.machineItemId(), identity.blockId());
+        return List.copyOf(types.values());
     }
 
-    private MachineRecipeConfigImportRequest buildJeiImportRequest() {
-        MachineIdentity identity = menu.getHost() == null
-                ? null
-                : MachineIdentity.fromBindingStack(menu.getHost().getMachineBindingStack());
-        if (identity == null || currentJeiHints.isEmpty()) {
-            return null;
-        }
+    private MachineRecipeConfigImportRequest buildJeiImportRequest(
+            MachineIdentity identity, List<JeiMachineRecipeTypeHint> hints
+    ) {
+        if (hints.isEmpty()) return null;
         Set<ResourceLocation> recipeTypeIds = new LinkedHashSet<>();
         int defaultTicks = 20;
-        for (JeiMachineRecipeTypeHint hint : currentJeiHints) {
+        for (JeiMachineRecipeTypeHint hint : hints) {
             if (hint == null || hint.recipeTypeId() == null) {
                 continue;
             }
@@ -293,13 +362,6 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
         if (recipeTypeIds.isEmpty()) {
             return null;
         }
-        RegistryAccess registries = minecraft != null && minecraft.level != null
-                ? minecraft.level.registryAccess()
-                : RegistryAccess.EMPTY;
-        String signatureHintsJson = MachineRecipeImportedSignature.toJson(
-                registries,
-                JeiRuntimeHolder.collectSignatureHintsForMachine(identity.machineItemId(), identity.blockId())
-        );
         return new MachineRecipeConfigImportRequest(
                 identity.machineItemId(),
                 identity.blockId(),
@@ -308,7 +370,7 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
                 "generic",
                 "any",
                 true,
-                signatureHintsJson
+                "[]"
         );
     }
 
@@ -355,6 +417,7 @@ public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirect
     private enum TooltipSource {
         NONE,
         SLOT_ITEM,
+        RECIPE_TYPES,
         JEI_BUTTON
     }
 }

@@ -154,7 +154,8 @@ public record MachineRecipeImportedSignature(
             return root != null && root.isJsonArray()
                     ? parseJsonArray(registries, root.getAsJsonArray())
                     : List.of();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException exception) {
+            com.mojang.logging.LogUtils.getLogger().warn("无法解析直连处理机导入配方", exception);
             return List.of();
         }
     }

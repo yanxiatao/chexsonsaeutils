@@ -61,6 +61,11 @@ public final class ChexsonsaeutilsNetwork {
                 PlanningOrderStatePayload.STREAM_CODEC,
                 PlanningOrderStatePayload::handle
         );
+        event.registrar("1").playToClient(
+                git.chexson.chexsonsaeutils.network.directprocessing.rules.DirectProcessingPackRulesPayload.TYPE,
+                git.chexson.chexsonsaeutils.network.directprocessing.rules.DirectProcessingPackRulesPayload.STREAM_CODEC,
+                git.chexson.chexsonsaeutils.network.directprocessing.rules.DirectProcessingPackRulesPayload::handle
+        );
         var matrixRegistrar = event.registrar("1");
         matrixRegistrar.playToServer(
                 PatternMatrixSearchPayload.TYPE,

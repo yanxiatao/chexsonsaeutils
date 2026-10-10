@@ -509,6 +509,11 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
         }
 
         // 需求 4a：定制样板走强制槽位写入路径（不经过 target 的普通插入模拟）
+        if (patternDetails instanceof git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwarePattern replacement
+                && replacement.basePattern() instanceof CustomProcessingPattern customPattern) {
+            var selectedInputs = replacement.resolveSparseInputs(inputHolder);
+            return selectedInputs != null && pushCustomPattern(customPattern, inputHolder, selectedInputs, patternDetails);
+        }
         if (patternDetails instanceof CustomProcessingPattern customPattern) {
             return pushCustomPattern(customPattern, inputHolder);
         }
@@ -566,6 +571,11 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
      * @return true 表示推送成功
      */
     private boolean pushCustomPattern(CustomProcessingPattern pattern, KeyCounter[] inputHolder) {
+        return pushCustomPattern(pattern, inputHolder, pattern.getSparseInputs(), pattern);
+    }
+
+    private boolean pushCustomPattern(CustomProcessingPattern pattern, KeyCounter[] inputHolder,
+                                     List<GenericStack> sparseInputs, IPatternDetails pushedPattern) {
         IItemHandler handler = resolveMachineHandler();
         if (handler == null) {
             return false;
@@ -577,7 +587,6 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
                     "Machine handler {} is not IItemHandlerModifiable; frame pattern slot mapping degrades to regular insertion",
                     handler.getClass().getName());
         }
-        var sparseInputs = pattern.getSparseInputs();
         var slotMapping = pattern.getSlotMapping();
 
         // blocking 模式：机器内已有样板输入时拒绝（与普通路径 containsPatternInput 等价）
@@ -679,7 +688,7 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             allInputs.remove(itemKey, amount);
         }
 
-        onPushPatternSuccess(pattern);
+        onPushPatternSuccess(pushedPattern);
         this.sendStacksOut();
         return true;
     }
@@ -1012,7 +1021,9 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             if (details == null || !details.supportsPushInputsToExternalInventory()) {
                 continue;
             }
-            if (details instanceof CustomProcessingPattern customPattern
+            var extractionPattern = details instanceof git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwarePattern replacement
+                    ? replacement.basePattern() : details;
+            if (extractionPattern instanceof CustomProcessingPattern customPattern
                     && customPattern.getExtractSlots().length > 0) {
                 for (int slot : customPattern.getExtractSlots()) {
                     this.pullExtractSlots.add(slot);

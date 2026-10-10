@@ -7,7 +7,8 @@ public record PatternCompatibility(
         MachineSupportStatus status,
         MachineSupportReasonCode reasonCode,
         @Nullable IPatternDetails pattern,
-        @Nullable RecipeSignature signature
+        @Nullable RecipeSignature signature,
+        java.util.List<RecipeSignature> signatures
 ) {
     public boolean supported() {
         return status == MachineSupportStatus.SUPPORTED_GENERIC
@@ -20,7 +21,7 @@ public record PatternCompatibility(
     }
 
     public static PatternCompatibility unsupported(MachineSupportStatus status, MachineSupportReasonCode reasonCode) {
-        return new PatternCompatibility(status, reasonCode, null, null);
+        return new PatternCompatibility(status, reasonCode, null, null, java.util.List.of());
     }
 
     public static PatternCompatibility supported(
@@ -32,7 +33,16 @@ public record PatternCompatibility(
                 || status == MachineSupportStatus.SUPPORTED_CONFIG
                 ? status
                 : MachineSupportStatus.SUPPORTED_GENERIC;
-        return new PatternCompatibility(effectiveStatus, MachineSupportReasonCode.NONE, pattern, signature);
+        return new PatternCompatibility(effectiveStatus, MachineSupportReasonCode.NONE, pattern, signature, java.util.List.of(signature));
+    }
+
+    /** 保留替换输入对应的全部合法配方，推送时按实收材料选取。 */
+    public static PatternCompatibility supported(MachineSupportStatus status, IPatternDetails pattern,
+                                                  java.util.List<RecipeSignature> signatures) {
+        var first = supported(status, pattern, signatures.getFirst());
+        var restricted = MachineRecipePatternImpl.restrict(pattern, signatures);
+        return new PatternCompatibility(first.status(), first.reasonCode(), restricted, first.signature(),
+                java.util.List.copyOf(signatures));
     }
 
     public static PatternCompatibility supportedGeneric(IPatternDetails pattern, RecipeSignature signature) {

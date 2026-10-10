@@ -96,51 +96,36 @@ public final class ProcessingTask {
         if (pattern == null || signature == null || inputHolder == null) {
             return null;
         }
-        KeyCounter[] originalInputs = copyInputHolders(inputHolder);
-        List<RecipeSignatureInput> selectedInputs = DirectProcessingStackSupport.toSignatureInputs(
-                collectSelectedInputs(pattern, inputHolder)
-        );
-        List<GenericStack> normalizedPatternOutputs = DirectProcessingStackSupport.normalizeStacks(pattern.getOutputs());
+        // ICraftingMachine 接收的是 CPU 已抽出的整批材料；外部库存投料接口会重排稀疏槽，
+        // AEProcessingPattern 在压缩槽时仅推送一份样板量，不能用它核算整批投入。
+        List<GenericStack> received = collectReceivedInputs(inputHolder);
+        List<RecipeSignatureInput> patternInputs = DirectProcessingStackSupport.patternInputs(pattern, signature);
         List<GenericStack> outputsPerExecution = DirectProcessingStackSupport.normalizeStacks(signature.outputs());
-        if (selectedInputs.isEmpty() || outputsPerExecution.isEmpty() || normalizedPatternOutputs.isEmpty()) {
-            restoreInputHolders(inputHolder, originalInputs);
-            return null;
+        if (received.isEmpty() || patternInputs.isEmpty() || outputsPerExecution.isEmpty()) return null;
+        Long recipesPerPattern = DirectProcessingStackSupport.deriveExecutionCount(patternInputs, signature.inputs());
+        Long patternCount = DirectProcessingStackSupport.deriveExecutionCount(
+                DirectProcessingStackSupport.toSignatureInputs(received), patternInputs);
+        if (recipesPerPattern == null || patternCount == null) return null;
+        List<GenericStack> patternOutputs = DirectProcessingStackSupport.scaleStacks(outputsPerExecution, recipesPerPattern);
+        if (patternOutputs.isEmpty() || !DirectProcessingStackSupport.stacksEqual(pattern.getOutputs(), patternOutputs)) return null;
+        long executionCount = DirectProcessingStackSupport.multiplyOrZero(recipesPerPattern, patternCount);
+        long ticks = DirectProcessingStackSupport.multiplyOrZero(Math.max(1L, totalTicks), patternCount);
+        if (executionCount <= 0 || ticks <= 0
+                || DirectProcessingStackSupport.scaleStacks(outputsPerExecution, executionCount).isEmpty()) return null;
+        // 校验和入队前不修改 holder；拒收时调用方仍持有所有材料，接收成功后转移所有权。
+        return new ProcessingTask(pattern.getDefinition().toStack(),
+                DirectProcessingStackSupport.toGenericStacks(signature.inputs()), outputsPerExecution,
+                ticks, ticks, executionCount);
+    }
+
+    /** 在兼容性缓存的合法配方中核验实收替换材料；拒收不改变 holder。 */
+    @Nullable
+    public static ProcessingTask compile(PatternCompatibility compatibility, KeyCounter[] holders, int ticks) {
+        for (var signature : compatibility.signatures()) {
+            var task = compile(compatibility.pattern(), signature, holders, ticks);
+            if (task != null) return task;
         }
-        Long executionCount = DirectProcessingStackSupport.deriveExecutionCount(selectedInputs, signature.inputs());
-        if (executionCount == null || executionCount <= 0L) {
-            restoreInputHolders(inputHolder, originalInputs);
-            return null;
-        }
-        List<GenericStack> scaledOutputs = DirectProcessingStackSupport.scaleStacks(outputsPerExecution, executionCount);
-        if (DirectProcessingStackSupport.stacksEqual(normalizedPatternOutputs, scaledOutputs)) {
-            return new ProcessingTask(
-                    pattern.getDefinition().toStack(),
-                    DirectProcessingStackSupport.toGenericStacks(signature.inputs()),
-                    outputsPerExecution,
-                    totalTicks,
-                    totalTicks,
-                    executionCount
-            );
-        }
-        if (executionCount == 1L
-                || !DirectProcessingStackSupport.stacksEqual(normalizedPatternOutputs, outputsPerExecution)) {
-            restoreInputHolders(inputHolder, originalInputs);
-            return null;
-        }
-        // 工时 = 每发 tick × 份数：越界只可能是 long 溢出，届时整批拒收（绝不饱和后提速）。
-        if (executionCount > Long.MAX_VALUE / Math.max(1L, totalTicks)) {
-            restoreInputHolders(inputHolder, originalInputs);
-            return null;
-        }
-        long scaledTicks = (long) totalTicks * executionCount;
-        return new ProcessingTask(
-                pattern.getDefinition().toStack(),
-                DirectProcessingStackSupport.toGenericStacks(signature.inputs()),
-                outputsPerExecution,
-                scaledTicks,
-                scaledTicks,
-                executionCount
-        );
+        return null;
     }
 
     @Nullable
@@ -158,14 +143,14 @@ public final class ProcessingTask {
                 || count <= 0L) {
             return null;
         }
+        // NeoEco 的显式单次输入/输出是批次契约，聚合样板不要求提供普通 IInput 视图。
         List<GenericStack> normalizedInputs = DirectProcessingStackSupport.normalizeStacks(inputsPerExecution);
-        if (!DirectProcessingStackSupport.signatureInputsEqual(
-                DirectProcessingStackSupport.toSignatureInputs(normalizedInputs),
-                signature.inputs())) {
-            return null;
-        }
         List<GenericStack> normalizedOutputs = DirectProcessingStackSupport.normalizeStacks(outputsPerExecution);
-        if (!DirectProcessingStackSupport.stacksEqual(normalizedOutputs, signature.outputs())) {
+        Long recipeScale = DirectProcessingStackSupport.deriveExecutionCountFromStacks(normalizedOutputs, signature.outputs());
+        if (recipeScale == null) return null;
+        var expectedInputs = DirectProcessingStackSupport.scaleStacks(
+                DirectProcessingStackSupport.toGenericStacks(signature.inputs()), recipeScale);
+        if (expectedInputs.isEmpty() || !DirectProcessingStackSupport.stacksEqual(normalizedInputs, expectedInputs)) {
             return null;
         }
         List<GenericStack> payloadPerExecution = mergeBatchPayload(
@@ -406,14 +391,22 @@ public final class ProcessingTask {
                 .toList();
     }
 
-    private static List<GenericStack> collectSelectedInputs(IPatternDetails pattern, KeyCounter[] inputHolder) {
-        List<GenericStack> inputs = new ArrayList<>();
-        pattern.pushInputsToExternalInventory(inputHolder, (AEKey key, long amount) -> {
-            if (key != null && amount > 0) {
-                inputs.add(new GenericStack(key, amount));
+    private static List<GenericStack> collectReceivedInputs(KeyCounter[] holders) {
+        Map<AEKey, Long> amounts = new LinkedHashMap<>();
+        for (KeyCounter holder : holders) {
+            if (holder == null) return List.of();
+            for (var entry : holder) {
+                long amount = entry.getLongValue();
+                if (amount == 0) continue;
+                long previous = amounts.getOrDefault(entry.getKey(), 0L);
+                if (amount < 0 || previous > Long.MAX_VALUE - amount) {
+                    LOG.warn("Direct processing received input amount is invalid or overflows for {}", entry.getKey());
+                    return List.of();
+                }
+                amounts.put(entry.getKey(), previous + amount);
             }
-        });
-        return List.copyOf(inputs);
+        }
+        return amounts.entrySet().stream().map(entry -> new GenericStack(entry.getKey(), entry.getValue())).toList();
     }
 
     private static KeyCounter[] copyInputHolders(KeyCounter[] inputHolder) {

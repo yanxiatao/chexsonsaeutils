@@ -52,6 +52,37 @@ public final class MachineRecipeIndexBuilder {
     }
 
     public MachineRecipeIndex buildIndexTemplate(Level level, MachineIdentity identity) {
+        if (level == null || identity == null) return MachineRecipeIndex.empty();
+        DirectProcessingPackRules rules = DirectProcessingPackRulesRegistry.current();
+        if (!rules.allowsMachine(identity)) return new MachineRecipeIndex(identity, Set.of(), List.of(), Set.of(),
+                MachineSupportStatus.UNSUPPORTED_UNREADABLE, MachineSupportReasonCode.PACK_RULE_DISABLED, 0);
+        MachineRecipeIndex standard = buildStandardIndex(level, identity);
+        MachineRecipeIndex custom = buildPackRecipeIndex(identity,
+                level.getRecipeManager().getAllRecipesFor(DirectProcessingRecipeRegistration.PACK_RECIPE_TYPE.get()));
+        return MachineRecipeIndex.merge(List.of(standard, custom), 0);
+    }
+
+    /** 从重载后的原生配方生成标记专属索引；坏配方记录 ID 并整条跳过，不影响其他配方。 */
+    MachineRecipeIndex buildPackRecipeIndex(MachineIdentity identity,
+                                            List<RecipeHolder<DirectProcessingPackRecipe>> recipes) {
+        if (!DirectProcessingPackRulesRegistry.current().allowsType(identity, DirectProcessingPackRecipe.TYPE_ID)) {
+            return MachineRecipeIndex.empty();
+        }
+        Set<RecipeSignature> signatures = new LinkedHashSet<>();
+        for (var holder : recipes) {
+            if (!holder.value().supports(identity)) continue;
+            try {
+                signatures.addAll(holder.value().signatures());
+            } catch (IllegalArgumentException exception) {
+                LOG.error("Cannot index direct processing pack recipe {}", holder.id(), exception);
+            }
+        }
+        if (signatures.isEmpty()) return MachineRecipeIndex.empty();
+        return new MachineRecipeIndex(identity, Set.of(), List.of(DirectProcessingPackRecipe.TYPE_ID),
+                signatures, MachineSupportStatus.SUPPORTED_CONFIG, MachineSupportReasonCode.NONE, 0);
+    }
+
+    private MachineRecipeIndex buildStandardIndex(Level level, MachineIdentity identity) {
         if (level == null || identity == null) {
             return MachineRecipeIndex.empty();
         }
@@ -134,13 +165,16 @@ public final class MachineRecipeIndexBuilder {
         if (level == null || identity == null || request == null) {
             return null;
         }
+        List<ResourceLocation> allowedTypes = request.recipeTypeIds().stream()
+                .filter(id -> DirectProcessingPackRulesRegistry.current().allowsImport(identity, id)).toList();
+        if (allowedTypes.isEmpty()) return null;
         List<MachineRecipeImportedSignature> importedSignatures = validateImportedSignatures(
                 level.registryAccess(),
                 request.signatureHintsJson(),
-                request.recipeTypeIds()
+                allowedTypes
         );
         Set<ResourceLocation> mergedRecipeTypeIds = new LinkedHashSet<>(
-                validateRecipeTypeIds(level, request.recipeTypeIds(), request.defaultTicks())
+                validateRecipeTypeIds(level, allowedTypes, request.defaultTicks())
         );
         mergedRecipeTypeIds.addAll(MachineRecipeImportedSignature.collectRecipeTypeIds(importedSignatures));
         if (mergedRecipeTypeIds.isEmpty()) {
@@ -182,7 +216,7 @@ public final class MachineRecipeIndexBuilder {
                     supportedStatus(result, imported, supportedStatus),
                     MachineSupportReasonCode.NONE,
                     0L
-            );
+            ).withDiscoveryStatuses(result.signatureStatuses(), imported.signatures());
         }
         MachineSupportStatus status = MachineSupportStatus.NEEDS_CONFIG_MAPPING;
         MachineSupportReasonCode reason = result.hadUnreadableCandidates()
@@ -216,9 +250,10 @@ public final class MachineRecipeIndexBuilder {
     ) {
         Map<ResourceLocation, RecipeTypeCandidate> matchedCandidates = new LinkedHashMap<>();
         Set<RecipeSignature> signatures = new LinkedHashSet<>();
+        Map<RecipeSignatureKey, MachineSupportStatus> signatureStatuses = new LinkedHashMap<>();
         boolean hadUnreadableCandidates = false;
         if (candidates == null) {
-            return new CandidateScanResult(List.of(), Set.of(), false);
+            return new CandidateScanResult(List.of(), Set.of(), false, Map.of());
         }
         for (RecipeTypeCandidate candidate : candidates) {
             if (candidate == null || candidate.recipeType() == null) {
@@ -235,12 +270,21 @@ public final class MachineRecipeIndexBuilder {
             if (!candidateSignatures.isEmpty()) {
                 matchedCandidates.put(recipeTypeId, candidate);
                 signatures.addAll(candidateSignatures);
+                MachineSupportStatus status = switch (candidate.source()) {
+                    case EXPLICIT_ADAPTER -> MachineSupportStatus.SUPPORTED_EXPLICIT;
+                    case CONFIG_MAPPING -> MachineSupportStatus.SUPPORTED_CONFIG;
+                    default -> MachineSupportStatus.SUPPORTED_GENERIC;
+                };
+                for (RecipeSignature signature : candidateSignatures) {
+                    signatureStatuses.putIfAbsent(RecipeSignatureKey.of(signature), status);
+                }
             }
         }
         return new CandidateScanResult(
                 recipeTypeIds(new ArrayList<>(matchedCandidates.values())),
                 signatures,
-                hadUnreadableCandidates
+                hadUnreadableCandidates,
+                signatureStatuses
         );
     }
 
@@ -278,7 +322,7 @@ public final class MachineRecipeIndexBuilder {
                     supportedStatus(result, imported, MachineSupportStatus.SUPPORTED_GENERIC),
                     MachineSupportReasonCode.NONE,
                     0L
-            );
+            ).withDiscoveryStatuses(result.signatureStatuses(), imported.signatures());
         }
         MachineSupportStatus status = MachineSupportStatus.NEEDS_CONFIG_MAPPING;
         MachineSupportReasonCode reason = result.hadUnreadableCandidates()
@@ -306,46 +350,11 @@ public final class MachineRecipeIndexBuilder {
         if (outputs.isEmpty()) {
             return PatternCompatibility.unsupported(MachineSupportReasonCode.MULTIPLE_PATHS);
         }
-        List<RecipeSignatureInput> signatureInputs = collectDeterministicInputs(pattern);
-        if (signatureInputs.isEmpty()) {
-            return PatternCompatibility.unsupported(MachineSupportReasonCode.SUBSTITUTION_INPUT);
-        }
-        ScaledSignatureMatch match = index.findScaledMatch(signatureInputs, outputs);
-        RecipeSignature signature = match == null ? null : match.signature();
-        if (signature != null) {
-            return PatternCompatibility.supported(index.status(), pattern, signature);
+        var matches = index.matchingSignatures(pattern);
+        if (!matches.isEmpty()) {
+            return PatternCompatibility.supported(index.statusFor(matches.getFirst()), pattern, matches);
         }
         return PatternCompatibility.unsupported(MachineSupportStatus.NEEDS_CONFIG_MAPPING, MachineSupportReasonCode.MAPPING_MISSING);
-    }
-
-    private static List<RecipeSignatureInput> collectDeterministicInputs(IPatternDetails pattern) {
-        List<GenericStack> inputs = new ArrayList<>();
-        for (IPatternDetails.IInput input : pattern.getInputs()) {
-            GenericStack[] possibleInputs = input.getPossibleInputs();
-            if (possibleInputs.length != 1 || possibleInputs[0] == null || possibleInputs[0].what() == null) {
-                return List.of();
-            }
-            long amount = multiplyOrZero(
-                    Math.max(1L, possibleInputs[0].amount()),
-                    Math.max(1L, input.getMultiplier())
-            );
-            if (amount <= 0L) {
-                return List.of();
-            }
-            inputs.add(new GenericStack(possibleInputs[0].what(), amount));
-        }
-        return DirectProcessingStackSupport.toSignatureInputs(inputs);
-    }
-
-    private static long multiplyOrZero(long left, long right) {
-        if (left <= 0L || right <= 0L) {
-            return 0L;
-        }
-        if (left > Long.MAX_VALUE / right) {
-            LOG.warn("Pattern input amount {} x {} overflows long: pattern dropped from index", left, right);
-            return 0L;
-        }
-        return left * right;
     }
 
     private List<MachineRecipeImportedSignature> validateImportedSignatures(
@@ -497,7 +506,8 @@ public final class MachineRecipeIndexBuilder {
     static record CandidateScanResult(
             List<ResourceLocation> recipeTypeIds,
             Set<RecipeSignature> signatures,
-            boolean hadUnreadableCandidates
+            boolean hadUnreadableCandidates,
+            Map<RecipeSignatureKey, MachineSupportStatus> signatureStatuses
     ) {
         CandidateScanResult {
             recipeTypeIds = recipeTypeIds == null ? List.of() : List.copyOf(recipeTypeIds);

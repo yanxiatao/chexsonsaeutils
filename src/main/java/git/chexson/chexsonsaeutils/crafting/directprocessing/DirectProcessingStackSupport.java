@@ -123,6 +123,73 @@ public final class DirectProcessingStackSupport {
         return normalizeStacks(stacks);
     }
 
+    /** 样板自身的一份确定输入；用于区分样板倍率与 CPU 一次投入的批量份数。 */
+    static List<RecipeSignatureInput> patternInputs(appeng.api.crafting.IPatternDetails pattern) {
+        List<GenericStack> inputs = new ArrayList<>();
+        for (var input : pattern.getInputs()) {
+            var options = input.getPossibleInputs();
+            if (options.length != 1 || options[0] == null || options[0].what() == null) return List.of();
+            long amount = multiplyOrZero(options[0].amount(), input.getMultiplier());
+            if (amount <= 0) return List.of();
+            inputs.add(new GenericStack(options[0].what(), amount));
+        }
+        return toSignatureInputs(inputs);
+    }
+
+    /** 用输出倍率约束替换输入，只接受机器索引中存在的完整配方。 */
+    static List<RecipeSignatureInput> patternInputs(appeng.api.crafting.IPatternDetails pattern,
+                                                   RecipeSignature signature) {
+        return patternInputs(pattern, signature, -1, null);
+    }
+
+    static List<RecipeSignatureInput> patternInputs(appeng.api.crafting.IPatternDetails pattern,
+                                                   RecipeSignature signature, int forcedSlot, AEKey forcedKey) {
+        Long scale = deriveExecutionCountFromStacks(pattern.getOutputs(), signature.outputs());
+        if (scale == null) return List.of();
+        var required = scaleStacks(toGenericStacks(signature.inputs()), scale);
+        if (required.isEmpty()) return List.of();
+        var deterministic = patternInputs(pattern);
+        if (!deterministic.isEmpty()) {
+            if (forcedSlot >= 0 && !pattern.getInputs()[forcedSlot].getPossibleInputs()[0].what().equals(forcedKey)) {
+                return List.of();
+            }
+            return signatureInputsEqual(deterministic, toSignatureInputs(required)) ? deterministic : List.of();
+        }
+        var slots = pattern.getInputs();
+        var remaining = new LinkedHashMap<>(stackAmounts(required));
+        // 逐槽选择完整样板量；不再把一个替代槽拆成数个物品流量。
+        int[] order = java.util.stream.IntStream.range(0, slots.length).boxed()
+                .sorted(java.util.Comparator.comparingInt(slot -> slots[slot].getPossibleInputs().length))
+                .mapToInt(Integer::intValue).toArray();
+        return matchWholeInputs(slots, order, 0, remaining, forcedSlot, forcedKey, new java.util.HashSet<>())
+                ? toSignatureInputs(required) : List.of();
+    }
+
+    private static boolean matchWholeInputs(appeng.api.crafting.IPatternDetails.IInput[] inputs,
+                                            int[] order, int cursor, Map<AEKey, Long> remaining,
+                                            int forcedSlot, AEKey forcedKey,
+                                            java.util.Set<InputMatchState> declined) {
+        if (cursor == order.length) return remaining.values().stream().allMatch(amount -> amount == 0);
+        var state = new InputMatchState(cursor, List.copyOf(remaining.values()));
+        if (declined.contains(state)) return false;
+        int slot = order[cursor];
+        var input = inputs[slot];
+        for (var candidate : input.getPossibleInputs()) {
+            if (slot == forcedSlot && !candidate.what().equals(forcedKey)) continue;
+            long amount = multiplyOrZero(candidate.amount(), input.getMultiplier());
+            long available = remaining.getOrDefault(candidate.what(), 0L);
+            if (amount <= 0 || available < amount) continue;
+            remaining.put(candidate.what(), available - amount);
+            if (matchWholeInputs(inputs, order, cursor + 1, remaining, forcedSlot, forcedKey, declined)) return true;
+            remaining.put(candidate.what(), available);
+        }
+        declined.add(state);
+        return false;
+    }
+
+    /** 相同剩余材料与待选槽只核验一次，避免重复候选产生指数级重试。 */
+    private record InputMatchState(int cursor, List<Long> remaining) { }
+
     static List<GenericStack> scaleStacks(List<GenericStack> stacks, long scale) {
         if (stacks == null || stacks.isEmpty() || scale <= 0L) {
             return List.of();

@@ -7,7 +7,7 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.pattern.AEProcessingPattern;
-import git.chexson.chexsonsaeutils.crafting.hostbatch.DelegatingPatternDetails;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -39,10 +39,9 @@ import java.util.function.Function;
  * 即稀疏槽号）；其他委托按 {@code getInputs()} 槽序映射
  * （dense 第 i 个输入 = 稀疏槽 i），两侧规则的槽号语义一致。
  *
- * <p>equals/hashCode 透传委托：AE2 以样板对象作账本键
- * （{@code state.crafts} 等），同 definition 的替换壳与底层样板必须同身份。
+ * <p>equals/hashCode 按替换样板 definition 比较；不同解码实例在供应器与规划账本中保持同身份。
  */
-public class ReplacementAwarePattern implements IPatternDetails, DelegatingPatternDetails {
+public class ReplacementAwarePattern implements IPatternDetails {
     private final IPatternDetails delegate;
     private final Map<Integer, ProcessingPatternSlotReplacementRule> replacementRules;
     private final ProcessingSlotTagExpander tagService;
@@ -84,7 +83,7 @@ public class ReplacementAwarePattern implements IPatternDetails, DelegatingPatte
         this.replacementAwareInputs = buildInputs();
     }
 
-    @Override
+    /** 返回底层槽位配置；替换改变输入契约，不能参与批量样板的提供者解包。 */
     public IPatternDetails basePattern() {
         return delegate;
     }
@@ -116,53 +115,35 @@ public class ReplacementAwarePattern implements IPatternDetails, DelegatingPatte
 
     @Override
     public void pushInputsToExternalInventory(KeyCounter[] inputHolder, PatternInputSink sink) {
-        KeyCounter availableInputs = new KeyCounter();
-        if (inputHolder != null) {
-            for (KeyCounter counter : inputHolder) {
-                if (counter != null) {
-                    availableInputs.addAll(counter);
-                }
-            }
-        }
-
-        for (int inputIndex = 0; inputIndex < nonEmptySparseSlots.length; inputIndex++) {
-            int sparseSlot = nonEmptySparseSlots[inputIndex];
-            GenericStack sparseInput = sparseInputs.get(sparseSlot);
-            if (sparseInput == null) {
-                continue;
-            }
-
-            long requiredAmount = sparseInput.amount();
-            pushInputToSink(replacementAwareInputs[inputIndex], availableInputs, requiredAmount, sink, sparseSlot);
-        }
+        // holder 已按替换后的 IInput 抽料；完整转交，避免稀疏槽重排只发送一份。
+        IPatternDetails.super.pushInputsToExternalInventory(inputHolder, sink);
     }
 
     @Override
     public boolean equals(Object obj) {
-        return delegate.equals(obj);
+        return this == obj || obj instanceof ReplacementAwarePattern other
+                && getDefinition().equals(other.getDefinition());
     }
 
     @Override
     public int hashCode() {
-        return delegate.hashCode();
+        return getDefinition().hashCode();
     }
 
-    private static void pushInputToSink(
-            IPatternDetails.IInput input,
-            KeyCounter availableInputs,
-            long requiredAmount,
-            PatternInputSink sink,
-            int sparseSlot
-    ) {
-        AEKey selectedKey = findAvailableCandidate(input, availableInputs, requiredAmount);
-        if (selectedKey == null) {
-            throw new RuntimeException(
-                    "Expected a valid input for processing slot " + sparseSlot + ", but none was available"
-            );
+    /** 按替换槽的实收材料还原稀疏布局，供定制供应器保留目标槽映射。 */
+    public @Nullable List<GenericStack> resolveSparseInputs(KeyCounter[] inputHolder) {
+        if (inputHolder == null || inputHolder.length != replacementAwareInputs.length) return null;
+        List<GenericStack> selected = new ArrayList<>(Collections.nCopies(sparseInputs.size(), null));
+        for (int index = 0; index < nonEmptySparseSlots.length; index++) {
+            int slot = nonEmptySparseSlots[index];
+            long amount = sparseInputs.get(slot).amount();
+            KeyCounter counter = inputHolder[index];
+            if (counter == null) return null;
+            AEKey key = findAvailableCandidate(replacementAwareInputs[index], counter, amount);
+            if (key == null || counter.size() != 1 || counter.get(key) != amount) return null;
+            selected.set(slot, new GenericStack(key, amount));
         }
-
-        sink.pushInput(selectedKey, requiredAmount);
-        availableInputs.remove(selectedKey, requiredAmount);
+        return Collections.unmodifiableList(selected);
     }
 
     private static AEKey findAvailableCandidate(
@@ -187,11 +168,18 @@ public class ReplacementAwarePattern implements IPatternDetails, DelegatingPatte
         if (delegate instanceof AEProcessingPattern processingPattern) {
             return processingPattern.getSparseInputs();
         }
+        if (delegate instanceof CustomProcessingPattern customPattern) {
+            return customPattern.getSparseInputs();
+        }
         IInput[] inputs = delegate.getInputs();
         var sparse = new ArrayList<GenericStack>(inputs.length);
         for (var input : inputs) {
             var possibleInputs = input.getPossibleInputs();
-            sparse.add(possibleInputs != null && possibleInputs.length > 0 ? possibleInputs[0] : null);
+            if (possibleInputs == null || possibleInputs.length == 0) {
+                throw new IllegalArgumentException("Processing pattern input has no candidates");
+            }
+            var primary = possibleInputs[0];
+            sparse.add(new GenericStack(primary.what(), Math.multiplyExact(primary.amount(), input.getMultiplier())));
         }
         return Collections.unmodifiableList(sparse);
     }
@@ -238,6 +226,28 @@ public class ReplacementAwarePattern implements IPatternDetails, DelegatingPatte
         if (candidateKey != null) {
             possibleInputs.put(itemId, new GenericStack(candidateKey, 1L));
         }
+    }
+
+    /** 输入提示只展示当前有效规则；标签带 #，显式候选保留物品 ID。 */
+    public Map<AEKey, net.minecraft.network.chat.Component> inputReplacementHints() {
+        Map<AEKey, LinkedHashSet<String>> labelsByInput = new LinkedHashMap<>();
+        for (int slot : nonEmptySparseSlots) {
+            var input = sparseInputs.get(slot);
+            var rule = replacementRules.get(slot);
+            if (!(input.what() instanceof AEItemKey item) || rule == null || !item.getId().equals(rule.sourceItemId())) continue;
+            var sourceTags = new LinkedHashSet<>(tagService.extractSourceTagIds(item.toStack(1)));
+            var labels = labelsByInput.computeIfAbsent(item, ignored -> new LinkedHashSet<>());
+            for (var tag : validation.sanitizeSelectedTags(sourceTags, rule.selectedTagIds())) labels.add("#" + tag);
+            for (var candidate : validation.validateExplicitCandidates(sourceTags, rule.explicitCandidateIds())) {
+                labels.add(candidate.toString());
+            }
+        }
+        Map<AEKey, net.minecraft.network.chat.Component> result = new LinkedHashMap<>();
+        labelsByInput.forEach((key, labels) -> {
+            if (!labels.isEmpty()) result.put(key, net.minecraft.network.chat.Component.literal(
+                    "（" + String.join(", ", labels) + "）").withStyle(net.minecraft.ChatFormatting.GRAY));
+        });
+        return Collections.unmodifiableMap(result);
     }
 
     private static Map<Integer, ProcessingPatternSlotReplacementRule> indexRules(
@@ -331,8 +341,11 @@ public class ReplacementAwarePattern implements IPatternDetails, DelegatingPatte
         private final long multiplier;
 
         private ReplacementAwareInput(Collection<GenericStack> possibleInputs, long multiplier) {
-            this.possibleInputs = possibleInputs.stream().toArray(GenericStack[]::new);
-            this.multiplier = multiplier;
+            // 一枚模板代表该槽的一整份样板投入，AE2 只能抽取完整模板。
+            this.possibleInputs = possibleInputs.stream()
+                    .map(input -> new GenericStack(input.what(), Math.multiplyExact(input.amount(), multiplier)))
+                    .toArray(GenericStack[]::new);
+            this.multiplier = 1L;
         }
 
         @Override

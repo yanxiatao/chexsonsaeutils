@@ -96,6 +96,30 @@ class PatternMatrixServerSyncTest {
     }
 
     @Test
+    void asynchronousStatusRefreshResendsOnlyChangedSlotWithoutReopeningMenu() {
+        FakeSource source = new FakeSource(3);
+        source.put(0, stack());
+        source.put(1, stack());
+        source.statusCodes[0] = git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus.PENDING_REFRESH.ordinal();
+        var sync = new PatternMatrixServerSync();
+        var view = new git.chexson.chexsonsaeutils.network.matrix.PatternMatrixClientView();
+        view.resize(3);
+        view.apply(sync.collectChanges(source, 100));
+        assertEquals(source.statusCodes[0], view.statusCodeAt(0));
+        source.statusCodes[0] = git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus.SUPPORTED_CONFIG.ordinal();
+        var refreshed = sync.collectChanges(source, 100);
+        assertEquals(Set.of(0), slotSet(refreshed));
+        view.apply(refreshed);
+        assertEquals(source.statusCodes[0], view.statusCodeAt(0));
+        assertEquals(List.of(), sync.collectChanges(source, 100));
+        source.reasonCodes[1] = 9;
+        var reasonChanged = sync.collectChanges(source, 100);
+        assertEquals(Set.of(1), slotSet(reasonChanged));
+        view.apply(reasonChanged);
+        assertEquals(9, view.reasonCodeAt(1));
+    }
+
+    @Test
     void broadcastSplitsChangesIntoBoundedPackets() {
         FakeSource source = new FakeSource(400);
         for (int slot = 0; slot < 300; slot++) {
@@ -139,10 +163,14 @@ class PatternMatrixServerSyncTest {
     private static final class FakeSource implements PatternMatrixSource {
 
         private final AppEngInternalInventory inventory;
+        private final int[] statusCodes;
+        private final int[] reasonCodes;
         private long detailVersion;
 
         private FakeSource(int totalSlots) {
             this.inventory = new AppEngInternalInventory(new FakeHost(), Math.max(1, totalSlots), 1);
+            this.statusCodes = new int[inventory.size()];
+            this.reasonCodes = new int[inventory.size()];
         }
 
         private void put(int slot, ItemStack stack) {
@@ -166,12 +194,12 @@ class PatternMatrixServerSyncTest {
 
         @Override
         public int patternMatrixStatusCode(int slot) {
-            return 0;
+            return statusCodes[slot];
         }
 
         @Override
         public int patternMatrixReasonCode(int slot) {
-            return 0;
+            return reasonCodes[slot];
         }
 
         @Override

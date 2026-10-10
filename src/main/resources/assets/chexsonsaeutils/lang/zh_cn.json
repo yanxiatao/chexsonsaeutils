@@ -114,6 +114,7 @@
   "gui.chexsonsaeutils.ae_direct_processing_machine.status.unsupported_unreadable": "不支持",
   "gui.chexsonsaeutils.ae_direct_processing_machine.status.unsafe_dynamic": "动态配方",
   "gui.chexsonsaeutils.ae_direct_processing_machine.status.needs_config_mapping": "需要配置",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.status.pending_refresh": "正在识别",
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.none": "可直接执行",
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.non_explicit_adapter": "需要显式适配",
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.malformed_data": "配方数据不可读",
@@ -349,5 +350,15 @@
   "gui.chexsonsaeutils.simulation.value.west": "西面",
   "gui.chexsonsaeutils.simulation.value.north": "北面",
   "gui.chexsonsaeutils.simulation.value.up": "上表面",
-  "gui.chexsonsaeutils.simulation.value.down": "下表面"
+  "gui.chexsonsaeutils.simulation.value.down": "下表面",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.patterns_page": "样板",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.machines_page": "机器",
+  "gui.chexsonsaeutils.matrix.search_mode": "搜索范围",
+  "gui.chexsonsaeutils.matrix.machine_count": "标记：%s / %s",
+  "gui.chexsonsaeutils.matrix.machine_count_matched": "命中：%s，标记：%s / %s",
+  "gui.chexsonsaeutils.matrix.search_mode.input": "输入",
+  "gui.chexsonsaeutils.matrix.search_mode.output": "输出",
+  "gui.chexsonsaeutils.matrix.search_mode.input_output": "输入输出",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.import_failed": "配方导入失败，详情见日志。",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.reason.pack_rule_disabled": "整合包规则禁用"
 }

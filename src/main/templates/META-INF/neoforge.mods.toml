@@ -84,3 +84,10 @@ type = "optional"
 versionRange = "[2.6,)"
 ordering = "AFTER"
 side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "kubejs"
+type = "optional"
+versionRange = "[2101.7.2,)"
+ordering = "AFTER"
+side = "BOTH"

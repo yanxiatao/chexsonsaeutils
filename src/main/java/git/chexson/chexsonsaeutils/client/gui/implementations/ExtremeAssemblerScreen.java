@@ -33,7 +33,8 @@ public class ExtremeAssemblerScreen extends GuiAssemblerMatrix<ExtremeAssemblerM
                 MATRIX_COLUMNS,
                 MATRIX_ROWS,
                 MATRIX_LEFT,
-                MATRIX_TOP
+                MATRIX_TOP,
+                MatrixSearchMatchers.create()
         );
     }
 

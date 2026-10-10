@@ -1,6 +1,10 @@
 package git.chexson.chexsonsaeutils.menu.implementations;
 
 import appeng.helpers.InventoryAction;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPackRulesRegistry;
+import git.chexson.chexsonsaeutils.network.directprocessing.rules.DirectProcessingPackRulesPayload;
+import git.chexson.chexsonsaeutils.network.directprocessing.rules.DirectProcessingPackRulesTarget;
+import net.neoforged.neoforge.network.PacketDistributor;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.SlotSemantics;
 import appeng.menu.guisync.GuiSync;
@@ -27,7 +31,7 @@ import java.util.List;
 import java.util.Objects;
 
 public class AEDirectProcessingMachineMenu extends AEBaseMenu
-        implements PatternMatrixTarget, PatternMatrixServerTarget {
+        implements PatternMatrixTarget, PatternMatrixServerTarget, DirectProcessingPackRulesTarget {
 
     public static final MenuType<AEDirectProcessingMachineMenu> TYPE = MenuTypeBuilder
             .create(AEDirectProcessingMachineMenu::new, AEDirectProcessingMachineBlockEntity.class)
@@ -38,8 +42,13 @@ public class AEDirectProcessingMachineMenu extends AEBaseMenu
     @GuiSync(40)
     public String detectedRecipeTypeSummary = "-";
 
+    @GuiSync(41)
+    public boolean machinePage;
+
     private final AEDirectProcessingMachineBlockEntity host;
     private final PatternMatrixMenuLink matrix;
+    private final git.chexson.chexsonsaeutils.menu.directprocessing.MachineBindingMatrixSourceImpl machineMatrix;
+    private long observedPackRulesEpoch = -1;
 
     public AEDirectProcessingMachineMenu(
             int id,
@@ -49,8 +58,43 @@ public class AEDirectProcessingMachineMenu extends AEBaseMenu
         super(TYPE, id, playerInventory, host);
         this.host = host;
         this.matrix = new PatternMatrixMenuLink(this, host);
-        addSlot(new MachineBindingSlot(host, 0), SlotSemantics.MACHINE_INPUT);
+        this.machineMatrix = new git.chexson.chexsonsaeutils.menu.directprocessing.MachineBindingMatrixSourceImpl(host);
+        for (int slot = 0; slot < AEDirectProcessingMachineBlockEntity.MACHINE_BINDING_SLOTS; slot++) {
+            addSlot(new MachineBindingSlot(host, slot), SlotSemantics.MACHINE_INPUT);
+        }
+        registerClientAction("machine_page", Boolean.class, page -> {
+            machinePage = page;
+            updateBindingSlots();
+        });
+        updateBindingSlots();
         createPlayerInventorySlots(playerInventory);
+    }
+
+    /** 切换当前库存页，服务端矩阵点击按页校验。 */
+    public void selectMachinePage(boolean page) {
+        machinePage = page;
+        updateBindingSlots();
+        sendClientAction("machine_page", page);
+    }
+
+    private void updateBindingSlots() {
+        for (var slot : getSlots(SlotSemantics.MACHINE_INPUT)) {
+            var binding = (MachineBindingSlot) slot;
+            // 原版槽只负责持续同步真实标记库存；两页都通过虚拟矩阵交互。
+            binding.setActive(false);
+            binding.setSlotEnabled(true);
+        }
+    }
+
+    @Override
+    public void onServerDataSync(it.unimi.dsi.fastutil.shorts.ShortSet updatedFields) {
+        super.onServerDataSync(updatedFields);
+        updateBindingSlots();
+    }
+
+    @Override
+    public void applyPackRulesSnapshot(String json) {
+        DirectProcessingPackRulesRegistry.applyClientSnapshot(json);
     }
 
     public AEDirectProcessingMachineBlockEntity getHost() {
@@ -59,7 +103,14 @@ public class AEDirectProcessingMachineMenu extends AEBaseMenu
 
     @Override
     public void broadcastChanges() {
+        updateBindingSlots();
         if (isServerSide()) {
+            long epoch = DirectProcessingPackRulesRegistry.epoch();
+            if (observedPackRulesEpoch != epoch && getPlayer() instanceof ServerPlayer player) {
+                PacketDistributor.sendToPlayer(player, new DirectProcessingPackRulesPayload(containerId,
+                        DirectProcessingPackRulesRegistry.current().toJson()));
+                observedPackRulesEpoch = epoch;
+            }
             detectedRecipeTypeSummary = getHost().getDetectedRecipeTypeSummaryForMenu();
             matrix.serverBroadcastChanges();
         }
@@ -69,6 +120,9 @@ public class AEDirectProcessingMachineMenu extends AEBaseMenu
     /** 背包 shift 点击样板：直接写进全量样板库存的第一个可用槽。 */
     @Override
     protected int transferStackToMenu(ItemStack input) {
+        if (machinePage) {
+            return PatternMatrixInteraction.shiftInsertIntoMatrix(machineMatrix, input);
+        }
         return PatternMatrixInteraction.shiftInsertIntoMatrix(host, input);
     }
 
@@ -130,10 +184,19 @@ public class AEDirectProcessingMachineMenu extends AEBaseMenu
 
     @Override
     public void doAction(ServerPlayer player, InventoryAction action, int slot, long id) {
-        if (id == PatternMatrixInteraction.MATRIX_PATTERN_ID) {
-            matrix.handleMatrixClick(action, slot, player);
+        if (id == PatternMatrixInteraction.MATRIX_MACHINE_ID) {
+            if (machinePage && isServerSide() && player.containerMenu == this) {
+                PatternMatrixInteraction.doAction(machineMatrix, action, slot, player,
+                        this::getCarried, this::setCarried);
+                broadcastChanges();
+            }
             return;
         }
+        if (id == PatternMatrixInteraction.MATRIX_PATTERN_ID) {
+            if (!machinePage) matrix.handleMatrixClick(action, slot, player);
+            return;
+        }
+        if (slot >= 0 && slot < slots.size() && slots.get(slot) instanceof MachineBindingSlot) return;
         super.doAction(player, action, slot, id);
     }
 
@@ -149,18 +212,21 @@ public class AEDirectProcessingMachineMenu extends AEBaseMenu
 
     private static final class MachineBindingSlot extends RestrictedInputSlot {
 
-        private final AEDirectProcessingMachineBlockEntity host;
-
         private MachineBindingSlot(AEDirectProcessingMachineBlockEntity host, int slotIndex) {
             super(PlacableItemType.INSCRIBER_PLATE, host.getMachineBindingInventory(), slotIndex);
-            this.host = host;
             setStackLimit(1);
         }
 
         @Override
         public boolean mayPlace(ItemStack stack) {
-            return host.isSupportedBindingMachine(stack);
+            return false;
         }
+
+        @Override
+        public boolean mayPickup(net.minecraft.world.entity.player.Player player) { return false; }
+
+        @Override
+        public ItemStack remove(int amount) { return ItemStack.EMPTY; }
 
         @Override
         public List<Component> getCustomTooltip(ItemStack carried) {

@@ -40,28 +40,41 @@ public final class RecipeTypeCandidateResolver {
                     MachineSupportReasonCode.REGISTRY_MISSING
             );
         }
-        List<RecipeTypeCandidate> adapterCandidates = adapterRegistry.resolveCandidates(identity);
-        if (!adapterCandidates.isEmpty()) {
-            return Resolution.supported(adapterCandidates, MachineRecipeCandidateSource.EXPLICIT_ADAPTER);
+        DirectProcessingPackRules rules = DirectProcessingPackRulesRegistry.current();
+        if (!rules.allowsMachine(identity)) {
+            return Resolution.unsupported(MachineSupportStatus.UNSUPPORTED_UNREADABLE,
+                    MachineSupportReasonCode.PACK_RULE_DISABLED);
         }
-        List<RecipeTypeCandidate> configCandidates = configMappingRegistry.resolveCandidates(identity);
-        if (!configCandidates.isEmpty()) {
-            return Resolution.supported(configCandidates, MachineRecipeCandidateSource.CONFIG_MAPPING);
+        List<RecipeTypeCandidate> adapterCandidates = rules.replacesTypes(identity)
+                ? List.of() : adapterRegistry.resolveCandidates(identity);
+        List<RecipeTypeCandidate> configCandidates = new ArrayList<>(rules.replacesTypes(identity)
+                ? List.of() : configMappingRegistry.resolveCandidates(identity));
+        for (ResourceLocation id : rules.addedTypes(identity)) {
+            RecipeType<?> type = BuiltInRegistries.RECIPE_TYPE.get(id);
+            if (type != null) configCandidates.add(new RecipeTypeCandidate(null, type,
+                    MachineRecipeCandidateSource.CONFIG_MAPPING, 20));
         }
-        if (genericDiscoveryEnabled) {
-            List<RecipeTypeCandidate> genericCandidates = resolveVanillaGenericCandidates(identity);
-            if (!genericCandidates.isEmpty()) {
-                return Resolution.supported(genericCandidates, MachineRecipeCandidateSource.GENERIC_RECIPE_TYPE);
+        Map<RecipeType<?>, RecipeTypeCandidate> candidates = new LinkedHashMap<>();
+        for (RecipeTypeCandidate candidate : adapterCandidates) candidates.putIfAbsent(candidate.recipeType(), candidate);
+        for (RecipeTypeCandidate candidate : configCandidates) candidates.putIfAbsent(candidate.recipeType(), candidate);
+        List<ResourceLocation> hints = List.of();
+        if (genericDiscoveryEnabled && rules.allowsAutomaticDiscovery(identity) && adapterCandidates.isEmpty()) {
+            for (RecipeTypeCandidate candidate : resolveVanillaGenericCandidates(identity)) {
+                candidates.putIfAbsent(candidate.recipeType(), candidate);
             }
-            List<ResourceLocation> namingConventionHints = resolveNamingConventionHints(identity);
-            List<RecipeTypeCandidate> automaticCandidates = toAutomaticCandidates(namingConventionHints);
-            if (!automaticCandidates.isEmpty()) {
-                return Resolution.supported(
-                        automaticCandidates,
-                        namingConventionHints,
-                        MachineRecipeCandidateSource.GENERIC_RECIPE_TYPE
-                );
+            hints = resolveNamingConventionHints(identity);
+            for (RecipeTypeCandidate candidate : toAutomaticCandidates(hints)) {
+                candidates.putIfAbsent(candidate.recipeType(), candidate);
             }
+        }
+        candidates.entrySet().removeIf(entry -> !rules.allowsType(identity,
+                BuiltInRegistries.RECIPE_TYPE.getKey(entry.getKey())));
+        hints = hints.stream().filter(id -> rules.allowsType(identity, id)).toList();
+        if (!candidates.isEmpty()) {
+            MachineRecipeCandidateSource source = !adapterCandidates.isEmpty() ? MachineRecipeCandidateSource.EXPLICIT_ADAPTER
+                    : !configCandidates.isEmpty() ? MachineRecipeCandidateSource.CONFIG_MAPPING
+                    : MachineRecipeCandidateSource.GENERIC_RECIPE_TYPE;
+            return Resolution.supported(List.copyOf(candidates.values()), hints, source);
         }
         return Resolution.unsupported(
                 MachineSupportStatus.NEEDS_CONFIG_MAPPING,
@@ -70,10 +83,11 @@ public final class RecipeTypeCandidateResolver {
     }
 
     public List<ResourceLocation> resolveFallbackHints(MachineIdentity identity) {
-        if (!genericDiscoveryEnabled || identity == null) {
+        if (!genericDiscoveryEnabled || identity == null || !DirectProcessingPackRulesRegistry.current().allowsAutomaticDiscovery(identity)) {
             return List.of();
         }
-        return resolveNamingConventionHints(identity);
+        return resolveNamingConventionHints(identity).stream()
+                .filter(id -> DirectProcessingPackRulesRegistry.current().allowsType(identity, id)).toList();
     }
 
     private List<RecipeTypeCandidate> resolveVanillaGenericCandidates(MachineIdentity identity) {
@@ -92,7 +106,13 @@ public final class RecipeTypeCandidateResolver {
     }
 
     private List<ResourceLocation> resolveNamingConventionHints(MachineIdentity identity) {
-        ResourceLocation machineId = identity.machineItemId();
+        java.util.Set<ResourceLocation> hints = new java.util.LinkedHashSet<>();
+        hints.addAll(resolveNamingConventionHints(identity.machineItemId()));
+        if (identity.blockId() != null) hints.addAll(resolveNamingConventionHints(identity.blockId()));
+        return List.copyOf(hints);
+    }
+
+    private List<ResourceLocation> resolveNamingConventionHints(ResourceLocation machineId) {
         if (machineId == null) {
             return List.of();
         }

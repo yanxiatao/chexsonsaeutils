@@ -77,8 +77,8 @@ final class RegistrationRuntimeContractTest {
             new RegistryContract(BuiltInRegistries.DATA_COMPONENT_TYPE, List.of(
                     "encoded_custom_pattern", "custom_pattern_pages",
                     "encoded_matter_mass_pattern", "matter_mass_uuid")),
-            new RegistryContract(BuiltInRegistries.RECIPE_TYPE, List.of("direct_processing_mock")),
-            new RegistryContract(BuiltInRegistries.RECIPE_SERIALIZER, List.of("direct_processing_mock"))
+            new RegistryContract(BuiltInRegistries.RECIPE_TYPE, List.of("direct_processing_mock", "direct_processing")),
+            new RegistryContract(BuiltInRegistries.RECIPE_SERIALIZER, List.of("direct_processing_mock", "direct_processing"))
     );
 
     @Test

@@ -122,6 +122,16 @@ dependencies {
     // 2.3.9 的 claimOutputs 可转移真实 BigInteger 产物，因此以 2.3.9 为编译基线；jar 不入库。
     compileOnly files('reference-sources/useless_mod-1.21.1-2.3.9.jar')
     compileOnly files('libs/ae2ct-1.21.1-1.1.1.jar')
+    compileOnly "maven.modrinth:kubejs:THIGFPwf"
+    compileOnly "maven.modrinth:rhino:SqkDvOLG"
+    testImplementation "maven.modrinth:kubejs:THIGFPwf"
+    testImplementation "maven.modrinth:rhino:SqkDvOLG"
+    if (project.hasProperty('kubejs')) {
+        localRuntime "maven.modrinth:kubejs:THIGFPwf"
+        localRuntime "maven.modrinth:rhino:SqkDvOLG"
+    }
+    compileOnly "maven.modrinth:justenoughcharacters:XPKoy65e"
+    testImplementation "maven.modrinth:justenoughcharacters:XPKoy65e"
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
     compileOnly "curse.maven:applied-mekanistics-574300:${appmek_file_id}"

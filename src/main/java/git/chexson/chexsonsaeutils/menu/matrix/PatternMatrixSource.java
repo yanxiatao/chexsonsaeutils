@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.menu.matrix;
 
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixSearchTerms;
 import appeng.api.inventories.InternalInventory;
 import net.minecraft.world.item.ItemStack;
 
@@ -28,6 +29,11 @@ public interface PatternMatrixSource {
      * 递增此值可让下发引擎放弃快照、重发这些格子。无派生数据的机器恒返回 0。
      */
     long patternMatrixDetailVersion();
+
+    /** 需要客户端本地化搜索的宿主提供输入输出摘要，其他宿主使用服务端搜索。 */
+    default PatternMatrixSearchTerms patternMatrixSearchTerms(int slot) {
+        return PatternMatrixSearchTerms.EMPTY;
+    }
 
     boolean patternMatrixMayPlace(ItemStack stack);
 

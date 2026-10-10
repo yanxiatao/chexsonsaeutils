@@ -24,6 +24,16 @@ public final class PatternMatrixClientView {
     private int matchCount;
     private int nonEmptySlots;
     private int changeCount;
+    private int contentChangeCount;
+    private final java.util.Map<Integer, PatternMatrixSearchTerms> searchTerms = new java.util.HashMap<>();
+
+    public int contentChangeCount() {
+        return contentChangeCount;
+    }
+
+    public PatternMatrixSearchTerms searchTermsAt(int slot) {
+        return searchTerms.getOrDefault(slot, PatternMatrixSearchTerms.EMPTY);
+    }
 
     /** 容量按服务端同步来的总槽数分配；缩容时丢弃多出来的格子。 */
     public void resize(int totalSlots) {
@@ -44,7 +54,9 @@ public final class PatternMatrixClientView {
         realStacks = nextReal;
         statusCodes = nextStatus;
         reasonCodes = nextReason;
+        searchTerms.keySet().removeIf(slot -> slot >= target);
         recountNonEmptySlots();
+        contentChangeCount++;
         changeCount++;
     }
 
@@ -70,9 +82,13 @@ public final class PatternMatrixClientView {
             if (!wasEmpty
                     && ItemStack.isSameItemSameComponents(displayStacks[slot], entry.displayStack())
                     && statusCodes[slot] == entry.statusCode()
-                    && reasonCodes[slot] == entry.reasonCode()) {
+                    && reasonCodes[slot] == entry.reasonCode()
+                    && searchTermsAt(slot).equals(entry.searchTerms())) {
                 continue;
             }
+            if (entry.searchTerms().equals(PatternMatrixSearchTerms.EMPTY)) searchTerms.remove(slot);
+            else searchTerms.put(slot, entry.searchTerms());
+            contentChangeCount++;
             displayStacks[slot] = entry.displayStack().copy();
             statusCodes[slot] = entry.statusCode();
             reasonCodes[slot] = entry.reasonCode();

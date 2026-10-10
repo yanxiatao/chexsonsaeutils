@@ -114,6 +114,7 @@
   "gui.chexsonsaeutils.ae_direct_processing_machine.status.unsupported_unreadable": "Unsupported",
   "gui.chexsonsaeutils.ae_direct_processing_machine.status.unsafe_dynamic": "Unsafe Dynamic",
   "gui.chexsonsaeutils.ae_direct_processing_machine.status.needs_config_mapping": "Needs Config",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.status.pending_refresh": "Identifying",
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.none": "Ready",
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.non_explicit_adapter": "Requires explicit adapter",
   "gui.chexsonsaeutils.ae_direct_processing_machine.reason.malformed_data": "Unreadable recipe data",
@@ -349,5 +350,15 @@
   "gui.chexsonsaeutils.simulation.value.west": "West face",
   "gui.chexsonsaeutils.simulation.value.north": "North face",
   "gui.chexsonsaeutils.simulation.value.up": "Top face",
-  "gui.chexsonsaeutils.simulation.value.down": "Bottom face"
+  "gui.chexsonsaeutils.simulation.value.down": "Bottom face",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.patterns_page": "Plans",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.machines_page": "Marks",
+  "gui.chexsonsaeutils.matrix.search_mode": "Search scope",
+  "gui.chexsonsaeutils.matrix.machine_count": "Markers: %s / %s",
+  "gui.chexsonsaeutils.matrix.machine_count_matched": "Matches: %s, markers: %s / %s",
+  "gui.chexsonsaeutils.matrix.search_mode.input": "Input",
+  "gui.chexsonsaeutils.matrix.search_mode.output": "Output",
+  "gui.chexsonsaeutils.matrix.search_mode.input_output": "Both",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.import_failed": "Recipe import failed. See the log for details.",
+  "gui.chexsonsaeutils.ae_direct_processing_machine.reason.pack_rule_disabled": "Disabled by modpack rules"
 }

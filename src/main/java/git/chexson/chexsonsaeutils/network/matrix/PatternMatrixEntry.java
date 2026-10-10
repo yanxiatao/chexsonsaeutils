@@ -15,7 +15,8 @@ public record PatternMatrixEntry(
         int slot,
         ItemStack displayStack,
         int statusCode,
-        int reasonCode
+        int reasonCode,
+        PatternMatrixSearchTerms searchTerms
 ) {
 
     public static final StreamCodec<RegistryFriendlyByteBuf, PatternMatrixEntry> STREAM_CODEC = StreamCodec.composite(
@@ -27,14 +28,21 @@ public record PatternMatrixEntry(
             PatternMatrixEntry::statusCode,
             ByteBufCodecs.VAR_INT,
             PatternMatrixEntry::reasonCode,
+            PatternMatrixSearchTerms.STREAM_CODEC,
+            PatternMatrixEntry::searchTerms,
             PatternMatrixEntry::new
     );
+
+    public PatternMatrixEntry(int slot, ItemStack stack, int statusCode, int reasonCode) {
+        this(slot, stack, statusCode, reasonCode, PatternMatrixSearchTerms.EMPTY);
+    }
 
     public boolean sameContent(PatternMatrixEntry other) {
         return other != null
                 && other.slot == slot
                 && other.statusCode == statusCode
                 && other.reasonCode == reasonCode
+                && other.searchTerms.equals(searchTerms)
                 && ItemStack.isSameItemSameComponents(other.displayStack, displayStack);
     }
 }

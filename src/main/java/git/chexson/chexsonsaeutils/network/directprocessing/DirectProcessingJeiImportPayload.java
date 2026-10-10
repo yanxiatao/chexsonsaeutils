@@ -31,7 +31,13 @@ public record DirectProcessingJeiImportPayload(
             );
 
     public static void handle(DirectProcessingJeiImportPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> tryApplyToMenu(context.player().containerMenu, payload));
+        context.enqueueWork(() -> {
+            if (!tryApplyToMenu(context.player().containerMenu, payload)) {
+                com.mojang.logging.LogUtils.getLogger().warn("直连处理机拒绝导入机器 {} 的配方", payload.request().machineItemId());
+                context.player().displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                        "gui.chexsonsaeutils.ae_direct_processing_machine.import_failed"), false);
+            }
+        });
     }
 
     static boolean tryApplyToMenu(AbstractContainerMenu currentMenu, DirectProcessingJeiImportPayload payload) {

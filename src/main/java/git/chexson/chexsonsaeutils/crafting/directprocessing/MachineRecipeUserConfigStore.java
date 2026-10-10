@@ -21,11 +21,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.io.UncheckedIOException;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Stream;
 
 public final class MachineRecipeUserConfigStore {
 
@@ -96,7 +101,13 @@ public final class MachineRecipeUserConfigStore {
                 : Set.copyOf(allowedRecipeTypeIds);
         Set<ResourceLocation> recipeTypeIds = new LinkedHashSet<>();
         Set<RecipeSignature> signatures = new LinkedHashSet<>();
-        JsonArray root = readExistingArray();
+        JsonArray root;
+        try {
+            root = readExistingArray();
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Failed to load direct processing recipe signatures {}", configPath, exception);
+            return LoadedImportedSignatures.empty();
+        }
         for (JsonElement element : root) {
             if (element == null || !element.isJsonObject()) {
                 continue;
@@ -112,6 +123,8 @@ public final class MachineRecipeUserConfigStore {
                 if (imported == null || imported.recipeTypeId() == null) {
                     continue;
                 }
+                if (!DirectProcessingPackRulesRegistry.current().allowsType(identity, imported.recipeTypeId())
+                        || imported.recipeTypeId().equals(DirectProcessingPackRecipe.TYPE_ID)) continue;
                 if (!allowedIds.isEmpty() && !allowedIds.contains(imported.recipeTypeId())) {
                     continue;
                 }
@@ -125,45 +138,78 @@ public final class MachineRecipeUserConfigStore {
         return new LoadedImportedSignatures(List.copyOf(recipeTypeIds), signatures);
     }
 
-    public synchronized void upsertMapping(
+    public synchronized boolean upsertMapping(
             MachineRecipeConfigImportRequest request,
             HolderLookup.Provider registries
     ) {
         if (request == null || request.recipeTypeIds().isEmpty()) {
-            return;
+            return false;
         }
         ensureConfigFileExists();
         List<MachineRecipeImportedSignature> importedSignatures =
                 MachineRecipeImportedSignature.parseJson(registries, request.signatureHintsJson());
-        JsonObject replacement = buildReplacementEntry(request, importedSignatures, registries);
         JsonArray root = readExistingArray();
-        boolean replaced = false;
+        JsonArray original = root.deepCopy();
+        Set<ResourceLocation> recipeTypes = new LinkedHashSet<>();
+        Map<ResourceLocation, Map<RecipeSignatureKey, MachineRecipeImportedSignature>> signatures = new LinkedHashMap<>();
+        JsonObject replacement = null;
+        int firstMatch = -1;
         for (int index = 0; index < root.size(); index++) {
             JsonElement element = root.get(index);
-            if (element == null || !element.isJsonObject()) {
-                continue;
-            }
+            if (!element.isJsonObject()) continue;
             JsonObject object = element.getAsJsonObject();
-            ResourceLocation machineItemId = readResourceLocation(object, "machine_item");
-            ResourceLocation machineBlockId = readResourceLocation(object, "machine_block");
-            if (matchesMachine(request, machineItemId, machineBlockId)) {
-                root.set(index, replacement);
-                replaced = true;
-                break;
+            if (!matchesMachine(request, readResourceLocation(object, "machine_item"),
+                    readResourceLocation(object, "machine_block"))) continue;
+            if (firstMatch < 0) {
+                firstMatch = index;
+                replacement = object.deepCopy();
+            }
+            if (object.has("recipe_types")) {
+                for (JsonElement type : object.getAsJsonArray("recipe_types")) {
+                    recipeTypes.add(ResourceLocation.parse(type.getAsString()));
+                }
+            }
+            mergeImportedSignatures(signatures, readStoredSignaturePayloadsForImport(registries, object));
+        }
+        recipeTypes.addAll(request.recipeTypeIds());
+        mergeImportedSignatures(signatures, importedSignatures);
+        List<MachineRecipeImportedSignature> merged = signatures.values().stream()
+                .flatMap(byShape -> byShape.values().stream()).toList();
+        MachineRecipeConfigImportRequest mergedRequest = new MachineRecipeConfigImportRequest(
+                request.machineItemId(), request.machineBlockId(), List.copyOf(recipeTypes),
+                request.defaultTicks(), request.ioMode(), request.keyTypes(), request.enabled(), "[]");
+        JsonObject encoded = buildReplacementEntry(mergedRequest, merged, registries);
+        if (replacement != null) {
+            replacement.remove(SIGNATURES_MEMBER_NAME);
+            replacement.remove(SIGNATURE_SHARDS_MEMBER_NAME);
+            for (var member : encoded.entrySet()) replacement.add(member.getKey(), member.getValue());
+        } else {
+            replacement = encoded;
+        }
+        if (firstMatch < 0) {
+            root.add(replacement);
+        } else {
+            root.set(firstMatch, replacement);
+            for (int index = root.size() - 1; index > firstMatch; index--) {
+                JsonElement element = root.get(index);
+                if (element.isJsonObject() && matchesMachine(request,
+                        readResourceLocation(element.getAsJsonObject(), "machine_item"),
+                        readResourceLocation(element.getAsJsonObject(), "machine_block"))) root.remove(index);
             }
         }
-        if (!replaced) {
-            root.add(replacement);
-        }
+        if (root.equals(original)) return false;
         writeJson(configPath, root);
+        removeUnreferencedShards(original, root);
+        return true;
     }
 
-    public synchronized void upsertMappingAndApply(
+    public synchronized boolean upsertMappingAndApply(
             MachineRecipeConfigImportRequest request,
             HolderLookup.Provider registries
     ) {
-        upsertMapping(request, registries);
+        if (!upsertMapping(request, registries)) return false;
         MachineRecipeConfigMappingRegistry.instance().replaceUserConfigMappings(loadMappings());
+        return true;
     }
 
     public String configPathForUi() {
@@ -184,7 +230,7 @@ public final class MachineRecipeUserConfigStore {
             return toJson(request, registries, List.of(), shardPaths);
         } catch (IOException exception) {
             LOGGER.warn("Failed to write AE direct processing signature shards for {}", request.machineItemId(), exception);
-            return toJson(request, registries, importedSignatures, List.of());
+            throw new UncheckedIOException(exception);
         }
     }
 
@@ -208,10 +254,13 @@ public final class MachineRecipeUserConfigStore {
         }
         try (Reader reader = Files.newBufferedReader(configPath, StandardCharsets.UTF_8)) {
             JsonElement root = JsonParser.parseReader(reader);
-            return root != null && root.isJsonArray() ? root.getAsJsonArray() : new JsonArray();
+            if (root == null || !root.isJsonArray()) {
+                throw new IllegalStateException("直连处理机配置必须为数组: " + configPath);
+            }
+            return root.getAsJsonArray();
         } catch (IOException | RuntimeException exception) {
             LOGGER.warn("Failed to reuse AE direct processing user config {}", configPath, exception);
-            return new JsonArray();
+            throw new IllegalStateException("无法读取直连处理机配置: " + configPath, exception);
         }
     }
 
@@ -245,6 +294,36 @@ public final class MachineRecipeUserConfigStore {
             }
             mappings.add(new MachineRecipeConfigMappingRegistry.ParsedConfigMapping(machineId, recipeType, defaultTicks));
         }
+    }
+
+    /** 导入前完整读取旧签名；缺失或损坏必须拒绝覆盖，不能把读取失败当成空库存。 */
+    private List<MachineRecipeImportedSignature> readStoredSignaturePayloadsForImport(
+            HolderLookup.Provider registries, JsonObject object) {
+        List<MachineRecipeImportedSignature> signatures = new ArrayList<>();
+        if (object.has(SIGNATURES_MEMBER_NAME)) {
+            signatures.addAll(parseStoredSignatures(registries, object.getAsJsonArray(SIGNATURES_MEMBER_NAME)));
+        }
+        if (object.has(SIGNATURE_SHARDS_MEMBER_NAME)) {
+            for (JsonElement element : object.getAsJsonArray(SIGNATURE_SHARDS_MEMBER_NAME)) {
+                Path path = resolveConfigRelativePath(element.getAsString());
+                if (path == null || !Files.isRegularFile(path)) {
+                    throw new IllegalStateException("配方分片缺失或路径无效: " + element);
+                }
+                try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                    signatures.addAll(parseStoredSignatures(registries, JsonParser.parseReader(reader).getAsJsonArray()));
+                } catch (IOException exception) {
+                    throw new UncheckedIOException(exception);
+                }
+            }
+        }
+        return signatures;
+    }
+
+    private static List<MachineRecipeImportedSignature> parseStoredSignatures(
+            HolderLookup.Provider registries, JsonArray root) {
+        List<MachineRecipeImportedSignature> signatures = MachineRecipeImportedSignature.parseJsonArray(registries, root);
+        if (signatures.size() != root.size()) throw new IllegalStateException("已存配方签名损坏，拒绝覆盖");
+        return signatures;
     }
 
     private List<MachineRecipeImportedSignature> readStoredSignaturePayloads(
@@ -306,25 +385,30 @@ public final class MachineRecipeUserConfigStore {
             HolderLookup.Provider registries
     ) throws IOException {
         Path machineShardDirectory = machineShardDirectory(request.machineItemId(), request.machineBlockId());
-        deleteRecursively(machineShardDirectory);
         if (signatures == null || signatures.isEmpty()) {
             return List.of();
         }
         Files.createDirectories(machineShardDirectory);
         List<String> shardPaths = new ArrayList<>();
-        int shardIndex = 0;
-        for (int start = 0; start < signatures.size(); start += SIGNATURES_PER_SHARD) {
-            int end = Math.min(signatures.size(), start + SIGNATURES_PER_SHARD);
-            JsonArray shardRoot = new JsonArray();
-            for (MachineRecipeImportedSignature signature : signatures.subList(start, end)) {
-                JsonObject encoded = signature == null ? null : signature.toJsonObject(registries);
-                if (encoded != null) {
-                    shardRoot.add(encoded);
+        Map<ResourceLocation, List<MachineRecipeImportedSignature>> byType = new LinkedHashMap<>();
+        for (MachineRecipeImportedSignature signature : signatures) {
+            byType.computeIfAbsent(signature.recipeTypeId(), ignored -> new ArrayList<>()).add(signature);
+        }
+        for (List<MachineRecipeImportedSignature> typeSignatures : byType.values()) {
+            for (int start = 0; start < typeSignatures.size(); start += SIGNATURES_PER_SHARD) {
+                int end = Math.min(typeSignatures.size(), start + SIGNATURES_PER_SHARD);
+                JsonArray shardRoot = new JsonArray();
+                for (MachineRecipeImportedSignature signature : typeSignatures.subList(start, end)) {
+                    JsonObject encoded = signature == null ? null : signature.toJsonObject(registries);
+                    if (encoded != null) {
+                        shardRoot.add(encoded);
+                    }
                 }
+                String content = toCrlfJson(shardRoot);
+                Path shardPath = machineShardDirectory.resolve(contentDigest(content) + ".json");
+                if (!Files.exists(shardPath)) writeAtomically(shardPath, content);
+                shardPaths.add(toConfigRelativePath(shardPath));
             }
-            Path shardPath = machineShardDirectory.resolve(String.format("%04d.json", shardIndex++));
-            writeText(shardPath, toCrlfJson(shardRoot));
-            shardPaths.add(toConfigRelativePath(shardPath));
         }
         return List.copyOf(shardPaths);
     }
@@ -368,9 +452,10 @@ public final class MachineRecipeUserConfigStore {
 
     private void writeJson(Path path, JsonElement root) {
         try {
-            writeText(path, toCrlfJson(root));
+            writeAtomically(path, toCrlfJson(root));
         } catch (IOException exception) {
             LOGGER.warn("Failed to write AE direct processing config {}", path, exception);
+            throw new UncheckedIOException(exception);
         }
     }
 
@@ -386,6 +471,44 @@ public final class MachineRecipeUserConfigStore {
         return resolved.startsWith(configDirectory.normalize()) ? resolved : null;
     }
 
+    /** 映射成功提交后才回收旧分片，其他机器仍引用的文件保留。 */
+    private void removeUnreferencedShards(JsonArray previous, JsonArray current) {
+        Set<String> retired = shardPaths(previous);
+        retired.removeAll(shardPaths(current));
+        Path shardRoot = signatureShardRootPath.toAbsolutePath().normalize();
+        for (String relative : retired) {
+            Path path = resolveConfigRelativePath(relative);
+            if (path == null || !path.toAbsolutePath().normalize().startsWith(shardRoot)) continue;
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException exception) {
+                LOGGER.warn("Failed to remove retired direct processing signature shard {}", path, exception);
+            }
+        }
+    }
+
+    private static Set<String> shardPaths(JsonArray mappings) {
+        Set<String> paths = new LinkedHashSet<>();
+        for (JsonElement element : mappings) {
+            if (!element.isJsonObject()) continue;
+            JsonObject mapping = element.getAsJsonObject();
+            if (!mapping.has(SIGNATURE_SHARDS_MEMBER_NAME)) continue;
+            for (JsonElement path : mapping.getAsJsonArray(SIGNATURE_SHARDS_MEMBER_NAME)) paths.add(path.getAsString());
+        }
+        return paths;
+    }
+
+    private void writeAtomically(Path path, String content) throws IOException {
+        Files.createDirectories(path.getParent());
+        Path pending = Files.createTempFile(path.getParent(), "direct-processing-", ".json.tmp");
+        try {
+            writeText(pending, content);
+            Files.move(pending, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(pending);
+        }
+    }
+
     private void writeText(Path path, String content) throws IOException {
         Path parent = path.getParent();
         if (parent != null) {
@@ -396,15 +519,26 @@ public final class MachineRecipeUserConfigStore {
         }
     }
 
-    private static void deleteRecursively(Path path) throws IOException {
-        if (path == null || !Files.exists(path)) {
-            return;
+    /** 按配方类型及无序的精确数量签名合并，保留同类型内已存配方。 */
+    static void mergeImportedSignatures(
+            Map<ResourceLocation, Map<RecipeSignatureKey, MachineRecipeImportedSignature>> grouped,
+            List<MachineRecipeImportedSignature> imported
+    ) {
+        for (MachineRecipeImportedSignature payload : imported) {
+            RecipeSignature signature = payload.toRecipeSignature();
+            RecipeSignatureKey key = RecipeSignatureKey.of(signature);
+            if (key == null) throw new IllegalArgumentException("导入配方缺少有效输入或输出");
+            grouped.computeIfAbsent(payload.recipeTypeId(), ignored -> new LinkedHashMap<>())
+                    .putIfAbsent(key, MachineRecipeImportedSignature.fromRecipeSignature(payload.recipeTypeId(), signature));
         }
-        try (Stream<Path> walk = Files.walk(path)) {
-            List<Path> paths = walk.sorted(Comparator.reverseOrder()).toList();
-            for (Path candidate : paths) {
-                Files.deleteIfExists(candidate);
-            }
+    }
+
+    private static String contentDigest(String content) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(content.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("JVM 缺少 SHA-256", exception);
         }
     }
 
@@ -545,7 +679,7 @@ public final class MachineRecipeUserConfigStore {
                 "",
                 "- 每个 shard 文件内容都是纯 JSON array。",
                 "- 每个 shard 最多保存 256 条 signature。",
-                "- 重新导入某台机器时，只会重写该机器自己的 shard 目录与主文件入口。",
+                "- 增量导入按配方类型和精确输入输出数量去重；完整分片按内容哈希复用。",
                 "",
                 "## 兼容性",
                 "",
@@ -557,7 +691,7 @@ public final class MachineRecipeUserConfigStore {
                 "",
                 "- 导入后仍不支持时，先检查 `recipe_types` 是否填对。",
                 "- 若主文件体积明显上涨，确认对应机器是否已经写出 `signature_shards`。",
-                "- 若 shard 丢失或被手工删除，重新执行一次 JEI 导入即可重建。"
+                "- 若 shard 丢失或损坏，增量导入会拒绝覆盖；请先从备份恢复对应分片。"
         ) + CRLF;
     }
 

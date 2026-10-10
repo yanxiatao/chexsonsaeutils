@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.blockentity.directprocessing;
 
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixSearchTerms;
 import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
@@ -83,6 +84,9 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         implements ICraftingProvider, PatternContainer, InternalInventoryHost,
         ProcessingTaskCompletionHost, HostBatchProvider, NeoEcoBatchHost, PatternMatrixSource {
 
+    /** 标记与实体样板分库存；机器页提供四行九列。 */
+    public static final int MACHINE_BINDING_SLOTS = 36;
+    private static final String NBT_MACHINE_BINDINGS = "machineBindings";
     private static final String NBT_MACHINE_BINDING = "machineBinding";
     private static final String NBT_PATTERN_SLOTS = "patternSlots";
     private static final String NBT_SLOT = "slot";
@@ -124,7 +128,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     private final MachineSource actionSource = new MachineSource(this);
-    private final AppEngInternalInventory machineBindingInventory = new AppEngInternalInventory(this, 1, 1);
+    private final AppEngInternalInventory machineBindingInventory = new AppEngInternalInventory(this, MACHINE_BINDING_SLOTS, 1);
     private final DirtySlotPatternRefreshScheduler refreshScheduler =
             new DirtySlotPatternRefreshScheduler(configTotalPatternSlots());
     private final DecodedPatternEntryCache decodedPatternEntryCache =
@@ -205,6 +209,16 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.saveAdditional(data, registries);
         data.put(NBT_MACHINE_BINDING, getMachineBindingStack().saveOptional(registries));
+        ListTag bindings = new ListTag();
+        for (int slot = 1; slot < MACHINE_BINDING_SLOTS; slot++) {
+            ItemStack stack = machineBindingInventory.getStackInSlot(slot);
+            if (stack.isEmpty()) continue;
+            CompoundTag entry = new CompoundTag();
+            entry.putInt(NBT_SLOT, slot);
+            entry.put(NBT_STACK, stack.saveOptional(registries));
+            bindings.add(entry);
+        }
+        data.put(NBT_MACHINE_BINDINGS, bindings);
         data.putLong(NBT_DISCOVERY_EPOCH, discoveryEpoch);
         data.putInt(NBT_PENDING_OUTPUT_RETRY_DELAY, pendingOutputRetryDelayTicks);
         data.putInt(NBT_PENDING_OUTPUT_RETRY_BACKOFF, pendingOutputRetryBackoffTicks);
@@ -224,6 +238,17 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                         ? ItemStack.parseOptional(registries, data.getCompound(NBT_MACHINE_BINDING))
                         : ItemStack.EMPTY
         );
+        for (int slot = 1; slot < MACHINE_BINDING_SLOTS; slot++) {
+            machineBindingInventory.setItemDirect(slot, ItemStack.EMPTY);
+        }
+        for (Tag tag : data.getList(NBT_MACHINE_BINDINGS, Tag.TAG_COMPOUND)) {
+            CompoundTag entry = (CompoundTag) tag;
+            int slot = entry.getInt(NBT_SLOT);
+            if (slot <= 0 || slot >= MACHINE_BINDING_SLOTS) {
+                throw new IllegalArgumentException("无效直连处理机标记槽: " + slot);
+            }
+            machineBindingInventory.setItemDirect(slot, ItemStack.parseOptional(registries, entry.getCompound(NBT_STACK)));
+        }
         discoveryEpoch = data.contains(NBT_DISCOVERY_EPOCH) ? data.getLong(NBT_DISCOVERY_EPOCH) : 0L;
         pendingOutputRetryDelayTicks = data.contains(NBT_PENDING_OUTPUT_RETRY_DELAY)
                 ? data.getInt(NBT_PENDING_OUTPUT_RETRY_DELAY)
@@ -294,8 +319,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             return false;
         }
         ProcessingTask task = ProcessingTask.compile(
-                compatibility.pattern(),
-                compatibility.signature(),
+                compatibility,
                 inputHolder,
                 getCurrentOperationTicks()
         );
@@ -339,7 +363,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         // 但不再在 2.1e9 处凭空夹断（状态屏上那份恒为 2.1T 的读数就是这个夹子）。
         long tickCapacity = Long.MAX_VALUE / (long) Math.max(1, getCurrentOperationTicks());
         long payloadCapacity = Long.MAX_VALUE;
-        for (GenericStack output : compatibility.signature().outputs()) {
+        for (GenericStack output : compatibility.pattern().getOutputs()) {
             if (output != null && output.amount() > 0L) {
                 payloadCapacity = Math.min(payloadCapacity, Long.MAX_VALUE / output.amount());
             }
@@ -363,16 +387,12 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 pattern.getDefinition(),
                 recipeIndex.version()
         );
-        ProcessingTask task = ProcessingTask.compileNeoEcoBatch(
-                compatibility.pattern(),
-                compatibility.signature(),
-                inputs,
-                outputs,
-                remainders,
-                count,
-                getCurrentOperationTicks(),
-                craftingJobId
-        );
+        ProcessingTask task = null;
+        for (var signature : compatibility.signatures()) {
+            task = ProcessingTask.compileNeoEcoBatch(compatibility.pattern(), signature,
+                    inputs, outputs, remainders, count, getCurrentOperationTicks(), craftingJobId);
+            if (task != null) break;
+        }
         Level currentLevel = getLevel();
         long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
         if (task == null || !executionQueue.offer(task, budgetController, acceptedTick)) {
@@ -488,9 +508,9 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     @Override
     public void addAdditionalDrops(Level level, BlockPos pos, List<ItemStack> drops) {
         super.addAdditionalDrops(level, pos, drops);
-        ItemStack bindingStack = machineBindingInventory.getStackInSlot(0);
-        if (!bindingStack.isEmpty()) {
-            drops.add(bindingStack.copy());
+        for (int slot = 0; slot < MACHINE_BINDING_SLOTS; slot++) {
+            ItemStack bindingStack = machineBindingInventory.getStackInSlot(slot);
+            if (!bindingStack.isEmpty()) drops.add(bindingStack.copy());
         }
         for (int slot = 0; slot < patternStore.getTotalSlots(); slot++) {
             ItemStack stack = patternStore.getStackInSlot(slot);
@@ -510,7 +530,9 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public void clearContent() {
-        machineBindingInventory.setItemDirect(0, ItemStack.EMPTY);
+        for (int slot = 0; slot < MACHINE_BINDING_SLOTS; slot++) {
+            machineBindingInventory.setItemDirect(slot, ItemStack.EMPTY);
+        }
         patternStore.clearAll();
         executionQueue.clear();
         pendingOutputBatches.clear();
@@ -528,8 +550,20 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         onMachineBindingChanged();
     }
 
+    /** 自动化写入标记槽后立即使合并索引失效。 */
+    public void setMachineBindingAt(int slot, ItemStack stack) {
+        machineBindingInventory.setItemDirect(slot, stack.isEmpty() ? ItemStack.EMPTY : stack.copyWithCount(1));
+        onMachineBindingChanged();
+    }
+
     public boolean isSupportedBindingMachine(ItemStack stack) {
-        return stack != null && !stack.isEmpty() && stack.getItem() instanceof BlockItem;
+        if (stack == null || stack.isEmpty()) return false;
+        var rules = level != null && level.isClientSide()
+                ? git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPackRulesRegistry.clientCurrent()
+                : git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPackRulesRegistry.current();
+        return (stack.getItem() instanceof BlockItem
+                || rules.isCustomMarker(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem())))
+                && rules.allowsMachine(MachineIdentity.fromBindingStack(stack));
     }
 
     public boolean isProcessingPattern(ItemStack stack) {
@@ -598,10 +632,17 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 patternStore, decodedPatternEntryCache, getLevel(), query, matchBits);
     }
 
+    @Override
+    public PatternMatrixSearchTerms patternMatrixSearchTerms(int slot) {
+        var entry = decodedPatternEntryCache.get(slot);
+        return PatternMatrixSearchTerms.from(
+                entry == null ? null : entry.patternDetails());
+    }
+
     private PatternCompatibility compatibilityOf(int slot) {
         PatternCompatibility compatibility = patternCompatibilityBySlot.get(slot);
         return compatibility == null
-                ? PatternCompatibility.unsupported(MachineSupportReasonCode.PATTERN_DECODE_FAILED)
+                ? PatternCompatibility.unsupported(MachineSupportStatus.PENDING_REFRESH, MachineSupportReasonCode.NONE)
                 : compatibility;
     }
 
@@ -637,8 +678,22 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return MachineIdentity.fromBindingStack(getMachineBindingStack());
     }
 
+    /** 所有标记对应的唯一机器身份；同种机器重复存入不会重复扫描配方。 */
+    public List<MachineIdentity> getMachineIdentitiesForMenu() {
+        Set<MachineIdentity> identities = new LinkedHashSet<>();
+        for (int slot = 0; slot < MACHINE_BINDING_SLOTS; slot++) {
+            ItemStack binding = machineBindingInventory.getStackInSlot(slot);
+            if (!isSupportedBindingMachine(binding)) continue;
+            MachineIdentity identity = MachineIdentity.fromBindingStack(binding);
+            if (identity != null) identities.add(identity);
+        }
+        return List.copyOf(identities);
+    }
+
     public boolean importUserConfigMappingForMenu(MachineRecipeConfigImportRequest request) {
-        MachineIdentity currentIdentity = getMachineIdentityForMenu();
+        MachineIdentity currentIdentity = getMachineIdentitiesForMenu().stream()
+                .filter(identity -> request != null && matchesCurrentBinding(identity, request))
+                .findFirst().orElse(null);
         Level currentLevel = getLevel();
         if (currentIdentity == null
                 || currentLevel == null
@@ -655,7 +710,13 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         if (appliedRequest == null || appliedRequest.recipeTypeIds().isEmpty()) {
             return false;
         }
-        MachineRecipeUserConfigStore.instance().upsertMappingAndApply(appliedRequest, currentLevel.registryAccess());
+        try {
+            if (!MachineRecipeUserConfigStore.instance().upsertMappingAndApply(
+                    appliedRequest, currentLevel.registryAccess())) return true;
+        } catch (RuntimeException exception) {
+            com.mojang.logging.LogUtils.getLogger().error("直连处理机配方导入失败", exception);
+            return false;
+        }
         observedConfigMappingEpoch = MachineRecipeConfigMappingRegistry.instance().epoch();
         discoveryEpoch++;
         invalidatePatternExposureForIndexChange();
@@ -721,24 +782,20 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     private void rebuildMachineRecipeIndex() {
         Level currentLevel = getLevel();
-        MachineIdentity identity = MachineIdentity.fromBindingStack(getMachineBindingStack());
-        if (currentLevel == null || identity == null) {
+        if (currentLevel == null) {
             recipeIndex = MachineRecipeIndex.empty();
             return;
         }
-        recipeDiscoveryCount++;
-        MachineRecipeIndexCache.BuildResult result = MachineRecipeIndexCache.instance().getOrBuild(
-                currentLevel,
-                identity,
-                recipeManagerEpoch,
-                MachineRecipeConfigMappingRegistry.instance().epoch(),
-                discoveryEpoch,
-                discoveryService::buildIndexTemplate
-        );
-        recipeIndex = result.index();
-        if (!result.cacheHit()) {
-            recipeFullScanCount++;
+        List<MachineRecipeIndex> indices = new ArrayList<>();
+        for (MachineIdentity identity : getMachineIdentitiesForMenu()) {
+            recipeDiscoveryCount++;
+            MachineRecipeIndexCache.BuildResult result = MachineRecipeIndexCache.instance().getOrBuild(
+                    currentLevel, identity, recipeManagerEpoch, MachineRecipeConfigMappingRegistry.instance().epoch(),
+                    discoveryEpoch, discoveryService::buildIndexTemplate);
+            indices.add(result.index());
+            if (!result.cacheHit()) recipeFullScanCount++;
         }
+        recipeIndex = MachineRecipeIndex.merge(indices, discoveryEpoch);
     }
 
     private void markAllPatternsDirty() {
@@ -799,7 +856,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return replacePatternExposureForSlot(
                 slot,
                 decodedPattern.getDefinition(),
-                compatibility.supported() ? decodedPattern : null,
+                compatibility.supported() ? compatibility.pattern() : null,
                 compatibility
         );
     }

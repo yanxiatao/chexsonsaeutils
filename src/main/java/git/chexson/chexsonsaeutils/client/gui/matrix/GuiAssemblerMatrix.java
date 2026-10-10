@@ -33,7 +33,7 @@ import java.util.List;
  * 滚动条走行、搜索框即时过滤、逐格命中涂绿未命中压暗、点击换算成 AE2 的
  * {@link InventoryActionPacket} 交给服务端落实，整套交互模型按移植件照搬。
  * 被迫适配四处：行内容由本地视图按需回填而不是开包全量镜像（一万六千格整份配方
- * 会撑爆连接）；命中集合来自服务端位图（样板解码在服务端，客户端没有配方）；
+ * 会撑爆连接）；服务端解码搜索摘要，客户端按当前语言和可选 JECH 计算命中位图；
  * 格子坐标在 1.21.1 只能构造时给定，所以窗口重建放在 {@code updateBeforeRender}；
  * 参与滚动的行截断到最后一个有内容的行再加一条空行，见 {@link PatternInfo#listRows}。</p>
  */
@@ -43,15 +43,11 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
     private static final int SLOT_SIZE = 18;
     /** 移植件的滚动步长：一次滚轮两行。 */
     private static final int SCROLL_STEP = 2;
-    /** 两次搜索上行之间的最小帧数，服务端要扫全量槽位，不能连打就刷。 */
-    private static final int SEARCH_SEND_INTERVAL_FRAMES = 6;
     /** 背景图烘焙了四行样板格，少列的行数要用图里自带的空白面板条抹掉分隔线。 */
     private static final int BAKED_BANDS = 4;
     /** 与移植件一致：贴图为空白行的两条纯色面板带。 */
     private static final Rect2i EMPTY_ROW1 = new Rect2i(0, 203, 160, 16);
     private static final Rect2i EMPTY_ROW2 = new Rect2i(0, 219, 160, 18);
-    /** 同一张图里玩家背包的一个空格子，供机器专属槽位借用来画框。 */
-    private static final Rect2i SLOT_CELL = new Rect2i(7, 116, 18, 18);
     /** 命中绿、未命中压暗，与移植件的取值一致。 */
     private static final int SEARCH_MATCH_FILL = 0x8A00FF00;
     private static final int SEARCH_DIM = 0x6A000000;
@@ -69,13 +65,14 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
 
     private final Scrollbar scrollbar;
     private final AETextField searchField;
+    private final PatternSearchButton searchModeButton;
+    private final PatternMatrixClientSearch clientSearch;
+    private PatternMatrixClientView listedView;
 
     private PatternInfo info = new PatternInfo(0, 1);
     private int listedChangeCount = -1;
     private int listedTotalSlots = -1;
     private int[] lastRequestedSlots = new int[0];
-    private String sentQuery = "";
-    private int searchSendCooldown;
 
     protected GuiAssemblerMatrix(
             T menu,
@@ -86,7 +83,8 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
             int columns,
             int visibleRows,
             int matrixLeft,
-            int matrixTop
+            int matrixTop,
+            PatternSearchMatcher searchMatcher
     ) {
         super(menu, playerInventory, title, style);
         this.link = link;
@@ -97,10 +95,18 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
         this.pendingSlots = new int[columns * visibleRows];
         this.scrollbar = widgets.addScrollBar("scrollbar", Scrollbar.BIG);
         this.searchField = widgets.addTextField("search");
-        this.searchField.setResponder(str -> this.refreshList(link.matrixView()));
+        this.searchField.setResponder(str -> this.refreshList(matrixViewForDisplay()));
+        this.searchModeButton = new PatternSearchButton();
+        widgets.add("search_mode", searchModeButton);
+        this.clientSearch = new PatternMatrixClientSearch(searchMatcher);
         this.searchField.setPlaceholder(Component.translatable("gui.chexsonsaeutils.matrix.search_hint"));
         // 滚轮在窗口任意位置都能滚动列表，与 AE2 终端一致
         this.scrollbar.setCaptureMouseWheel(true);
+    }
+
+    /** 子界面切换到独立库存页时隐藏样板窗口与搜索控件。 */
+    protected boolean isMatrixVisible() {
+        return true;
     }
 
     @Override
@@ -121,8 +127,24 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
-        PatternMatrixClientView view = link.matrixView();
-        tickSearchUpload();
+        boolean visible = isMatrixVisible();
+        searchField.setVisible(visible);
+        scrollbar.setVisible(visible);
+        searchModeButton.visible = visible;
+        if (!visible) {
+            searchField.setFocused(false);
+            removeStaleCells();
+            return;
+        }
+        PatternMatrixClientView view = matrixViewForDisplay();
+        if (view != listedView) {
+            listedView = view;
+            listedTotalSlots = -1;
+            listedChangeCount = -1;
+            lastRequestedSlots = new int[0];
+            scrollbar.setCurrentScroll(0);
+        }
+        updateSearch(view, searchField.getValue());
         if (view.getTotalSlots() != listedTotalSlots) {
             listedTotalSlots = view.getTotalSlots();
             this.info = new PatternInfo(view.getTotalSlots(), columns);
@@ -176,7 +198,7 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
         if (this.searchField.getValue().isEmpty()) {
             return;
         }
-        PatternMatrixClientView view = link.matrixView();
+        PatternMatrixClientView view = matrixViewForDisplay();
         for (AssemblerMatrixSlot slot : cells) {
             fillRect(guiGraphics,
                     new Rect2i(slot.x, slot.y, SLOT_SIZE - 2, SLOT_SIZE - 2),
@@ -194,7 +216,7 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
 
     /** 与移植件一致：列出的行不满烘焙行数时，用图里自带的纯色带盖掉多余的分隔线。 */
     private void blitEmptyBands(GuiGraphics guiGraphics, int offsetX, int offsetY) {
-        int lastUsed = Math.min(rows.size(), visibleRows);
+        int lastUsed = isMatrixVisible() ? Math.min(rows.size(), visibleRows) : BAKED_BANDS;
         boolean first = true;
         for (int band = lastUsed; band < BAKED_BANDS; band++) {
             if (first) {
@@ -204,11 +226,6 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
                 blit(guiGraphics, offsetX + matrixLeft, offsetY + ROW_HEIGHT * band + matrixTop - 2, EMPTY_ROW2);
             }
         }
-    }
-
-    /** 机器专属槽位（例如直连处理机的绑定槽）借用图里玩家背包的现成凹槽画框。 */
-    protected final void blitSlotCell(GuiGraphics guiGraphics, int offsetX, int offsetY, Slot slot) {
-        blit(guiGraphics, offsetX + slot.x - 1, offsetY + slot.y - 1, SLOT_CELL);
     }
 
     private void blit(GuiGraphics guiGraphics, int x, int y, Rect2i srcRect) {
@@ -241,7 +258,7 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
                 final InventoryActionPacket p = new InventoryActionPacket(
                         action,
                         machineSlot.getActuallySlot(),
-                        PatternMatrixInteraction.MATRIX_PATTERN_ID
+                        matrixActionId()
                 );
                 PacketDistributor.sendToServer(p);
             }
@@ -263,7 +280,7 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
 
     /** 当前窗口里的样板计数，过滤时附带命中数。 */
     protected Component statusLine() {
-        PatternMatrixClientView view = link.matrixView();
+        PatternMatrixClientView view = matrixViewForDisplay();
         int usedSlots = view.getNonEmptySlots();
         int totalSlots = view.getTotalSlots();
         if (!view.filterActive()) {
@@ -296,17 +313,14 @@ public abstract class GuiAssemblerMatrix<T extends AEBaseMenu> extends AEBaseScr
         link.requestVisibleRealStacks(slots);
     }
 
-    private void tickSearchUpload() {
-        if (searchSendCooldown > 0) {
-            searchSendCooldown--;
-            return;
-        }
-        String query = searchField.getValue();
-        if (query.equals(sentQuery)) {
-            return;
-        }
-        sentQuery = query;
-        searchSendCooldown = SEARCH_SEND_INTERVAL_FRAMES;
-        link.requestSearch(query);
+    /** 两台机器使用已同步摘要搜索，允许 JECH 按当前语言匹配。 */
+    protected void updateSearch(PatternMatrixClientView view, String query) {
+        clientSearch.update(view, query, searchModeButton.mode(), minecraft.options.languageCode);
     }
+
+    /** 当前页使用的视图；独立库存页可提供已同步的本地矩阵。 */
+    protected PatternMatrixClientView matrixViewForDisplay() { return link.matrixView(); }
+
+    /** 库存独立标识，服务端按页校验，避免切页后的延迟点击落入另一库存。 */
+    protected long matrixActionId() { return PatternMatrixInteraction.MATRIX_PATTERN_ID; }
 }

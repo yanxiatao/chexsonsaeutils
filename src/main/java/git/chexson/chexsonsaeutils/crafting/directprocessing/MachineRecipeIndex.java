@@ -32,6 +32,7 @@ public final class MachineRecipeIndex {
     private final Set<RecipeSignature> signatures;
     private final Map<RecipeSignatureKey, RecipeSignature> signatureLookup;
     private final Map<RecipeSignatureShapeKey, List<RecipeSignature>> signatureShapeLookup;
+    private final Map<RecipeSignatureKey, MachineSupportStatus> signatureStatuses = new LinkedHashMap<>();
     private final MachineSupportStatus status;
     private final MachineSupportReasonCode reasonCode;
     private final long version;
@@ -60,6 +61,48 @@ public final class MachineRecipeIndex {
         return EMPTY;
     }
 
+    /** 合并独立机器的支持范围，空索引不影响其他机器的有效配方。 */
+    public static MachineRecipeIndex merge(List<MachineRecipeIndex> indices, long version) {
+        if (indices.isEmpty()) return empty();
+        Set<MachineRecipeKind> kinds = new LinkedHashSet<>();
+        Set<ResourceLocation> types = new LinkedHashSet<>();
+        Set<RecipeSignature> signatures = new LinkedHashSet<>();
+        MachineRecipeIndex first = indices.getFirst();
+        MachineSupportStatus status = MachineSupportStatus.SUPPORTED_GENERIC;
+        for (MachineRecipeIndex index : indices) {
+            if (index.isEmpty()) continue;
+            kinds.addAll(index.kinds);
+            types.addAll(index.recipeTypeIds);
+            signatures.addAll(index.signatures);
+        }
+        if (signatures.isEmpty()) return first.withVersion(version);
+        MachineRecipeIndex merged = new MachineRecipeIndex(first.identity, kinds, List.copyOf(types), signatures,
+                status, MachineSupportReasonCode.NONE, version);
+        for (MachineRecipeIndex index : indices) {
+            if (index.isEmpty()) continue;
+            for (RecipeSignature signature : index.signatures) {
+                merged.signatureStatuses.merge(RecipeSignatureKey.of(signature), index.statusFor(signature),
+                        (left, right) -> left.ordinal() <= right.ordinal() ? left : right);
+            }
+        }
+        return merged;
+    }
+
+    /** 构建阶段记录每条签名的来源，已知原生配方优先于导入配方。 */
+    MachineRecipeIndex withDiscoveryStatuses(Map<RecipeSignatureKey, MachineSupportStatus> nativeStatuses,
+                                            Set<RecipeSignature> imported) {
+        signatureStatuses.putAll(nativeStatuses);
+        for (RecipeSignature signature : imported) {
+            signatureStatuses.putIfAbsent(RecipeSignatureKey.of(signature), MachineSupportStatus.SUPPORTED_CONFIG);
+        }
+        return this;
+    }
+
+    /** 返回匹配配方的实际发现来源，用于混合机器的样板状态。 */
+    public MachineSupportStatus statusFor(RecipeSignature signature) {
+        return signatureStatuses.getOrDefault(RecipeSignatureKey.of(signature), status);
+    }
+
     @Nullable
     public MachineIdentity identity() {
         return identity;
@@ -74,7 +117,9 @@ public final class MachineRecipeIndex {
     }
 
     public MachineRecipeIndex withVersion(long newVersion) {
-        return new MachineRecipeIndex(identity, kinds, recipeTypeIds, signatures, status, reasonCode, newVersion);
+        MachineRecipeIndex copy = new MachineRecipeIndex(identity, kinds, recipeTypeIds, signatures, status, reasonCode, newVersion);
+        copy.signatureStatuses.putAll(signatureStatuses);
+        return copy;
     }
 
     public boolean isEmpty() {
@@ -140,6 +185,21 @@ public final class MachineRecipeIndex {
             return new ScaledSignatureMatch(candidate, inputRatio);
         }
         return null;
+    }
+
+    /** 只遍历索引中的实际配方，不展开替换候选的笛卡尔积。 */
+    public List<RecipeSignature> matchingSignatures(appeng.api.crafting.IPatternDetails pattern) {
+        if (pattern == null) return List.of();
+        var deterministic = DirectProcessingStackSupport.patternInputs(pattern);
+        if (!deterministic.isEmpty()) {
+            var match = findScaledMatch(deterministic, pattern.getOutputs());
+            return match == null ? List.of() : List.of(match.signature());
+        }
+        var matches = new java.util.ArrayList<RecipeSignature>();
+        for (var signature : signatures) {
+            if (!DirectProcessingStackSupport.patternInputs(pattern, signature).isEmpty()) matches.add(signature);
+        }
+        return List.copyOf(matches);
     }
 
     public boolean supports(AEKey input, long inputAmount, AEKey output, long outputAmount) {

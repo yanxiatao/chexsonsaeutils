@@ -21,6 +21,8 @@ public final class PatternMatrixInteraction {
 
     /** 矩阵点击包的 extraId：一个菜单只有一个样板库存，用它把矩阵点击与其他 doAction 分流。 */
     public static final long MATRIX_PATTERN_ID = 1L;
+    /** 机器标记库存的独立点击标识，防止延迟点击在切页后修改样板。 */
+    public static final long MATRIX_MACHINE_ID = 2L;
 
     private PatternMatrixInteraction() {
     }

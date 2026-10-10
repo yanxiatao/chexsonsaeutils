@@ -73,21 +73,26 @@ public final class PatternMatrixServerSync {
             }
             return;
         }
+        int statusCode = source.patternMatrixStatusCode(slot);
+        int reasonCode = source.patternMatrixReasonCode(slot);
         if (previous != null
                 && previous.detailVersion == detailVersion
+                && previous.statusCode == statusCode
+                && previous.reasonCode == reasonCode
                 && ItemStack.isSameItemSameComponents(previous.observedStack, stored)) {
             return;
         }
         out.add(new PatternMatrixEntry(
                 slot,
                 source.patternMatrixDisplayStack(slot),
-                source.patternMatrixStatusCode(slot),
-                source.patternMatrixReasonCode(slot)
+                statusCode,
+                reasonCode,
+                source.patternMatrixSearchTerms(slot)
         ));
-        observedSlots.put(slot, new ObservedSlot(stored.copy(), detailVersion));
+        observedSlots.put(slot, new ObservedSlot(stored.copy(), detailVersion, statusCode, reasonCode));
     }
 
-    private record ObservedSlot(ItemStack observedStack, long detailVersion) {
+    private record ObservedSlot(ItemStack observedStack, long detailVersion, int statusCode, int reasonCode) {
     }
 
     public interface Sender {

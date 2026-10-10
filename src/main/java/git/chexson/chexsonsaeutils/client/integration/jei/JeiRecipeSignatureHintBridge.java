@@ -1,7 +1,6 @@
 package git.chexson.chexsonsaeutils.client.integration.jei;
 
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingJeiImportRecipeTypeGuard;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedSignature;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedStack;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackConverterRegistry;
@@ -46,8 +45,6 @@ public final class JeiRecipeSignatureHintBridge {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JeiRecipeSignatureHintBridge.class);
     private static final int MAX_CANDIDATE_SIGNATURES_PER_RECIPE = 256;
-    static final int MAX_IMPORTED_SIGNATURE_HINTS =
-            Math.min(1024, MachineRecipeConfigImportRequest.MAX_NETWORK_SIGNATURES);
     private final DirectProcessingStackConverterRegistry stackConverters;
 
     public JeiRecipeSignatureHintBridge() {
@@ -92,9 +89,6 @@ public final class JeiRecipeSignatureHintBridge {
                 continue;
             }
             collected.addAll(collectCategorySignatures(recipeManager, category, hint.recipeTypeId()));
-            if (collected.size() > MAX_IMPORTED_SIGNATURE_HINTS) {
-                return List.of();
-            }
         }
         return collected.isEmpty() ? List.of() : List.copyOf(collected);
     }
@@ -119,9 +113,6 @@ public final class JeiRecipeSignatureHintBridge {
         Set<MachineRecipeImportedSignature> collected = new LinkedHashSet<>();
         for (Object recipe : lookup.get().toList()) {
             collected.addAll(collectRecipeSignatures(category, recipe, recipeTypeId));
-            if (collected.size() > MAX_IMPORTED_SIGNATURE_HINTS) {
-                return List.of();
-            }
         }
         return collected.isEmpty() ? List.of() : List.copyOf(collected);
     }

@@ -28,6 +28,13 @@ public final class DirectProcessingRecipeRegistration {
                     DirectProcessingMockRecipe::createSerializer
             );
 
+    public static final Supplier<RecipeType<DirectProcessingPackRecipe>> PACK_RECIPE_TYPE = RECIPE_TYPES.register(
+            "direct_processing", () -> new RecipeType<>() {
+                @Override public String toString() { return DirectProcessingPackRecipe.TYPE_ID.toString(); }
+            });
+    public static final Supplier<RecipeSerializer<DirectProcessingPackRecipe>> PACK_RECIPE_SERIALIZER =
+            RECIPE_SERIALIZERS.register("direct_processing", DirectProcessingPackRecipe.Serializer::new);
+
     private DirectProcessingRecipeRegistration() {
     }
 

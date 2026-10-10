@@ -523,6 +523,13 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
     }
 
     @Override
+    public git.chexson.chexsonsaeutils.network.matrix.PatternMatrixSearchTerms patternMatrixSearchTerms(int slot) {
+        var entry = decodedPatternEntryCache.get(slot);
+        return git.chexson.chexsonsaeutils.network.matrix.PatternMatrixSearchTerms.from(
+                entry == null ? null : entry.patternDetails());
+    }
+
+    @Override
     public boolean patternMatrixMayPlace(ItemStack stack) {
         return isSupportedEncodedPattern(stack);
     }

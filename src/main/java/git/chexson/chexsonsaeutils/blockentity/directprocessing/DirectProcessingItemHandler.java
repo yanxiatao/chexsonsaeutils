@@ -13,15 +13,15 @@ public final class DirectProcessingItemHandler implements IItemHandlerModifiable
 
     @Override
     public int getSlots() {
-        return 1 + host.getTotalPatternSlots();
+        return AEDirectProcessingMachineBlockEntity.MACHINE_BINDING_SLOTS + host.getTotalPatternSlots();
     }
 
     @Override
     public ItemStack getStackInSlot(int slot) {
-        if (slot == 0) {
-            return host.getMachineBindingStack();
+        if (slot < AEDirectProcessingMachineBlockEntity.MACHINE_BINDING_SLOTS) {
+            return host.getMachineBindingInventory().getStackInSlot(slot);
         }
-        return host.getPatternAt(slot - 1);
+        return host.getPatternAt(slot - AEDirectProcessingMachineBlockEntity.MACHINE_BINDING_SLOTS);
     }
 
     @Override
@@ -67,7 +67,7 @@ public final class DirectProcessingItemHandler implements IItemHandlerModifiable
 
     @Override
     public boolean isItemValid(int slot, ItemStack stack) {
-        if (slot == 0) {
+        if (slot < AEDirectProcessingMachineBlockEntity.MACHINE_BINDING_SLOTS) {
             return host.isSupportedBindingMachine(stack);
         }
         return host.isProcessingPattern(stack);
@@ -75,10 +75,10 @@ public final class DirectProcessingItemHandler implements IItemHandlerModifiable
 
     @Override
     public void setStackInSlot(int slot, ItemStack stack) {
-        if (slot == 0) {
-            host.setMachineBindingStack(stack);
+        if (slot < AEDirectProcessingMachineBlockEntity.MACHINE_BINDING_SLOTS) {
+            host.setMachineBindingAt(slot, stack);
         } else {
-            host.setPatternAt(slot - 1, stack);
+            host.setPatternAt(slot - AEDirectProcessingMachineBlockEntity.MACHINE_BINDING_SLOTS, stack);
         }
         host.saveChanges();
     }
