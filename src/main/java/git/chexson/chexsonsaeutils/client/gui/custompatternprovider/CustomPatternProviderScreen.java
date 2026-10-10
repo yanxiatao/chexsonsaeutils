@@ -17,10 +17,11 @@ import appeng.client.gui.widgets.ToggleButton;
 import appeng.core.definitions.AEItems;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
+import git.chexson.chexsonsaeutils.client.gui.matrix.MatrixText;
 import git.chexson.chexsonsaeutils.client.gui.MultiPagePatternScreen;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternItem;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
-import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderState;
 
 /**
  * 定制样板供应器屏幕（阶段 3：继承 AE2 原版 PatternProviderScreen）。
@@ -146,11 +147,11 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
         int currentPage = this.menu.getPage();
         var slots = this.menu.getSlots(SlotSemantics.ENCODED_PATTERN);
         int unlockedSlots = Math.min(slots.size(),
-                this.menu.getPages() * CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE);
+                this.menu.getPages() * CustomPatternProviderState.PATTERN_SLOTS_PER_PAGE);
         int slotId = 0;
         for (var slot : slots) {
             if (slot instanceof AppEngSlot appEngSlot) {
-                int slotPage = slotId / CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE;
+                int slotPage = slotId / CustomPatternProviderState.PATTERN_SLOTS_PER_PAGE;
                 boolean unlocked = slotId < unlockedSlots;
                 appEngSlot.setActive(unlocked && slotPage == currentPage);
                 ++slotId;
@@ -168,15 +169,8 @@ public class CustomPatternProviderScreen extends PatternProviderScreen<CustomPat
     @Override
     public void drawFG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY) {
         super.drawFG(guiGraphics, offsetX, offsetY, mouseX, mouseY);
-        String pageText = (this.menu.getPage() + 1) + "/" + this.menu.getPages();
-        guiGraphics.drawString(
-                this.font,
-                pageText,
-                this.imageWidth - 8 - this.font.width(pageText),
-                // y=22 避让右上角 openPriority 按钮（json: top -5, 高 20，底缘 15）
-                22,
-                0x404040
-        );
+        MatrixText.drawPageIndicator(guiGraphics, this.font, this.imageWidth, 22,
+                this.menu.getPage(), this.menu.getPages());
     }
 
     /**

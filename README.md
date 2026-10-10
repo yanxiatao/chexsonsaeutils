@@ -34,7 +34,7 @@
 - `Dyeable Patterns`：
   AE2 编码样板支持染色。
   内置客户端资源包会覆盖样板模型与贴图。
-  planning 侧会优先选择同色样板，并保留 replacement、continuation、formal-machine、parallel CPU 的既有主链语义。
+  颜色仅用于样板数据、持久兼容与客户端显示，不参与 planning 身份、路线、缓存、算法选择或语义。
 - `Enhanced Crafting Status`：
   在合成状态和 Craft Confirm 视图中追加 `Blocked` 与 `Pattern Times` 信息。
   仅扩展状态展示与序列化，不替换本仓已有 continuation、formal-machine、parallel CPU 的 UI 语义。
@@ -128,7 +128,6 @@ processingPatternReplacementEnabled = true
 
 [aeaMigration]
 dyeablePatternsEnabled = true
-dyeableRecursiveRetainedCatalystAmount = 1
 enhancedCraftingStatusEnabled = true
 buildingGadgets2IntegrationEnabled = true
 ftbUltimineMemoryCardEnabled = true
@@ -149,7 +148,6 @@ genericDiscoveryEnabled = true
 - `processingPatternReplacementEnabled`：启用或禁用 AE2 处理样板替换功能包。
 - `[aeaMigration].dyeablePatternsEnabled`：启用或禁用 AEA 染色样板迁移。
   关闭后会同时关闭染色样板 mixin、物品染色处理和内置客户端资源包注册。
-- `[aeaMigration].dyeableRecursiveRetainedCatalystAmount`：设置递归染色样板计划结束后保留的催化物数量。
 - `[aeaMigration].enhancedCraftingStatusEnabled`：启用或禁用 AEA 增强合成状态迁移。
 - `[aeaMigration].buildingGadgets2IntegrationEnabled`：启用或禁用 AEA Building Gadgets 2 集成。
 - `[aeaMigration].ftbUltimineMemoryCardEnabled`：启用或禁用 AEA FTB Ultimine 记忆卡兼容。

@@ -1,6 +1,0 @@
-{
-  "parent": "minecraft:block/cube_all",
-  "textures": {
-    "all": "chexsonsaeutils:block/high_capacity_crafting_machine"
-  }
-}

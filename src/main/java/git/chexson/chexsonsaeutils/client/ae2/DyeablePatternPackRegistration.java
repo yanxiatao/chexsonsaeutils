@@ -1,7 +1,6 @@
 package git.chexson.chexsonsaeutils.client.ae2;
 
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.config.FeatureGates;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
@@ -32,7 +31,7 @@ public final class DyeablePatternPackRegistration {
     }
 
     public static boolean shouldRegister() {
-        return FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled");
+        return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled");
     }
 
     public static void register(AddPackFindersEvent event) {

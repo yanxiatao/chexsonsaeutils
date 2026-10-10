@@ -1,9 +1,9 @@
 package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
 public interface ProcessingTaskCompletionHost {
-    void completeProcessingTask(ProcessingCompiledTask task);
+    void completeProcessingTask(ProcessingTask task);
 
-    default void completeProcessingTask(ProcessingCompiledTask task, ProcessingLatencyOrigin latencyOrigin) {
+    default void completeProcessingTask(ProcessingTask task, ProcessingLatencyOrigin latencyOrigin) {
         completeProcessingTask(task);
     }
 

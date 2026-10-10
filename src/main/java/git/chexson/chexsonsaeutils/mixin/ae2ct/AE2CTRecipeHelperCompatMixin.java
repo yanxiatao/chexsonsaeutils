@@ -11,11 +11,9 @@ import appeng.menu.me.crafting.CraftingPlanSummary;
 import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import com.neuvillette.ae2ct.api.ICraftingPlanSummary;
 import com.neuvillette.ae2ct.api.RecipeHelper;
-import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.planning.AggregatedCraftingPlan;
+import git.chexson.chexsonsaeutils.crafting.recursive.RecursivePlanContract;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer;
-import git.chexson.chexsonsaeutils.crafting.planning.FormalMachineAggregationStep;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -38,9 +36,14 @@ public abstract class AE2CTRecipeHelperCompatMixin {
             ICraftingPlan job,
             CallbackInfoReturnable<CraftingPlanSummary> cir
     ) {
-        if (!(job instanceof AggregatedCraftingPlan aggregated)) {
+        // Phase 4：crafts 层替换后计划回归原生 CraftingPlan——
+        // 只要 patternTimes 含 HostBatchPattern 即按聚合计划处理。
+        boolean hasHostBatch = job.patternTimes().keySet().stream()
+                .anyMatch(pattern -> pattern instanceof HostBatchPattern);
+        if (!hasHostBatch) {
             return;
         }
+        ICraftingPlan aggregated = job;
 
         List<RecipeHelper.Recipe> recipes = new ArrayList<>();
 
@@ -48,13 +51,13 @@ public abstract class AE2CTRecipeHelperCompatMixin {
             IPatternDetails pattern = entry.getKey();
             Long times = entry.getValue();
 
-            if (pattern instanceof FormalMachineAggregatedPattern aggregatedPattern) {
+            if (pattern instanceof HostBatchPattern aggregatedPattern) {
                 recipes.add(new RecipeHelper.Recipe(
                         aggregatedPattern.aggregatedInputs(),
                         aggregatedPattern.aggregatedOutputs(),
                         times
                 ));
-            } else if (!(pattern instanceof DyeablePatternRecursivePlan)) {
+            } else if (!(pattern instanceof RecursivePlanContract)) {
                 List<GenericStack> inputs = new ArrayList<>();
                 for (var input : pattern.getInputs()) {
                     var possibleInputs = input.getPossibleInputs();

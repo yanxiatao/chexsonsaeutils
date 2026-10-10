@@ -5,7 +5,6 @@ import org.jetbrains.annotations.Nullable;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 
-import appeng.api.networking.IGridNode;
 import appeng.api.networking.IManagedGridNode;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.config.Actionable;

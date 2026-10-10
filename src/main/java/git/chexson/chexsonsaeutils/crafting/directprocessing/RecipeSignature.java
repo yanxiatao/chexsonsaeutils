@@ -4,6 +4,7 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 
 import java.util.List;
+import java.util.Map;
 
 public record RecipeSignature(
         MachineRecipeKind kind,
@@ -11,8 +12,14 @@ public record RecipeSignature(
         List<GenericStack> outputs
 ) {
     public RecipeSignature {
-        inputs = DirectProcessingStackSupport.normalizeSignatureInputs(inputs);
-        outputs = DirectProcessingStackSupport.normalizeStacks(outputs);
+        Map<AEKey, Long> inputAmounts = DirectProcessingStackSupport.signatureInputAmounts(inputs);
+        Map<AEKey, Long> outputAmounts = DirectProcessingStackSupport.stackAmounts(outputs);
+        inputs = inputAmounts.entrySet().stream()
+                .map(entry -> new RecipeSignatureInput(entry.getKey(), entry.getValue()))
+                .toList();
+        outputs = outputAmounts.entrySet().stream()
+                .map(entry -> new GenericStack(entry.getKey(), entry.getValue()))
+                .toList();
     }
 
     public RecipeSignature(

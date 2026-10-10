@@ -1,6 +1,7 @@
 package git.chexson.chexsonsaeutils.crafting.directprocessing.mekanism;
 
 import appeng.api.stacks.GenericStack;
+import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingExternalRecipeShapeRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackConverterRegistry;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.RecipeTypeCandidate;
@@ -28,6 +29,7 @@ import java.util.List;
 public final class MekanismRecipeShapeSupport
         implements DirectProcessingExternalRecipeShapeRegistry.ExternalRecipeShapeSupport {
 
+    private static final org.slf4j.Logger LOG = LogUtils.getLogger();
     private static final long ITEM_CHEMICAL_PER_OPERATION_USAGE = 200L;
     private final DirectProcessingStackConverterRegistry stackConverters;
 
@@ -179,7 +181,12 @@ public final class MekanismRecipeShapeSupport
                 continue;
             }
             long neededAmount = ingredient.getNeededAmount(representation);
-            if (neededAmount <= 0L || neededAmount > Integer.MAX_VALUE) {
+            if (neededAmount <= 0L) {
+                continue;
+            }
+            if (neededAmount > Integer.MAX_VALUE) {
+                LOG.warn("Mekanism item ingredient amount {} beyond int ItemStack domain for {}: marked unusable",
+                        neededAmount, BuiltInRegistries.ITEM.getKey(representation.getItem()));
                 continue;
             }
             ItemStack copy = representation.copy();
@@ -206,7 +213,12 @@ public final class MekanismRecipeShapeSupport
                 continue;
             }
             long neededAmount = ingredient.getNeededAmount(representation);
-            if (neededAmount <= 0L || neededAmount > Integer.MAX_VALUE) {
+            if (neededAmount <= 0L) {
+                continue;
+            }
+            if (neededAmount > Integer.MAX_VALUE) {
+                LOG.warn("Mekanism fluid ingredient amount {} beyond int FluidStack domain: marked unusable",
+                        neededAmount);
                 continue;
             }
             FluidStack copy = representation.copy();
@@ -257,7 +269,16 @@ public final class MekanismRecipeShapeSupport
         if (amount <= 0L) {
             return 0L;
         }
-        return perTickUsage ? Math.multiplyExact(amount, ITEM_CHEMICAL_PER_OPERATION_USAGE) : amount;
+        if (!perTickUsage) {
+            return amount;
+        }
+        try {
+            return Math.multiplyExact(amount, ITEM_CHEMICAL_PER_OPERATION_USAGE);
+        } catch (ArithmeticException overflowed) {
+            LOG.warn("Mekanism item-to-chemical scaling overflows long (amount={}): ingredient marked unusable",
+                    amount);
+            return 0L;
+        }
     }
 
     private List<GenericStack> readSingleItemOutput(List<ItemStack> outputDefinition) {

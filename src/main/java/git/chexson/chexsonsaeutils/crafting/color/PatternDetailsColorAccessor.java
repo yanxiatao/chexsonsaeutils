@@ -1,6 +1,5 @@
 package git.chexson.chexsonsaeutils.crafting.color;
 
-import org.jetbrains.annotations.Nullable;
 
 /**
  * 样板颜色读取接口。

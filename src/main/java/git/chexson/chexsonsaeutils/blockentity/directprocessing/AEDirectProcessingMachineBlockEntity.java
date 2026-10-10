@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.blockentity.directprocessing;
 
+import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.ids.AEComponents;
@@ -8,13 +9,10 @@ import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.storage.IStorageService;
 import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
-import appeng.api.upgrades.IUpgradeInventory;
-import appeng.api.upgrades.IUpgradeableObject;
-import appeng.api.upgrades.UpgradeInventories;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
-import appeng.core.definitions.AEItems;
 import appeng.helpers.patternprovider.PatternContainer;
 import appeng.me.helpers.MachineSource;
 import appeng.me.service.CraftingService;
@@ -24,7 +22,7 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.blockentity.crafting.DecodedPatternEntryCache;
 import git.chexson.chexsonsaeutils.blockentity.crafting.DirtySlotPatternRefreshScheduler;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternInventory;
+import git.chexson.chexsonsaeutils.blockentity.crafting.PatternSlotStore;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingPatternProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingStackSupport;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
@@ -39,21 +37,27 @@ import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReaso
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibility;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PatternCompatibilityCache;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPattern;
-import git.chexson.chexsonsaeutils.crafting.planning.FormalMachinePlanningProvider;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchProvider;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.PendingOutputBatch;
-import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingCompiledTask;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTask;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionBudget;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingExecutionQueue;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingLatencyOrigin;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingTaskCompletionHost;
-import git.chexson.chexsonsaeutils.crafting.AeCpuIngressRouter;
+import git.chexson.chexsonsaeutils.crafting.CraftingOutputRouter;
 import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
+import git.chexson.chexsonsaeutils.crafting.SourceCpuResolver;
+import git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoBatchHost;
+import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixDisplay;
+import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSearch;
+import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
@@ -64,6 +68,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -73,10 +78,9 @@ import java.util.Set;
 import java.util.UUID;
 
 public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
-        implements ICraftingProvider, IUpgradeableObject, PatternContainer, InternalInventoryHost,
-        ProcessingTaskCompletionHost, FormalMachinePlanningProvider {
+        implements ICraftingProvider, PatternContainer, InternalInventoryHost,
+        ProcessingTaskCompletionHost, HostBatchProvider, NeoEcoBatchHost, PatternMatrixSource {
 
-    private static final String NBT_UPGRADES = "upgrades";
     private static final String NBT_MACHINE_BINDING = "machineBinding";
     private static final String NBT_PATTERN_SLOTS = "patternSlots";
     private static final String NBT_SLOT = "slot";
@@ -88,17 +92,13 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     private static final String NBT_PENDING_OUTPUT_RETRY_BACKOFF = "pendingOutputRetryBackoff";
     private static final String NBT_BATCH_PAYLOAD = "payload";
     private static final String NBT_BATCH_SOURCE_CRAFTING_ID = "sourceCraftingId";
-    private static final int PAGE_SIZE = 27;
-    private static final int UPGRADE_SLOTS = 5;
+    /** 固定满速：等价于旧版插满 5 张速度卡（一拍加工完、六路并发）。 */
+    private static final int FULL_SPEED_OPERATION_TICKS = 1;
+    private static final int FULL_SPEED_CONCURRENCY = 6;
 
     private static int configTotalPatternSlots() {
         return ChexsonsaeutilsCompatibilityConfig.intValue(
                 ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_TOTAL_PATTERN_SLOTS);
-    }
-
-    private static int configDefaultOperationTicks() {
-        return ChexsonsaeutilsCompatibilityConfig.intValue(
-                ChexsonsaeutilsCompatibilityConfig.AE_DIRECT_PROCESSING_MACHINE_DEFAULT_OPERATION_TICKS);
     }
 
     private static int configMaxQueueTasks() {
@@ -122,14 +122,15 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     private final MachineSource actionSource = new MachineSource(this);
-    private final IUpgradeInventory upgrades;
     private final AppEngInternalInventory machineBindingInventory = new AppEngInternalInventory(this, 1, 1);
     private final DirtySlotPatternRefreshScheduler refreshScheduler =
             new DirtySlotPatternRefreshScheduler(configTotalPatternSlots());
     private final DecodedPatternEntryCache decodedPatternEntryCache =
             new DecodedPatternEntryCache(configTotalPatternSlots());
-    private final DirectProcessingPatternInventory patternInventory =
-            new DirectProcessingPatternInventory(this, refreshScheduler, configTotalPatternSlots(), PAGE_SIZE);
+    // 样板随方块 NBT 整体落盘，无需逐槽回写，只保留脏槽标记
+    private final PatternSlotStore patternStore = new PatternSlotStore(
+            this, refreshScheduler, configTotalPatternSlots(), slot -> {
+    });
     private final DirectProcessingPatternProvider patternProvider = new DirectProcessingPatternProvider();
     private final PatternCompatibilityCache compatibilityCache = new PatternCompatibilityCache();
     private final ProcessingExecutionQueue executionQueue = new ProcessingExecutionQueue(configMaxQueueTasks());
@@ -170,11 +171,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     public AEDirectProcessingMachineBlockEntity(BlockPos pos, BlockState blockState) {
         super(Chexsonsaeutils.AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY.get(), pos, blockState);
-        this.upgrades = UpgradeInventories.forMachine(
-                () -> Chexsonsaeutils.AE_DIRECT_PROCESSING_MACHINE_ITEM.get(),
-                UPGRADE_SLOTS,
-                this::saveChanges
-        );
         this.getMainNode()
                 .setIdlePowerUsage(0.0)
                 .addService(ICraftingProvider.class, this);
@@ -206,7 +202,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     @Override
     public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.saveAdditional(data, registries);
-        upgrades.writeToNBT(data, NBT_UPGRADES, registries);
         data.put(NBT_MACHINE_BINDING, getMachineBindingStack().saveOptional(registries));
         data.putLong(NBT_DISCOVERY_EPOCH, discoveryEpoch);
         data.putInt(NBT_PENDING_OUTPUT_RETRY_DELAY, pendingOutputRetryDelayTicks);
@@ -221,7 +216,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     @Override
     public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
         super.loadTag(data, registries);
-        upgrades.readFromNBT(data, NBT_UPGRADES, registries);
         machineBindingInventory.setItemDirect(
                 0,
                 data.contains(NBT_MACHINE_BINDING)
@@ -261,15 +255,10 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             onMachineBindingChanged();
             return;
         }
-        if (inventory == patternInventory.getActivePageInventory()) {
-            patternInventory.onActivePageSlotChanged(slot);
-            saveChanges();
+        if (inventory == patternStore.inventory()) {
+            patternStore.onSlotWritten(slot);
         }
-    }
-
-    @Override
-    public IUpgradeInventory getUpgrades() {
-        return upgrades;
+        saveChanges();
     }
 
     @Override
@@ -282,7 +271,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         long startedAtNanos = System.nanoTime();
         pushPatternCacheLookupCount++;
 
-        if (patternDetails instanceof FormalMachineAggregatedPattern aggregatedPattern) {
+        if (patternDetails instanceof HostBatchPattern aggregatedPattern) {
             recordPushPatternCacheLookupNanos(startedAtNanos);
             return pushAggregatedPattern(aggregatedPattern, inputHolder);
         }
@@ -302,7 +291,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             pushPatternRejectedCount++;
             return false;
         }
-        ProcessingCompiledTask task = ProcessingCompiledTask.compile(
+        ProcessingTask task = ProcessingTask.compile(
                 compatibility.pattern(),
                 compatibility.signature(),
                 inputHolder,
@@ -319,8 +308,60 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return true;
     }
 
+    @Override
+    public long chexsonsaeutils$getNeoEcoBatchCapacity(IPatternDetails pattern) {
+        PatternCompatibility compatibility = pattern == null
+                ? null
+                : compatibilityCache.get(pattern.getDefinition(), recipeIndex.version());
+        if (compatibility == null || !compatibility.supported()
+                || !getMainNode().isActive()
+                || pendingOutputRetryDelayTicks > 0
+                || pendingOutputBatches.size() >= configMaxPendingOutputBatches()
+                || executionQueue.remainingCapacity() <= 0) {
+            return 0L;
+        }
+        long tickCapacity = Integer.MAX_VALUE / (long) Math.max(1, getCurrentOperationTicks());
+        return Math.min(Integer.MAX_VALUE, tickCapacity);
+    }
+
+    @Override
+    public boolean chexsonsaeutils$pushNeoEcoBatch(
+            IPatternDetails pattern,
+            List<GenericStack> inputs,
+            List<GenericStack> outputs,
+            List<GenericStack> remainders,
+            UUID craftingJobId,
+            long count
+    ) {
+        if (chexsonsaeutils$getNeoEcoBatchCapacity(pattern) <= 0L) {
+            return false;
+        }
+        PatternCompatibility compatibility = compatibilityCache.get(
+                pattern.getDefinition(),
+                recipeIndex.version()
+        );
+        ProcessingTask task = ProcessingTask.compileNeoEcoBatch(
+                compatibility.pattern(),
+                compatibility.signature(),
+                inputs,
+                outputs,
+                remainders,
+                count,
+                getCurrentOperationTicks(),
+                craftingJobId
+        );
+        Level currentLevel = getLevel();
+        long acceptedTick = currentLevel == null ? -1L : currentLevel.getGameTime();
+        if (task == null || !executionQueue.offer(task, budgetController, acceptedTick)) {
+            return false;
+        }
+        pushPatternAcceptedCount++;
+        saveChanges();
+        return true;
+    }
+
     private boolean pushAggregatedPattern(
-            FormalMachineAggregatedPattern aggregatedPattern,
+            HostBatchPattern aggregatedPattern,
             KeyCounter[] inputHolder
     ) {
         if (aggregatedPattern == null
@@ -337,7 +378,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             return false;
         }
 
-        ProcessingCompiledTask task = ProcessingCompiledTask.compileAggregated(
+        ProcessingTask task = ProcessingTask.compileAggregated(
                 aggregatedPattern,
                 inputHolder,
                 aggregatedPattern.totalTicks()
@@ -365,13 +406,17 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return new PatternContainerGroup(
                 appeng.api.stacks.AEItemKey.of(Chexsonsaeutils.AE_DIRECT_PROCESSING_MACHINE_ITEM.get()),
                 getName(),
-                List.of()
+                List.of(Component.translatable(
+                        "block.chexsonsaeutils.ae_direct_processing_machine.pattern_slots_summary",
+                        patternStore.countNonEmptySlots(),
+                        patternStore.getTotalSlots()
+                ))
         );
     }
 
     @Override
     public InternalInventory getTerminalPatternInventory() {
-        return patternInventory.getActivePageInventory();
+        return patternStore.inventory();
     }
 
     public InternalInventory getMachineBindingInventory() {
@@ -384,12 +429,12 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     @Override
-    public void completeProcessingTask(ProcessingCompiledTask task) {
+    public void completeProcessingTask(ProcessingTask task) {
         completeProcessingTask(task, null);
     }
 
     @Override
-    public void completeProcessingTask(ProcessingCompiledTask task, @Nullable ProcessingLatencyOrigin latencyOrigin) {
+    public void completeProcessingTask(ProcessingTask task, @Nullable ProcessingLatencyOrigin latencyOrigin) {
         completedTaskCount++;
         if (task != null) {
             completedLogicalExecutionCount = saturatingAdd(completedLogicalExecutionCount, task.executionCount());
@@ -410,7 +455,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public int getProcessingWorkUnitsPerTick() {
-        return Math.max(1, 1 + getInstalledUpgrades(AEItems.SPEED_CARD));
+        return FULL_SPEED_CONCURRENCY;
     }
 
     public IItemHandler getAutomationItemHandler() {
@@ -424,15 +469,10 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         if (!bindingStack.isEmpty()) {
             drops.add(bindingStack.copy());
         }
-        for (int slot = 0; slot < patternInventory.getTotalSlots(); slot++) {
-            ItemStack stack = patternInventory.getVirtualSlot(slot);
+        for (int slot = 0; slot < patternStore.getTotalSlots(); slot++) {
+            ItemStack stack = patternStore.getStackInSlot(slot);
             if (!stack.isEmpty()) {
                 drops.add(stack.copy());
-            }
-        }
-        for (ItemStack upgrade : upgrades) {
-            if (!upgrade.isEmpty()) {
-                drops.add(upgrade.copy());
             }
         }
         for (PendingOutputBatch batch : pendingOutputBatches) {
@@ -448,10 +488,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     @Override
     public void clearContent() {
         machineBindingInventory.setItemDirect(0, ItemStack.EMPTY);
-        for (int slot = 0; slot < patternInventory.getTotalSlots(); slot++) {
-            patternInventory.setVirtualSlot(slot, ItemStack.EMPTY);
-        }
-        upgrades.clear();
+        patternStore.clearAll();
         executionQueue.clear();
         pendingOutputBatches.clear();
         clearPatternExposureCaches();
@@ -477,45 +514,72 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     public int getTotalPatternSlots() {
-        return patternInventory.getTotalSlots();
+        return patternStore.getTotalSlots();
     }
 
-    public int getVisiblePatternSlots() {
-        return patternInventory.getPageSize();
-    }
-
-    public int getPageIndex() {
-        return patternInventory.getActivePage();
-    }
-
-    public int getPageCount() {
-        return patternInventory.getPageCount();
-    }
-
-    public void nextPage() {
-        setActivePage(patternInventory.getActivePage() + 1);
-    }
-
-    public void previousPage() {
-        setActivePage(patternInventory.getActivePage() - 1);
-    }
-
-    public void setActivePage(int pageIndex) {
-        patternInventory.setActivePage(pageIndex);
-        saveChanges();
-    }
-
-    public int toGlobalPatternSlotIndex(int pageSlotIndex) {
-        return patternInventory.getActivePage() * patternInventory.getPageSize() + pageSlotIndex;
+    public int getUsedPatternSlots() {
+        return patternStore.countNonEmptySlots();
     }
 
     public ItemStack getPatternAt(int slot) {
-        return patternInventory.getVirtualSlot(slot);
+        return patternStore.getStackInSlot(slot);
     }
 
     public void setPatternAt(int slot, ItemStack stack) {
-        patternInventory.setVirtualSlot(slot, stack == null ? ItemStack.EMPTY : stack.copyWithCount(1));
-        saveChanges();
+        patternStore.setStackInSlot(slot, stack);
+    }
+
+    @Override
+    public InternalInventory patternMatrixInventory() {
+        return patternStore.inventory();
+    }
+
+    @Override
+    public int patternMatrixTotalSlots() {
+        return patternStore.getTotalSlots();
+    }
+
+    @Override
+    public ItemStack patternMatrixDisplayStack(int slot) {
+        return PatternMatrixDisplay.displayStackFor(
+                decodedPatternEntryCache,
+                slot,
+                patternStore.getStackInSlot(slot),
+                getLevel()
+        );
+    }
+
+    @Override
+    public int patternMatrixStatusCode(int slot) {
+        return compatibilityOf(slot).status().ordinal();
+    }
+
+    @Override
+    public int patternMatrixReasonCode(int slot) {
+        return compatibilityOf(slot).reasonCode().ordinal();
+    }
+
+    @Override
+    public long patternMatrixDetailVersion() {
+        return discoveryEpoch;
+    }
+
+    @Override
+    public boolean patternMatrixMayPlace(ItemStack stack) {
+        return isProcessingPattern(stack);
+    }
+
+    @Override
+    public int patternMatrixSearchMatches(String query, long[] matchBits) {
+        return PatternMatrixSearch.findMatches(
+                patternStore, decodedPatternEntryCache, getLevel(), query, matchBits);
+    }
+
+    private PatternCompatibility compatibilityOf(int slot) {
+        PatternCompatibility compatibility = patternCompatibilityBySlot.get(slot);
+        return compatibility == null
+                ? PatternCompatibility.unsupported(MachineSupportReasonCode.PATTERN_DECODE_FAILED)
+                : compatibility;
     }
 
     public int getActivePatternCount() {
@@ -543,26 +607,6 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
             summary.append(" [").append(keyTypeSummary).append(']');
         }
         return summary.toString();
-    }
-
-    public String getVisiblePatternStatusSnapshotForMenu() {
-        int visibleSlots = Math.max(1, patternInventory.getPageSize());
-        int firstSlot = patternInventory.getActivePage() * visibleSlots;
-        StringBuilder snapshot = new StringBuilder(visibleSlots * 6);
-        for (int index = 0; index < visibleSlots; index++) {
-            if (index > 0) {
-                snapshot.append(';');
-            }
-            PatternCompatibility compatibility = patternCompatibilityBySlot.get(firstSlot + index);
-            MachineSupportStatus status = compatibility == null
-                    ? MachineSupportStatus.UNSUPPORTED_UNREADABLE
-                    : compatibility.status();
-            MachineSupportReasonCode reason = compatibility == null
-                    ? MachineSupportReasonCode.PATTERN_DECODE_FAILED
-                    : compatibility.reasonCode();
-            snapshot.append(status.ordinal()).append(':').append(reason.ordinal());
-        }
-        return snapshot.toString();
     }
 
     @Nullable
@@ -597,23 +641,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     public MachineSupportStatus getPatternStatus(int slot) {
-        PatternCompatibility compatibility = patternCompatibilityBySlot.get(slot);
-        return compatibility == null ? MachineSupportStatus.UNSUPPORTED_UNREADABLE : compatibility.status();
-    }
-
-    public int countVisiblePatternStatusForMenu(MachineSupportStatus status) {
-        if (status == null) {
-            return 0;
-        }
-        int count = 0;
-        int firstSlot = patternInventory.getActivePage() * patternInventory.getPageSize();
-        int endSlot = Math.min(patternInventory.getTotalSlots(), firstSlot + patternInventory.getPageSize());
-        for (int slot = firstSlot; slot < endSlot; slot++) {
-            if (!patternInventory.getVirtualSlot(slot).isEmpty() && getPatternStatus(slot) == status) {
-                count++;
-            }
-        }
-        return count;
+        return compatibilityOf(slot).status();
     }
 
     public int getQueuedTaskCountForMenu() {
@@ -691,7 +719,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     private void markAllPatternsDirty() {
-        refreshScheduler.markRangeDirty(0, patternInventory.getTotalSlots());
+        refreshScheduler.markRangeDirty(0, patternStore.getTotalSlots());
     }
 
     private void refreshDirtyPatterns() {
@@ -719,7 +747,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     private boolean refreshSinglePatternSlot(Level currentLevel, int slot) {
-        ItemStack stack = patternInventory.getVirtualSlot(slot);
+        ItemStack stack = patternStore.getStackInSlot(slot);
         if (stack.isEmpty()) {
             decodedPatternEntryCache.invalidate(slot);
             return replacePatternExposureForSlot(slot, null, null, null);
@@ -772,10 +800,52 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 pendingOutputRetryCount++;
                 tryFlushPendingOutput();
             }
+            feedActivePipelineTasks();
             executionQueue.tick(this, getProcessingLaneCount(), budgetController);
             tryFlushPendingOutput();
         } finally {
         }
+    }
+
+    /**
+     * Phase 5 分步供料：活动任务当前步的外部输入不足时，从网络两阶段抽取
+     * （SIMULATE 全量校验 → MODULATE 落地）——不足即挂起本 tick，绝不半供给。
+     * 链内中间品由任务缓冲自持，不经网络。
+     */
+    private void feedActivePipelineTasks() {
+        appeng.api.networking.IGrid grid = getMainNode().getGrid();
+        if (grid == null) {
+            return;
+        }
+        var storageService = grid.getStorageService();
+        if (storageService == null) {
+            return;
+        }
+        var inventory = storageService.getInventory();
+        executionQueue.forEachActiveTask(task -> {
+            if (!task.isPipelined() || task.currentStepFed()) {
+                return;
+            }
+            Map<AEKey, Long> needs = task.currentStepNeeds();
+            if (needs.isEmpty()) {
+                return;
+            }
+            for (Map.Entry<AEKey, Long> need : needs.entrySet()) {
+                if (inventory.extract(need.getKey(), need.getValue(), Actionable.SIMULATE, actionSource)
+                        < need.getValue()) {
+                    return;
+                }
+            }
+            Map<AEKey, Long> fed = new LinkedHashMap<>();
+            for (Map.Entry<AEKey, Long> need : needs.entrySet()) {
+                long extracted = inventory.extract(need.getKey(), need.getValue(), Actionable.MODULATE, actionSource);
+                if (extracted <= 0L) {
+                    return;
+                }
+                fed.put(need.getKey(), extracted);
+            }
+            task.feedExternalInputs(fed);
+        });
     }
 
     private void refreshConfigMappingsIfChanged() {
@@ -935,12 +1005,11 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public int getCurrentOperationTicks() {
-        int speedCards = getInstalledUpgrades(AEItems.SPEED_CARD);
-        return Math.max(1, configDefaultOperationTicks() >> Math.min(4, speedCards));
+        return FULL_SPEED_OPERATION_TICKS;
     }
 
     private int getProcessingLaneCount() {
-        return Math.max(1, 1 + getInstalledUpgrades(AEItems.SPEED_CARD));
+        return FULL_SPEED_CONCURRENCY;
     }
 
     private void tryFlushPendingOutput() {
@@ -955,14 +1024,34 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                     pendingOutputBatches.removeFirst();
                     continue;
                 }
+                // Phase 6：接上 AeReturn 预算科目——回网冲刷按 payload 量领取，
+                // 与时间预算正交，产出洪峰不再挤占 push 侧的 tick 预算。
+                long payloadAmount = 0L;
+                for (GenericStack stack : batch.payload()) {
+                    if (stack != null && stack.amount() > 0L) {
+                        payloadAmount += stack.amount();
+                    }
+                }
+                if (!budgetController.tryClaimAeReturn(Math.max(1L, payloadAmount))) {
+                    break;
+                }
                 CraftingService craftingService = getMainNode().getGrid() != null
                         && getMainNode().getGrid().getCraftingService() instanceof CraftingService service
                         ? service
                         : null;
+                SourceCpuHandle sourceCpu = craftingService instanceof SourceCpuResolver resolver
+                        && batch.sourceCraftingId() != null
+                        ? resolver.chexsonsaeutils$findSourceCpu(batch.sourceCraftingId())
+                        : null;
                 IStorageService storageService = getMainNode().getGrid() == null
                         ? null
                         : getMainNode().getGrid().getStorageService();
-                List<GenericStack> rejectedSlice = AeCpuIngressRouter.routePayload(storageService, actionSource, batch.payload(), null).remainingPayload();
+                List<GenericStack> rejectedSlice = CraftingOutputRouter.routePayload(
+                        storageService,
+                        actionSource,
+                        batch.payload(),
+                        sourceCpu
+                ).remainingPayload();
                 List<GenericStack> remainingPayload = DirectProcessingStackSupport.normalizeStacks(rejectedSlice);
                 if (!remainingPayload.isEmpty()) {
                     pendingOutputBatches.removeFirst();
@@ -1083,8 +1172,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     private void writePatternSlots(CompoundTag data, HolderLookup.Provider registries) {
         ListTag slots = new ListTag();
-        for (int slot = 0; slot < patternInventory.getTotalSlots(); slot++) {
-            ItemStack stack = patternInventory.getVirtualSlot(slot);
+        for (int slot = 0; slot < patternStore.getTotalSlots(); slot++) {
+            ItemStack stack = patternStore.getStackInSlot(slot);
             if (stack.isEmpty()) {
                 continue;
             }
@@ -1097,17 +1186,17 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     private void readPatternSlots(CompoundTag data, HolderLookup.Provider registries) {
-        for (int slot = 0; slot < patternInventory.getTotalSlots(); slot++) {
-            patternInventory.setVirtualSlot(slot, ItemStack.EMPTY);
-        }
+        Map<Integer, ItemStack> restored = new HashMap<>();
         ListTag slots = data.getList(NBT_PATTERN_SLOTS, Tag.TAG_COMPOUND);
         for (Tag entry : slots) {
             if (entry instanceof CompoundTag slotTag) {
-                int slot = slotTag.getInt(NBT_SLOT);
                 ItemStack stack = ItemStack.parseOptional(registries, slotTag.getCompound(NBT_STACK));
-                patternInventory.setVirtualSlot(slot, stack);
+                if (!stack.isEmpty()) {
+                    restored.put(slotTag.getInt(NBT_SLOT), stack);
+                }
             }
         }
+        patternStore.loadFromExternalSnapshot(restored);
     }
 
     private static ListTag writeStacks(HolderLookup.Provider registries, List<GenericStack> stacks) {

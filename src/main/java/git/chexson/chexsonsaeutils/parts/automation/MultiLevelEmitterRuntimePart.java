@@ -827,24 +827,6 @@ public class MultiLevelEmitterRuntimePart extends StorageLevelEmitterPart {
                 : MultiLevelEmitterPart.ComparisonMode.GREATER_OR_EQUAL;
     }
 
-    private List<Long> readObservedValues(IGrid grid) {
-        KeyCounter inventory = grid.getStorageService().getCachedInventory();
-        List<Long> observedValues = new ArrayList<>(configuredItemCount);
-        for (int slot = 0; slot < configuredItemCount; slot++) {
-            AEKey key = ensureConfigInventory().getKey(slot);
-            if (key == null) {
-                observedValues.add(0L);
-                continue;
-            }
-
-            MultiLevelEmitterPart.MatchingMode matchingMode = matchingModeForSlot(slot);
-            long amount = matchingMode == MultiLevelEmitterPart.MatchingMode.STRICT
-                    ? inventory.get(key)
-                    : readFuzzyAmount(inventory, key, toFuzzyMode(matchingMode));
-            observedValues.add(amount);
-        }
-        return observedValues;
-    }
 
     private boolean hasMarkedNonStrictStorageSlot() {
         ConfigInventory config = ensureConfigInventory();

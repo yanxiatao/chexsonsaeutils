@@ -6,9 +6,9 @@ import net.minecraft.world.item.ItemStack;
 
 public final class VirtualPatternInventoryContainer implements Container {
 
-    private final AbstractHighCapacityCraftingHostBlockEntity host;
+    private final AbstractExtremeAssemblerHostBlockEntity host;
 
-    public VirtualPatternInventoryContainer(AbstractHighCapacityCraftingHostBlockEntity host) {
+    public VirtualPatternInventoryContainer(AbstractExtremeAssemblerHostBlockEntity host) {
         this.host = host;
     }
 
@@ -19,7 +19,7 @@ public final class VirtualPatternInventoryContainer implements Container {
 
     @Override
     public boolean isEmpty() {
-        return host.getTotalNonEmptyPatternSlots() == 0;
+        return host.getUsedPatternSlots() == 0;
     }
 
     @Override

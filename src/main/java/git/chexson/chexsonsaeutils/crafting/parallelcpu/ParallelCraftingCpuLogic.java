@@ -26,7 +26,9 @@ import appeng.crafting.inv.ListCraftingInventory;
 import appeng.hooks.ticking.TickHandler;
 import appeng.me.service.CraftingService;
 import com.google.common.base.Preconditions;
-import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursiveTaskOrdering;
+import git.chexson.chexsonsaeutils.crafting.numeric.Ae2Amounts;
+import git.chexson.chexsonsaeutils.crafting.numeric.PlanAmount;
+import git.chexson.chexsonsaeutils.crafting.recursive.RecursiveTaskOrdering;
 import git.chexson.chexsonsaeutils.crafting.submit.CraftingContinuationPartialSubmit;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -35,15 +37,27 @@ import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 final class ParallelCraftingCpuLogic {
 
+    /** 缺料退避 TTL（tick）：材料到达后至多 1 秒重试。 */
+    private static final long MATERIAL_BACKOFF_TICKS = 20L;
+
     private final ParallelCraftingLaneState lane;
     private final ListCraftingInventory inventory = new ListCraftingInventory(this::postChange);
-    private final long[] usedOps = new long[3];
+    /**
+     * 任务级断点续扫索引：时间预算（20ms）耗尽 break 时记录下一个未评估
+     * 任务，下 tick 从断点继续。此前任务表每 tick 从头扫，头部活跃任务
+     * （持续推送的多推任务）每轮评估耗光时间预算，排序靠后的任务永远
+     * 轮不到评估——「CPU 库存有料、任务却永不执行」的任务级饥饿即此
+     * （lane 级早有轮转，任务级缺失是最后一块）。
+     */
+    private int taskResumeIndex;
     private final Set<Consumer<AEKey>> listeners = new HashSet<>();
     @Nullable
     private ParallelExecutingCraftingJob job;
@@ -179,41 +193,34 @@ final class ParallelCraftingCpuLogic {
             return true;
         }
 
-        long remainingOperations = Math.max(
-                0L,
-                (long) lane.cluster().advertisedCoProcessors() + 1L
-                        - (this.usedOps[0] + this.usedOps[1] + this.usedOps[2])
-        );
-        long started = remainingOperations;
         long pushedPatterns = 0L;
 
-        if (remainingOperations > 0L) {
-            do {
-                long pushed = executeCrafting(
-                        remainingOperations,
-                        craftingService,
-                        energyGrid,
-                        currentTick,
-                        budgetLedger,
-                        providerBackoff
-                );
-                if (pushed > 0L) {
-                    pushedPatterns += pushed;
-                    remainingOperations -= pushed;
-                } else {
-                    break;
-                }
-            } while (remainingOperations > 0L);
+        // CPU 不再按协处理器数、三 tick usedOps 或任务数限制样板份数。
+        // 唯一调度上限是 grid/lane 的墙钟预算，MSPT 保护仍由 hasTickBudget 保留。
+        if (hasTickBudget(budgetLedger)) {
+            var orderedTasks = RecursiveTaskOrdering.orderedEntries(
+                    job.tasks,
+                    job.dyeableRecursivePlan ? job.dyeableRecursiveInternalItems : null
+            );
+            pushedPatterns = executeCrafting(
+                    Long.MAX_VALUE,
+                    orderedTasks,
+                    craftingService,
+                    energyGrid,
+                    currentTick,
+                    budgetLedger,
+                    providerBackoff
+            );
         }
-
-        this.usedOps[2] = this.usedOps[1];
-        this.usedOps[1] = this.usedOps[0];
-        this.usedOps[0] = Math.max(0L, started - remainingOperations);
+        var gridContext = lane.cluster().gridContext();
+        StallProbe.note(pushedPatterns, job, this.inventory,
+                gridContext == null ? null : gridContext.grid());
         return pushedPatterns <= 0L;
     }
 
     private long executeCrafting(
             long maxPatterns,
+            List<Map.Entry<IPatternDetails, ParallelExecutingCraftingJob.TaskProgress>> orderedTasks,
             CraftingService craftingService,
             IEnergyService energyService,
             long currentTick,
@@ -226,16 +233,25 @@ final class ParallelCraftingCpuLogic {
         }
 
         long pushedPatterns = 0L;
-        var orderedTasks = DyeablePatternRecursiveTaskOrdering.orderedEntries(
-                job.tasks,
-                job.dyeableRecursivePlan ? job.dyeableRecursiveInternalItems : null
-        );
+        // 卡住归因计数：无推送 tick 结束时随快照一起输出，一眼定位环节。
+        long skippedDefer = 0L;
+        long skippedNoProvider = 0L;
+        long skippedExtractNull = 0L;
+        long skippedPushRejected = 0L;
+        long skippedMaterialBackoff = 0L;
+        int taskCount = orderedTasks.size();
+        int startIndex = Math.floorMod(taskResumeIndex, Math.max(1, taskCount));
         taskLoop:
-        for (var task : orderedTasks) {
+        for (int taskOffset = 0; taskOffset < taskCount; taskOffset++) {
+            int taskIndex = (startIndex + taskOffset) % taskCount;
+            var task = orderedTasks.get(taskIndex);
             if (!hasTickBudget(budgetLedger)) {
+                // 本任务未评估：断点留在本任务，下 tick 重试它
+                taskResumeIndex = taskIndex;
                 break;
             }
             if (pushedPatterns >= maxPatterns) {
+                taskResumeIndex = taskIndex;
                 break;
             }
             if (task.getValue().value <= 0L) {
@@ -244,37 +260,148 @@ final class ParallelCraftingCpuLogic {
             }
 
             var details = task.getKey();
+            // 缺料退避：提取失败过的样板 TTL 内零成本跳过——缺料任务的
+            // 重复失败提取（多槽 × 大库存扫模板）吃光 20ms 预算，后面的
+            // 富料任务每 tick 都轮不到评估（86/138 归因断裂即此形态）。
+            // 材料到达由 postChange 按缺口键精准唤醒（见 wakeMaterialBackoff），
+            // 绝不整表清空——推送活跃期整表清空会让全部缺料任务下一轮
+            // 集体重试提取、预算再次吃光，排序靠后的任务永远轮不到评估
+            // （实测：A 持续推送、B 材料充足却永不执行的形态即此）。
+            Long backoffUntil = job.materialBackoffUntil.get(details);
+            if (backoffUntil != null) {
+                if (backoffUntil > currentTick) {
+                    skippedMaterialBackoff++;
+                    continue;
+                }
+                job.materialBackoffUntil.remove(details);
+                job.materialBackoffMissing.remove(details);
+            }
             if (job.dyeableRecursivePlan
-                    && DyeablePatternRecursiveTaskOrdering.hasPendingProducer(
+                    && RecursiveTaskOrdering.hasPendingProducer(
                             job.tasks,
                             job.dyeableRecursiveInternalItems
                     )
-                    && DyeablePatternRecursiveTaskOrdering.shouldDeferConsumer(
+                    && RecursiveTaskOrdering.shouldDeferConsumer(
                             details,
                             job.dyeableRecursiveInternalItems,
                             inventory,
                             job.tasks
                     )) {
+                skippedDefer++;
                 continue;
             }
+            // 提供者预探测：提取输入发生在提供者探测之前曾是纯浪费——
+            // 任务的所有提供者都忙时，本次提取 + 之后注回全部作废，还吃掉
+            // 20ms 时间预算，排在后面的可派发任务因预算耗尽而饿死（表现为
+            // 「发配单线化」）。isBusy 轮询有 providerChecks 预算覆盖且成本
+            // 一次字段读，先探测再提取：全忙的任务零成本跳过。
+            boolean stopAfterCurrentTask = false;
+            boolean anyProviderReady = false;
+            boolean neoEcoBatchReady = false;
+            var taskProviders = craftingService.getProviders(details);
+            for (ICraftingProvider provider : taskProviders) {
+                var availability = checkProviderAvailability(provider, details, currentTick, budgetLedger,
+                        providerBackoff);
+                if (availability == ParallelCpuProviderBackoff.ProviderAvailability.READY) {
+                    anyProviderReady = true;
+                    if (provider instanceof git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoBatchDispatcher
+                            && !(details instanceof git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPattern)) {
+                        neoEcoBatchReady = true;
+                        break;
+                    }
+                    continue;
+                }
+                if (availability == ParallelCpuProviderBackoff.ProviderAvailability.BUDGET_EXHAUSTED) {
+                    stopAfterCurrentTask = true;
+                    break;
+                }
+            }
+            if (!anyProviderReady) {
+                skippedNoProvider++;
+                continue taskLoop;
+            }
+
+            if (neoEcoBatchReady) {
+                long batchPushed = pushNeoEcoBatch(
+                        details,
+                        task,
+                        taskProviders,
+                        energyService,
+                        currentTick,
+                        budgetLedger,
+                        providerBackoff,
+                        maxPatterns - pushedPatterns
+                );
+                if (batchPushed > 0L) {
+                    pushedPatterns += batchPushed;
+                    if (task.getValue().value <= 0L) {
+                        job.tasks.remove(task.getKey());
+                    }
+                    continue taskLoop;
+                }
+            }
+
             var expectedOutputs = new KeyCounter();
             var expectedContainerItems = new KeyCounter();
+            ParallelInputWitnessState taskWitness = job.exactInputWitness != null
+                    && job.exactInputWitness.hasPattern(details)
+                    ? job.exactInputWitness
+                    : null;
+            ParallelInputWitnessState.Prepared taskWitnessPrepared = null;
 
             @Nullable
-            var craftingContainer = extractPatternInputsWithinBudget(
-                    details,
-                    inventory,
-                    budgetLedger,
-                    lane.cluster().level(),
-                    expectedOutputs,
-                    expectedContainerItems
-            );
+            KeyCounter[] craftingContainer;
+            boolean taskWitnessBlocked = false;
+            if (taskWitness != null) {
+                if (!hasTickBudget(budgetLedger)
+                        || budgetLedger != null && !budgetLedger.tryClaimExtractPatternInputs()) {
+                    craftingContainer = null;
+                } else if (taskWitness.maxExecutions(details, inventory, 1L) <= 0L) {
+                    craftingContainer = null;
+                    taskWitnessBlocked = true;
+                } else {
+                    taskWitnessPrepared = taskWitness.prepare(
+                            details,
+                            inventory,
+                            1L,
+                            expectedOutputs,
+                            expectedContainerItems
+                    );
+                    craftingContainer = taskWitnessPrepared == null ? null : taskWitnessPrepared.holder();
+                }
+            } else {
+                craftingContainer = extractPatternInputsWithinBudget(
+                        details,
+                        inventory,
+                        budgetLedger,
+                        lane.cluster().level(),
+                        expectedOutputs,
+                        expectedContainerItems
+                );
+            }
+            // 同一样板每次提取的输入容器内容一致 → 功耗恒定，按样板算一次在
+            // 推送循环内复用，省去每轮推送的逐槽累加。
+            double patternPower = craftingContainer == null
+                    ? 0.0D
+                    : CraftingCpuHelper.calculatePatternPower(craftingContainer);
+            if (craftingContainer == null) {
+                if (budgetLedger != null && budgetLedger.isExhausted()) {
+                    // 提取失败源于预算耗尽（时间/计数）而非缺料：不登记
+                    // 退避——20t 惩罚会把富料任务误判成缺料饿死；断点
+                    // 续扫，下 tick 预算刷新自然重试。
+                    stopAfterCurrentTask = true;
+                } else if (taskWitnessBlocked) {
+                    skippedDefer++;
+                } else {
+                    skippedExtractNull++;
+                    recordMaterialBackoff(job, details, currentTick);
+                }
+            }
 
-            boolean stopAfterCurrentTask = false;
             if (budgetLedger != null && budgetLedger.isExhausted()) {
                 stopAfterCurrentTask = true;
             }
-            for (ICraftingProvider provider : craftingService.getProviders(details)) {
+            for (ICraftingProvider provider : taskProviders) {
                 if (craftingContainer == null) {
                     break;
                 }
@@ -286,6 +413,7 @@ final class ParallelCraftingCpuLogic {
 
                 ParallelCpuProviderBackoff.ProviderAvailability availability = checkProviderAvailability(
                         provider,
+                        details,
                         currentTick,
                         budgetLedger,
                         providerBackoff);
@@ -302,7 +430,6 @@ final class ParallelCraftingCpuLogic {
                         stopAfterCurrentTask = true;
                         break;
                     }
-                    var patternPower = CraftingCpuHelper.calculatePatternPower(craftingContainer);
                     if (energyService.extractAEPower(
                             patternPower,
                             Actionable.SIMULATE,
@@ -316,12 +443,12 @@ final class ParallelCraftingCpuLogic {
 
                     if (!acceptedPush) {
                         if (providerBackoff != null) {
-                            providerBackoff.recordPushRejected(provider, currentTick);
+                            providerBackoff.recordPushRejected(provider, details, currentTick);
                         }
                         break;
                     }
                     if (providerBackoff != null) {
-                        providerBackoff.recordPushAccepted(provider);
+                        providerBackoff.recordPushAccepted(provider, details);
                     }
 
                     craftingContainer = null;
@@ -332,6 +459,10 @@ final class ParallelCraftingCpuLogic {
                     );
                     pushedPatterns++;
                     reserveExpectedWaiting(expectedOutputs, expectedContainerItems);
+                    if (taskWitnessPrepared != null) {
+                        taskWitness.commit(taskWitnessPrepared);
+                        taskWitnessPrepared = null;
+                    }
 
                     for (var expectedContainerItem : expectedContainerItems) {
                         ParallelExecutingCraftingJob.addMaxItems(
@@ -347,19 +478,41 @@ final class ParallelCraftingCpuLogic {
                         continue taskLoop;
                     }
                     if (pushedPatterns >= maxPatterns) {
+                        taskResumeIndex = (taskIndex + 1) % taskCount;
                         break taskLoop;
                     }
 
                     expectedOutputs.reset();
                     expectedContainerItems.reset();
-                    craftingContainer = extractPatternInputsWithinBudget(
-                            details,
-                            inventory,
-                            budgetLedger,
-                            lane.cluster().level(),
-                            expectedOutputs,
-                            expectedContainerItems
-                    );
+                    if (taskWitness != null) {
+                        if (!hasTickBudget(budgetLedger)
+                                || budgetLedger != null && !budgetLedger.tryClaimExtractPatternInputs()) {
+                            craftingContainer = null;
+                        } else if (taskWitness.maxExecutions(details, inventory, 1L) <= 0L) {
+                            craftingContainer = null;
+                            taskWitnessBlocked = true;
+                        } else {
+                            taskWitnessPrepared = taskWitness.prepare(
+                                    details,
+                                    inventory,
+                                    1L,
+                                    expectedOutputs,
+                                    expectedContainerItems
+                            );
+                            craftingContainer = taskWitnessPrepared == null
+                                    ? null
+                                    : taskWitnessPrepared.holder();
+                        }
+                    } else {
+                        craftingContainer = extractPatternInputsWithinBudget(
+                                details,
+                                inventory,
+                                budgetLedger,
+                                lane.cluster().level(),
+                                expectedOutputs,
+                                expectedContainerItems
+                        );
+                    }
                     if (budgetLedger != null && budgetLedger.isExhausted()) {
                         stopAfterCurrentTask = true;
                         break;
@@ -371,23 +524,247 @@ final class ParallelCraftingCpuLogic {
             }
 
             if (craftingContainer != null) {
+                // 提取成功却整轮零推送：持有 READY 提供者但 push 被拒——
+                // 外部机器满载（如无用模组炉逐 bulk 慢处理）是流水线瓶颈，
+                // 与缺料死锁区分开。
+                if (anyProviderReady && pushedPatterns <= 0L) {
+                    skippedPushRejected++;
+                }
                 boolean reinjectBudgetClaimed = tryClaimReinjectPatternInputs(budgetLedger);
                 CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
 
                 if (!reinjectBudgetClaimed) {
+                    taskResumeIndex = (taskIndex + 1) % taskCount;
                     break;
                 }
             }
             if (stopAfterCurrentTask) {
+                taskResumeIndex = (taskIndex + 1) % taskCount;
                 break;
             }
         }
+        // 完整扫完一轮（无断点）：断点归零，下 tick 从头公平开始
+        taskResumeIndex = 0;
 
+        StallProbe.noteDetail(pushedPatterns, skippedDefer, skippedNoProvider, skippedExtractNull,
+                skippedPushRejected, skippedMaterialBackoff);
         return pushedPatterns;
     }
 
+    private long pushNeoEcoBatch(
+            IPatternDetails details,
+            Map.Entry<IPatternDetails, ParallelExecutingCraftingJob.TaskProgress> task,
+            Iterable<ICraftingProvider> taskProviders,
+            IEnergyService energyService,
+            long currentTick,
+            @Nullable ParallelCpuGridBudgetLedger budgetLedger,
+            @Nullable ParallelCpuProviderBackoff providerBackoff,
+            long pushAllowance
+    ) {
+        long requested = Math.min(task.getValue().value, pushAllowance);
+        ParallelInputWitnessState taskWitness = job.exactInputWitness != null
+                && job.exactInputWitness.hasPattern(details)
+                ? job.exactInputWitness
+                : null;
+        if (taskWitness != null) {
+            requested = taskWitness.dispatchLimit(details, inventory, requested);
+        }
+        if (requested <= 1L || !hasTickBudget(budgetLedger)
+                || budgetLedger != null && (!budgetLedger.tryClaimExtractPatternInputs()
+                || !budgetLedger.tryClaimReinjectPatternInputs()
+                || !budgetLedger.tryClaimPatternPush())) {
+            return 0L;
+        }
+        KeyCounter expectedOutputs = new KeyCounter();
+        KeyCounter expectedRemainders = new KeyCounter();
+        ParallelInputWitnessState.Prepared witnessPrepared = null;
+        KeyCounter[] perCraftInputs;
+        if (taskWitness != null) {
+            witnessPrepared = taskWitness.prepareDispatch(
+                    details, inventory, requested, expectedOutputs, expectedRemainders);
+            if (witnessPrepared == null) {
+                return 0L;
+            }
+            perCraftInputs = witnessPrepared.holder();
+        } else {
+            perCraftInputs = CraftingCpuHelper.extractPatternInputs(
+                    details,
+                    inventory,
+                    lane.cluster().level(),
+                    expectedOutputs,
+                    expectedRemainders
+            );
+            if (perCraftInputs == null) {
+                return 0L;
+            }
+        }
+        CraftingCpuHelper.reinjectPatternInputs(inventory, perCraftInputs);
+
+        for (ICraftingProvider provider : taskProviders) {
+            if (!(provider instanceof git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoBatchDispatcher dispatcher)) {
+                continue;
+            }
+            var availability = checkProviderAvailability(
+                    provider, details, currentTick, budgetLedger, providerBackoff);
+            if (availability == ParallelCpuProviderBackoff.ProviderAvailability.BUDGET_EXHAUSTED) {
+                return 0L;
+            }
+            if (availability != ParallelCpuProviderBackoff.ProviderAvailability.READY) {
+                continue;
+            }
+            git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoPreparedBatch prepared =
+                    dispatcher.chexsonsaeutils$prepareNeoEcoBatch(
+                            details,
+                            perCraftInputs,
+                            expectedOutputs,
+                            expectedRemainders,
+                            inventory,
+                            requested,
+                            energyService,
+                            lane.cluster().level(),
+                            currentSourceCraftingId()
+                    );
+            PreparedBatchPushResult pushResult = pushPreparedNeoEcoBatch(prepared, inventory, requested);
+            if (pushResult == PreparedBatchPushResult.NOT_BATCHED) {
+                continue;
+            }
+            if (pushResult == PreparedBatchPushResult.REJECTED) {
+                if (providerBackoff != null) {
+                    providerBackoff.recordPushRejected(provider, details, currentTick);
+                }
+                continue;
+            }
+            long craftCount = prepared.craftCount();
+            if (providerBackoff != null) {
+                providerBackoff.recordPushAccepted(provider, details);
+            }
+            if (taskWitness != null) {
+                taskWitness.commit(witnessPrepared, craftCount);
+            }
+            applyNeoEcoBatchSuccess(job, task.getValue(), prepared, energyService);
+            return craftCount;
+        }
+        return 0L;
+    }
+
+    static PreparedBatchPushResult pushPreparedNeoEcoBatch(
+            @Nullable git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoPreparedBatch prepared,
+            ListCraftingInventory inventory,
+            long dispatchLimit
+    ) {
+        if (prepared == null || prepared.craftCount() <= 1L) {
+            return PreparedBatchPushResult.NOT_BATCHED;
+        }
+        if (prepared.craftCount() > dispatchLimit) {
+            return PreparedBatchPushResult.REJECTED;
+        }
+        return prepared.push(inventory)
+                ? PreparedBatchPushResult.ACCEPTED
+                : PreparedBatchPushResult.REJECTED;
+    }
+
+    static PreparedBatchPushResult pushPreparedNeoEcoBatch(
+            @Nullable git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoPreparedBatch prepared,
+            ListCraftingInventory inventory
+    ) {
+        return pushPreparedNeoEcoBatch(prepared, inventory, Long.MAX_VALUE);
+    }
+
+    enum PreparedBatchPushResult {
+        NOT_BATCHED,
+        REJECTED,
+        ACCEPTED
+    }
+
+    static void applyNeoEcoBatchSuccess(
+            ParallelExecutingCraftingJob job,
+            ParallelExecutingCraftingJob.TaskProgress task,
+            git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoPreparedBatch prepared,
+            IEnergyService energyService
+    ) {
+        long craftCount = prepared.craftCount();
+        energyService.extractAEPower(prepared.power(), Actionable.MODULATE, PowerMultiplier.CONFIG);
+        reserveExpectedWaiting(job, prepared.outputs(), prepared.remainders());
+        for (GenericStack remainder : prepared.remainders()) {
+            ParallelExecutingCraftingJob.addMaxItems(
+                    job.timeTracker,
+                    remainder.amount(),
+                    remainder.what().getType()
+            );
+        }
+        task.value -= craftCount;
+    }
+
     private static boolean hasTickBudget(@Nullable ParallelCpuGridBudgetLedger budgetLedger) {
-        return budgetLedger == null || budgetLedger.hasTimeBudget(System.nanoTime());
+        if (budgetLedger == null) {
+            return true;
+        }
+        long now = System.nanoTime();
+        return budgetLedger.hasTimeBudget(now) && !budgetLedger.laneSliceExhausted(now);
+    }
+
+    /**
+     * 登记缺料退避并记录缺口键索引：库存某缺口键变动时（{@code postChange}
+     * 驱动 {@code wakeMaterialBackoff}）即刻唤醒，不等 TTL——退避只为省
+     * 预算，不为延迟重试。
+     *
+     * <p>索引收录全部槽位的全部候选键：真实提取失败已经成立，无需再模拟
+     * 猜测缺哪个键——重复槽（单槽够、总量不够）与模糊变体（模拟量够但
+     * 模板不匹配）两种形态都会让「按模拟量筛选缺口键」漏掉真正的唤醒键，
+     * 漏键只能等 TTL，大批量任务即为伪死锁。多索引一个富余键的代价只是
+     * 一次多余重试。
+     */
+    private static void recordMaterialBackoff(
+            ParallelExecutingCraftingJob job,
+            IPatternDetails details,
+            long currentTick
+    ) {
+        job.materialBackoffUntil.put(details, currentTick + MATERIAL_BACKOFF_TICKS);
+        java.util.Set<AEKey> missing = new java.util.HashSet<>();
+        for (IPatternDetails.IInput input : details.getInputs()) {
+            GenericStack[] possible = input.getPossibleInputs();
+            if (possible == null || possible.length == 0) {
+                continue;
+            }
+            for (GenericStack candidate : possible) {
+                if (candidate == null || candidate.what() == null || candidate.amount() <= 0L) {
+                    continue;
+                }
+                missing.add(candidate.what());
+            }
+        }
+        job.materialBackoffMissing.put(details, missing);
+    }
+
+    /**
+     * 库存键变动时唤醒以该键为缺口的退避任务（精准唤醒，替代 TTL 轮询）。
+     * 模糊槽的候选键是主键模板，实际到达的可能是同类模糊变体（exact 键不同、
+     * 主键相同）——精确匹配失败后按主键再比一次，变体入库同样能唤醒。
+     */
+    private void wakeMaterialBackoff(@Nullable AEKey what) {
+        ParallelExecutingCraftingJob currentJob = job;
+        if (what == null || currentJob == null || currentJob.materialBackoffMissing.isEmpty()) {
+            return;
+        }
+        Object primary = null;
+        for (var iterator = currentJob.materialBackoffMissing.entrySet().iterator(); iterator.hasNext(); ) {
+            var entry = iterator.next();
+            if (entry.getValue().contains(what)) {
+                currentJob.materialBackoffUntil.remove(entry.getKey());
+                iterator.remove();
+                continue;
+            }
+            if (primary == null) {
+                primary = what.getPrimaryKey();
+            }
+            for (AEKey missingKey : entry.getValue()) {
+                if (missingKey.getPrimaryKey().equals(primary)) {
+                    currentJob.materialBackoffUntil.remove(entry.getKey());
+                    iterator.remove();
+                    break;
+                }
+            }
+        }
     }
 
     private static boolean tryClaimPatternPush(@Nullable ParallelCpuGridBudgetLedger budgetLedger) {
@@ -422,14 +799,25 @@ final class ParallelCraftingCpuLogic {
         return craftingContainer;
     }
 
+    private static long saturatingMultiply(long amount, long executions) {
+        if (amount <= 0L || executions <= 0L) {
+            return 0L;
+        }
+        if (amount > Long.MAX_VALUE / executions) {
+            return Long.MAX_VALUE;
+        }
+        return amount * executions;
+    }
+
     private static ParallelCpuProviderBackoff.ProviderAvailability checkProviderAvailability(
             @Nullable ICraftingProvider provider,
+            IPatternDetails pattern,
             long currentTick,
             @Nullable ParallelCpuGridBudgetLedger budgetLedger,
             @Nullable ParallelCpuProviderBackoff providerBackoff
     ) {
         if (providerBackoff != null) {
-            return providerBackoff.checkProvider(provider, currentTick, budgetLedger);
+            return providerBackoff.checkProvider(provider, pattern, currentTick, budgetLedger);
         }
         if (provider == null) {
             return ParallelCpuProviderBackoff.ProviderAvailability.BACKED_OFF;
@@ -450,6 +838,26 @@ final class ParallelCraftingCpuLogic {
             KeyCounter expectedContainerItems
     ) {
         reserveExpectedWaiting(job, expectedOutputs, expectedContainerItems);
+        lane.cluster().refreshLaneState(lane);
+    }
+
+    private void reserveExpectedWaiting(
+            List<GenericStack> expectedOutputs,
+            List<GenericStack> expectedContainerItems
+    ) {
+        if (job == null) {
+            return;
+        }
+        for (GenericStack stack : expectedOutputs) {
+            if (stack != null && stack.what() != null && stack.amount() > 0L) {
+                job.waitingFor.insert(stack.what(), stack.amount(), Actionable.MODULATE);
+            }
+        }
+        for (GenericStack stack : expectedContainerItems) {
+            if (stack != null && stack.what() != null && stack.amount() > 0L) {
+                job.waitingFor.insert(stack.what(), stack.amount(), Actionable.MODULATE);
+            }
+        }
         lane.cluster().refreshLaneState(lane);
     }
 
@@ -480,6 +888,26 @@ final class ParallelCraftingCpuLogic {
                     expectedContainerItem.getLongValue(),
                     Actionable.MODULATE
             );
+        }
+    }
+
+    private static void reserveExpectedWaiting(
+            ParallelExecutingCraftingJob job,
+            List<GenericStack> expectedOutputs,
+            List<GenericStack> expectedContainerItems
+    ) {
+        if (job == null) {
+            return;
+        }
+        for (GenericStack stack : expectedOutputs) {
+            if (stack != null && stack.what() != null && stack.amount() > 0L) {
+                job.waitingFor.insert(stack.what(), stack.amount(), Actionable.MODULATE);
+            }
+        }
+        for (GenericStack stack : expectedContainerItems) {
+            if (stack != null && stack.what() != null && stack.amount() > 0L) {
+                job.waitingFor.insert(stack.what(), stack.amount(), Actionable.MODULATE);
+            }
         }
     }
 
@@ -888,7 +1316,9 @@ final class ParallelCraftingCpuLogic {
         for (var task : job.tasks.entrySet()) {
             for (var output : task.getKey().getOutputs()) {
                 if (template.matches(output)) {
-                    count = saturatedAdd(count, output.amount() * task.getValue().value);
+                    var product = PlanAmount.of(output.amount())
+                            .multiply(PlanAmount.of(task.getValue().value));
+                    count = saturatedAdd(count, Ae2Amounts.toLong(product));
                 }
             }
         }
@@ -940,6 +1370,7 @@ final class ParallelCraftingCpuLogic {
             lane.cluster().refreshLaneState(lane);
         }
         if (what != null) {
+            wakeMaterialBackoff(what);
             for (var listener : listeners) {
                 listener.accept(what);
             }
@@ -974,4 +1405,174 @@ final class ParallelCraftingCpuLogic {
         }
         return left + right;
     }
+    /** 卡住探针：任务非空但连续无推送时低频记一行任务快照，不刷屏。 */
+    private static final class StallProbe {
+        private static long stalledTicks;
+        private static String lastSignature;
+        private static long lastDefer;
+        private static long lastNoProvider;
+        private static long lastExtractNull;
+        private static long lastPushRejected;
+        private static long lastMaterialBackoff;
+
+        private StallProbe() {
+        }
+
+        /** 每轮 executeCrafting 结束调用：累积本轮跳过原因。 */
+        static void noteDetail(long pushedPatterns, long skippedDefer, long skippedNoProvider,
+                long skippedExtractNull, long skippedPushRejected, long skippedMaterialBackoff) {
+            if (pushedPatterns > 0L) {
+                return;
+            }
+            lastDefer = skippedDefer;
+            lastNoProvider = skippedNoProvider;
+            lastExtractNull = skippedExtractNull;
+            lastPushRejected = skippedPushRejected;
+            lastMaterialBackoff = skippedMaterialBackoff;
+        }
+        static void note(long pushedPatterns, @Nullable ParallelExecutingCraftingJob job,
+                ListCraftingInventory inventory, @Nullable appeng.api.networking.IGrid grid) {
+            if (job == null || pushedPatterns > 0L || job.tasks.isEmpty()) {
+                stalledTicks = 0L;
+                lastSignature = null;
+                return;
+            }
+            // 任务集合变化即重置计数——只对"同一批任务长期推不动"报警。
+            StringBuilder signature = new StringBuilder();
+            signature.append(job.tasks.size()).append('|').append(job.remainingAmount).append('|')
+                    .append(job.waitingFor.list.size()).append('|');
+            for (var task : job.tasks.entrySet()) {
+                signature.append(task.getKey() == null ? "null"
+                        : task.getKey().getClass().getSimpleName()).append(':')
+                        .append(task.getValue() == null ? -1L : task.getValue().value).append(';');
+            }
+            String current = signature.toString();
+            if (!current.equals(lastSignature)) {
+                lastSignature = current;
+                stalledTicks = 0L;
+            }
+            if (++stalledTicks == 100L) {
+                StringBuilder detail = new StringBuilder();
+                for (var task : job.tasks.entrySet()) {
+                    if (detail.length() > 0) {
+                        detail.append(", ");
+                    }
+                    detail.append(task.getKey() == null ? "null" : task.getKey().getDefinition())
+                            .append(" x ").append(task.getValue() == null ? -1L : task.getValue().value);
+                    // 任务状态标记：backoff=缺料退避中（提取曾失败）；
+                    // 无标记却被停滞覆盖 = noProvider/pushRejected/预算路径，
+                    // 结合头部计数即可定位每个任务的卡点。
+                    if (task.getKey() != null && job.materialBackoffUntil.containsKey(task.getKey())) {
+                        detail.append(" [backoff]");
+                    }
+                    if (detail.length() > 600) {
+                        detail.append("...(truncated)");
+                        break;
+                    }
+                }
+                AELog.info(
+                        "[chexsonsaeutils-stall] no push for 100 ticks: tasks=%d remaining=%d waitingFor=%d recursive=%s"
+                                + " defer=%d noProvider=%d extractNull=%d pushRejected=%d materialBackoff=%d"
+                                + " tasks=[%s]%s",
+                        job.tasks.size(), job.remainingAmount, job.waitingFor.list.size(),
+                        job.dyeableRecursivePlan, lastDefer, lastNoProvider, lastExtractNull,
+                        lastPushRejected, lastMaterialBackoff, detail,
+                        describeMissingInputs(job, inventory, grid));
+            }
+        }
+
+        /**
+         * 停滞报警时的一次性缺料扫描：每个任务每槽按首选模板估缺口
+         * （需 multiplier×剩余 − 库存现量），聚合后取前 10 键，并对照
+         * 网络存量——CPU 缺的键网络里却有海量存量 = 虚拟产出路由丢失
+         * 实锤（产出进了普通网络而非回到 CPU 的 waitingFor）。
+         */
+        private static String describeMissingInputs(
+                ParallelExecutingCraftingJob job,
+                ListCraftingInventory inventory,
+                @Nullable appeng.api.networking.IGrid grid
+        ) {
+            appeng.api.networking.storage.IStorageService storageService = grid == null
+                    ? null
+                    : grid.getStorageService();
+            java.util.Map<AEKey, Long> deficits = new java.util.LinkedHashMap<>();
+            for (var task : job.tasks.entrySet()) {
+                IPatternDetails details = task.getKey();
+                long remaining = task.getValue() == null ? 0L : task.getValue().value;
+                if (details == null || remaining <= 0L) {
+                    continue;
+                }
+                for (IPatternDetails.IInput input : details.getInputs()) {
+                    if (input == null) {
+                        continue;
+                    }
+                    GenericStack[] possible = input.getPossibleInputs();
+                    if (possible == null || possible.length == 0) {
+                        continue;
+                    }
+                    GenericStack primary = possible[0];
+                    if (primary == null || primary.what() == null) {
+                        continue;
+                    }
+                    long needed = saturatingMultiply(input.getMultiplier(), remaining);
+                    long available = Math.max(
+                            0L, inventory.extract(primary.what(), Long.MAX_VALUE, Actionable.SIMULATE));
+                    if (needed > available) {
+                        deficits.merge(primary.what(), needed - available, Long::sum);
+                    }
+                }
+            }
+            if (deficits.isEmpty()) {
+                return "";
+            }
+            StringBuilder missing = new StringBuilder(" missing=[");
+            int printed = 0;
+            for (var entry : deficits.entrySet()) {
+                if (printed++ >= 10) {
+                    missing.append("...(more)");
+                    break;
+                }
+                if (printed > 1) {
+                    missing.append(", ");
+                }
+                missing.append(entry.getKey()).append(" x ").append(entry.getValue());
+                if (storageService != null) {
+                    long networkAvailable = Math.max(0L, storageService.getInventory()
+                            .extract(entry.getKey(), Long.MAX_VALUE, Actionable.SIMULATE,
+                                    appeng.api.networking.security.IActionSource.empty()));
+                    if (networkAvailable > 0L) {
+                        missing.append(" (net: ").append(networkAvailable).append(')');
+                    }
+                }
+            }
+            return missing.append(']').toString();
+        }
+    }
+
+    /** [ecoloop] 探针归并器：同组合连续重复只计数，不刷屏。 */
+    private static final class EcoLoopProbe {
+        private static String lastKey;
+        private static long runCount;
+
+        private EcoLoopProbe() {
+        }
+
+        static synchronized void note(String providerClass, boolean ecoHandles) {
+            String key = providerClass + "|" + ecoHandles;
+            if (key.equals(lastKey)) {
+                runCount++;
+                return;
+            }
+            flush();
+            lastKey = key;
+            runCount = 1;
+        }
+
+        private static void flush() {
+            if (lastKey != null) {
+                System.out.println("[ecoloop] provider states x" + runCount + ": " + lastKey);
+            }
+        }
+    }
+
 }

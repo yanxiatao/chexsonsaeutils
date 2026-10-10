@@ -63,7 +63,7 @@ public final class PlanningReplacementSelector {
                     possibleKey,
                     fuzzyCandidate -> input.isValid(fuzzyCandidate, level)
             );
-            if (ReplacementAwareProcessingPattern.matchesAnyPossibleInput(input, fuzzyCraftable)) {
+            if (ReplacementAwarePattern.matchesAnyPossibleInput(input, fuzzyCraftable)) {
                 return fuzzyCraftable;
             }
         }

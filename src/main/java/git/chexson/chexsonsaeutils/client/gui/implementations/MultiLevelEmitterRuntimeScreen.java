@@ -11,6 +11,7 @@ import appeng.core.localization.GuiText;
 import com.mojang.blaze3d.systems.RenderSystem;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
+import git.chexson.chexsonsaeutils.client.gui.matrix.MatrixText;
 import git.chexson.chexsonsaeutils.mixin.ae2.client.gui.EditBoxAccessor;
 import git.chexson.chexsonsaeutils.mixin.minecraft.world.inventory.SlotAccessor;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
@@ -27,7 +28,6 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import org.lwjgl.glfw.GLFW;
@@ -919,45 +919,12 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
         if (maxWidth <= 0) {
             return;
         }
-        float scale = fittedScale(font, text, maxWidth, preferredScale, minimumScale);
+        float scale = MatrixText.fittedScale(font, text, maxWidth, preferredScale, minimumScale);
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(x, y, 0.0f);
         guiGraphics.pose().scale(scale, scale, 1.0f);
         guiGraphics.drawString(font, text, 0, 0, color, false);
         guiGraphics.pose().popPose();
-    }
-
-    private static void drawCenteredFittedText(
-            GuiGraphics guiGraphics,
-            Font font,
-            Component text,
-            int x,
-            int y,
-            int width,
-            int height,
-            int color,
-            float preferredScale,
-            float minimumScale
-    ) {
-        if (width <= 0 || height <= 0) {
-            return;
-        }
-        float scale = fittedScale(font, text, width, preferredScale, minimumScale);
-        int scaledHeight = Math.max(1, Mth.ceil(font.lineHeight * scale));
-        int drawY = y + Math.max(0, (height - scaledHeight) / 2);
-        guiGraphics.enableScissor(x, y, x + width, y + height);
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().translate(x + width / 2.0f, drawY, 0.0f);
-        guiGraphics.pose().scale(scale, scale, 1.0f);
-        guiGraphics.drawString(font, text, -font.width(text) / 2, 0, color, false);
-        guiGraphics.pose().popPose();
-        guiGraphics.disableScissor();
-    }
-
-    private static float fittedScale(Font font, Component text, int maxWidth, float preferredScale, float minimumScale) {
-        int textWidth = Math.max(1, font.width(text));
-        float widthScale = maxWidth / (float) textWidth;
-        return Mth.clamp(widthScale, minimumScale, preferredScale);
     }
 
     private static Icon fuzzyModeIcon(MultiLevelEmitterPart.MatchingMode mode) {
@@ -1038,7 +1005,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
             background.dest(getX(), getY()).blit(guiGraphics);
 
             if (matchingMode == MultiLevelEmitterPart.MatchingMode.STRICT) {
-                drawCenteredFittedText(
+                MatrixText.drawCenteredFitted(
                         guiGraphics,
                         font,
                         getMessage(),
@@ -1089,7 +1056,7 @@ public class MultiLevelEmitterRuntimeScreen extends AEBaseScreen<MultiLevelEmitt
 
         @Override
         public void renderString(GuiGraphics guiGraphics, Font font, int color) {
-            drawCenteredFittedText(
+            MatrixText.drawCenteredFitted(
                     guiGraphics,
                     font,
                     getMessage(),

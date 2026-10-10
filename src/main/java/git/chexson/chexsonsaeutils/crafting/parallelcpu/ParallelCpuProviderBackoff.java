@@ -1,13 +1,17 @@
 package git.chexson.chexsonsaeutils.crafting.parallelcpu;
 
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingProvider;
 
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
 public final class ParallelCpuProviderBackoff {
 
-    private final Map<ICraftingProvider, ProviderState> providerStates = new IdentityHashMap<>();
+    private final Map<ICraftingProvider, ProviderState> busyProviderStates = new IdentityHashMap<>();
+    private final Map<ICraftingProvider, Map<IPatternDetails, ProviderState>> rejectedPatternStates =
+            new IdentityHashMap<>();
     private final int baseBackoffTicks;
     private final int maxBackoffTicks;
 
@@ -18,6 +22,7 @@ public final class ParallelCpuProviderBackoff {
 
     public ProviderAvailability checkProvider(
             ICraftingProvider provider,
+            IPatternDetails pattern,
             long currentTick,
             ParallelCpuGridBudgetLedger budgetLedger
     ) {
@@ -25,8 +30,13 @@ public final class ParallelCpuProviderBackoff {
             return ProviderAvailability.BACKED_OFF;
         }
 
-        ProviderState state = providerStates.get(provider);
-        if (state != null && state.shouldSkip(currentTick)) {
+        ProviderState busyState = busyProviderStates.get(provider);
+        if (busyState != null && busyState.shouldSkip(currentTick)) {
+            return ProviderAvailability.BACKED_OFF;
+        }
+        Map<IPatternDetails, ProviderState> patternStates = rejectedPatternStates.get(provider);
+        ProviderState rejectedState = patternStates == null ? null : patternStates.get(pattern);
+        if (rejectedState != null && rejectedState.shouldSkip(currentTick)) {
             return ProviderAvailability.BACKED_OFF;
         }
 
@@ -43,24 +53,41 @@ public final class ParallelCpuProviderBackoff {
         return ProviderAvailability.READY;
     }
 
-    public void recordPushRejected(ICraftingProvider provider, long currentTick) {
-        recordBusy(provider, currentTick);
+    public void recordPushRejected(ICraftingProvider provider, IPatternDetails pattern, long currentTick) {
+        Map<IPatternDetails, ProviderState> patternStates = rejectedPatternStates.computeIfAbsent(
+                provider, ignored -> new HashMap<>());
+        recordUnavailable(patternStates.computeIfAbsent(pattern, ignored -> new ProviderState()), currentTick);
     }
 
-    public void recordPushAccepted(ICraftingProvider provider) {
-        recordReady(provider);
+    public void recordPushAccepted(ICraftingProvider provider, IPatternDetails pattern) {
+        Map<IPatternDetails, ProviderState> patternStates = rejectedPatternStates.get(provider);
+        if (patternStates == null) {
+            return;
+        }
+        patternStates.remove(pattern);
+        if (patternStates.isEmpty()) {
+            rejectedPatternStates.remove(provider);
+        }
     }
 
     public void clear() {
-        providerStates.clear();
+        busyProviderStates.clear();
+        rejectedPatternStates.clear();
     }
 
     public int trackedProviderCount() {
-        return providerStates.size();
+        java.util.Set<ICraftingProvider> providers = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        providers.addAll(busyProviderStates.keySet());
+        providers.addAll(rejectedPatternStates.keySet());
+        return providers.size();
     }
 
     private void recordBusy(ICraftingProvider provider, long currentTick) {
-        ProviderState state = providerStates.computeIfAbsent(provider, ignored -> new ProviderState());
+        ProviderState state = busyProviderStates.computeIfAbsent(provider, ignored -> new ProviderState());
+        recordUnavailable(state, currentTick);
+    }
+
+    private void recordUnavailable(ProviderState state, long currentTick) {
         if (state.lastBusyTick == currentTick) {
             state.unavailableUntilTick = Math.max(state.unavailableUntilTick, currentTick + 1L);
             return;
@@ -78,12 +105,7 @@ public final class ParallelCpuProviderBackoff {
     }
 
     private void recordReady(ICraftingProvider provider) {
-        ProviderState state = providerStates.get(provider);
-        if (state == null) {
-            return;
-        }
-        state.consecutiveBusy = 0;
-        state.unavailableUntilTick = -1L;
+        busyProviderStates.remove(provider);
     }
 
     private int calculateDelay(int consecutiveBusy) {

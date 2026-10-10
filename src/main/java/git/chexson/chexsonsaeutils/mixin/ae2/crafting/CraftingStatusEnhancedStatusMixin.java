@@ -4,7 +4,6 @@ import appeng.crafting.execution.CraftingCpuLogic;
 import appeng.menu.me.common.IncrementalUpdateHelper;
 import appeng.menu.me.crafting.CraftingStatus;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.crafting.status.EnhancedCraftingBlockedTracker;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingStatusEnhancer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -21,7 +20,7 @@ public abstract class CraftingStatusEnhancedStatusMixin {
             CraftingCpuLogic logic,
             CallbackInfoReturnable<CraftingStatus> cir
     ) {
-        if (!FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled")) {
+        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled")) {
             return;
         }
         cir.setReturnValue(CraftingStatusEnhancer.attachBlockedAmounts(

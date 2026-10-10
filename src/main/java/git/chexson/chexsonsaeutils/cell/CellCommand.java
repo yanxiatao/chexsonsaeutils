@@ -1,6 +1,6 @@
 package git.chexson.chexsonsaeutils.cell;
 
-import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -17,20 +17,20 @@ public final class CellCommand {
     private CellCommand() {
     }
 
-    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("chexsonsaeutils")
-                .then(Commands.literal("cell")
-                        .then(Commands.literal("list")
-                                .executes(ctx -> listCells(ctx.getSource())))
-                        .then(Commands.literal("info")
-                                .then(Commands.argument("uuid", StringArgumentType.word())
-                                        .executes(ctx -> cellInfo(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "uuid")))))
-                        .then(Commands.literal("clear")
-                                .then(Commands.argument("uuid", StringArgumentType.word())
-                                        .requires(s -> s.hasPermission(2))
-                                        .executes(ctx -> clearCell(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "uuid")))))));
+    /** Returns the cell subtree for the mod's single root command. */
+    public static LiteralArgumentBuilder<CommandSourceStack> command() {
+        return Commands.literal("cell")
+                .then(Commands.literal("list")
+                        .executes(ctx -> listCells(ctx.getSource())))
+                .then(Commands.literal("info")
+                        .then(Commands.argument("uuid", StringArgumentType.word())
+                                .executes(ctx -> cellInfo(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "uuid")))))
+                .then(Commands.literal("clear")
+                        .then(Commands.argument("uuid", StringArgumentType.word())
+                                .requires(s -> s.hasPermission(2))
+                                .executes(ctx -> clearCell(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "uuid")))));
     }
 
     private static int listCells(CommandSourceStack source) {

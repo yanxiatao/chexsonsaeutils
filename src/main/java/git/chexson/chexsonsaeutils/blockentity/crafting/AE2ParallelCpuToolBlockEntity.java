@@ -14,7 +14,7 @@ import appeng.api.util.IConfigManager;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.menu.ISubMenu;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
-import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -57,8 +57,8 @@ public class AE2ParallelCpuToolBlockEntity extends AENetworkedBlockEntity implem
         postCpuListChange();
     }
 
-    public ParallelCraftingCpuConfig.Settings getParallelCpuSettings() {
-        return ParallelCraftingCpuConfig.current();
+    public ChexsonsaeutilsCompatibilityConfig.ParallelCpuSettings getParallelCpuSettings() {
+        return ChexsonsaeutilsCompatibilityConfig.parallelCpuSettings();
     }
 
     public ParallelCraftingCpuCluster getParallelCpuCluster() {

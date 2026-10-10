@@ -65,6 +65,21 @@ neoForge {
             programArgument '--nogui'
         }
 
+        replayServer {
+            server()
+            programArgument '--nogui'
+            systemProperty 'chexsonsaeutils.replay.captureDir',
+                    providers.systemProperty('chexsonsaeutils.replay.captureDir').orElse('logs').get()
+            systemProperty 'chexsonsaeutils.replay.reportDir',
+                    providers.systemProperty('chexsonsaeutils.replay.reportDir').orElse('logs/replay-reports').get()
+            systemProperty 'chexsonsaeutils.replay.planner',
+                    providers.systemProperty('chexsonsaeutils.replay.planner').orElse('linear').get()
+            systemProperty 'chexsonsaeutils.replay.warmups',
+                    providers.systemProperty('chexsonsaeutils.replay.warmups').orElse('2').get()
+            systemProperty 'chexsonsaeutils.replay.samples',
+                    providers.systemProperty('chexsonsaeutils.replay.samples').orElse('8').get()
+        }
+
         data {
             data()
             programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
@@ -97,6 +112,7 @@ dependencies {
     implementation 'org.spongepowered:mixin:0.8.5'
 
     compileOnly "org.appliedenergistics:appliedenergistics2:${ae2_version}"
+    compileOnly files('reference-sources/neoecoae-21.2.0-preview14.jar')
     compileOnly files('libs/ae2ct-1.21.1-1.1.1.jar')
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
@@ -178,6 +194,11 @@ publishing {
 tasks.named('test', Test).configure {
     useJUnitPlatform()
     systemProperty 'user.dir', project.projectDir.absolutePath
+    ['plannerCompare.warmup', 'plannerCompare.samples', 'plannerCompare.retentionEvidence'].each { propertyName ->
+        if (System.getProperty(propertyName) != null) {
+            systemProperty propertyName, System.getProperty(propertyName)
+        }
+    }
 }
 
 tasks.named('jar', Jar).configure {

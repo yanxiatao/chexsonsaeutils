@@ -1,19 +1,22 @@
 package git.chexson.chexsonsaeutils.client.gui.implementations;
 
-import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.style.StyleManager;
-import appeng.client.gui.widgets.UpgradesPanel;
-import appeng.menu.SlotSemantic;
+import appeng.client.gui.widgets.AE2Button;
 import appeng.menu.SlotSemantics;
+import git.chexson.chexsonsaeutils.client.gui.matrix.AssemblerMatrixSlot;
+import git.chexson.chexsonsaeutils.client.gui.matrix.GuiAssemblerMatrix;
+import git.chexson.chexsonsaeutils.client.gui.matrix.MatrixText;
 import git.chexson.chexsonsaeutils.client.integration.jei.JeiMachineRecipeTypeHint;
 import git.chexson.chexsonsaeutils.client.integration.jei.JeiRuntimeHolder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineIdentity;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigImportRequest;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeImportedSignature;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportReasonCode;
+import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineSupportStatus;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
+import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixClientView;
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
@@ -27,51 +30,73 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
-public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProcessingMachineMenu> {
+/**
+ * 直连处理机界面：样板区与归墟共用抄来的 ExtendedAE 装配矩阵，只把第四行烘焙格让给机器行，
+ * 用来放绑定槽、绑定标签与配方类型摘要；JEI 导入按钮用 AE2 按钮材质贴在对话框右上角，
+ * 额外按状态码统计全量样板的支持情况。
+ */
+public class AEDirectProcessingMachineScreen extends GuiAssemblerMatrix<AEDirectProcessingMachineMenu> {
 
-    private static final int PANEL_BORDER = 0xFF6F6F6F;
-    private static final int PANEL_FILL = 0xFFE3E3E3;
-    private static final int SLOT_BORDER = 0xFF7A7A7A;
-    private static final int SLOT_FILL = 0xFFCFCFCF;
+    private static final int MATRIX_COLUMNS = 9;
+    /** 少一行烘焙格来换机器行，滚动窗口随之从四行变三行。 */
+    private static final int MATRIX_ROWS = 3;
+    private static final int MATRIX_LEFT = 8;
+    private static final int MATRIX_TOP = 31;
+    /** 三行信息由样式文档定位，这里只负责填内容。 */
+    private static final String RECIPE_TYPES_TEXT = "recipe_types";
+    private static final String PATTERN_COUNT_TEXT = "pattern_count";
+    private static final String PATTERN_STATUS_TEXT = "pattern_status";
+    private static final String PLAYER_INVENTORY_TITLE_TEXT = "player_inventory_title";
 
-    private Button previousPageButton;
-    private Button nextPageButton;
-    private Button importJeiButton;
+    private final AE2Button importJeiButton;
     private List<JeiMachineRecipeTypeHint> currentJeiHints = List.of();
     private boolean suppressJeiTooltipUntilMouseLeave;
     private boolean dismissJeiTooltipThisFrame;
     private TooltipSource currentFrameTooltipSource = TooltipSource.NONE;
+    private int refreshedChangeCount = -1;
+    private int supportedPatterns;
+    private int unsupportedPatterns;
+    private int needsConfigPatterns;
+    private int unsafePatterns;
 
     public AEDirectProcessingMachineScreen(
             AEDirectProcessingMachineMenu menu,
             Inventory playerInventory,
             Component title
     ) {
-        super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/ae_direct_processing_machine.json"));
-        this.widgets.add("upgrades", new UpgradesPanel(menu.getSlots(SlotSemantics.UPGRADE), menu.getHost()));
+        super(
+                menu,
+                playerInventory,
+                title,
+                StyleManager.loadStyleDoc("/screens/ae_direct_processing_machine.json"),
+                menu.matrixLink(),
+                MATRIX_COLUMNS,
+                MATRIX_ROWS,
+                MATRIX_LEFT,
+                MATRIX_TOP
+        );
+        this.importJeiButton = widgets.addButton(
+                "jei_import",
+                Component.literal("JEI"),
+                button -> importCurrentJeiHints()
+        );
     }
 
     @Override
     protected void init() {
         super.init();
-        previousPageButton = addRenderableWidget(Button.builder(Component.literal("<"), button -> menu.previousPage())
-                .bounds(leftPos + 154, topPos + 52, 14, 16)
-                .build());
-        nextPageButton = addRenderableWidget(Button.builder(Component.literal(">"), button -> menu.nextPage())
-                .bounds(leftPos + 172, topPos + 52, 14, 16)
-                .build());
-        importJeiButton = addRenderableWidget(Button.builder(Component.literal("JEI"), button -> importCurrentJeiHints())
-                .bounds(leftPos + 150, topPos + 16, 42, 16)
-                .build());
+        // 背包标题那一行改放本机的样板状态计数
+        setTextHidden(PLAYER_INVENTORY_TITLE_TEXT, true);
     }
 
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
-        previousPageButton.active = menu.canGoToPreviousPage();
-        nextPageButton.active = menu.canGoToNextPage();
+        refreshStatusCounts();
+        setTextContent(RECIPE_TYPES_TEXT, menu.getSummaryLine());
+        setTextContent(PATTERN_COUNT_TEXT, statusLine());
+        setTextContent(PATTERN_STATUS_TEXT, getStatusLine());
         currentJeiHints = collectCurrentJeiHints();
         importJeiButton.active = !currentJeiHints.isEmpty();
         importJeiButton.setMessage(Component.translatable(
@@ -81,21 +106,11 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
     }
 
     @Override
-    public void drawFG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY) {
-        guiGraphics.drawString(font, menu.getSummaryLine(), 8, 30, 0x404040, false);
-        guiGraphics.drawString(font, menu.getVisiblePatternStatusLine(), 8, 42, 0x404040, false);
-    }
-
-    @Override
     public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY, float partialTicks) {
         super.drawBG(guiGraphics, offsetX, offsetY, mouseX, mouseY, partialTicks);
-        drawPanel(guiGraphics, offsetX + 4, offsetY + 4, 192, 68);
-        // drawPanel(guiGraphics, offsetX + 4, offsetY + 82, 166, 64);
-        // drawPanel(guiGraphics, offsetX + 173, offsetY + 84, 25, 94);
-        drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.MACHINE_INPUT);
-        drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.ENCODED_PATTERN);
-        drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.PLAYER_INVENTORY);
-        drawSlotBackgrounds(guiGraphics, offsetX, offsetY, SlotSemantics.PLAYER_HOTBAR);
+        for (Slot slot : menu.getSlots(SlotSemantics.MACHINE_INPUT)) {
+            blitSlotCell(guiGraphics, offsetX, offsetY, slot);
+        }
     }
 
     @Override
@@ -123,22 +138,91 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
             return tooltip;
         }
         Slot slot = getSlotUnderMouse();
-        if (!hasShiftDown() || slot == null || stack.isEmpty()) {
+        if (!(slot instanceof AssemblerMatrixSlot cell)) {
             return tooltip;
         }
-        int pageSlotIndex = menu.getPatternPageSlotIndex(slot);
-        if (pageSlotIndex < 0) {
-            return tooltip;
+        int globalSlot = cell.getActuallySlot();
+        return MatrixText.shiftDetailTooltipDistinct(
+                tooltip,
+                hasShiftDown(),
+                slot,
+                stack,
+                globalSlot,
+                () -> patternStatusLines(globalSlot)
+        );
+    }
+
+    private List<Component> patternStatusLines(int globalSlot) {
+        PatternMatrixClientView view = menu.matrixView();
+        MachineSupportStatus status = statusAt(view.statusCodeAt(globalSlot));
+        MachineSupportReasonCode reason = reasonAt(view.reasonCodeAt(globalSlot));
+        List<Component> lines = new ArrayList<>(2);
+        lines.add(Component.translatable(
+                "gui.chexsonsaeutils.ae_direct_processing_machine.pattern_status_line",
+                localizedStatus(status)
+        ));
+        if (reason != MachineSupportReasonCode.NONE) {
+            lines.add(Component.translatable(
+                    "gui.chexsonsaeutils.ae_direct_processing_machine.pattern_reason_line",
+                    localizedReason(reason)
+            ));
         }
-        List<Component> augmentedTooltip = new ArrayList<>(tooltip);
-        appendMissingTooltipLines(augmentedTooltip, menu.getPatternSlotTooltip(pageSlotIndex));
-        return List.copyOf(augmentedTooltip);
+        return List.copyOf(lines);
+    }
+
+    /** 全量样板的状态计数：只在视图变化时重扫一遍，视图没变就复用上一轮结果。 */
+    private void refreshStatusCounts() {
+        PatternMatrixClientView view = menu.matrixView();
+        if (view.changeCount() == refreshedChangeCount) {
+            return;
+        }
+        refreshedChangeCount = view.changeCount();
+        int supported = 0;
+        int unsupported = 0;
+        int needsConfig = 0;
+        int unsafe = 0;
+        for (int slot = 0; slot < view.getTotalSlots(); slot++) {
+            if (!view.hasDisplayStack(slot)) {
+                continue;
+            }
+            switch (statusAt(view.statusCodeAt(slot))) {
+                case SUPPORTED_EXPLICIT, SUPPORTED_CONFIG, SUPPORTED_GENERIC -> supported++;
+                case NEEDS_CONFIG_MAPPING -> needsConfig++;
+                case UNSAFE_DYNAMIC -> unsafe++;
+                default -> unsupported++;
+            }
+        }
+        supportedPatterns = supported;
+        unsupportedPatterns = unsupported;
+        needsConfigPatterns = needsConfig;
+        unsafePatterns = unsafe;
+    }
+
+    private Component getStatusLine() {
+        return Component.translatable(
+                "gui.chexsonsaeutils.ae_direct_processing_machine.status_counts",
+                supportedPatterns,
+                unsupportedPatterns,
+                needsConfigPatterns,
+                unsafePatterns
+        );
+    }
+
+    private static MachineSupportStatus statusAt(int statusCode) {
+        MachineSupportStatus[] values = MachineSupportStatus.values();
+        return statusCode >= 0 && statusCode < values.length
+                ? values[statusCode]
+                : MachineSupportStatus.UNSUPPORTED_UNREADABLE;
+    }
+
+    private static MachineSupportReasonCode reasonAt(int reasonCode) {
+        MachineSupportReasonCode[] values = MachineSupportReasonCode.values();
+        return reasonCode >= 0 && reasonCode < values.length
+                ? values[reasonCode]
+                : MachineSupportReasonCode.NONE;
     }
 
     private boolean shouldRenderJeiTooltip(int mouseX, int mouseY) {
-        if (importJeiButton == null) {
-            return false;
-        }
         if (!importJeiButton.isMouseOver(mouseX, mouseY)) {
             suppressJeiTooltipUntilMouseLeave = false;
             return false;
@@ -156,43 +240,10 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
         if (slot != null && slot.hasItem()) {
             return TooltipSource.SLOT_ITEM;
         }
-        if (importJeiButton != null && importJeiButton.isMouseOver(mouseX, mouseY)) {
+        if (importJeiButton.isMouseOver(mouseX, mouseY)) {
             return TooltipSource.JEI_BUTTON;
         }
         return TooltipSource.NONE;
-    }
-
-    private static void appendMissingTooltipLines(List<Component> tooltip, List<Component> additions) {
-        if (tooltip == null || additions == null || additions.isEmpty()) {
-            return;
-        }
-        Set<String> existingLines = tooltip.stream()
-                .filter(java.util.Objects::nonNull)
-                .map(Component::getString)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        for (Component addition : additions) {
-            if (addition == null) {
-                continue;
-            }
-            String line = addition.getString();
-            if (existingLines.add(line)) {
-                tooltip.add(addition);
-            }
-        }
-    }
-
-    private void drawPanel(GuiGraphics guiGraphics, int left, int top, int width, int height) {
-        guiGraphics.fill(left, top, left + width, top + height, PANEL_BORDER);
-        guiGraphics.fill(left + 1, top + 1, left + width - 1, top + height - 1, PANEL_FILL);
-    }
-
-    private void drawSlotBackgrounds(GuiGraphics guiGraphics, int offsetX, int offsetY, SlotSemantic semantics) {
-        for (Slot slot : menu.getSlots(semantics)) {
-            int left = offsetX + slot.x - 1;
-            int top = offsetY + slot.y - 1;
-            guiGraphics.fill(left, top, left + 18, top + 18, SLOT_BORDER);
-            guiGraphics.fill(left + 1, top + 1, left + 17, top + 17, SLOT_FILL);
-        }
     }
 
     private void importCurrentJeiHints() {
@@ -209,9 +260,7 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
     }
 
     private void clearJeiButtonFocus() {
-        if (importJeiButton != null) {
-            importJeiButton.setFocused(false);
-        }
+        importJeiButton.setFocused(false);
         setFocused((GuiEventListener) null);
     }
 
@@ -291,6 +340,16 @@ public class AEDirectProcessingMachineScreen extends AEBaseScreen<AEDirectProces
             ));
         }
         return tooltip;
+    }
+
+    private static Component localizedStatus(MachineSupportStatus status) {
+        String key = status == null ? "unsupported_unreadable" : status.name().toLowerCase(java.util.Locale.ROOT);
+        return Component.translatable("gui.chexsonsaeutils.ae_direct_processing_machine.status." + key);
+    }
+
+    private static Component localizedReason(MachineSupportReasonCode reason) {
+        String key = reason == null ? "malformed_data" : reason.name().toLowerCase(java.util.Locale.ROOT);
+        return Component.translatable("gui.chexsonsaeutils.ae_direct_processing_machine.reason." + key);
     }
 
     private enum TooltipSource {

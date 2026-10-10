@@ -4,14 +4,15 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 
 import java.util.List;
+import java.util.Map;
 
 public record RecipeSignatureKey(
-        List<RecipeSignatureInput> inputs,
-        List<GenericStack> outputs
+        Map<AEKey, Long> inputs,
+        Map<AEKey, Long> outputs
 ) {
     public RecipeSignatureKey {
-        inputs = DirectProcessingStackSupport.normalizeSignatureInputs(inputs);
-        outputs = DirectProcessingStackSupport.normalizeStacks(outputs);
+        inputs = inputs == null ? Map.of() : Map.copyOf(inputs);
+        outputs = outputs == null ? Map.of() : Map.copyOf(outputs);
     }
 
     public static RecipeSignatureKey of(
@@ -36,7 +37,12 @@ public record RecipeSignatureKey(
         if (inputs == null || inputs.isEmpty() || outputs == null || outputs.isEmpty()) {
             return null;
         }
-        return new RecipeSignatureKey(inputs, outputs);
+        Map<AEKey, Long> inputAmounts = DirectProcessingStackSupport.signatureInputAmounts(inputs);
+        Map<AEKey, Long> outputAmounts = DirectProcessingStackSupport.stackAmounts(outputs);
+        if (inputAmounts.isEmpty() || outputAmounts.isEmpty()) {
+            return null;
+        }
+        return new RecipeSignatureKey(inputAmounts, outputAmounts);
     }
 
     public static RecipeSignatureKey of(RecipeSignature signature) {

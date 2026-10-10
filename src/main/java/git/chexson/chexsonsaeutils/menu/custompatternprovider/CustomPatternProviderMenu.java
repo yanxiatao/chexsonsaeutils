@@ -18,6 +18,7 @@ import git.chexson.chexsonsaeutils.Chexsonsaeutils;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternItem;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderState;
 import git.chexson.chexsonsaeutils.menu.custompatternconfig.CustomPatternConfigLocator;
 import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
 import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeLocator;
@@ -223,11 +224,11 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
      */
     private void updateSlotActivity() {
         var slots = getSlots(SlotSemantics.ENCODED_PATTERN);
-        int unlockedSlots = Math.min(slots.size(), this.pages * CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE);
+        int unlockedSlots = Math.min(slots.size(), this.pages * CustomPatternProviderState.PATTERN_SLOTS_PER_PAGE);
         int slotId = 0;
         for (var slot : slots) {
             if (slot instanceof AppEngSlot appEngSlot) {
-                int slotPage = slotId / CustomPatternProviderPart.PATTERN_SLOTS_PER_PAGE;
+                int slotPage = slotId / CustomPatternProviderState.PATTERN_SLOTS_PER_PAGE;
                 boolean unlocked = slotId < unlockedSlots;
                 appEngSlot.setSlotEnabled(unlocked);
                 appEngSlot.setActive(unlocked && slotPage == this.page);

@@ -17,7 +17,7 @@ public abstract class AE2CraftingPlanSummaryCompatMixin {
             remap = false
     )
     private static ICraftingPlan chexsonsaeutils$convertAggregatedPlanBeforeAe2ct(ICraftingPlan job) {
-        // Let AggregatedCraftingPlan pass through unchanged
+        // Host-batch plans pass through unchanged
         // ae2ct should handle it via ICraftingPlan interface
         return job;
     }

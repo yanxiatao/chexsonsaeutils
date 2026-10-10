@@ -5,14 +5,17 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.inv.ListCraftingInventory;
-import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursiveCounterNbt;
-import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
-import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursiveTaskOrdering;
+import git.chexson.chexsonsaeutils.crafting.numeric.Ae2Amounts;
+import git.chexson.chexsonsaeutils.crafting.numeric.PlanAmount;
+import git.chexson.chexsonsaeutils.crafting.recursive.RecursiveCounterNbt;
+import git.chexson.chexsonsaeutils.crafting.recursive.RecursivePlanContract;
+import git.chexson.chexsonsaeutils.crafting.recursive.RecursiveTaskOrdering;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -21,6 +24,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 final class ParallelExecutingCraftingJob {
 
@@ -35,12 +39,22 @@ final class ParallelExecutingCraftingJob {
     private static final String NBT_DYEABLE_RECURSIVE_PLAN = "dyeableRecursivePlan";
     private static final String NBT_DYEABLE_RECURSIVE_FINAL_OUTPUT_AMOUNT = "dyeableRecursiveFinalOutputAmount";
     private static final String NBT_DYEABLE_RECURSIVE_INTERNAL_ITEMS = "dyeableRecursiveInternalItems";
+    private static final String NBT_EXACT_INPUT_WITNESS = "exactInputWitness";
     private static final String NBT_CRAFTING_PROGRESS = "#craftingProgress";
 
     final CraftingLink link;
     final ListCraftingInventory waitingFor;
     final Map<IPatternDetails, TaskProgress> tasks = new HashMap<>();
     final ParallelElapsedTimeTracker timeTracker;
+    /**
+     * 缺料退避（瞬态，不落 NBT）：样板 → 可重试 tick。提取失败的样板
+     * 短期跳过——大批量任务表里缺料任务的重复失败提取（多槽 × 大库存
+     * 逐槽扫模板）会吃光 20ms tick 预算，排在后面的富料任务永远轮不到
+     * 派发（发配饿死）。TTL 内材料到达至多延迟 1 秒重试。
+     */
+    final Map<IPatternDetails, Long> materialBackoffUntil = new HashMap<>();
+    /** 退避样板的缺口键索引：库存该键变动时即刻唤醒（postChange 驱动）。 */
+    final Map<IPatternDetails, Set<AEKey>> materialBackoffMissing = new HashMap<>();
     GenericStack finalOutput;
     long remainingAmount;
     @Nullable
@@ -49,6 +63,8 @@ final class ParallelExecutingCraftingJob {
     boolean dyeableRecursivePlan;
     long dyeableRecursiveFinalOutputAmount = -1L;
     final KeyCounter dyeableRecursiveInternalItems = new KeyCounter();
+    @Nullable
+    ParallelInputWitnessState exactInputWitness;
 
     @FunctionalInterface
     interface CraftingDifferenceListener {
@@ -65,13 +81,18 @@ final class ParallelExecutingCraftingJob {
         this.remainingAmount = this.finalOutput == null ? 0L : this.finalOutput.amount();
         this.waitingFor = new ListCraftingInventory(postCraftingDifference::onCraftingDifference);
         this.timeTracker = new ParallelElapsedTimeTracker();
-        this.dyeableRecursivePlan = plan instanceof DyeablePatternRecursivePlan recursivePlan
+        this.dyeableRecursivePlan = plan instanceof RecursivePlanContract recursivePlan
                 && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning();
-        if (plan instanceof DyeablePatternRecursivePlan recursivePlan
+        if (plan instanceof RecursivePlanContract recursivePlan
                 && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning()) {
             this.dyeableRecursiveFinalOutputAmount =
                     recursivePlan.chexsonsaeutils$dyeableRecursiveFinalOutputAmount();
             this.dyeableRecursiveInternalItems.addAll(recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems());
+        }
+        var planningWitness = git.chexson.chexsonsaeutils.crafting.executionwitness.PlanningInputWitnessPlans
+                .find(plan);
+        if (planningWitness != null && planningWitness.complete()) {
+            this.exactInputWitness = new ParallelInputWitnessState(planningWitness);
         }
 
         for (var entry : plan.emittedItems()) {
@@ -85,8 +106,10 @@ final class ParallelExecutingCraftingJob {
             }
             tasks.computeIfAbsent(entry.getKey(), ignored -> new TaskProgress()).value += executions;
             for (var output : entry.getKey().getOutputs()) {
-                long amount = output.amount() * executions * output.what().getAmountPerUnit();
-                addMaxItems(timeTracker, amount, output.what().getType());
+                var amount = PlanAmount.of(output.amount())
+                        .multiply(PlanAmount.of(executions))
+                        .multiply(PlanAmount.of(output.what().getAmountPerUnit()));
+                addMaxItems(timeTracker, Ae2Amounts.toLong(amount), output.what().getType());
             }
         }
 
@@ -110,10 +133,14 @@ final class ParallelExecutingCraftingJob {
         this.playerId = data.contains(NBT_PLAYER_ID, Tag.TAG_INT) ? data.getInt(NBT_PLAYER_ID) : null;
         this.dyeableRecursivePlan = data.getBoolean(NBT_DYEABLE_RECURSIVE_PLAN);
         this.dyeableRecursiveFinalOutputAmount = data.getLong(NBT_DYEABLE_RECURSIVE_FINAL_OUTPUT_AMOUNT);
-        this.dyeableRecursiveInternalItems.addAll(DyeablePatternRecursiveCounterNbt.read(
+        this.dyeableRecursiveInternalItems.addAll(RecursiveCounterNbt.read(
                 data.getList(NBT_DYEABLE_RECURSIVE_INTERNAL_ITEMS, Tag.TAG_COMPOUND),
                 registries
         ));
+        if (data.contains(NBT_EXACT_INPUT_WITNESS, Tag.TAG_COMPOUND)) {
+            this.exactInputWitness = ParallelInputWitnessState.readFromNBT(
+                    data.getCompound(NBT_EXACT_INPUT_WITNESS), registries);
+        }
 
         ListTag tasksTag = data.getList(NBT_TASKS, Tag.TAG_COMPOUND);
         for (int index = 0; index < tasksTag.size(); index++) {
@@ -157,8 +184,11 @@ final class ParallelExecutingCraftingJob {
         data.putLong(NBT_DYEABLE_RECURSIVE_FINAL_OUTPUT_AMOUNT, dyeableRecursiveFinalOutputAmount);
         data.put(
                 NBT_DYEABLE_RECURSIVE_INTERNAL_ITEMS,
-                DyeablePatternRecursiveCounterNbt.write(dyeableRecursiveInternalItems, registries)
+                RecursiveCounterNbt.write(dyeableRecursiveInternalItems, registries)
         );
+        if (exactInputWitness != null && !exactInputWitness.isEmpty()) {
+            data.put(NBT_EXACT_INPUT_WITNESS, exactInputWitness.writeToNBT(registries));
+        }
         return data;
     }
 
@@ -176,7 +206,7 @@ final class ParallelExecutingCraftingJob {
         tracker.decrementItems(itemDiff, keyType);
     }
 
-    static final class TaskProgress implements DyeablePatternRecursiveTaskOrdering.ParallelTaskProgressView {
+    static final class TaskProgress implements RecursiveTaskOrdering.ParallelTaskProgressView {
         long value;
 
         @Override

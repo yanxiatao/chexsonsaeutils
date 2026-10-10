@@ -7,6 +7,7 @@ import appeng.client.gui.me.items.PatternEncodingTermScreen;
 import appeng.client.gui.widgets.ActionButton;
 import appeng.client.gui.widgets.Scrollbar;
 import appeng.menu.me.items.PatternEncodingTermMenu;
+import git.chexson.chexsonsaeutils.client.gui.matrix.MatrixText;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotCandidateGroup;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleDraft;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingSlotRuleHost;
@@ -194,7 +195,7 @@ public final class ProcessingPatternReplacementScreen<C extends PatternEncodingT
         );
         guiGraphics.drawString(
                 font,
-                Component.literal(shortenTextToWidth(INTERACTION_HINT.getString(), GROUPED_CONTENT_WIDTH - 4)),
+                Component.literal(MatrixText.shortenTextToWidth(font, INTERACTION_HINT.getString(), GROUPED_CONTENT_WIDTH - 4)),
                 GROUPED_CONTENT_X,
                 184,
                 TEXT_MUTED,
@@ -499,7 +500,7 @@ public final class ProcessingPatternReplacementScreen<C extends PatternEncodingT
                 ));
             }
 
-            List<Component> labelLines = wrapLabelToWidth(
+            List<Component> labelLines = MatrixText.wrapLabelToWidth(font,
                     "#" + group.tagId() + " (" + group.itemIds().size() + ")",
                     TAG_COLUMN_WIDTH - CHECKBOX_SIZE - SECTION_PADDING - 6
             );
@@ -518,47 +519,6 @@ public final class ProcessingPatternReplacementScreen<C extends PatternEncodingT
             nextY += sectionHeight;
         }
         return List.copyOf(rows);
-    }
-
-    private List<Component> wrapLabelToWidth(String value, int maxWidth) {
-        List<Component> lines = new ArrayList<>();
-        if (value.isEmpty()) {
-            lines.add(Component.empty());
-            return lines;
-        }
-
-        StringBuilder builder = new StringBuilder();
-        for (int index = 0; index < value.length(); index++) {
-            char current = value.charAt(index);
-            String candidate = builder.toString() + current;
-            if (builder.length() > 0 && font.width(candidate) > maxWidth) {
-                lines.add(Component.literal(builder.toString()));
-                builder.setLength(0);
-            }
-            builder.append(current);
-        }
-        if (builder.length() > 0) {
-            lines.add(Component.literal(builder.toString()));
-        }
-        return lines.isEmpty() ? List.of(Component.empty()) : List.copyOf(lines);
-    }
-
-    private String shortenTextToWidth(String value, int maxWidth) {
-        if (font.width(value) <= maxWidth) {
-            return value;
-        }
-
-        String ellipsis = "...";
-        StringBuilder builder = new StringBuilder();
-        for (int index = 0; index < value.length(); index++) {
-            char current = value.charAt(index);
-            String candidate = builder.toString() + current + ellipsis;
-            if (builder.length() > 0 && font.width(candidate) > maxWidth) {
-                break;
-            }
-            builder.append(current);
-        }
-        return builder.isEmpty() ? ellipsis : builder + ellipsis;
     }
 
     private record TagSectionRow(

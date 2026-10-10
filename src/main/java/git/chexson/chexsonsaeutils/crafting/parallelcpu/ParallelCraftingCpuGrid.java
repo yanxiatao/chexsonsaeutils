@@ -11,7 +11,7 @@ import appeng.api.networking.energy.IEnergyService;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEKey;
 import appeng.crafting.execution.CraftingSubmitResult;
-import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
@@ -31,6 +31,10 @@ public final class ParallelCraftingCpuGrid {
 
     public ParallelCraftingCpuGrid(IGrid grid) {
         this.grid = grid;
+    }
+
+    public IGrid grid() {
+        return grid;
     }
 
     public void setClusters(Collection<ParallelCraftingCpuCluster> nextClusters) {
@@ -242,13 +246,6 @@ public final class ParallelCraftingCpuGrid {
             ICraftingRequester requestingMachine,
             IActionSource src
     ) {
-        var settings = ParallelCraftingCpuConfig.current();
-        if (submissionsThisTick >= settings.maxSubmissionsPerTickPerGrid()) {
-            return CraftingSubmitResult.CPU_BUSY;
-        }
-        if (activeLaneCount() >= settings.maxInternalLanesPerGrid()) {
-            return CraftingSubmitResult.CPU_BUSY;
-        }
         submissionsThisTick++;
         return cluster.submitJob(grid, job, requestingMachine, src, currentTick);
     }
@@ -259,13 +256,6 @@ public final class ParallelCraftingCpuGrid {
             ICraftingRequester requestingMachine,
             IActionSource src
     ) {
-        var settings = ParallelCraftingCpuConfig.current();
-        if (submissionsThisTick >= settings.maxSubmissionsPerTickPerGrid()) {
-            return CraftingSubmitResult.CPU_BUSY;
-        }
-        if (activeLaneCount() >= settings.maxInternalLanesPerGrid()) {
-            return CraftingSubmitResult.CPU_BUSY;
-        }
         submissionsThisTick++;
         return cluster.submitPartialJob(grid, job, requestingMachine, src, currentTick);
     }
@@ -305,16 +295,10 @@ public final class ParallelCraftingCpuGrid {
             IActionSource src,
             boolean prioritizePower
     ) {
-        var settings = ParallelCraftingCpuConfig.current();
         int offline = 0;
         int busy = 0;
         int tooSmall = 0;
         int excluded = 0;
-        if (submissionsThisTick >= settings.maxSubmissionsPerTickPerGrid()
-                || activeLaneCount() >= settings.maxInternalLanesPerGrid()) {
-            busy = clusters.size();
-            return new AutoSelectionResult(null, offline, busy, tooSmall, excluded);
-        }
 
         Comparator<ParallelCraftingCpuCluster> comparator = autoSelectionComparator(src, prioritizePower);
         @Nullable ParallelCraftingCpuCluster selectedCluster = null;
@@ -380,7 +364,7 @@ public final class ParallelCraftingCpuGrid {
     }
 
     private static ParallelCpuGridBudgetLedger createBudgetLedger() {
-        var settings = ParallelCraftingCpuConfig.current();
+        var settings = ChexsonsaeutilsCompatibilityConfig.parallelCpuSettings();
         return new ParallelCpuGridBudgetLedger(ParallelCpuGridBudgetLedger.Limits.fromSettings(settings));
     }
 

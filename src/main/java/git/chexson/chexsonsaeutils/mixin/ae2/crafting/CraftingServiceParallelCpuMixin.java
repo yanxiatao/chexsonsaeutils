@@ -24,8 +24,10 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.config.FeatureGates;
-import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
+import git.chexson.chexsonsaeutils.crafting.NativeSourceCpuHandle;
+import git.chexson.chexsonsaeutils.crafting.ParallelActiveCpuHandle;
+import git.chexson.chexsonsaeutils.crafting.SourceCpuHandle;
+import git.chexson.chexsonsaeutils.crafting.SourceCpuResolver;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingContinuationSubmitter;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCpuCluster;
@@ -48,9 +50,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.UUID;
 
 @Mixin(value = CraftingService.class, priority = 1200, remap = false)
-public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftingContinuationSubmitter {
+public abstract class CraftingServiceParallelCpuMixin
+        implements ParallelCraftingContinuationSubmitter, SourceCpuResolver {
 
     @Shadow(remap = false)
     private IGrid grid;
@@ -81,6 +85,26 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
 
     @Unique
     private ParallelCraftingCpuGrid chexsonsaeutils$parallelCpuGrid;
+
+    @Nullable
+    @Override
+    public SourceCpuHandle chexsonsaeutils$findSourceCpu(UUID craftingId) {
+        if (craftingId == null) {
+            return null;
+        }
+        for (ParallelCraftingCpuCluster cluster : chexsonsaeutils$parallelCpuClusters) {
+            if (cluster.findActiveCpuByCraftingId(craftingId) != null) {
+                return new ParallelActiveCpuHandle(cluster, craftingId);
+            }
+        }
+        for (CraftingCPUCluster cluster : craftingCPUClusters) {
+            NativeSourceCpuHandle handle = new NativeSourceCpuHandle(cluster, craftingId);
+            if (handle.isActive()) {
+                return handle;
+            }
+        }
+        return null;
+    }
 
     @Inject(method = "updateCPUClusters", at = @At("TAIL"), remap = false)
     private void chexsonsaeutils$refreshParallelCpuClusters(CallbackInfo ci) {
@@ -118,6 +142,11 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
     private void chexsonsaeutils$tickParallelCpuLanes(CallbackInfo ci, @Local(name = "latestChange") long latestChange) {
         long latestParallelChange = chexsonsaeutils$getSyncedParallelCpuGrid()
                 .tick(this.energyGrid, (CraftingService) (Object) this);
+        if (Boolean.getBoolean("ecoBatchProbe") || System.getenv("ECO_BATCH_PROBE") != null) {
+            System.out.println("[paralellTick] grid.tick latestChange=" + latestParallelChange
+                    + " clusters=" + chexsonsaeutils$parallelCpuClusters.size()
+                    + " activeLanes=" + chexsonsaeutils$parallelActiveLaneCount());
+        }
         if (latestParallelChange > latestChange) {
             this.lastProcessedCraftingLogicChangeTick = -1L;
         }
@@ -152,12 +181,13 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
     ) {
         chexsonsaeutils$syncParallelClusterView();
         int activeLaneCount = chexsonsaeutils$parallelActiveLaneCount();
-        ParallelCraftingCpuConfig.Settings settings = ParallelCraftingCpuConfig.current();
+        ChexsonsaeutilsCompatibilityConfig.ParallelCpuSettings settings = ChexsonsaeutilsCompatibilityConfig.parallelCpuSettings();
         for (ParallelCraftingCpuCluster cluster : this.chexsonsaeutils$parallelCpuClusters) {
             cluster.appendVisibleCpus(
                     cpus,
                     cluster.canAdvertiseRemainingCapacityCpu()
-                            && activeLaneCount < settings.maxInternalLanesPerGrid()
+                            && (settings.maxInternalLanesPerGrid() <= 0
+                                    || activeLaneCount < settings.maxInternalLanesPerGrid())
             );
         }
     }
@@ -486,7 +516,7 @@ public abstract class CraftingServiceParallelCpuMixin implements ParallelCraftin
             @Nullable ICraftingCPU target,
             @Nullable ICraftingSubmitResult result
     ) {
-        if (!FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")
+        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")
                 || result == null
                 || !result.successful()) {
             return;

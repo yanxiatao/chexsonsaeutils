@@ -15,9 +15,9 @@ public final class ProcessingExecutionQueue {
 
     private static final String NBT_TASKS = "tasks";
 
-    private final ArrayDeque<ProcessingCompiledTask> pendingTasks = new ArrayDeque<>();
+    private final ArrayDeque<ProcessingTask> pendingTasks = new ArrayDeque<>();
     private final List<ProcessingExecutionLane> lanes = new ArrayList<>();
-    private final Map<ProcessingCompiledTask, ProcessingLatencyOrigin> latencyOrigins = new IdentityHashMap<>();
+    private final Map<ProcessingTask, ProcessingLatencyOrigin> latencyOrigins = new IdentityHashMap<>();
     private final int maxTaskCount;
 
     public ProcessingExecutionQueue(int maxTaskCount) {
@@ -25,16 +25,16 @@ public final class ProcessingExecutionQueue {
         lanes.add(new ProcessingExecutionLane());
     }
 
-    public boolean offer(ProcessingCompiledTask task) {
+    public boolean offer(ProcessingTask task) {
         return offer(task, null);
     }
 
-    public boolean offer(ProcessingCompiledTask task, ProcessingExecutionBudget budgetController) {
+    public boolean offer(ProcessingTask task, ProcessingExecutionBudget budgetController) {
         return offer(task, budgetController, -1L);
     }
 
     public boolean offer(
-            ProcessingCompiledTask task,
+            ProcessingTask task,
             ProcessingExecutionBudget budgetController,
             long acceptedTick
     ) {
@@ -72,7 +72,7 @@ public final class ProcessingExecutionQueue {
                 continue;
             }
             didSomething |= lane.tick(workUnits);
-            ProcessingCompiledTask completed = lane.releaseIfReady();
+            ProcessingTask completed = lane.releaseIfReady();
             if (completed != null) {
                 if (budgetController != null && !budgetController.tryClaimComplete()) {
                     lane.assign(completed);
@@ -85,6 +85,16 @@ public final class ProcessingExecutionQueue {
         }
         assignIdleLanes(budgetController);
         return didSomething;
+    }
+
+    /** 活动任务遍历（Phase 5 分步供料的宿主侧入口；pending 任务第一步已就位）。 */
+    public void forEachActiveTask(java.util.function.Consumer<ProcessingTask> consumer) {
+        for (ProcessingExecutionLane lane : lanes) {
+            ProcessingTask active = lane.activeTask();
+            if (active != null) {
+                consumer.accept(active);
+            }
+        }
     }
 
     public boolean isBusy() {
@@ -113,6 +123,10 @@ public final class ProcessingExecutionQueue {
         return queuedTaskCount() + runningTaskCount();
     }
 
+    public int remainingCapacity() {
+        return Math.max(0, maxTaskCount - totalTaskCount());
+    }
+
     public void clear() {
         pendingTasks.clear();
         latencyOrigins.clear();
@@ -123,11 +137,11 @@ public final class ProcessingExecutionQueue {
 
     public void writeToTag(CompoundTag rootTag, String key, HolderLookup.Provider registries) {
         ListTag tasksTag = new ListTag();
-        for (ProcessingCompiledTask task : pendingTasks) {
+        for (ProcessingTask task : pendingTasks) {
             tasksTag.add(task.writeToTag(registries));
         }
         for (ProcessingExecutionLane lane : lanes) {
-            ProcessingCompiledTask task = lane.activeTask();
+            ProcessingTask task = lane.activeTask();
             if (task != null) {
                 tasksTag.add(task.writeToTag(registries));
             }
@@ -140,7 +154,7 @@ public final class ProcessingExecutionQueue {
         ListTag tasksTag = rootTag.getList(key, Tag.TAG_COMPOUND);
         for (Tag tag : tasksTag) {
             if (tag instanceof CompoundTag compoundTag) {
-                ProcessingCompiledTask task = ProcessingCompiledTask.readFromTag(compoundTag, registries);
+                ProcessingTask task = ProcessingTask.readFromTag(compoundTag, registries);
                 if (task != null) {
                     pendingTasks.offer(task);
                 }

@@ -5,9 +5,6 @@ import java.util.List;
 import java.util.Set;
 
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-
-import com.mojang.logging.LogUtils;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -19,7 +16,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.items.IItemHandler;
@@ -30,19 +26,15 @@ import appeng.api.networking.IGridNodeListener;
 import appeng.api.orientation.BlockOrientation;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.upgrades.IUpgradeInventory;
-import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.block.crafting.PushDirection;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
-import appeng.menu.ISubMenu;
-import appeng.menu.MenuOpener;
 import appeng.util.SettingsFrom;
 import git.chexson.chexsonsaeutils.block.custompatternprovider.CustomPatternProviderBlock;
-import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderHost;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogic;
 import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
-import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderState;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 
 /**
@@ -52,7 +44,12 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * 属性决定推送方向集合（getTargets），逻辑层
  * {@link CustomPatternProviderLogic#resolveMachineHandler} 遍历方向取第一个可用机器。
  * 共享功能（定制样板/翻页/扩容/输入过滤/appflux 灌电/样板配置）全部继承自
- * {@link CustomPatternProviderLogic} 与 {@link CustomPatternProviderLogicHost}。
+ * {@link CustomPatternProviderLogic} 与 {@link CustomPatternProviderLogicHost}；
+ * 升级库存 + 样板逻辑 + 页数的持久化与掉落收敛在 {@link CustomPatternProviderState}，
+ * 与面板版共用同一份实现。
+ * <p>
+ * 本类只保留方块侧差异：方块状态/朝向属性、按方向解析相邻机器 handler、
+ * 外部 ITEM capability 的输入过滤包装、记忆卡设置导出导入。
  * <p>
  * 网格节点：REQUIRE_CHANNEL；ICraftingProvider 与 IGridTickable 服务由 logic 构造时注册
  * （字段初始化先于构造器体，logic 注册的服务不会被本类覆盖）。
@@ -60,33 +57,10 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
         implements CustomPatternProviderHost {
 
-    private static final Logger LOGGER = LogUtils.getLogger();
-
-    private static final String NBT_UPGRADES = "upgrades";
-    private static final String NBT_PAGES = "pages";
-    private static final int UPGRADE_SLOTS = 5;
-    /** 每页样板槽数量：4 行 x 9 列，与 GUI 布局一致。 */
-    public static final int PATTERN_SLOTS_PER_PAGE = 36;
-
-    private final IUpgradeInventory upgrades;
-    /**
-     * 样板供应逻辑（fork 自 AE2 PatternProviderLogic）：拥有 36 x 最大页数样板槽 +
-     * 9 格返回库存，推送目标经 getTargets() 方向集合解析（多方向模式）。
-     * 字段初始化创建（与 AE2 PatternProviderBlockEntity 一致）——网格节点在 onReady
-     * 时才创建，logic 的 addService 必须在节点创建前生效。
-     */
-    private final CustomPatternProviderLogic logic = createLogic();
-
-    /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxCustomPatternPages()]。 */
-    private int pages = 1;
+    private final CustomPatternProviderState patternState = createState();
 
     public CustomPatternProviderBlockEntity(BlockPos pos, BlockState blockState) {
         super(ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(), pos, blockState);
-        this.upgrades = UpgradeInventories.forMachine(
-                () -> ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get(),
-                UPGRADE_SLOTS,
-                this::saveChanges
-        );
         // ICraftingProvider 与 IGridTickable 服务由 logic 注册（字段初始化先于本构造器体）
         this.getMainNode()
                 .setFlags(GridFlags.REQUIRE_CHANNEL)
@@ -94,71 +68,52 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * 创建样板供应逻辑：容量 = 配置的最大页数 x 每页 36 槽（固定，翻页只切换可见性）。
+     * 创建共用状态壳：升级库存取本方块物品，页数/样板库存持久化由状态壳统一承担。
      */
-    protected CustomPatternProviderLogic createLogic() {
-        return new CustomPatternProviderLogic(this.getMainNode(), this,
-                ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages() * PATTERN_SLOTS_PER_PAGE);
+    private CustomPatternProviderState createState() {
+        return new CustomPatternProviderState(CustomPatternProviderBlockEntity.class, this.getMainNode(), this,
+                UpgradeInventories.forMachine(
+                        () -> ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_ITEM.get(),
+                        CustomPatternProviderState.UPGRADE_SLOTS,
+                        this::saveChanges
+                ));
     }
 
     @Override
     public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.saveAdditional(data, registries);
-        // appflux 加载时 "upgrades" 键由 af_upgrades 独占（logic NBT 与 BE NBT 同层平铺，
-        // appflux mixin 在 logic.writeToNBT TAIL 写同键，后写覆盖）——跳过本机库存写盘避免冲突
-        if (!ModList.get().isLoaded("appflux")) {
-            upgrades.writeToNBT(data, NBT_UPGRADES, registries);
-        }
-        // 样板库存/返回库存由 logic 写入（key: patterns/returnInv）
-        logic.writeToNBT(data, registries);
-        data.putInt(NBT_PAGES, pages);
+        patternState.writeNbt(data, registries);
     }
 
     @Override
     public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
         super.loadTag(data, registries);
-        // 与 saveAdditional 对称：appflux 加载时跳过本机库存读盘（"upgrades" 键归 af_upgrades），
-        // 本机库存保持空（死库存），避免把 af_upgrades 数据脏读进本机库存导致重复掉落
-        if (!ModList.get().isLoaded("appflux")) {
-            upgrades.readFromNBT(data, NBT_UPGRADES, registries);
-        }
-        logic.readFromNBT(data, registries);
-        // 旧存档无 pages key：getInt 为 0，clamp 到 1
-        this.pages = clampPages(data.getInt(NBT_PAGES));
+        patternState.readNbt(data, registries);
     }
 
     @Override
     public void onReady() {
         super.onReady();
         // 节点就绪后刷新样板列表（loadTag 已由 logic 读取，此处触发 requestUpdate 让网格感知）
-        this.logic.updatePatterns();
+        this.getLogic().updatePatterns();
     }
 
     @Override
     public void onMainNodeStateChanged(IGridNodeListener.State reason) {
-        this.logic.onMainNodeStateChanged();
+        this.getLogic().onMainNodeStateChanged();
     }
 
     @Override
     public void addAdditionalDrops(Level level, BlockPos pos, List<ItemStack> drops) {
         super.addAdditionalDrops(level, pos, drops);
-        // 样板库存/返回库存/sendList 掉落（挖掘、爆炸均经 onRemove 触发）
-        this.logic.addDrops(drops);
-        // 升级库存掉落（S4 补充，与面板版一致）
-        for (int slot = 0; slot < upgrades.size(); slot++) {
-            var stack = upgrades.getStackInSlot(slot);
-            if (!stack.isEmpty()) {
-                drops.add(stack);
-            }
-        }
+        // 样板库存/返回库存/sendList + 升级库存掉落
+        patternState.addDrops(drops);
     }
 
     @Override
     public void clearContent() {
         super.clearContent();
-        this.logic.clearContent();
-        // S1 修复：升级库存随内容清空（与面板版对齐，AE2 UpgradeablePart 惯例）
-        this.upgrades.clear();
+        patternState.clearContent();
     }
 
     /**
@@ -166,32 +121,17 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
      */
     @Override
     public int getPages() {
-        return pages;
+        return patternState.pages();
     }
 
     /**
      * 设置已解锁样板页数（clamp 到 [1, maxCustomPatternPages()]，越界值收敛并告警）。
      * <p>
-     * 注意：loadTag 路径不调用本方法（加载期间 saveChanges 会触发过早写盘），直接赋值字段。
+     * 注意：loadTag 路径不调用本方法（加载期间 saveChanges 会触发过早写盘），
+     * 由 {@link CustomPatternProviderState#readNbt} 直接赋值。
      */
     public void setPages(int pages) {
-        this.pages = clampPages(pages);
-        saveChanges();
-    }
-
-    /**
-     * 页数收敛到 [1, maxCustomPatternPages()]；发生截断时输出告警日志（loadTag/setPages 共用）。
-     *
-     * @param rawPages 待收敛的原始页数
-     * @return 收敛后的页数
-     */
-    private int clampPages(int rawPages) {
-        int max = ChexsonsaeutilsCompatibilityConfig.maxCustomPatternPages();
-        int clamped = Math.max(1, Math.min(rawPages, max));
-        if (clamped != rawPages) {
-            LOGGER.warn("样板页数截断：old={}, new={}, maxPages={}", rawPages, clamped, max);
-        }
-        return clamped;
+        patternState.setPages(pages);
     }
 
     /**
@@ -347,18 +287,12 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public CustomPatternProviderLogic getLogic() {
-        return logic;
+        return patternState.logic();
     }
 
     @Override
     public IUpgradeInventory getUpgrades() {
-        // appflux 加载时 logic 被 MixinPatternProviderLogic 注入为 IUpgradeableObject
-        // （af_upgrades 库存）——委托给 logic 使 Menu 升级槽与 EAP 频道卡查询指向同一库存；
-        // 未加载 appflux 时回落本机 5 槽库存（行为不变）。
-        // 副作用：appflux 加载时本机库存成死库存（旧存档装在本机库存的感应卡不再显示，
-        // 本项目不注册升级卡，仅感应卡受影响，可接受；NBT 读写已跳过，见 saveAdditional/loadTag）。
-        var logic = getLogic();
-        return logic instanceof IUpgradeableObject uo ? uo.getUpgrades() : upgrades;
+        return patternState.upgrades();
     }
 
     @Override
@@ -401,7 +335,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     public void exportSettings(SettingsFrom mode, DataComponentMap.Builder builder, @Nullable Player player) {
         super.exportSettings(mode, builder, player);
         if (mode == SettingsFrom.MEMORY_CARD) {
-            logic.exportSettings(builder);
+            getLogic().exportSettings(builder);
             var pushDirection = getBlockState().getValue(CustomPatternProviderBlock.PUSH_DIRECTION);
             builder.set(AEComponents.EXPORTED_PUSH_DIRECTION, pushDirection);
         }
@@ -415,7 +349,7 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
     public void importSettings(SettingsFrom mode, DataComponentMap input, @Nullable Player player) {
         super.importSettings(mode, input, player);
         if (mode == SettingsFrom.MEMORY_CARD) {
-            logic.importSettings(input, player);
+            getLogic().importSettings(input, player);
             var pushDirection = input.get(AEComponents.EXPORTED_PUSH_DIRECTION);
             if (pushDirection != null) {
                 var level = getLevel();
@@ -425,13 +359,5 @@ public class CustomPatternProviderBlockEntity extends AENetworkedBlockEntity
                 }
             }
         }
-    }
-
-    /**
-     * 子菜单返回主菜单：打开定制样板供应器菜单（替代共享接口默认的框架菜单）。
-     */
-    @Override
-    public void returnToMainMenu(Player player, ISubMenu subMenu) {
-        MenuOpener.returnTo(CustomPatternProviderMenu.TYPE, player, subMenu.getLocator());
     }
 }

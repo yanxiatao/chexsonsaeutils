@@ -24,7 +24,7 @@ import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
  * 映射调用 part.importSettings(SettingsFrom.DISMANTLE_ITEM, ...)，拆除时
  * IPart.addPartDrop 默认实现经 exportSettings(SettingsFrom.DISMANTLE_ITEM) 生成
  * 掉落栈组件——读回/写回均在 {@link CustomPatternProviderPart} 的
- * importSettings/exportSettings DISMANTLE_ITEM 分支完成（见该类的 initPagesFromStack）。
+ * importSettings/exportSettings DISMANTLE_ITEM 分支完成（见该类的 CustomPatternProviderState#initPages）。
  */
 public class CustomPatternProviderPartItem extends PartItem<CustomPatternProviderPart>
         implements IStorageComponent, CustomPatternExpandableItem {

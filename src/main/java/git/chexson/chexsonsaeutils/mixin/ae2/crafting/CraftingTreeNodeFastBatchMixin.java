@@ -1,7 +1,6 @@
 package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 
 import appeng.api.config.Actionable;
-import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.CraftBranchFailure;
@@ -12,9 +11,9 @@ import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.CraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
-import git.chexson.chexsonsaeutils.crafting.fastplan.FastCraftingCalculation;
-import git.chexson.chexsonsaeutils.crafting.fastplan.FastLimitQtyBatcher;
-import git.chexson.chexsonsaeutils.crafting.fastplan.FastSimStatePool;
+import git.chexson.chexsonsaeutils.crafting.solve.FastCraftingCalculation;
+import git.chexson.chexsonsaeutils.crafting.solve.FastLimitQtyBatcher;
+import git.chexson.chexsonsaeutils.crafting.solve.FastSimStatePool;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;

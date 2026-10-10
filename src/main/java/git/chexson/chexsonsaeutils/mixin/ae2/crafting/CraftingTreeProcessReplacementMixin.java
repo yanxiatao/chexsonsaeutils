@@ -8,7 +8,7 @@ import appeng.crafting.CraftingCalculation;
 import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.CraftingTreeProcess;
 import git.chexson.chexsonsaeutils.pattern.replacement.PlanningReplacementSelector;
-import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
+import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwarePattern;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -34,7 +34,7 @@ public abstract class CraftingTreeProcessReplacementMixin {
             CraftingTreeNode craftingTreeNode,
             CallbackInfo ci
     ) {
-        if (this.details instanceof ReplacementAwareProcessingPattern) {
+        if (this.details instanceof ReplacementAwarePattern) {
             this.limitQty = true;
         }
     }
@@ -55,7 +55,7 @@ public abstract class CraftingTreeProcessReplacementMixin {
             CraftingTreeProcess parent,
             int slot
     ) {
-        if (!(this.details instanceof ReplacementAwareProcessingPattern)) {
+        if (!(this.details instanceof ReplacementAwarePattern)) {
             return new CraftingTreeNode(cc, job, what, amount, parent, slot);
         }
 

@@ -11,7 +11,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.jetbrains.annotations.Nullable;
@@ -19,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -82,18 +82,51 @@ public final class MatterMassStore {
             return;
         }
         var contents = entries.computeIfAbsent(id, ignored -> new ArrayList<>());
+        // long 主表 + BigInteger 溢出侧表合并：Long::sum 回绕会产生负数垃圾被求解器读走
         var merged = new LinkedHashMap<AEKey, Long>();
+        var overflow = new HashMap<AEKey, BigInteger>();
         for (var stack : contents) {
-            merged.merge(stack.what(), stack.amount(), Long::sum);
+            mergeAmount(merged, overflow, stack.what(), stack.amount());
         }
         for (var stack : stacks) {
             if (stack != null && stack.amount() > 0) {
-                merged.merge(stack.what(), stack.amount(), Long::sum);
+                mergeAmount(merged, overflow, stack.what(), stack.amount());
             }
         }
         contents.clear();
-        merged.forEach((key, amount) -> contents.add(new GenericStack(key, amount)));
+        for (var entry : merged.entrySet()) {
+            long amount = entry.getValue();
+            if (overflow.containsKey(entry.getKey())) {
+                LOG.warn("Matter mass amount for {} exceeds long domain: clamped to Long.MAX_VALUE",
+                        entry.getKey());
+                amount = Long.MAX_VALUE;
+            }
+            contents.add(new GenericStack(entry.getKey(), amount));
+        }
         dirty.add(id);
+    }
+
+    private static void mergeAmount(
+            LinkedHashMap<AEKey, Long> merged,
+            HashMap<AEKey, BigInteger> overflow,
+            AEKey key,
+            long delta
+    ) {
+        var existingOverflow = overflow.get(key);
+        if (existingOverflow != null) {
+            overflow.put(key, existingOverflow.add(BigInteger.valueOf(delta)));
+            return;
+        }
+        long current = merged.getOrDefault(key, 0L);
+        long updated;
+        try {
+            updated = Math.addExact(current, delta);
+        } catch (ArithmeticException overflowed) {
+            overflow.put(key, BigInteger.valueOf(current).add(BigInteger.valueOf(delta)));
+            merged.put(key, Long.MAX_VALUE);
+            return;
+        }
+        merged.put(key, updated);
     }
 
     /** @return 实际提取量；MODULATE 下条目抽空时自动删除条目与文件 */

@@ -4,26 +4,23 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 
 import java.util.List;
+import java.util.Set;
 
 record RecipeSignatureShapeKey(
-        List<AEKey> inputs,
-        List<AEKey> outputs
+        Set<AEKey> inputs,
+        Set<AEKey> outputs
 ) {
     RecipeSignatureShapeKey {
-        inputs = inputs == null ? List.of() : List.copyOf(inputs);
-        outputs = outputs == null ? List.of() : List.copyOf(outputs);
+        inputs = inputs == null ? Set.of() : Set.copyOf(inputs);
+        outputs = outputs == null ? Set.of() : Set.copyOf(outputs);
     }
 
     static RecipeSignatureShapeKey of(
             List<RecipeSignatureInput> inputs,
             List<GenericStack> outputs
     ) {
-        List<AEKey> normalizedInputs = DirectProcessingStackSupport.normalizeSignatureInputs(inputs).stream()
-                .map(RecipeSignatureInput::input)
-                .toList();
-        List<AEKey> normalizedOutputs = DirectProcessingStackSupport.normalizeStacks(outputs).stream()
-                .map(GenericStack::what)
-                .toList();
+        Set<AEKey> normalizedInputs = DirectProcessingStackSupport.signatureInputAmounts(inputs).keySet();
+        Set<AEKey> normalizedOutputs = DirectProcessingStackSupport.stackAmounts(outputs).keySet();
         if (normalizedInputs.isEmpty() || normalizedOutputs.isEmpty()) {
             return null;
         }

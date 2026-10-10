@@ -19,7 +19,6 @@ import appeng.menu.me.crafting.CraftingStatusEntry;
 import com.google.common.collect.ImmutableSet;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -62,6 +61,10 @@ public final class ParallelCraftingCpuCluster {
         this.gridContext = gridContext;
     }
 
+    public ParallelCraftingCpuGrid gridContext() {
+        return gridContext;
+    }
+
     public void detachGridContext() {
         this.gridContext = null;
         providerBackoff.clear();
@@ -91,7 +94,7 @@ public final class ParallelCraftingCpuCluster {
     }
 
     public boolean hasSubmissionCapacity() {
-        return activeLaneCount() < ParallelCraftingCpuConfig.current().maxInternalLanesPerBlock();
+        return true;
     }
 
     public boolean canAdvertiseRemainingCapacityCpu() {
@@ -194,6 +197,12 @@ public final class ParallelCraftingCpuCluster {
                 continue;
             }
             hadActiveLane = true;
+            // lane 时间片：剩余预算按剩余 lane 均分，先跑完的 lane 让出
+            // 余额——多 job（lane）并行公平，不再被第一个 lane 独占 20ms。
+            if (budgetLedger != null) {
+                budgetLedger.beginLaneSlice(
+                        System.nanoTime(), laneSnapshot.size() - visitedLanes + 1);
+            }
             boolean zeroProgress = lane.tick(
                     energyGrid,
                     craftingService,
@@ -209,8 +218,9 @@ public final class ParallelCraftingCpuCluster {
             } else {
                 refreshLaneState(lane);
             }
-            if (budgetLedger != null && budgetLedger.isExhausted()) {
-                break;
+            if (budgetLedger != null
+                    && (budgetLedger.isExhausted() || budgetLedger.laneSliceExhausted(System.nanoTime()))) {
+                continue;
             }
         }
         nextTickLaneStartIndex = computeNextStartIndex(laneSnapshot.size(), startIndex, visitedLanes);
@@ -508,6 +518,10 @@ public final class ParallelCraftingCpuCluster {
         return lane.laneId();
     }
 
+    /**
+     * AE2 接口要求 long，恒 MAX_VALUE 哨兵语义正确。副作用：CraftingCpuLogic 的
+     * 字节门槛在并行 CPU 上恒通过，负值账目进 CPU 的唯一防线是规划出口的负值扫描。
+     */
     public long storageBytes() {
         return Long.MAX_VALUE;
     }
@@ -651,10 +665,4 @@ public final class ParallelCraftingCpuCluster {
         return lanes.get(craftingId);
     }
 
-    private static long saturatedAdd(long left, long right) {
-        if (right > 0L && left >= Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        return left + right;
-    }
 }

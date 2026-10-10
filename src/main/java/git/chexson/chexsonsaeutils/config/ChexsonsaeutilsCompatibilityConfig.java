@@ -1,10 +1,21 @@
 package git.chexson.chexsonsaeutils.config;
 
+import com.mojang.logging.LogUtils;
+import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.ModConfigSpec;
+import org.slf4j.Logger;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class ChexsonsaeutilsCompatibilityConfig {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     public static final ModConfigSpec SPEC;
     public static final ModConfigSpec.BooleanValue CRAFTING_CONTINUATION_ENABLED;
@@ -12,7 +23,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
     public static final ModConfigSpec.IntValue MAX_CUSTOM_PATTERN_PAGES;
     public static final ModConfigSpec.BooleanValue DYEABLE_PATTERNS_ENABLED;
-    public static final ModConfigSpec.ConfigValue<Integer> DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT;
+    public static final ModConfigSpec.IntValue RECURSIVE_RING_MAX_MEMBERS;
     public static final ModConfigSpec.BooleanValue ENHANCED_CRAFTING_STATUS_ENABLED;
     public static final ModConfigSpec.BooleanValue BUILDING_GADGETS2_INTEGRATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FTB_ULTIMINE_MEMORY_CARD_ENABLED;
@@ -20,6 +31,16 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue PARALLEL_CPU_FAST_PLANNING_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CPU_FAST_PLANNING_BUDGET_MILLIS;
     public static final ModConfigSpec.BooleanValue PARALLEL_CPU_FAST_PLANNING_ANY_GRID_ENABLED;
+    public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_ENABLED;
+    public static final ModConfigSpec.ConfigValue<Integer> GRAPH_PLANNING_BUDGET_MILLIS;
+    public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_ANY_GRID_ENABLED;
+    public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_LEXICOGRAPHIC;
+    public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_DIAGNOSTICS;
+    public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_TRACE;
+    public static final ModConfigSpec.BooleanValue GRAPH_PLAN_CAPTURE;
+    public static final ModConfigSpec.BooleanValue GRAPH_PLANNING_CLOSURE_GATE;
+    public static final ModConfigSpec.ConfigValue<Integer> GRAPH_PLANNING_MAX_DEPTH;
+    public static final ModConfigSpec.BooleanValue WIDE_AMOUNT_SOLVER_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_SUBMISSIONS_PER_TICK_PER_GRID;
@@ -31,7 +52,7 @@ public final class ChexsonsaeutilsCompatibilityConfig {
             AE_DIRECT_PROCESSING_MACHINE_RECIPE_MAPPINGS;
     public static final ModConfigSpec.ConfigValue<String> AE_DIRECT_PROCESSING_MACHINE_BUDGET_PROFILE;
     public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_GENERIC_DISCOVERY_ENABLED;
-    public static final ModConfigSpec.BooleanValue HIGH_CAPACITY_CRAFTING_MACHINE_ENABLED;
+    public static final ModConfigSpec.BooleanValue EXTREME_ASSEMBLER_ENABLED;
     public static final ModConfigSpec.BooleanValue AE_DIRECT_PROCESSING_MACHINE_ENABLED;
     public static final ModConfigSpec.BooleanValue CUSTOM_PATTERN_PROVIDER_ENABLED;
     public static final ModConfigSpec.BooleanValue CUSTOM_PATTERN_PROVIDER_OVERSTACK_RETURN_ENABLED;
@@ -41,12 +62,11 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue INFINITY_CELL_ENABLED;
     public static final ModConfigSpec.BooleanValue SLOT_NUMBER_OVERLAY_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_TOTAL_PATTERN_SLOTS;
-    public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_DEFAULT_OPERATION_TICKS;
     public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_QUEUE_TASKS;
     public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_BATCHES;
     public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_MAX_PENDING_OUTPUT_RETRY_DELAY_TICKS;
     public static final ModConfigSpec.ConfigValue<Integer> AE_DIRECT_PROCESSING_MACHINE_DIRTY_PATTERN_REFRESH_BUDGET_PER_TICK;
-    public static final ModConfigSpec.ConfigValue<Integer> HIGH_CAPACITY_TOTAL_PATTERN_SLOTS;
+    public static final ModConfigSpec.ConfigValue<Integer> EXTREME_ASSEMBLER_TOTAL_PATTERN_SLOTS;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_BASE_TICKS;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_MAX_TICKS;
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID;
@@ -83,12 +103,12 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "kept when the provider is dismantled. Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.maxCustomPatternPages")
                 .defineInRange("maxCustomPatternPages", 8, 1, 8);
-        HIGH_CAPACITY_CRAFTING_MACHINE_ENABLED = builder
-                .comment("Enable the high-capacity crafting machine behavior.",
+        EXTREME_ASSEMBLER_ENABLED = builder
+                .comment("Enable the Extreme Assembler behavior.",
                         "Registered blocks/items stay available for world compatibility;",
                         "when disabled, placed machines stop processing. Takes effect immediately.")
-                .translation("configuration.chexsonsaeutils.highCapacityCraftingMachineEnabled")
-                .define("highCapacityCraftingMachineEnabled", true);
+                .translation("configuration.chexsonsaeutils.extremeAssemblerEnabled")
+                .define("extremeAssemblerEnabled", true);
         AE_DIRECT_PROCESSING_MACHINE_ENABLED = builder
                 .comment("Enable the AE direct processing machine behavior.",
                         "Registered blocks/items stay available for world compatibility;",
@@ -153,15 +173,14 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 )
                 .translation("configuration.chexsonsaeutils.dyeablePatternsEnabled")
                 .define("dyeablePatternsEnabled", true);
-        DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT = builder
+        RECURSIVE_RING_MAX_MEMBERS = builder
                 .comment(
-                        "Minimum amount of each dyeable recursive catalyst to keep after a crafting plan.",
-                        "When a plan would consume the last catalyst, dyeable recursive planning",
-                        "crafts enough extra copies to keep this reserve available."
+                        "Maximum number of patterns in a recursive ring after directed",
+                        "closure. Larger closures are treated as non-calculable and fall back to",
+                        "per-item planning. Takes effect immediately."
                 )
-                .translation("configuration.chexsonsaeutils.dyeableRecursiveRetainedCatalystAmount")
-                .defineInRange("dyeableRecursiveRetainedCatalystAmount",
-                        1, 0, Integer.MAX_VALUE);
+                .translation("configuration.chexsonsaeutils.recursiveRingMaxMembers")
+                .defineInRange("recursiveRingMaxMembers", 64, 1, Integer.MAX_VALUE);
         ENHANCED_CRAFTING_STATUS_ENABLED = builder
                 .comment(
                         "Enable AEA enhanced crafting status migration.",
@@ -221,16 +240,101 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "thread CPU time for faster plans. Takes effect immediately.")
                 .translation("configuration.chexsonsaeutils.parallelCpuFastPlanningAnyGridEnabled")
                 .define("parallelCpuFastPlanningAnyGridEnabled", false);
+        GRAPH_PLANNING_ENABLED = builder
+                .comment("Enable the level-1 graph crafting-planning engine.",
+                        "The planning neighbourhood is compiled once into an immutable graph and solved",
+                        "linearly, reusing the graph across every probe. Anything the graph engine",
+                        "cannot express yet (multiple routes, fuzzy variants, recursive patterns)",
+                        "falls back to the optimized tree path and then to the native AE2 path.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.graphPlanningEnabled")
+                .define("graphPlanningEnabled", true);
+        GRAPH_PLANNING_BUDGET_MILLIS = builder
+                .comment("Wall-clock budget in milliseconds for one graph planning session, shared by",
+                        "graph compilation and every solve probe. On exhaustion the calculation falls",
+                        "back to the tree path. 0 disables the budget (run to completion).")
+                .translation("configuration.chexsonsaeutils.graphPlanningBudgetMillis")
+                .defineInRange("graphPlanningBudgetMillis", 10_000, 0, Integer.MAX_VALUE);
+        GRAPH_PLANNING_ANY_GRID_ENABLED = builder
+                .comment("Allow the graph planning engine on grids that do not host this mod's",
+                        "parallel CPU. When disabled (default), only grids with an active parallel",
+                        "CPU use the graph engine. Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.graphPlanningAnyGridEnabled")
+                .define("graphPlanningAnyGridEnabled", false);
+        GRAPH_PLANNING_LEXICOGRAPHIC = builder
+                .comment("Experimental: at multi-route competition points the graph planner fires",
+                        "every candidate route on a ledger copy and keeps the lexicographically",
+                        "best plan (fewest leftovers, then fewest network items, then fewest",
+                        "crafts, then fewest bytes) instead of first-come-first-served. Changes",
+                        "route selection results and costs one extra ledger pass per candidate.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.graphPlanningLexicographic")
+                .define("graphPlanningLexicographic", false);
+        GRAPH_PLANNING_DIAGNOSTICS = builder
+                .comment("Enable verbose level-1 graph planning diagnostics.",
+                        "When enabled, every graph planning request collects a per-pattern compile",
+                        "trace, root firing/missing accounting, plan conversion before/after and",
+                        "crafting-provider index synchronization events into a ThreadLocal buffer",
+                        "that is dumped to the log alongside the one-line summary. Useful for",
+                        "diagnosing wrong plans (e.g. missing items containing the target itself).",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.graphPlanningDiagnostics")
+                .define("graphPlanningDiagnostics", false);
+        GRAPH_PLANNING_CLOSURE_GATE = builder
+                .comment("Post-solve material conservation gate for the level-1 graph planner:",
+                        "before a solve result is accepted, every key is checked for",
+                        "supply (network extractions, emissions, ring seeds and pattern outputs)",
+                        ">= demand (pattern inputs, final output and missing items). A violation",
+                        "declines the graph plan and falls back to the tree path, so a symbol",
+                        "error in a closed-form shortcut can never ship an impossible plan.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.graphPlanningClosureGateEnabled")
+                .define("graphPlanningClosureGateEnabled", true);
+        GRAPH_PLANNING_TRACE = builder
+                .comment("Add per-site / per-key lines to the graph planning trace (requires",
+                        "graphPlanningDiagnostics). These scale with the site tree, so a large",
+                        "modpack request produces tens of megabytes of text and the formatting",
+                        "alone costs about a second — only turn this on to debug one request.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.graphPlanningTrace")
+                .define("graphPlanningTrace", false);
+        GRAPH_PLAN_CAPTURE = builder
+                .comment("Write a replayable planning fixture to logs/chexsonsaeutils-plan-capture-*.json",
+                        "for every request that takes the graph path. The file records the crafting",
+                        "service view (patterns, emittable keys, fuzzy craftables) plus the stock",
+                        "snapshot, so the mod's own benchmark can replay the exact request offline.",
+                        "Debug aid only — leave it off during normal play.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.graphPlanCapture")
+                .define("graphPlanCapture", false);
+        GRAPH_PLANNING_MAX_DEPTH = builder
+                .comment("Maximum planning recursion depth for the level-1 graph solver. Very deep",
+                        "dependency chains beyond this depth decline and fall back to the tree path.",
+                        "Ring compression keeps real-world graphs far below the default.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.graphPlanningMaxDepth")
+                .defineInRange("graphPlanningMaxDepth", 2048, 16, 1_048_576);
+        WIDE_AMOUNT_SOLVER_ENABLED = builder
+                .comment("Use exact long/BigInteger arithmetic in the graph planning solver instead of",
+                        "the double-based ring scaling chain and the 2^52 request cap. Amounts beyond",
+                        "long are tracked with BigInteger ledgers and clamped at the AE2 boundary.",
+                        "Disabling restores the legacy cap and double chain as a safety fuse.",
+                        "Takes effect immediately.")
+                .translation("configuration.chexsonsaeutils.wideAmountSolverEnabled")
+                .define("wideAmountSolverEnabled", true);
         PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK = builder
-                .comment("Maximum internal crafting lanes per tool block.")
+                .comment("Maximum internal crafting lanes per tool block.",
+                        "0 = unlimited (each lane holds one executing job's inventory;",
+                        "unbounded submission may grow memory under automation).")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxInternalLanesPerBlock")
                 .defineInRange("parallelCraftingCpuMaxInternalLanesPerBlock",
-                        65_536, 1, Integer.MAX_VALUE);
+                        65_536, 0, Integer.MAX_VALUE);
         PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_GRID = builder
-                .comment("Maximum internal crafting lanes per AE grid.")
+                .comment("Maximum internal crafting lanes per AE grid.",
+                        "0 = unlimited.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxInternalLanesPerGrid")
                 .defineInRange("parallelCraftingCpuMaxInternalLanesPerGrid",
-                        1_048_576, 1, Integer.MAX_VALUE);
+                        1_048_576, 0, Integer.MAX_VALUE);
         PARALLEL_CRAFTING_CPU_MAX_SUBMISSIONS_PER_TICK_PER_GRID = builder
                 .comment("Maximum parallel CPU job submissions accepted per grid tick.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxSubmissionsPerTickPerGrid")
@@ -248,7 +352,11 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         8_388_608L, 1L, Long.MAX_VALUE / 4L);
         PARALLEL_CRAFTING_CPU_TICK_BUDGET_NANOS_PER_GRID = builder
                 .comment("Maximum wall-clock CPU scheduling budget per grid tick.",
-                        "Clamped to 45 ms.")
+                        "Clamped to 45 ms. This is the MSPT guard: crafting scheduling runs on",
+                        "the server thread, and 20 ms is 40% of a 50 ms tick - raising it toward",
+                        "the 45 ms clamp directly eats the tick headroom other server work needs.",
+                        "Throughput problems are almost always provider accept rate or backoff,",
+                        "not this budget.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuTickBudgetNanosPerGrid")
                 .defineInRange("parallelCraftingCpuTickBudgetNanosPerGrid",
                         20_000_000L, 1L, 45_000_000L);
@@ -258,15 +366,21 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 .defineInRange("parallelCraftingCpuLaneShardCount",
                         4_096, 1, Integer.MAX_VALUE);
         PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_BASE_TICKS = builder
-                .comment("Base exponential backoff delay in ticks for busy pattern providers.")
+                .comment("Base exponential backoff delay in ticks for busy pattern providers.",
+                        "Lower values retry sooner; the polling cost is one isBusy() check,",
+                        "which does not touch the tick time budget.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuProviderBackoffBaseTicks")
                 .defineInRange("parallelCraftingCpuProviderBackoffBaseTicks",
-                        2, 1, Integer.MAX_VALUE);
+                        1, 1, Integer.MAX_VALUE);
         PARALLEL_CRAFTING_CPU_PROVIDER_BACKOFF_MAX_TICKS = builder
-                .comment("Maximum backoff delay in ticks for busy pattern providers.")
+                .comment("Maximum backoff delay in ticks for busy pattern providers.",
+                        "The old default of 40 ticks let a single rejection stall retries for",
+                        "two whole seconds; with few providers that starves execution.",
+                        "10 ticks caps the stall at half a second while still avoiding",
+                        "busy-polling hot loops.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuProviderBackoffMaxTicks")
                 .defineInRange("parallelCraftingCpuProviderBackoffMaxTicks",
-                        40, 1, Integer.MAX_VALUE);
+                        10, 1, Integer.MAX_VALUE);
         PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID = builder
                 .comment("Maximum pattern input extractions budgeted per grid tick.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxExtractPatternInputsPerTickPerGrid")
@@ -316,10 +430,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Shrinking this below a machine's used slots may affect existing saves.")
                 .translation("configuration.chexsonsaeutils.totalPatternSlots")
                 .defineInRange("totalPatternSlots", 16_384, 1, 65_536);
-        AE_DIRECT_PROCESSING_MACHINE_DEFAULT_OPERATION_TICKS = builder
-                .comment("Base processing duration in ticks before speed card reduction.")
-                .translation("configuration.chexsonsaeutils.defaultOperationTicks")
-                .defineInRange("defaultOperationTicks", 20, 1, Integer.MAX_VALUE);
         AE_DIRECT_PROCESSING_MACHINE_MAX_QUEUE_TASKS = builder
                 .comment("Maximum tasks kept in the execution queue per machine.")
                 .translation("configuration.chexsonsaeutils.maxQueueTasks")
@@ -338,11 +448,11 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 .defineInRange("dirtyPatternRefreshBudgetPerTick", 64, 1, Integer.MAX_VALUE);
         builder.pop();
 
-        builder.comment("High Capacity Crafting Machine")
-                .translation("configuration.chexsonsaeutils.section.highCapacityCraftingMachine")
-                .push("highCapacityCraftingMachine");
-        HIGH_CAPACITY_TOTAL_PATTERN_SLOTS = builder
-                .comment("Total pattern slot capacity of high-capacity crafting hosts.",
+        builder.comment("Extreme Assembler")
+                .translation("configuration.chexsonsaeutils.section.extremeAssembler")
+                .push("extremeAssembler");
+        EXTREME_ASSEMBLER_TOTAL_PATTERN_SLOTS = builder
+                .comment("Total pattern slot capacity of Extreme Assembler hosts.",
                         "Shrinking this below a host's used slots may affect existing saves.")
                 .translation("configuration.chexsonsaeutils.totalPatternSlots")
                 .defineInRange("totalPatternSlots", 16_384, 1, 65_536);
@@ -378,5 +488,194 @@ public final class ChexsonsaeutilsCompatibilityConfig {
 
     public static boolean boolValue(ModConfigSpec.BooleanValue value) {
         return SPEC.isLoaded() ? value.get() : value.getDefault();
+    }
+
+    /**
+     * 功能开关的双轨读取：SPEC 已加载读 SPEC；否则（Mixin 插件等启动早期阶段）
+     * 直接解析启动期 TOML 回落。
+     */
+    public static boolean featureEnabled(ModConfigSpec.BooleanValue spec, String key) {
+        if (SPEC.isLoaded()) {
+            return spec.get();
+        }
+        return StartupConfigReader.readBoolean(key, spec.getDefault());
+    }
+
+    /** 宽域（long/BigInteger）求解开关，默认开；关掉恢复 2^52 帽与 double 环 scale 链。 */
+    public static boolean wideAmountSolverEnabled() {
+        return featureEnabled(WIDE_AMOUNT_SOLVER_ENABLED, "wideAmountSolverEnabled");
+    }
+
+    /** 图求解后置守恒闸门开关（Phase 2d B4），默认开；关掉即回退无闸门行为。 */
+    public static boolean graphPlanningClosureGateEnabled() {
+        return featureEnabled(GRAPH_PLANNING_CLOSURE_GATE, "graphPlanningClosureGateEnabled");
+    }
+
+    /** 图求解递归深度上限（Phase 2d K6 退路），默认 2048。 */
+    public static boolean graphPlanningTraceEnabled() {
+        return featureEnabled(GRAPH_PLANNING_TRACE, "graphPlanningTrace");
+    }
+
+    public static boolean graphPlanCaptureEnabled() {
+        return featureEnabled(GRAPH_PLAN_CAPTURE, "graphPlanCapture");
+    }
+
+    public static int graphPlanningMaxDepth() {
+        if (SPEC.isLoaded()) {
+            return GRAPH_PLANNING_MAX_DEPTH.get();
+        }
+        return StartupConfigReader.readInt(
+                "graphPlanningMaxDepth", GRAPH_PLANNING_MAX_DEPTH.getDefault());
+    }
+
+    /** 递归环成员规模上限，超限环按不可算处理并回落逐件规划。 */
+    public static int recursiveRingMaxMembers() {
+        if (SPEC.isLoaded()) {
+            return RECURSIVE_RING_MAX_MEMBERS.get();
+        }
+        return StartupConfigReader.readInt("recursiveRingMaxMembers", RECURSIVE_RING_MAX_MEMBERS.getDefault());
+    }
+
+    public static ParallelCpuSettings parallelCpuSettings() {
+        return readParallelCpuSettings(false);
+    }
+
+    public static ParallelCpuSettings loadParallelCpuSettingsWithStartupWarnings() {
+        ParallelCpuSettings settings = readParallelCpuSettings(true);
+        LOGGER.info(
+                "AE2 parallel CPU tool config active: enabled={}, lanesPerBlock={}, lanesPerGrid={}, "
+                        + "submissionsPerTick={}, pushesPerTick={}, providerChecksPerTick={}, tickBudgetNanos={}, "
+                        + "laneShards={}, extractInputsPerTick={}, reinjectInputsPerTick={}",
+                settings.enabled(),
+                settings.maxInternalLanesPerBlock(),
+                settings.maxInternalLanesPerGrid(),
+                settings.maxSubmissionsPerTickPerGrid(),
+                settings.maxPatternPushesPerTickPerGrid(),
+                settings.maxProviderChecksPerTickPerGrid(),
+                settings.tickBudgetNanosPerGrid(),
+                settings.laneShardCount(),
+                settings.maxExtractPatternInputsPerTickPerGrid(),
+                settings.maxReinjectPatternInputsPerTickPerGrid()
+        );
+        return settings;
+    }
+
+    private static ParallelCpuSettings readParallelCpuSettings(boolean warn) {
+        return new ParallelCpuSettings(
+                boolValue(PARALLEL_CRAFTING_CPU_ENABLED),
+                clampInt("parallelCraftingCpuMaxInternalLanesPerBlock",
+                        intValue(PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK),
+                        0, Integer.MAX_VALUE, warn),
+                clampInt("parallelCraftingCpuMaxInternalLanesPerGrid",
+                        intValue(PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_GRID),
+                        0, Integer.MAX_VALUE, warn),
+                clampInt("parallelCraftingCpuMaxSubmissionsPerTickPerGrid",
+                        intValue(PARALLEL_CRAFTING_CPU_MAX_SUBMISSIONS_PER_TICK_PER_GRID),
+                        1, Integer.MAX_VALUE, warn),
+                clampLong("parallelCraftingCpuMaxPatternPushesPerTickPerGrid",
+                        longValue(PARALLEL_CRAFTING_CPU_MAX_PATTERN_PUSHES_PER_TICK_PER_GRID),
+                        1L, Long.MAX_VALUE / 4L, warn),
+                clampLong("parallelCraftingCpuMaxProviderChecksPerTickPerGrid",
+                        longValue(PARALLEL_CRAFTING_CPU_MAX_PROVIDER_CHECKS_PER_TICK_PER_GRID),
+                        1L, Long.MAX_VALUE / 4L, warn),
+                clampLong("parallelCraftingCpuTickBudgetNanosPerGrid",
+                        longValue(PARALLEL_CRAFTING_CPU_TICK_BUDGET_NANOS_PER_GRID),
+                        1L, 45_000_000L, warn),
+                clampInt("parallelCraftingCpuLaneShardCount",
+                        intValue(PARALLEL_CRAFTING_CPU_LANE_SHARD_COUNT),
+                        1, Integer.MAX_VALUE, warn),
+                clampLong("parallelCraftingCpuMaxExtractPatternInputsPerTickPerGrid",
+                        longValue(PARALLEL_CRAFTING_CPU_MAX_EXTRACT_PATTERN_INPUTS_PER_TICK_PER_GRID),
+                        1L, Long.MAX_VALUE / 4L, warn),
+                clampLong("parallelCraftingCpuMaxReinjectPatternInputsPerTickPerGrid",
+                        longValue(PARALLEL_CRAFTING_CPU_MAX_REINJECT_PATTERN_INPUTS_PER_TICK_PER_GRID),
+                        1L, Long.MAX_VALUE / 4L, warn)
+        );
+    }
+
+    private static int clampInt(String key, int value, int minimum, int maximum, boolean warn) {
+        int clamped = Math.max(minimum, Math.min(maximum, value));
+        if (warn && clamped != value) {
+            LOGGER.warn("Clamped AE2 parallel CPU config {} from {} to {}", key, value, clamped);
+        }
+        return clamped;
+    }
+
+    private static long clampLong(String key, long value, long minimum, long maximum, boolean warn) {
+        long clamped = Math.max(minimum, Math.min(maximum, value));
+        if (warn && clamped != value) {
+            LOGGER.warn("Clamped AE2 parallel CPU config {} from {} to {}", key, value, clamped);
+        }
+        return clamped;
+    }
+
+    public record ParallelCpuSettings(
+            boolean enabled,
+            int maxInternalLanesPerBlock,
+            int maxInternalLanesPerGrid,
+            int maxSubmissionsPerTickPerGrid,
+            long maxPatternPushesPerTickPerGrid,
+            long maxProviderChecksPerTickPerGrid,
+            long tickBudgetNanosPerGrid,
+            int laneShardCount,
+            long maxExtractPatternInputsPerTickPerGrid,
+            long maxReinjectPatternInputsPerTickPerGrid
+    ) {
+    }
+
+    /**
+     * 启动期直接解析 TOML 的底层读取器：SPEC 尚未加载（Mixin 插件阶段等）
+     * 时的双轨回落实现，仅本类内部使用。
+     */
+    private static final class StartupConfigReader {
+
+        private static final String CONFIG_DIR_PROPERTY = "chexsonsaeutils.configDir";
+        private static final String COMMON_CONFIG_FILE = "chexsonsaeutils-common.toml";
+
+        private StartupConfigReader() {
+        }
+
+        static boolean readBoolean(String key, boolean defaultValue) {
+            return read(resolveCommonConfigPath(), key, "true|false", defaultValue, Boolean::parseBoolean);
+        }
+
+        static int readInt(String key, int defaultValue) {
+            return read(resolveCommonConfigPath(), key, "-?\\d+", defaultValue, Integer::parseInt);
+        }
+
+        private static <T> T read(Path configFile, String key, String valuePattern, T defaultValue,
+                Function<String, T> parser) {
+            T persistedValue = readPersistedValue(configFile, key, valuePattern, parser);
+            return persistedValue != null ? persistedValue : defaultValue;
+        }
+
+        private static Path resolveCommonConfigPath() {
+            String overriddenConfigDir = System.getProperty(CONFIG_DIR_PROPERTY);
+            if (overriddenConfigDir != null && !overriddenConfigDir.isBlank()) {
+                return Path.of(overriddenConfigDir).resolve(COMMON_CONFIG_FILE);
+            }
+            return FMLPaths.CONFIGDIR.get().resolve(COMMON_CONFIG_FILE);
+        }
+
+        private static <T> T readPersistedValue(Path configFile, String key, String valuePattern,
+                Function<String, T> parser) {
+            if (configFile == null || !Files.isRegularFile(configFile)) {
+                return null;
+            }
+
+            Pattern pattern = Pattern.compile(
+                    "(?m)^\\s*" + Pattern.quote(key) + "\\s*=\\s*(" + valuePattern + ")\\s*(?:#.*)?$");
+            try {
+                String configContent = Files.readString(configFile);
+                Matcher matcher = pattern.matcher(configContent);
+                if (!matcher.find()) {
+                    return null;
+                }
+                return parser.apply(matcher.group(1));
+            } catch (IOException | RuntimeException exception) {
+                LOGGER.warn("Failed to read startup config key {} from {}", key, configFile, exception);
+                return null;
+            }
+        }
     }
 }

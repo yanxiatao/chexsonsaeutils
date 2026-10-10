@@ -9,7 +9,7 @@ import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.ICraftingInventory;
 import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementGroupTemplateSelector;
-import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwareProcessingPattern;
+import git.chexson.chexsonsaeutils.pattern.replacement.ReplacementAwarePattern;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
@@ -63,7 +63,7 @@ public abstract class CraftingTreeNodeReplacementMixin {
             int slot,
             CallbackInfo ci
     ) {
-        if (!ReplacementAwareProcessingPattern.matchesAnyPossibleInput(this.parentInput, requestedWhat)) {
+        if (!ReplacementAwarePattern.matchesAnyPossibleInput(this.parentInput, requestedWhat)) {
             return;
         }
 
@@ -81,7 +81,7 @@ public abstract class CraftingTreeNodeReplacementMixin {
             IPatternDetails details,
             CallbackInfoReturnable<Boolean> cir
     ) {
-        if (!(details instanceof ReplacementAwareProcessingPattern)) {
+        if (!(details instanceof ReplacementAwarePattern)) {
             return;
         }
 
@@ -108,7 +108,7 @@ public abstract class CraftingTreeNodeReplacementMixin {
             CraftingTreeNode instance,
             ICraftingInventory inventory
     ) {
-        if (!ReplacementAwareProcessingPattern.matchesAnyPossibleInput(this.parentInput, this.what)) {
+        if (!ReplacementAwarePattern.matchesAnyPossibleInput(this.parentInput, this.what)) {
             return getValidItemTemplates(inventory);
         }
 

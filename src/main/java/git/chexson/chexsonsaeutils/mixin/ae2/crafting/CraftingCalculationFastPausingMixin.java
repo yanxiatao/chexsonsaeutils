@@ -2,7 +2,7 @@ package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 
 import appeng.api.stacks.AEKey;
 import appeng.crafting.CraftingCalculation;
-import git.chexson.chexsonsaeutils.crafting.fastplan.FastCraftingCalculation;
+import git.chexson.chexsonsaeutils.crafting.solve.FastCraftingCalculation;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

@@ -131,13 +131,19 @@ MOD_DESCRIPTION.md
 # Local planning, agent, MCP, and IDE metadata
 .planning/
 plans/
+.qwen/
 AGENTS.md
 CLAUDE.md
+HANDOFF.md
+QWEN.md
 .mcp.json
 .vscode/
 .codex/
 docs/
-
+.lsp.json
+.jdtls-config/
+.jdtls-workspace/
+.zvec-grep/
 reference-sources/
 appeng/
 

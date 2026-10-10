@@ -4,17 +4,18 @@ import appeng.api.crafting.IPatternDetailsDecoder;
 import appeng.api.crafting.PatternDetailsHelper;
 import git.chexson.chexsonsaeutils.block.crafting.AEDirectProcessingMachineBlock;
 import git.chexson.chexsonsaeutils.block.crafting.AE2ParallelCpuToolBlock;
-import git.chexson.chexsonsaeutils.block.crafting.HighCapacityCraftingMachineBlock;
+import git.chexson.chexsonsaeutils.block.crafting.ExtremeAssemblerBlock;
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
-import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
+import git.chexson.chexsonsaeutils.blockentity.crafting.ExtremeAssemblerBlockEntity;
 import git.chexson.chexsonsaeutils.cell.InfinityCellStore;
 import git.chexson.chexsonsaeutils.cell.MatterMassStore;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.config.FeatureGates;
-import git.chexson.chexsonsaeutils.cell.CellCommand;
-import git.chexson.chexsonsaeutils.cell.CellRegistration;
-import git.chexson.chexsonsaeutils.crafting.formalmachine.FormalMachineAggregatedPatternDecoder;
+import git.chexson.chexsonsaeutils.config.PlanningAlgorithmOrderService;
+import git.chexson.chexsonsaeutils.config.PlanningServerConfig;
+import git.chexson.chexsonsaeutils.command.ChexsonsaeutilsCommand;
+import git.chexson.chexsonsaeutils.crafting.hostbatch.HostBatchPatternDecoder;
+import git.chexson.chexsonsaeutils.crafting.graphplan.engine.GraphPlanCapture;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.mattermass.MatterMassPatternDecoder;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.MachineRecipeConfigMappingRegistry;
@@ -24,7 +25,7 @@ import git.chexson.chexsonsaeutils.client.ae2.PatternItemColorRegistration;
 import git.chexson.chexsonsaeutils.client.ae2.DyeablePatternPackRegistration;
 import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
-import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
+import git.chexson.chexsonsaeutils.menu.implementations.ExtremeAssemblerMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
 import git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor;
@@ -36,6 +37,14 @@ import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgrad
 import git.chexson.chexsonsaeutils.network.directprocessing.DirectProcessingJeiImportPayload;
 import git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternEncoderUpdatePayload;
 import git.chexson.chexsonsaeutils.network.custompatternencoder.CustomPatternSlotChangePacket;
+import git.chexson.chexsonsaeutils.network.planning.PlanningOrderStatePayload;
+import git.chexson.chexsonsaeutils.network.planning.PlanningOrderStateRequestPayload;
+import git.chexson.chexsonsaeutils.network.planning.PlanningOrderUpdatePayload;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixEntriesPayload;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixMatchesPayload;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixRealStacksPayload;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixSearchPayload;
+import git.chexson.chexsonsaeutils.network.matrix.PatternMatrixVisibleRequestPayload;
 import git.chexson.chexsonsaeutils.pattern.replacement.ProcessingPatternReplacementDecoder;
 import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
 import net.minecraft.world.inventory.MenuType;
@@ -43,10 +52,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.storage.LevelResource;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
-import net.neoforged.neoforge.registries.RegisterEvent;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -59,7 +64,6 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
-import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
@@ -76,15 +80,15 @@ public class Chexsonsaeutils {
 
     public static final String MODID = "chexsonsaeutils";
 
-    public static final Supplier<HighCapacityCraftingMachineBlock> HIGH_CAPACITY_CRAFTING_MACHINE_BLOCK =
-            ChexsonsaeutilsContent.HIGH_CAPACITY_CRAFTING_MACHINE_BLOCK;
-    public static final Supplier<Item> HIGH_CAPACITY_CRAFTING_MACHINE_ITEM =
-            ChexsonsaeutilsContent.HIGH_CAPACITY_CRAFTING_MACHINE_ITEM;
-    public static final Supplier<BlockEntityType<HighCapacityCraftingMachineBlockEntity>>
-            HIGH_CAPACITY_CRAFTING_MACHINE_BLOCK_ENTITY =
-                    ChexsonsaeutilsContent.HIGH_CAPACITY_CRAFTING_MACHINE_BLOCK_ENTITY;
-    public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAPACITY_CRAFTING_MACHINE_MENU =
-            ChexsonsaeutilsContent.HIGH_CAPACITY_CRAFTING_MACHINE_MENU;
+    public static final Supplier<ExtremeAssemblerBlock> EXTREME_ASSEMBLER_BLOCK =
+            ChexsonsaeutilsContent.EXTREME_ASSEMBLER_BLOCK;
+    public static final Supplier<Item> EXTREME_ASSEMBLER_ITEM =
+            ChexsonsaeutilsContent.EXTREME_ASSEMBLER_ITEM;
+    public static final Supplier<BlockEntityType<ExtremeAssemblerBlockEntity>>
+            EXTREME_ASSEMBLER_BLOCK_ENTITY =
+                    ChexsonsaeutilsContent.EXTREME_ASSEMBLER_BLOCK_ENTITY;
+    public static final Supplier<MenuType<ExtremeAssemblerMenu>> EXTREME_ASSEMBLER_MENU =
+            ChexsonsaeutilsContent.EXTREME_ASSEMBLER_MENU;
     public static final Supplier<Item> MULTI_LEVEL_EMITTER_ITEM =
             ChexsonsaeutilsContent.MULTI_LEVEL_EMITTER_ITEM;
     public static final Supplier<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> MULTI_LEVEL_EMITTER_MENU =
@@ -112,6 +116,7 @@ public class Chexsonsaeutils {
 
     public Chexsonsaeutils(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, ChexsonsaeutilsCompatibilityConfig.SPEC);
+        modContainer.registerConfig(ModConfig.Type.SERVER, PlanningServerConfig.SPEC);
         ChexsonsaeutilsContent.register(modEventBus);
 
         modEventBus.addListener(this::onCommonSetup);
@@ -148,13 +153,13 @@ public class Chexsonsaeutils {
         // ModLoaded 门控 + try-catch(Throwable)，未加载时无副作用
         event.enqueueWork(AppFluxCompat::registerUpgrade);
         event.enqueueWork(ExtendedAePlusCompat::registerUpgrade);
-        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled")) {
+        if (ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.PROCESSING_PATTERN_REPLACEMENT_ENABLED, "processingPatternReplacementEnabled")) {
             event.enqueueWork(Chexsonsaeutils::registerProcessingPatternReplacementDecoder);
         }
-        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")) {
-            event.enqueueWork(Chexsonsaeutils::registerFormalMachineAggregatedPatternDecoder);
+        if (ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED, "formalMachinePlanningAggregationEnabled")) {
+            event.enqueueWork(Chexsonsaeutils::registerHostBatchPatternDecoder);
         }
-        if (FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED, "matterMassPatternProviderEnabled")) {
+        if (ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED, "matterMassPatternProviderEnabled")) {
             event.enqueueWork(() -> PatternDetailsHelper.registerDecoder(MatterMassPatternDecoder.INSTANCE));
         }
     }
@@ -162,12 +167,16 @@ public class Chexsonsaeutils {
     private void onConfigLoad(ModConfigEvent.Loading event) {
         if (event.getConfig().getSpec() == ChexsonsaeutilsCompatibilityConfig.SPEC) {
             applyDirectProcessingMachineRecipeMappings();
+        } else if (event.getConfig().getSpec() == PlanningServerConfig.SPEC) {
+            PlanningAlgorithmOrderService.global().reload();
         }
     }
 
     private void onConfigReload(ModConfigEvent.Reloading event) {
         if (event.getConfig().getSpec() == ChexsonsaeutilsCompatibilityConfig.SPEC) {
             applyDirectProcessingMachineRecipeMappings();
+        } else if (event.getConfig().getSpec() == PlanningServerConfig.SPEC) {
+            PlanningAlgorithmOrderService.global().reload();
         }
     }
 
@@ -195,10 +204,51 @@ public class Chexsonsaeutils {
                 CustomPatternEncoderUpdatePayload.STREAM_CODEC,
                 CustomPatternEncoderUpdatePayload::handle
         );
+        event.registrar("1").playToServer(
+                PlanningOrderStateRequestPayload.TYPE,
+                PlanningOrderStateRequestPayload.STREAM_CODEC,
+                PlanningOrderStateRequestPayload::handle
+        );
+        event.registrar("1").playToServer(
+                PlanningOrderUpdatePayload.TYPE,
+                PlanningOrderUpdatePayload.STREAM_CODEC,
+                PlanningOrderUpdatePayload::handle
+        );
+        event.registrar("1").playToClient(
+                PlanningOrderStatePayload.TYPE,
+                PlanningOrderStatePayload.STREAM_CODEC,
+                PlanningOrderStatePayload::handle
+        );
+        var matrixRegistrar = event.registrar("1");
+        matrixRegistrar.playToServer(
+                PatternMatrixSearchPayload.TYPE,
+                PatternMatrixSearchPayload.STREAM_CODEC,
+                PatternMatrixSearchPayload::handle
+        );
+        matrixRegistrar.playToServer(
+                PatternMatrixVisibleRequestPayload.TYPE,
+                PatternMatrixVisibleRequestPayload.STREAM_CODEC,
+                PatternMatrixVisibleRequestPayload::handle
+        );
+        matrixRegistrar.playToClient(
+                PatternMatrixEntriesPayload.TYPE,
+                PatternMatrixEntriesPayload.STREAM_CODEC,
+                PatternMatrixEntriesPayload::handle
+        );
+        matrixRegistrar.playToClient(
+                PatternMatrixMatchesPayload.TYPE,
+                PatternMatrixMatchesPayload.STREAM_CODEC,
+                PatternMatrixMatchesPayload::handle
+        );
+        matrixRegistrar.playToClient(
+                PatternMatrixRealStacksPayload.TYPE,
+                PatternMatrixRealStacksPayload.STREAM_CODEC,
+                PatternMatrixRealStacksPayload::handle
+        );
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {
-        CellCommand.register(event.getDispatcher());
+        ChexsonsaeutilsCommand.register(event.getDispatcher());
     }
 
     private void onAddReloadListeners(AddReloadListenerEvent event) {
@@ -241,6 +291,7 @@ public class Chexsonsaeutils {
                 event.getServer().getWorldPath(LevelResource.ROOT),
                 event.getServer().registryAccess()
         );
+        GraphPlanCapture.awaitPendingWrites();
     }
 
     private static void saveInfinityCellStore(net.minecraft.server.level.ServerLevel level) {
@@ -278,7 +329,12 @@ public class Chexsonsaeutils {
                         .getModContainerById(MODID)
                         .orElseThrow();
                 container.registerExtensionPoint(IConfigScreenFactory.class,
-                        (mc, parent) -> new ConfigurationScreen(container, parent));
+                        (mc, parent) -> new git.chexson.chexsonsaeutils.client.gui.config.ChexsonsaeutilsConfigHomeScreen(
+                                parent,
+                                container,
+                                git.chexson.chexsonsaeutils.client.gui.config
+                                        .NetworkPlanningAlgorithmOrderClientBridge.instance()
+                        ));
             });
         }
     }
@@ -290,8 +346,8 @@ public class Chexsonsaeutils {
         decoders.add(0, decoder);
     }
 
-    private static void registerFormalMachineAggregatedPatternDecoder() {
-        IPatternDetailsDecoder decoder = new FormalMachineAggregatedPatternDecoder();
+    private static void registerHostBatchPatternDecoder() {
+        IPatternDetailsDecoder decoder = new HostBatchPatternDecoder();
         List<IPatternDetailsDecoder> decoders = PatternDetailsHelperAccessor.chexsonsaeutils$getDecoders();
         decoders.removeIf(existingDecoder -> existingDecoder.getClass() == decoder.getClass());
         decoders.add(0, decoder);

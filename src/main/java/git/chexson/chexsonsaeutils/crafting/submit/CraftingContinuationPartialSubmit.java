@@ -15,7 +15,8 @@ import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import git.chexson.chexsonsaeutils.crafting.CraftingContinuationMode;
-import git.chexson.chexsonsaeutils.crafting.color.DyeablePatternRecursivePlan;
+import git.chexson.chexsonsaeutils.crafting.executionwitness.PlanningInputWitnessPlans;
+import git.chexson.chexsonsaeutils.crafting.recursive.RecursivePlanContract;
 import git.chexson.chexsonsaeutils.crafting.parallelcpu.ParallelCraftingCPU;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker;
 import git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationWaitingBranch;
@@ -188,10 +189,15 @@ public final class CraftingContinuationPartialSubmit {
     }
 
     public static ICraftingPlan createNativeSubmissionPlan(ICraftingPlan plan) {
-        return new NativeJobSubmissionPlan(plan);
+        ICraftingPlan nativePlan = new NativeJobSubmissionPlan(plan);
+        var witness = PlanningInputWitnessPlans.find(plan);
+        return witness == null ? nativePlan
+                : new git.chexson.chexsonsaeutils.crafting.executionwitness.WitnessedCraftingPlan(
+                        nativePlan, witness);
     }
 
-    private record NativeJobSubmissionPlan(ICraftingPlan delegate) implements ICraftingPlan, DyeablePatternRecursivePlan {
+    private record NativeJobSubmissionPlan(ICraftingPlan delegate)
+            implements ICraftingPlan, RecursivePlanContract {
         private NativeJobSubmissionPlan {
             Objects.requireNonNull(delegate, "delegate");
         }
@@ -238,7 +244,7 @@ public final class CraftingContinuationPartialSubmit {
 
         @Override
         public boolean chexsonsaeutils$usesDyeableRecursivePlanning() {
-            return delegate instanceof DyeablePatternRecursivePlan recursivePlan
+            return delegate instanceof RecursivePlanContract recursivePlan
                     && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning();
         }
 
@@ -249,7 +255,7 @@ public final class CraftingContinuationPartialSubmit {
 
         @Override
         public KeyCounter chexsonsaeutils$dyeableRecursiveInitialItems() {
-            if (delegate instanceof DyeablePatternRecursivePlan recursivePlan
+            if (delegate instanceof RecursivePlanContract recursivePlan
                     && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning()) {
                 return recursivePlan.chexsonsaeutils$dyeableRecursiveInitialItems();
             }
@@ -258,7 +264,7 @@ public final class CraftingContinuationPartialSubmit {
 
         @Override
         public KeyCounter chexsonsaeutils$dyeableRecursiveInternalItems() {
-            if (delegate instanceof DyeablePatternRecursivePlan recursivePlan
+            if (delegate instanceof RecursivePlanContract recursivePlan
                     && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning()) {
                 return recursivePlan.chexsonsaeutils$dyeableRecursiveInternalItems();
             }
@@ -267,7 +273,7 @@ public final class CraftingContinuationPartialSubmit {
 
         @Override
         public long chexsonsaeutils$dyeableRecursiveFinalOutputAmount() {
-            if (delegate instanceof DyeablePatternRecursivePlan recursivePlan
+            if (delegate instanceof RecursivePlanContract recursivePlan
                     && recursivePlan.chexsonsaeutils$usesDyeableRecursivePlanning()) {
                 return recursivePlan.chexsonsaeutils$dyeableRecursiveFinalOutputAmount();
             }

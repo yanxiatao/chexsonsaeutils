@@ -2,23 +2,17 @@ package git.chexson.chexsonsaeutils.crafting.directprocessing;
 
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
+import com.mojang.logging.LogUtils;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public final class DirectProcessingStackSupport {
 
-    private static final Comparator<GenericStack> STACK_COMPARATOR = Comparator
-            .comparing((GenericStack stack) -> stack.what().toString())
-            .thenComparingLong(GenericStack::amount);
-
-    private static final Comparator<RecipeSignatureInput> INPUT_COMPARATOR = Comparator
-            .comparing((RecipeSignatureInput input) -> input.input().toString())
-            .thenComparingLong(RecipeSignatureInput::amount);
+    private static final org.slf4j.Logger LOG = LogUtils.getLogger();
 
     private DirectProcessingStackSupport() {
     }
@@ -41,8 +35,25 @@ public final class DirectProcessingStackSupport {
         for (Map.Entry<AEKey, Long> entry : merged.entrySet()) {
             normalized.add(new GenericStack(entry.getKey(), Math.max(1L, entry.getValue())));
         }
-        normalized.sort(STACK_COMPARATOR);
         return List.copyOf(normalized);
+    }
+
+    static Map<AEKey, Long> stackAmounts(List<GenericStack> stacks) {
+        Map<AEKey, Long> amounts = new LinkedHashMap<>();
+        if (stacks == null) {
+            return Map.of();
+        }
+        for (GenericStack stack : stacks) {
+            if (stack == null || stack.what() == null || stack.amount() <= 0L) {
+                continue;
+            }
+            amounts.merge(stack.what(), stack.amount(), DirectProcessingStackSupport::saturatingAdd);
+        }
+        return amounts.isEmpty() ? Map.of() : Map.copyOf(amounts);
+    }
+
+    static boolean stacksEqual(List<GenericStack> left, List<GenericStack> right) {
+        return stackAmounts(left).equals(stackAmounts(right));
     }
 
     static List<RecipeSignatureInput> normalizeSignatureInputs(List<RecipeSignatureInput> rawInputs) {
@@ -63,8 +74,25 @@ public final class DirectProcessingStackSupport {
         for (Map.Entry<AEKey, Long> entry : merged.entrySet()) {
             normalized.add(new RecipeSignatureInput(entry.getKey(), entry.getValue()));
         }
-        normalized.sort(INPUT_COMPARATOR);
         return List.copyOf(normalized);
+    }
+
+    static Map<AEKey, Long> signatureInputAmounts(List<RecipeSignatureInput> inputs) {
+        Map<AEKey, Long> amounts = new LinkedHashMap<>();
+        if (inputs == null) {
+            return Map.of();
+        }
+        for (RecipeSignatureInput input : inputs) {
+            if (input == null || input.input() == null || input.amount() <= 0L) {
+                continue;
+            }
+            amounts.merge(input.input(), input.amount(), DirectProcessingStackSupport::saturatingAdd);
+        }
+        return amounts.isEmpty() ? Map.of() : Map.copyOf(amounts);
+    }
+
+    static boolean signatureInputsEqual(List<RecipeSignatureInput> left, List<RecipeSignatureInput> right) {
+        return signatureInputAmounts(left).equals(signatureInputAmounts(right));
     }
 
     static List<RecipeSignatureInput> toSignatureInputs(List<GenericStack> rawStacks) {
@@ -117,25 +145,20 @@ public final class DirectProcessingStackSupport {
             List<RecipeSignatureInput> selectedInputs,
             List<RecipeSignatureInput> inputsPerExecution
     ) {
-        if (selectedInputs == null || inputsPerExecution == null
-                || selectedInputs.isEmpty() || inputsPerExecution.isEmpty()
-                || selectedInputs.size() != inputsPerExecution.size()) {
+        Map<AEKey, Long> selectedAmounts = signatureInputAmounts(selectedInputs);
+        Map<AEKey, Long> requiredAmounts = signatureInputAmounts(inputsPerExecution);
+        if (selectedAmounts.isEmpty() || selectedAmounts.size() != requiredAmounts.size()
+                || !selectedAmounts.keySet().equals(requiredAmounts.keySet())) {
             return null;
         }
         Integer ratio = null;
-        for (int index = 0; index < inputsPerExecution.size(); index++) {
-            RecipeSignatureInput selected = selectedInputs.get(index);
-            RecipeSignatureInput required = inputsPerExecution.get(index);
-            if (selected == null || required == null || selected.input() == null || required.input() == null) {
+        for (Map.Entry<AEKey, Long> entry : requiredAmounts.entrySet()) {
+            long selectedAmount = selectedAmounts.getOrDefault(entry.getKey(), 0L);
+            long requiredAmount = entry.getValue();
+            if (requiredAmount <= 0L || selectedAmount < requiredAmount || selectedAmount % requiredAmount != 0L) {
                 return null;
             }
-            if (!selected.input().equals(required.input()) || selected.amount() < required.amount()) {
-                return null;
-            }
-            if (selected.amount() % required.amount() != 0L) {
-                return null;
-            }
-            long candidateRatio = selected.amount() / required.amount();
+            long candidateRatio = selectedAmount / requiredAmount;
             if (candidateRatio <= 0L || candidateRatio > Integer.MAX_VALUE) {
                 return null;
             }
@@ -163,6 +186,7 @@ public final class DirectProcessingStackSupport {
             return 0L;
         }
         if (amount > Long.MAX_VALUE / count) {
+            LOG.warn("Direct processing stack amount {} x {} overflows long: stack marked unusable", amount, count);
             return 0L;
         }
         return amount * count;

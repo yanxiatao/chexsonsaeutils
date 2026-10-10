@@ -4,8 +4,9 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.stacks.AEItemKey;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
-import git.chexson.chexsonsaeutils.crafting.color.PatternColorHelper;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
@@ -16,8 +17,8 @@ import java.util.Map;
 
 public final class LocalPatternProviderFacade {
 
-    private final AbstractHighCapacityCraftingHostBlockEntity host;
-    private final PagedPatternInventory pagedPatternInventory;
+    private final AbstractExtremeAssemblerHostBlockEntity host;
+    private final PatternSlotStore patternStore;
     private final DirtySlotPatternRefreshScheduler refreshScheduler;
     private final DecodedPatternEntryCache decodedPatternEntryCache;
     private final Map<Integer, IMolecularAssemblerSupportedPattern> supportedPatternsBySlot = new LinkedHashMap<>();
@@ -25,19 +26,19 @@ public final class LocalPatternProviderFacade {
     private boolean providerVisibleSetUpdatePending;
 
     public LocalPatternProviderFacade(
-            AbstractHighCapacityCraftingHostBlockEntity host,
-            PagedPatternInventory pagedPatternInventory,
+            AbstractExtremeAssemblerHostBlockEntity host,
+            PatternSlotStore patternStore,
             DirtySlotPatternRefreshScheduler refreshScheduler,
             DecodedPatternEntryCache decodedPatternEntryCache
     ) {
         this.host = host;
-        this.pagedPatternInventory = pagedPatternInventory;
+        this.patternStore = patternStore;
         this.refreshScheduler = refreshScheduler;
         this.decodedPatternEntryCache = decodedPatternEntryCache;
     }
 
     public void markAllDirty() {
-        refreshScheduler.markRangeDirty(0, pagedPatternInventory.getTotalSlots());
+        refreshScheduler.markRangeDirty(0, patternStore.getTotalSlots());
     }
 
     public void clear() {
@@ -58,8 +59,8 @@ public final class LocalPatternProviderFacade {
         List<Integer> dirtySlots = refreshScheduler.drainDirtySlots();
         List<Integer> slotsToRefresh = dirtySlots;
         if (!localOptimizationEnabled) {
-            slotsToRefresh = new ArrayList<>(pagedPatternInventory.getTotalSlots());
-            for (int globalSlot = 0; globalSlot < pagedPatternInventory.getTotalSlots(); globalSlot++) {
+            slotsToRefresh = new ArrayList<>(patternStore.getTotalSlots());
+            for (int globalSlot = 0; globalSlot < patternStore.getTotalSlots(); globalSlot++) {
                 slotsToRefresh.add(globalSlot);
             }
         }
@@ -103,7 +104,7 @@ public final class LocalPatternProviderFacade {
     }
 
     private boolean refreshSingleSlot(Level level, int globalSlot, boolean localOptimizationEnabled) {
-        ItemStack stack = pagedPatternInventory.getVirtualSlot(globalSlot);
+        ItemStack stack = patternStore.getStackInSlot(globalSlot);
         if (stack.isEmpty()) {
             decodedPatternEntryCache.invalidate(globalSlot);
             return supportedPatternsBySlot.remove(globalSlot) != null;
@@ -135,8 +136,14 @@ public final class LocalPatternProviderFacade {
     }
 
     private List<IPatternDetails> rebuildUniqueAvailablePatterns() {
-        Map<PatternIdentity, IMolecularAssemblerSupportedPattern> uniquePatterns = new LinkedHashMap<>();
-        for (IMolecularAssemblerSupportedPattern pattern : supportedPatternsBySlot.values()) {
+        return uniquePatternsInOrder(supportedPatternsBySlot.values());
+    }
+
+    static List<IPatternDetails> uniquePatternsInOrder(
+            Iterable<? extends IPatternDetails> patterns
+    ) {
+        Map<PatternIdentity, IPatternDetails> uniquePatterns = new LinkedHashMap<>();
+        for (IPatternDetails pattern : patterns) {
             uniquePatterns.putIfAbsent(PatternIdentity.capture(pattern), pattern);
         }
         return List.copyOf(uniquePatterns.values());
@@ -179,9 +186,35 @@ public final class LocalPatternProviderFacade {
         return null;
     }
 
-    private record PatternIdentity(AEItemKey definition, int color) {
+    private record PatternIdentity(AEItemKey definition) {
         private static PatternIdentity capture(IPatternDetails pattern) {
-            return new PatternIdentity(pattern.getDefinition(), PatternColorHelper.getPatternColor(pattern));
+            ItemStack definitionStack = pattern.getDefinition().toStack(1);
+            definitionStack.remove(DataComponents.DYED_COLOR);
+            removeLegacyDisplayColor(definitionStack);
+            return new PatternIdentity(AEItemKey.of(definitionStack));
+        }
+
+        private static void removeLegacyDisplayColor(ItemStack stack) {
+            CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
+            if (customData == null) {
+                return;
+            }
+            var tag = customData.copyTag();
+            if (!tag.contains("display")) {
+                return;
+            }
+            var displayTag = tag.getCompound("display");
+            displayTag.remove("color");
+            if (displayTag.isEmpty()) {
+                tag.remove("display");
+            } else {
+                tag.put("display", displayTag);
+            }
+            if (tag.isEmpty()) {
+                stack.remove(DataComponents.CUSTOM_DATA);
+            } else {
+                stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+            }
         }
     }
 }

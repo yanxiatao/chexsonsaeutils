@@ -36,6 +36,7 @@ import java.util.Set;
 
 public final class GenericRecipeShapeReader {
 
+    private static final org.slf4j.Logger LOG = com.mojang.logging.LogUtils.getLogger();
     private static final int MAX_CANDIDATE_INPUTS_PER_RECIPE = 256;
 
     private final DirectProcessingStackConverterRegistry stackConverters;
@@ -847,34 +848,6 @@ public final class GenericRecipeShapeReader {
         return List.copyOf(choices);
     }
 
-    private List<List<RecipeSignatureInput>> readStackChoices(List<List<ItemStack>> stackChoices) {
-        if (stackChoices == null || stackChoices.isEmpty()) {
-            return List.of();
-        }
-        List<List<RecipeSignatureInput>> choices = new ArrayList<>();
-        int candidateCount = 1;
-        for (List<ItemStack> rawChoice : stackChoices) {
-            List<RecipeSignatureInput> signatureChoices = new ArrayList<>();
-            if (rawChoice == null) {
-                return List.of();
-            }
-            for (ItemStack stack : rawChoice) {
-                RecipeSignatureInput input = toSignatureInput(stack);
-                if (input != null) {
-                    signatureChoices.add(input);
-                }
-            }
-            if (signatureChoices.isEmpty()) {
-                return List.of();
-            }
-            if (candidateCount > MAX_CANDIDATE_INPUTS_PER_RECIPE / signatureChoices.size()) {
-                return List.of();
-            }
-            candidateCount *= signatureChoices.size();
-            choices.add(List.copyOf(signatureChoices));
-        }
-        return List.copyOf(choices);
-    }
 
     private List<List<RecipeSignatureInput>> readGenericStackChoices(List<List<GenericStack>> stackChoices) {
         if (stackChoices == null || stackChoices.isEmpty()) {
@@ -1050,6 +1023,7 @@ public final class GenericRecipeShapeReader {
             return 0L;
         }
         if (left > Long.MAX_VALUE / right) {
+            LOG.warn("Recipe input scaling {} x {} overflows long: recipe marked unreadable", left, right);
             return 0L;
         }
         return left * right;

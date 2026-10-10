@@ -12,6 +12,7 @@ import appeng.client.gui.style.StyleManager;
 import appeng.client.gui.widgets.IconButton;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.AppEngSlot;
+import git.chexson.chexsonsaeutils.client.gui.matrix.MatrixText;
 import git.chexson.chexsonsaeutils.blockentity.mattermassprovider.MatterMassPatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.client.gui.MultiPagePatternScreen;
 import git.chexson.chexsonsaeutils.menu.mattermassprovider.MatterMassPatternProviderMenu;
@@ -141,14 +142,8 @@ public class MatterMassPatternProviderScreen extends AEBaseScreen<MatterMassPatt
     @Override
     public void drawFG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY) {
         if (this.menu.getPages() > 1) {
-            String pageText = (this.menu.getPage() + 1) + "/" + this.menu.getPages();
-            guiGraphics.drawString(
-                    this.font,
-                    pageText,
-                    this.imageWidth - 8 - this.font.width(pageText),
-                    22,
-                    0x404040
-            );
+            MatrixText.drawPageIndicator(guiGraphics, this.font, this.imageWidth, 22,
+                    this.menu.getPage(), this.menu.getPages());
         }
     }
 

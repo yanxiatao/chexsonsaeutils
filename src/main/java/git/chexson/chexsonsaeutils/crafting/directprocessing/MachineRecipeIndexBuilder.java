@@ -21,6 +21,7 @@ import java.util.Set;
 
 public final class MachineRecipeIndexBuilder {
 
+    private static final org.slf4j.Logger LOG = com.mojang.logging.LogUtils.getLogger();
     private final MachineAdapterRegistry adapterRegistry;
     private final RecipeTypeCandidateResolver candidateResolver;
     private final GenericRecipeShapeReader shapeReader;
@@ -353,6 +354,7 @@ public final class MachineRecipeIndexBuilder {
             return 0L;
         }
         if (left > Long.MAX_VALUE / right) {
+            LOG.warn("Pattern input amount {} x {} overflows long: pattern dropped from index", left, right);
             return 0L;
         }
         return left * right;

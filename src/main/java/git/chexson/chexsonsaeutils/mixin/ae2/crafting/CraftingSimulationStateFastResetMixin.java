@@ -3,7 +3,7 @@ package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.inv.CraftingSimulationState;
-import git.chexson.chexsonsaeutils.crafting.fastplan.FastSimStateReset;
+import git.chexson.chexsonsaeutils.crafting.solve.FastSimStateReset;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 

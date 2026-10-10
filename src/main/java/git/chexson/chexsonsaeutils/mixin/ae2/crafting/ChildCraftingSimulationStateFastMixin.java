@@ -2,7 +2,7 @@ package git.chexson.chexsonsaeutils.mixin.ae2.crafting;
 
 import appeng.crafting.inv.ChildCraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
-import git.chexson.chexsonsaeutils.crafting.fastplan.FastSimStateParentAccess;
+import git.chexson.chexsonsaeutils.crafting.solve.FastSimStateParentAccess;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;

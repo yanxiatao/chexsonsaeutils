@@ -5,7 +5,6 @@ import dev.ftb.mods.ftbultimine.FTBUltiminePlayerData;
 import dev.ftb.mods.ftbultimine.api.shape.ShapeContext;
 import dev.ftb.mods.ftbultimine.rightclick.RightClickDispatcher;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
-import git.chexson.chexsonsaeutils.config.FeatureGates;
 import git.chexson.chexsonsaeutils.integration.ftbultimine.AEMemoryCardHandler;
 import net.minecraft.world.InteractionHand;
 import org.spongepowered.asm.mixin.Mixin;
@@ -23,7 +22,7 @@ public abstract class RightClickDispatcherMemoryCardMixin {
             FTBUltiminePlayerData data,
             CallbackInfoReturnable<Integer> cir
     ) {
-        if (!FeatureGates.isEnabled(ChexsonsaeutilsCompatibilityConfig.FTB_ULTIMINE_MEMORY_CARD_ENABLED, "ftbUltimineMemoryCardEnabled")) {
+        if (!ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.FTB_ULTIMINE_MEMORY_CARD_ENABLED, "ftbUltimineMemoryCardEnabled")) {
             return;
         }
         if (!(shapeContext.player().getItemInHand(hand).getItem() instanceof IMemoryCard)) {

@@ -5,13 +5,13 @@ import org.jetbrains.annotations.Nullable;
 public final class ProcessingExecutionLane {
 
     @Nullable
-    private ProcessingCompiledTask activeTask;
+    private ProcessingTask activeTask;
 
     public boolean isIdle() {
         return activeTask == null;
     }
 
-    public boolean assign(ProcessingCompiledTask task) {
+    public boolean assign(ProcessingTask task) {
         if (activeTask != null) {
             return false;
         }
@@ -20,7 +20,7 @@ public final class ProcessingExecutionLane {
     }
 
     @Nullable
-    public ProcessingCompiledTask activeTask() {
+    public ProcessingTask activeTask() {
         return activeTask;
     }
 
@@ -33,11 +33,11 @@ public final class ProcessingExecutionLane {
     }
 
     @Nullable
-    public ProcessingCompiledTask releaseIfReady() {
+    public ProcessingTask releaseIfReady() {
         if (activeTask == null || !activeTask.isReadyToComplete()) {
             return null;
         }
-        ProcessingCompiledTask completed = activeTask;
+        ProcessingTask completed = activeTask;
         activeTask = null;
         return completed;
     }

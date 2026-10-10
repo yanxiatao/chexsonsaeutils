@@ -11,7 +11,6 @@ import net.neoforged.neoforge.items.IItemHandler;
 
 import appeng.api.inventories.BaseInternalInventory;
 import appeng.api.inventories.InternalInventory;
-import appeng.api.stacks.AEItemKey;
 import appeng.helpers.patternprovider.PatternProviderLogicHost;
 import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;

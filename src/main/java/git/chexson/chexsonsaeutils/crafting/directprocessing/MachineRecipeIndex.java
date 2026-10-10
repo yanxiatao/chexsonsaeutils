@@ -121,11 +121,10 @@ public final class MachineRecipeIndex {
         if (candidates == null || candidates.isEmpty()) {
             return null;
         }
-        List<RecipeSignatureInput> normalizedInputs = DirectProcessingStackSupport.normalizeSignatureInputs(inputs);
-        List<GenericStack> normalizedOutputs = DirectProcessingStackSupport.normalizeStacks(outputs);
+        Map<AEKey, Long> normalizedOutputs = DirectProcessingStackSupport.stackAmounts(outputs);
         for (RecipeSignature candidate : candidates) {
             Integer inputRatio = DirectProcessingStackSupport.deriveExecutionCount(
-                    normalizedInputs,
+                    inputs,
                     candidate.inputs()
             );
             if (inputRatio == null || inputRatio <= 0) {
@@ -135,7 +134,7 @@ public final class MachineRecipeIndex {
                     candidate.outputs(),
                     inputRatio
             );
-            if (!normalizedOutputs.equals(scaledOutputs)) {
+            if (!normalizedOutputs.equals(DirectProcessingStackSupport.stackAmounts(scaledOutputs))) {
                 continue;
             }
             return new ScaledSignatureMatch(candidate, inputRatio);
