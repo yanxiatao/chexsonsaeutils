@@ -10,6 +10,7 @@ import java.util.List;
 public final class DirectProcessingExternalRecipeShapeRegistry {
 
     private static final String MEKANISM_MOD_ID = "mekanism";
+    private static final String EXTENDED_CRAFTING_MOD_ID = "extendedcrafting";
     private static final DirectProcessingExternalRecipeShapeRegistry DEFAULT = createDefaultRegistry();
 
     private final List<ExternalRecipeShapeSupport> shapeSupports;
@@ -42,6 +43,10 @@ public final class DirectProcessingExternalRecipeShapeRegistry {
         if (modList != null && modList.isLoaded(MEKANISM_MOD_ID)) {
             supports.add(new git.chexson.chexsonsaeutils.crafting.directprocessing.mekanism
                     .MekanismRecipeShapeSupport(DirectProcessingStackConverterRegistry.directProcessingDefaults()));
+        }
+        if (modList != null && modList.isLoaded(EXTENDED_CRAFTING_MOD_ID)) {
+            supports.add(new git.chexson.chexsonsaeutils.crafting.directprocessing.extendedcrafting
+                    .ExtendedCraftingRecipeShapeSupport(DirectProcessingStackConverterRegistry.directProcessingDefaults()));
         }
         return new DirectProcessingExternalRecipeShapeRegistry(supports);
     }

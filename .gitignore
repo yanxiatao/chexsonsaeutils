@@ -127,6 +127,7 @@ MOD_DESCRIPTION.md
 
 # Local planning, agent, MCP, and IDE metadata
 .planning/
+plans/
 AGENTS.md
 CLAUDE.md
 .mcp.json
@@ -135,6 +136,24 @@ CLAUDE.md
 docs/
 
 reference-sources/
+appeng/
 
 # Local config backups
+config/
 config/*.bak
+
+# codemap auto-generated state and docs
+.slim/
+.slim/deepwork/
+**/codemap.md
+
+# OpenCode local ignore rules (tool config, not project source)
+.ignore
+
+# Eclipse IDE
+.classpath
+.eclipse/
+.factorypath
+.project
+.settings/
+bin/

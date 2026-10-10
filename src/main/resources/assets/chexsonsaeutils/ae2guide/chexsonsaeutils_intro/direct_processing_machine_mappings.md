@@ -1,15 +1,15 @@
 ---
 navigation:
   parent: chexsonsaeutils_intro/index.md
-  title: 直连处理机映射
+  title: 径行映射
   position: 80
 categories:
   - chexsonsaeutils configuration
 ---
 
-# 直连处理机映射
+# 径行映射
 
-AE 直连处理机的用户映射文件路径是
+径行的用户映射文件路径是
 `config/chexsonsaeutils/direct_processing_machines.json`。
 
 ## 字段说明

@@ -20,14 +20,14 @@ categories:
 
 这些布尔值都是启动期功能总开关。
 
-## 并行 CPU 配置节
+## 无阂枢配置节
 
-`[parallelCraftingCpuTool]` 用来控制工具是否启用，
-以及并行 lane、宣告存储、调度预算等参数。
+`[parallelCraftingCpuTool]` 用来控制无阂枢是否启用，
+以及无阂 lane、宣告存储、调度预算等参数。
 
-## 直连处理机配置节
+## 径行配置节
 
-`[aeDirectProcessingMachine]` 用来控制直连处理机的配方映射、
+`[aeDirectProcessingMachine]` 用来控制径行的配方映射、
 执行预算档位，以及通用配方发现开关。
 
 `recipeMappings` 接收显式的机器到配方类型映射。

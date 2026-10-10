@@ -278,10 +278,11 @@ public final class ParallelCraftingCpuGrid {
     ) {
         AutoSelectionResult result = findAutoSelectionCluster(job, src, prioritizePower);
         if (result.selectedCluster() == null) {
-            return null;
+            return result.hasAnyUnsuitable()
+                    ? CraftingSubmitResult.noSuitableCpu(result.unsuitableCpus())
+                    : null;
         }
-        ICraftingSubmitResult submitResult = submitToCluster(result.selectedCluster(), job, requestingMachine, src);
-        return submitResult != null && submitResult.successful() ? submitResult : null;
+        return submitToCluster(result.selectedCluster(), job, requestingMachine, src);
     }
 
     private ICraftingSubmitResult submitPartialToAutoSelectedCluster(
@@ -292,15 +293,11 @@ public final class ParallelCraftingCpuGrid {
     ) {
         AutoSelectionResult result = findAutoSelectionCluster(job, src, prioritizePower);
         if (result.selectedCluster() == null) {
-            return null;
+            return result.hasAnyUnsuitable()
+                    ? CraftingSubmitResult.noSuitableCpu(result.unsuitableCpus())
+                    : null;
         }
-        ICraftingSubmitResult submitResult = submitPartialToCluster(
-                result.selectedCluster(),
-                job,
-                requestingMachine,
-                src
-        );
-        return submitResult != null && submitResult.successful() ? submitResult : null;
+        return submitPartialToCluster(result.selectedCluster(), job, requestingMachine, src);
     }
 
     private AutoSelectionResult findAutoSelectionCluster(
@@ -330,10 +327,6 @@ public final class ParallelCraftingCpuGrid {
                 busy++;
                 continue;
             }
-            if (job != null && cluster.storageBytes() < job.bytes()) {
-                tooSmall++;
-                continue;
-            }
             if (!cluster.canBeAutoSelectedFor(src)) {
                 excluded++;
                 continue;
@@ -359,7 +352,6 @@ public final class ParallelCraftingCpuGrid {
                 .comparing((ParallelCraftingCpuCluster cluster) -> cluster.isPreferredFor(src))
                 .reversed()
                 .thenComparing(processorComparator)
-                .thenComparingLong(ParallelCraftingCpuCluster::storageBytes)
                 .thenComparingInt(ParallelCraftingCpuCluster::activeLaneCount);
     }
 

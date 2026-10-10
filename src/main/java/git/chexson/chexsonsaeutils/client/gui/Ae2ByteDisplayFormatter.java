@@ -14,6 +14,9 @@ public final class Ae2ByteDisplayFormatter {
     }
 
     public static String format(long bytes) {
+        if (bytes == Long.MAX_VALUE) {
+            return "∞";
+        }
         if (bytes < 1024L) {
             return Long.toString(bytes);
         }
@@ -29,6 +32,9 @@ public final class Ae2ByteDisplayFormatter {
     }
 
     public static MutableComponent component(long bytes) {
+        if (bytes == Long.MAX_VALUE) {
+            return Component.literal("∞").withStyle(style -> style.withColor(0x55FFFF));
+        }
         return Component.literal(format(bytes)).withStyle(Tooltips.NUMBER_TEXT);
     }
 

@@ -24,19 +24,19 @@
     },
     "PLAYER_HOTBAR": {
       "left": 8,
-      "top": 218,
+      "top": 212,
       "grid": "HORIZONTAL"
     },
     "UPGRADE": {
-      "left": 176,
-      "top": 88,
+      "left": 196,
+      "top": 85,
       "grid": "VERTICAL"
     }
   },
   "widgets": {
     "upgrades": {
       "left": 176,
-      "top": 88
+      "top": 85
     }
   },
   "text": {
@@ -56,15 +56,6 @@
       "position": {
         "left": 28,
         "top": 56
-      }
-    },
-    "player_inventory_title": {
-      "text": {
-        "translate": "container.inventory"
-      },
-      "position": {
-        "left": 8,
-        "top": 138
       }
     }
   }

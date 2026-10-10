@@ -1,0 +1,25 @@
+{
+  "$schema": "schema.json",
+  "includes": ["common/common.json", "common/player_inventory.json"],
+  "background": {
+    "texture": "guis/condenser.png",
+    "srcRect": [0, 0, 176, 199]
+  },
+  "slots": {
+    "MACHINE_INPUT": {
+      "left": 51,
+      "top": 52
+    }
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.chexsonsaeutils.custom_pattern_upgrade"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    }
+  }
+}

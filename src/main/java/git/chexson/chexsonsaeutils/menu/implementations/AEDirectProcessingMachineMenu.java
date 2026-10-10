@@ -325,6 +325,20 @@ public class AEDirectProcessingMachineMenu extends UpgradeableMenu<AEDirectProce
         }
 
         @Override
+        public ItemStack getDisplayStack() {
+            if (isRemote()) {
+                final ItemStack is = super.getDisplayStack();
+                if (!is.isEmpty() && is.getItem() instanceof appeng.crafting.pattern.EncodedPatternItem iep) {
+                    final ItemStack out = iep.getOutput(is);
+                    if (!out.isEmpty()) {
+                        return out;
+                    }
+                }
+            }
+            return super.getDisplayStack();
+        }
+
+        @Override
         public boolean mayPlace(ItemStack stack) {
             return host.isProcessingPattern(stack);
         }

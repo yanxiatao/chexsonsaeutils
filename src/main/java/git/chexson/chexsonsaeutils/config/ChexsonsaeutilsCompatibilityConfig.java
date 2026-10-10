@@ -10,20 +10,19 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     public static final ModConfigSpec.BooleanValue CRAFTING_CONTINUATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FORMAL_MACHINE_PLANNING_AGGREGATION_ENABLED;
     public static final ModConfigSpec.BooleanValue PROCESSING_PATTERN_REPLACEMENT_ENABLED;
+    public static final ModConfigSpec.IntValue MAX_CUSTOM_PATTERN_PAGES;
     public static final ModConfigSpec.BooleanValue DYEABLE_PATTERNS_ENABLED;
     public static final ModConfigSpec.ConfigValue<Integer> DYEABLE_RECURSIVE_RETAINED_CATALYST_AMOUNT;
     public static final ModConfigSpec.BooleanValue ENHANCED_CRAFTING_STATUS_ENABLED;
     public static final ModConfigSpec.BooleanValue BUILDING_GADGETS2_INTEGRATION_ENABLED;
     public static final ModConfigSpec.BooleanValue FTB_ULTIMINE_MEMORY_CARD_ENABLED;
     public static final ModConfigSpec.BooleanValue PARALLEL_CRAFTING_CPU_ENABLED;
-    public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_CO_PROCESSORS_PER_VIRTUAL_CPU;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_MAX_SUBMISSIONS_PER_TICK_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_PATTERN_PUSHES_PER_TICK_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_MAX_PROVIDER_CHECKS_PER_TICK_PER_GRID;
     public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_TICK_BUDGET_NANOS_PER_GRID;
-    public static final ModConfigSpec.ConfigValue<Long> PARALLEL_CRAFTING_CPU_STORAGE_BYTES;
     public static final ModConfigSpec.ConfigValue<Integer> PARALLEL_CRAFTING_CPU_LANE_SHARD_COUNT;
     public static final ModConfigSpec.ConfigValue<List<? extends String>>
             AE_DIRECT_PROCESSING_MACHINE_RECIPE_MAPPINGS;
@@ -54,6 +53,13 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.processingPatternReplacementEnabled")
                 .define("processingPatternReplacementEnabled", true);
+        MAX_CUSTOM_PATTERN_PAGES = builder
+                .comment("Maximum pattern pages of the frame pattern provider.",
+                        "Each page holds 36 pattern slots; the pattern inventory capacity is pages * 36.",
+                        "Extending pages is unlocked by consuming items (phase 5b), and expanded pages are",
+                        "kept when the frame is dismantled. Takes effect after restart.")
+                .translation("configuration.chexsonsaeutils.maxFramePatternPages")
+                .defineInRange("maxFramePatternPages", 8, 1, 8);
         builder.pop();
 
         builder.comment("AEA Feature Migration")
@@ -114,12 +120,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                         "Takes effect after restart.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuEnabled")
                 .define("parallelCraftingCpuEnabled", true);
-        PARALLEL_CRAFTING_CPU_CO_PROCESSORS_PER_VIRTUAL_CPU = builder
-                .comment("Advertised co-processors per virtual CPU.",
-                        "Clamped below Integer.MAX_VALUE to avoid overflow.")
-                .translation("configuration.chexsonsaeutils.parallelCraftingCpuCoProcessorsPerVirtualCpu")
-                .defineInRange("parallelCraftingCpuCoProcessorsPerVirtualCpu",
-                        2_147_483_646, 0, Integer.MAX_VALUE - 1);
         PARALLEL_CRAFTING_CPU_MAX_INTERNAL_LANES_PER_BLOCK = builder
                 .comment("Maximum internal crafting lanes per tool block.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuMaxInternalLanesPerBlock")
@@ -151,11 +151,6 @@ public final class ChexsonsaeutilsCompatibilityConfig {
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuTickBudgetNanosPerGrid")
                 .defineInRange("parallelCraftingCpuTickBudgetNanosPerGrid",
                         20_000_000L, 1L, 45_000_000L);
-        PARALLEL_CRAFTING_CPU_STORAGE_BYTES = builder
-                .comment("Advertised crafting storage bytes for the tool.")
-                .translation("configuration.chexsonsaeutils.parallelCraftingCpuStorageBytes")
-                .defineInRange("parallelCraftingCpuStorageBytes",
-                        Long.MAX_VALUE / 4L, 1_024L, Long.MAX_VALUE / 4L);
         PARALLEL_CRAFTING_CPU_LANE_SHARD_COUNT = builder
                 .comment("Shard count used by the extreme-lane scheduler.")
                 .translation("configuration.chexsonsaeutils.parallelCraftingCpuLaneShardCount")
@@ -200,5 +195,14 @@ public final class ChexsonsaeutilsCompatibilityConfig {
     }
 
     private ChexsonsaeutilsCompatibilityConfig() {
+    }
+
+    /**
+     * @return 配置允许的最大样板页数（1-8，默认 8）。
+     *         阶段 1 共享层泛化：原 FramePatternProviderBlockEntity.maxPages() 静态
+     *         方法移至此处，框架样板供应器与定制样板供应器共用
+     */
+    public static int maxFramePatternPages() {
+        return MAX_CUSTOM_PATTERN_PAGES.get();
     }
 }

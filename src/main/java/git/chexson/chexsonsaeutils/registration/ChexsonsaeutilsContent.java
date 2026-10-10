@@ -1,31 +1,53 @@
 package git.chexson.chexsonsaeutils.registration;
 
 import appeng.api.AECapabilities;
+import appeng.api.parts.PartModels;
+import appeng.api.parts.RegisterPartCapabilitiesEvent;
 import appeng.api.upgrades.Upgrades;
 import appeng.blockentity.AEBaseBlockEntity;
 import appeng.core.definitions.AEItems;
 import com.mojang.logging.LogUtils;
 import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.cell.CellRegistration;
+import git.chexson.chexsonsaeutils.cell.InfinityCellItem;
 import git.chexson.chexsonsaeutils.block.crafting.AEDirectProcessingMachineBlock;
 import git.chexson.chexsonsaeutils.block.crafting.AE2ParallelCpuToolBlock;
 import git.chexson.chexsonsaeutils.block.crafting.HighCapacityCraftingMachineBlock;
+import git.chexson.chexsonsaeutils.block.debug.AutoItemGenBlock;
+import git.chexson.chexsonsaeutils.block.custompatternprovider.CustomPatternProviderBlock;
+import git.chexson.chexsonsaeutils.blockentity.debug.AutoItemGenBlockEntity;
+import git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.directprocessing.AEDirectProcessingMachineBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.AE2ParallelCpuToolBlockEntity;
 import git.chexson.chexsonsaeutils.blockentity.crafting.HighCapacityCraftingMachineBlockEntity;
+import git.chexson.chexsonsaeutils.item.custompatternprovider.CustomPatternProviderItem;
+import git.chexson.chexsonsaeutils.client.gui.custompatternprovider.CustomPatternProviderScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.AEDirectProcessingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.HighCapacityCraftingMachineScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.MultiLevelEmitterRuntimeScreen;
 import git.chexson.chexsonsaeutils.client.gui.implementations.ParallelCraftingCPUScreen;
 import git.chexson.chexsonsaeutils.config.ParallelCraftingCpuConfig;
 import git.chexson.chexsonsaeutils.crafting.directprocessing.DirectProcessingMockRecipe;
+import git.chexson.chexsonsaeutils.crafting.custompattern.EncodedCustomPattern;
+import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternItem;
+import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.AEDirectProcessingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.HighCapacityCraftingMachineMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterMenu;
 import git.chexson.chexsonsaeutils.menu.implementations.MultiLevelEmitterScreen;
 import git.chexson.chexsonsaeutils.menu.implementations.ParallelCraftingCPUMenu;
+import git.chexson.chexsonsaeutils.menu.custompatternencoder.CustomPatternEncoderMenu;
+import git.chexson.chexsonsaeutils.menu.custompatternupgrade.CustomPatternUpgradeMenu;
+import git.chexson.chexsonsaeutils.client.gui.custompatternencoder.CustomPatternEncoderScreen;
+import git.chexson.chexsonsaeutils.client.gui.custompatternupgrade.CustomPatternUpgradeScreen;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterItem;
 import git.chexson.chexsonsaeutils.parts.automation.MultiLevelEmitterRuntimePart;
+import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPart;
+import git.chexson.chexsonsaeutils.parts.custompatternprovider.CustomPatternProviderPartItem;
 import appeng.client.gui.style.StyleManager;
+import com.mojang.serialization.Codec;
+import net.minecraft.core.component.DataComponentType;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
@@ -38,6 +60,7 @@ import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
@@ -63,6 +86,8 @@ public final class ChexsonsaeutilsContent {
             DeferredRegister.create(Registries.RECIPE_SERIALIZER, Chexsonsaeutils.MODID);
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS =
             DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Chexsonsaeutils.MODID);
+    public static final DeferredRegister<DataComponentType<?>> DATA_COMPONENT_TYPES =
+            DeferredRegister.create(Registries.DATA_COMPONENT_TYPE, Chexsonsaeutils.MODID);
 
     public static final RegisteredBlock<HighCapacityCraftingMachineBlock> HIGH_CAPACITY_CRAFTING_MACHINE =
             registerBlockWithItem("high_capacity_crafting_machine", HighCapacityCraftingMachineBlock::new);
@@ -84,6 +109,42 @@ public final class ChexsonsaeutilsContent {
             AE2_PARALLEL_CPU_TOOL.item();
     public static final Supplier<Item> MULTI_LEVEL_EMITTER_ITEM =
             ITEMS.register(MultiLevelEmitterItem.id(), MultiLevelEmitterItem::createItem);
+    public static final Supplier<InfinityCellItem> INFINITY_CELL_ITEM =
+            ITEMS.register(CellRegistration.CELL_ITEM_ID, InfinityCellItem::new);
+    public static final RegisteredBlock<AutoItemGenBlock> AUTO_ITEM_GEN =
+            registerBlockWithItem("auto_item_gen", AutoItemGenBlock::new);
+    public static final Supplier<AutoItemGenBlock> AUTO_ITEM_GEN_BLOCK = AUTO_ITEM_GEN.block();
+    public static final Supplier<Item> AUTO_ITEM_GEN_ITEM = AUTO_ITEM_GEN.item();
+    public static final Supplier<CustomPatternProviderBlock> CUSTOM_PATTERN_PROVIDER_BLOCK =
+            BLOCKS.register("custom_pattern_provider", CustomPatternProviderBlock::new);
+    public static final Supplier<Item> CUSTOM_PATTERN_PROVIDER_ITEM =
+            ITEMS.register("custom_pattern_provider",
+                    () -> new CustomPatternProviderItem(CUSTOM_PATTERN_PROVIDER_BLOCK.get(), new Item.Properties()));
+    /** 定制样板供应器面板（阶段 3）：PartItem 工厂创建面板实例，模型经 PartModels 注册。 */
+    public static final Supplier<Item> CUSTOM_PATTERN_PROVIDER_PART_ITEM =
+            ITEMS.register("custom_pattern_provider_part",
+                    () -> new CustomPatternProviderPartItem(new Item.Properties()));
+    public static final Supplier<CustomPatternItem> CUSTOM_PATTERN_ITEM =
+            ITEMS.register("custom_pattern", CustomPatternItem::createItem);
+    public static final Supplier<DataComponentType<EncodedCustomPattern>> ENCODED_CUSTOM_PATTERN =
+            DATA_COMPONENT_TYPES.register("encoded_custom_pattern",
+                    () -> DataComponentType.<EncodedCustomPattern>builder()
+                            .persistent(EncodedCustomPattern.CODEC)
+                            .networkSynchronized(EncodedCustomPattern.STREAM_CODEC)
+                            .build());
+    /** 框架样板供应器的已扩展样板页数（拆除保留闭环：BE NBT → 掉落物品组件 → 放置/捕获读回）。 */
+    public static final Supplier<DataComponentType<Integer>> CUSTOM_PATTERN_PAGES =
+            DATA_COMPONENT_TYPES.register("custom_pattern_pages",
+                    () -> DataComponentType.<Integer>builder()
+                            .persistent(Codec.INT)
+                            .networkSynchronized(ByteBufCodecs.VAR_INT)
+                            .build());
+    public static final Supplier<BlockEntityType<AutoItemGenBlockEntity>> AUTO_ITEM_GEN_BLOCK_ENTITY =
+            BLOCK_ENTITY_TYPES.register("auto_item_gen",
+                    () -> {
+                        var block = AUTO_ITEM_GEN_BLOCK.get();
+                        return BlockEntityType.Builder.of(AutoItemGenBlockEntity::new, block).build(null);
+                    });
     public static final Supplier<RecipeType<DirectProcessingMockRecipe>> DIRECT_PROCESSING_MOCK_RECIPE_TYPE =
             RECIPE_TYPES.register("direct_processing_mock", DirectProcessingMockRecipe::createType);
     public static final Supplier<RecipeSerializer<DirectProcessingMockRecipe>>
@@ -115,6 +176,14 @@ public final class ChexsonsaeutilsContent {
                             AE2ParallelCpuToolBlockEntity::new,
                             AE2_PARALLEL_CPU_TOOL_BLOCK.get()
                     ).build(null)
+             );
+    public static final Supplier<BlockEntityType<CustomPatternProviderBlockEntity>>
+            CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
+                    "custom_pattern_provider",
+                    () -> BlockEntityType.Builder.of(
+                            CustomPatternProviderBlockEntity::new,
+                            CUSTOM_PATTERN_PROVIDER_BLOCK.get()
+                    ).build(null)
             );
 
     public static final Supplier<MenuType<HighCapacityCraftingMachineMenu>> HIGH_CAPACITY_CRAFTING_MACHINE_MENU =
@@ -123,6 +192,12 @@ public final class ChexsonsaeutilsContent {
             MENU_TYPES.register("ae_direct_processing_machine", () -> AEDirectProcessingMachineMenu.TYPE);
     public static final Supplier<MenuType<ParallelCraftingCPUMenu>> AE2_PARALLEL_CPU_TOOL_CPU_MENU =
             MENU_TYPES.register("ae2_parallel_cpu_tool_cpu", () -> ParallelCraftingCPUMenu.TYPE);
+    public static final Supplier<MenuType<CustomPatternProviderMenu<?>>> CUSTOM_PATTERN_PROVIDER_MENU =
+            MENU_TYPES.register("custom_pattern_provider", () -> CustomPatternProviderMenu.TYPE);
+    public static final Supplier<MenuType<CustomPatternEncoderMenu>> CUSTOM_PATTERN_ENCODER_MENU =
+            MENU_TYPES.register("custom_pattern_encoder", () -> CustomPatternEncoderMenu.TYPE);
+    public static final Supplier<MenuType<CustomPatternUpgradeMenu>> CUSTOM_PATTERN_UPGRADE_MENU =
+            MENU_TYPES.register("custom_pattern_upgrade", () -> CustomPatternUpgradeMenu.TYPE);
     public static final Supplier<MenuType<MultiLevelEmitterMenu.RuntimeMenu>> MULTI_LEVEL_EMITTER_MENU =
             MENU_TYPES.register(
                     MultiLevelEmitterMenu.registrationKey(),
@@ -138,6 +213,13 @@ public final class ChexsonsaeutilsContent {
                         output.accept(HIGH_CAPACITY_CRAFTING_MACHINE_ITEM.get());
                         output.accept(AE_DIRECT_PROCESSING_MACHINE_ITEM.get());
                         output.accept(AE2_PARALLEL_CPU_TOOL_ITEM.get());
+                        output.accept(CUSTOM_PATTERN_ITEM.get());
+                        output.accept(CUSTOM_PATTERN_PROVIDER_ITEM.get());
+                        output.accept(CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
+                        output.accept(INFINITY_CELL_ITEM.get());
+                        if (!FMLLoader.isProduction()) {
+                            output.accept(AUTO_ITEM_GEN_ITEM.get());
+                        }
                     })
                     .build());
 
@@ -152,13 +234,26 @@ public final class ChexsonsaeutilsContent {
         RECIPE_TYPES.register(modEventBus);
         RECIPE_SERIALIZERS.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
+        DATA_COMPONENT_TYPES.register(modEventBus);
     }
 
     public static void registerCommonContent() {
         registerHighCapacityCraftingMachineBootstrap();
         registerAEDirectProcessingMachineBootstrap();
         registerAE2ParallelCpuToolBootstrap();
+        registerAutoItemGenBootstrap();
+        registerCustomPatternProviderBootstrap();
         registerMultiLevelEmitterBootstrap();
+        CellRegistration.bootstrap(INFINITY_CELL_ITEM);
+        // 面板模型注册（PartModels 冻结发生在客户端模型加载阶段，common setup 注册安全）
+        PartModels.registerModels(CustomPatternProviderPart.MODELS);
+    }
+
+    /**
+     * 面板能力注册（AE2 RegisterPartCapabilitiesEvent，mod 事件总线触发）。
+     */
+    public static void registerPartCapabilities(RegisterPartCapabilitiesEvent event) {
+        CustomPatternProviderPart.registerCapability(event);
     }
 
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
@@ -187,6 +282,24 @@ public final class ChexsonsaeutilsContent {
                 AE_DIRECT_PROCESSING_MACHINE_BLOCK_ENTITY.get(),
                 (blockEntity, side) -> blockEntity.getAutomationItemHandler()
         );
+        // 定制样板供应器：ITEM/ENERGY capability 透传到首个可用方向的相邻机器（无参版兜底）
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                (blockEntity, side) -> blockEntity.getFilteredExternalItemHandler()
+        );
+        event.registerBlockEntity(
+                Capabilities.EnergyStorage.BLOCK,
+                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                (blockEntity, side) -> blockEntity.getMachineEnergyHandler()
+        );
+        // B1 修复：AE2 InitCapabilityProviders 只自动注册 AE2 自己的 BE，本项目 BE 需手动注册
+        // 网格节点能力——未注册则线缆无法发现 BE、节点永不入网（pushPattern 恒失败）
+        event.registerBlockEntity(
+                AECapabilities.IN_WORLD_GRID_NODE_HOST,
+                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                (blockEntity, context) -> blockEntity
+        );
     }
 
     public static void registerClientScreens(RegisterMenuScreensEvent event) {
@@ -204,6 +317,9 @@ public final class ChexsonsaeutilsContent {
                 )
         );
         event.register(MULTI_LEVEL_EMITTER_MENU.get(), MultiLevelEmitterRuntimeScreen::new);
+        event.register(CUSTOM_PATTERN_ENCODER_MENU.get(), CustomPatternEncoderScreen::new);
+        event.register(CUSTOM_PATTERN_UPGRADE_MENU.get(), CustomPatternUpgradeScreen::new);
+        event.register(CUSTOM_PATTERN_PROVIDER_MENU.get(), CustomPatternProviderScreen::new);
     }
 
     public static String emitterRegistryPath() {
@@ -270,6 +386,35 @@ public final class ChexsonsaeutilsContent {
         AEBaseBlockEntity.registerBlockEntityItem(
                 AE2_PARALLEL_CPU_TOOL_BLOCK_ENTITY.get(),
                 AE2_PARALLEL_CPU_TOOL_ITEM.get()
+        );
+    }
+
+    private static void registerAutoItemGenBootstrap() {
+        AutoItemGenBlock block = AUTO_ITEM_GEN_BLOCK.get();
+        block.setBlockEntity(
+                AutoItemGenBlockEntity.class,
+                AUTO_ITEM_GEN_BLOCK_ENTITY.get(),
+                null,
+                AutoItemGenBlockEntity::serverTick
+        );
+        AEBaseBlockEntity.registerBlockEntityItem(
+                AUTO_ITEM_GEN_BLOCK_ENTITY.get(),
+                AUTO_ITEM_GEN_ITEM.get()
+        );
+    }
+
+    private static void registerCustomPatternProviderBootstrap() {
+        CustomPatternProviderBlock block = CUSTOM_PATTERN_PROVIDER_BLOCK.get();
+        // 无 ticker：定制供应器无 serverTick 需求（无私有维度/隔离）
+        block.setBlockEntity(
+                CustomPatternProviderBlockEntity.class,
+                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                null,
+                null
+        );
+        AEBaseBlockEntity.registerBlockEntityItem(
+                CUSTOM_PATTERN_PROVIDER_BLOCK_ENTITY.get(),
+                CUSTOM_PATTERN_PROVIDER_ITEM.get()
         );
     }
 

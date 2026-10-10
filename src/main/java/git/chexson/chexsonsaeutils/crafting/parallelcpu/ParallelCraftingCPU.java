@@ -73,7 +73,7 @@ public final class ParallelCraftingCPU implements ICraftingCPU {
 
     @Override
     public int getCoProcessors() {
-        return cluster.advertisedCoProcessors();
+        return Integer.MAX_VALUE;
     }
 
     @Nullable

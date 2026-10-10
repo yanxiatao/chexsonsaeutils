@@ -70,9 +70,6 @@ final class ParallelCraftingCpuLogic {
         if (!lane.cluster().canProcessJobs()) {
             return CraftingSubmitResult.CPU_OFFLINE;
         }
-        if (lane.cluster().storageBytes() < plan.bytes()) {
-            return CraftingSubmitResult.CPU_TOO_SMALL;
-        }
 
         if (!inventory.list.isEmpty()) {
             AELog.warn("Parallel crafting CPU inventory is not empty yet a job was submitted.");

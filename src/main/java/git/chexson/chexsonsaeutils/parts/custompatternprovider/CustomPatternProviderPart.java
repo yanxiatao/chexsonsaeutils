@@ -1,0 +1,435 @@
+package git.chexson.chexsonsaeutils.parts.custompatternprovider;
+
+import java.util.EnumSet;
+import java.util.List;
+
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+
+import com.mojang.logging.LogUtils;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.items.IItemHandler;
+
+import appeng.api.AECapabilities;
+import appeng.api.networking.IGridNodeListener;
+import appeng.api.parts.IPartCollisionHelper;
+import appeng.api.parts.IPartItem;
+import appeng.api.parts.IPartModel;
+import appeng.api.parts.RegisterPartCapabilitiesEvent;
+import appeng.api.stacks.AEItemKey;
+import appeng.api.upgrades.IUpgradeInventory;
+import appeng.api.upgrades.IUpgradeableObject;
+import appeng.api.upgrades.UpgradeInventories;
+import appeng.api.util.AECableType;
+import appeng.core.AppEngBase;
+import appeng.items.parts.PartModels;
+import appeng.menu.ISubMenu;
+import appeng.menu.MenuOpener;
+import appeng.menu.locator.MenuLocators;
+import appeng.parts.AEBasePart;
+import appeng.parts.PartModel;
+import appeng.util.SettingsFrom;
+import git.chexson.chexsonsaeutils.Chexsonsaeutils;
+import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogicHost;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogic;
+import git.chexson.chexsonsaeutils.menu.custompatternprovider.CustomPatternProviderMenu;
+import git.chexson.chexsonsaeutils.registration.ChexsonsaeutilsContent;
+
+/**
+ * 定制样板供应器面板（阶段 3）。
+ * <p>
+ * 与方块版 {@link git.chexson.chexsonsaeutils.blockentity.custompatternprovider.CustomPatternProviderBlockEntity}
+ * 的差异：附着于线缆（AEBasePart 生命周期），机器即面板朝向（{@link #getSide()}）
+ * 的相邻方块——getTargets() 恒为单方向集合，逻辑层多方向分支只遍历该方向。
+ * 共享功能（定制样板/翻页/扩容/输入过滤/appflux 灌电/样板配置）全部继承自
+ * {@link CustomPatternProviderLogic} 与 {@link CustomPatternProviderLogicHost}。
+ * <p>
+ * 升级槽：方块版与面板版均实现 {@link IUpgradeableObject}（appflux 感应卡是升级卡，
+ * 与 extendedae 面板无升级槽的差异点），5 槽库存 NBT 持久化并随拆除掉落。
+ * <p>
+ * 网格节点：REQUIRE_CHANNEL 由 {@link CustomPatternProviderLogic} 构造器设置
+ * （字段初始化先于构造器体），面板构造器不重复设置。
+ */
+public class CustomPatternProviderPart extends AEBasePart implements CustomPatternProviderHost {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
+
+    private static final String NBT_UPGRADES = "upgrades";
+    private static final String NBT_PAGES = "pages";
+    private static final int UPGRADE_SLOTS = 5;
+    /** 每页样板槽数量：与方块版一致（4 行 x 9 列）。 */
+    public static final int PATTERN_SLOTS_PER_PAGE = 36;
+
+    /** 面板模型清单：base 为本 mod 自建（parent ae2:part/pattern_provider_base），状态灯复用 ae2 接口三态。 */
+    public static final List<ResourceLocation> MODELS = List.of(
+            ResourceLocation.fromNamespaceAndPath(Chexsonsaeutils.MODID, "part/custom_pattern_provider_base"),
+            ResourceLocation.fromNamespaceAndPath(AppEngBase.MOD_ID, "part/interface_on"),
+            ResourceLocation.fromNamespaceAndPath(AppEngBase.MOD_ID, "part/interface_off"),
+            ResourceLocation.fromNamespaceAndPath(AppEngBase.MOD_ID, "part/interface_has_channel")
+    );
+
+    @PartModels
+    public static final PartModel MODELS_OFF = new PartModel(MODELS.get(0), MODELS.get(2));
+    @PartModels
+    public static final PartModel MODELS_ON = new PartModel(MODELS.get(0), MODELS.get(1));
+    @PartModels
+    public static final PartModel MODELS_HAS_CHANNEL = new PartModel(MODELS.get(0), MODELS.get(3));
+
+    private final IUpgradeInventory upgrades;
+    /**
+     * 样板供应逻辑（与方块版一致）：36 x 最大页数样板槽 + 9 格返回库存，
+     * 推送目标经 getTargets() 方向集合解析（面板恒单方向）。
+     * 字段初始化创建——网格节点在 addToWorld 时才创建，logic 的 addService
+     * 必须在节点创建前生效。
+     */
+    private final CustomPatternProviderLogic logic = createLogic();
+
+    /** 已解锁样板页数（需求 5）：默认 1，范围 [1, maxFramePatternPages()]。 */
+    private int pages = 1;
+
+    public CustomPatternProviderPart(IPartItem<?> partItem) {
+        super(partItem);
+        this.upgrades = UpgradeInventories.forMachine(
+                () -> ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get(),
+                UPGRADE_SLOTS,
+                this::saveChanges
+        );
+        // REQUIRE_CHANNEL 由 logic 构造器设置（字段初始化先于本构造器体），此处不重复设置
+    }
+
+    /**
+     * 创建样板供应逻辑：容量 = 配置的最大页数 x 每页 36 槽（与方块版一致）。
+     */
+    protected CustomPatternProviderLogic createLogic() {
+        return new CustomPatternProviderLogic(this.getMainNode(), this,
+                ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages() * PATTERN_SLOTS_PER_PAGE);
+    }
+
+    @Override
+    public void onMainNodeStateChanged(IGridNodeListener.State reason) {
+        super.onMainNodeStateChanged(reason);
+        this.logic.onMainNodeStateChanged();
+    }
+
+    @Override
+    public void getBoxes(IPartCollisionHelper bch) {
+        bch.addBox(2.0, 2.0, 14.0, 14.0, 14.0, 16.0);
+        bch.addBox(5.0, 5.0, 12.0, 11.0, 11.0, 14.0);
+    }
+
+    @Override
+    public void readFromNBT(CompoundTag data, HolderLookup.Provider registries) {
+        super.readFromNBT(data, registries);
+        // appflux 加载时 "upgrades" 键由 af_upgrades 独占（logic NBT 与 Part NBT 同层平铺，
+        // appflux mixin 在 logic.readFromNBT TAIL 读同键）——跳过本机库存读盘（死库存保持空）
+        if (!ModList.get().isLoaded("appflux")) {
+            upgrades.readFromNBT(data, NBT_UPGRADES, registries);
+        }
+        // 样板库存/返回库存由 logic 写入（key: patterns/returnInv）
+        this.logic.readFromNBT(data, registries);
+        // 旧存档无 pages key：getInt 为 0，clamp 到 1
+        this.pages = clampPages(data.getInt(NBT_PAGES));
+    }
+
+    @Override
+    public void writeToNBT(CompoundTag data, HolderLookup.Provider registries) {
+        super.writeToNBT(data, registries);
+        // 与 readFromNBT 对称：appflux 加载时跳过本机库存写盘（"upgrades" 键归 af_upgrades）
+        if (!ModList.get().isLoaded("appflux")) {
+            upgrades.writeToNBT(data, NBT_UPGRADES, registries);
+        }
+        this.logic.writeToNBT(data, registries);
+        data.putInt(NBT_PAGES, pages);
+    }
+
+    @Override
+    public void addToWorld() {
+        super.addToWorld();
+        // 节点就绪后刷新样板列表（readFromNBT 已由 logic 读取，此处触发 requestUpdate 让网格感知）
+        this.logic.updatePatterns();
+    }
+
+    @Override
+    public void addAdditionalDrops(List<ItemStack> drops, boolean wrenched) {
+        super.addAdditionalDrops(drops, wrenched);
+        // 样板库存/返回库存/sendList 掉落（拆除经 CableBus 触发）
+        this.logic.addDrops(drops);
+        // 升级库存掉落（与方块版一致）
+        for (int slot = 0; slot < upgrades.size(); slot++) {
+            var stack = upgrades.getStackInSlot(slot);
+            if (!stack.isEmpty()) {
+                drops.add(stack);
+            }
+        }
+    }
+
+    @Override
+    public void clearContent() {
+        super.clearContent();
+        this.logic.clearContent();
+        // S1 修复：升级库存随内容清空（AE2 UpgradeablePart 惯例——清空内容不应残留升级卡）
+        this.upgrades.clear();
+    }
+
+    @Override
+    public float getCableConnectionLength(AECableType cable) {
+        return 4.0F;
+    }
+
+    @Override
+    public void exportSettings(SettingsFrom mode, DataComponentMap.Builder builder) {
+        super.exportSettings(mode, builder);
+        if (mode == SettingsFrom.MEMORY_CARD) {
+            this.logic.exportSettings(builder);
+        } else if (mode == SettingsFrom.DISMANTLE_ITEM) {
+            // I1 修复：拆除写回——IPart.addPartDrop 默认实现经本方法生成掉落栈组件，
+            // 把当前 pages 写入 CUSTOM_PATTERN_PAGES（闭环保留，与放置读回对称）
+            builder.set(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), pages);
+        }
+    }
+
+    @Override
+    public void importSettings(SettingsFrom mode, DataComponentMap input, @Nullable Player player) {
+        super.importSettings(mode, input, player);
+        if (mode == SettingsFrom.MEMORY_CARD) {
+            this.logic.importSettings(input, player);
+        } else if (mode == SettingsFrom.DISMANTLE_ITEM) {
+            // I1 修复：放置读回——PartPlacement.placePart 以放置物品的组件映射调用本方法，
+            // 把扩容后的 CUSTOM_PATTERN_PAGES 注入面板（方块版对应 updateCustomBlockEntityTag 读回）
+            initPagesFromStack(input.getOrDefault(ChexsonsaeutilsContent.CUSTOM_PATTERN_PAGES.get(), 1));
+        }
+    }
+
+    @Override
+    public void onNeighborChanged(BlockGetter level, BlockPos pos, BlockPos neighbor) {
+        this.logic.updateRedstoneState();
+    }
+
+    @Override
+    public boolean onUseWithoutItem(Player player, Vec3 pos) {
+        if (!player.getCommandSenderWorld().isClientSide()) {
+            MenuOpener.open(CustomPatternProviderMenu.TYPE, player, MenuLocators.forPart(this));
+        }
+        return true;
+    }
+
+    @Override
+    public void returnToMainMenu(Player player, ISubMenu subMenu) {
+        MenuOpener.returnTo(CustomPatternProviderMenu.TYPE, player, subMenu.getLocator());
+    }
+
+    @Override
+    public CustomPatternProviderLogic getLogic() {
+        return logic;
+    }
+
+    @Override
+    public EnumSet<Direction> getTargets() {
+        // 面板恒单方向：推送目标 = 面板朝向（恒非空，逻辑层走多方向分支）
+        return EnumSet.of(this.getSide());
+    }
+
+    @Override
+    public void saveChanges() {
+        this.getHost().markForSave();
+    }
+
+    @Override
+    public AEItemKey getTerminalIcon() {
+        return AEItemKey.of(this.getPartItem());
+    }
+
+    @Override
+    public ItemStack getMainMenuIcon() {
+        return new ItemStack(ChexsonsaeutilsContent.CUSTOM_PATTERN_PROVIDER_PART_ITEM.get());
+    }
+
+    @Override
+    public IPartModel getStaticModels() {
+        if (this.isActive() && this.isPowered()) {
+            return MODELS_HAS_CHANNEL;
+        } else if (this.isPowered()) {
+            return MODELS_ON;
+        } else {
+            return MODELS_OFF;
+        }
+    }
+
+    @Override
+    public IUpgradeInventory getUpgrades() {
+        // appflux 加载时 logic 被 MixinPatternProviderLogic 注入为 IUpgradeableObject
+        // （af_upgrades 库存）——委托给 logic 使 Menu 升级槽与 EAP 频道卡查询指向同一库存；
+        // 未加载 appflux 时回落本机 5 槽库存（行为不变）。
+        // 副作用：appflux 加载时本机库存成死库存（旧存档装在本机库存的感应卡不再显示，
+        // 本项目不注册升级卡，仅感应卡受影响，可接受；NBT 读写已跳过，见 readFromNBT/writeToNBT）。
+        var logic = getLogic();
+        return logic instanceof IUpgradeableObject uo ? uo.getUpgrades() : upgrades;
+    }
+
+    /**
+     * @return 已解锁样板页数（默认 1，clamp 到 [1, maxFramePatternPages()]）
+     */
+    @Override
+    public int getPages() {
+        return pages;
+    }
+
+    /**
+     * 设置已解锁样板页数（clamp 到 [1, maxFramePatternPages()]，越界值收敛并告警）。
+     * <p>
+     * 注意：readFromNBT 路径不调用本方法（加载期间 saveChanges 会触发过早写盘），直接赋值字段。
+     */
+    public void setPages(int pages) {
+        this.pages = clampPages(pages);
+        saveChanges();
+    }
+
+    /**
+     * 放置读回注入页数（I1 修复，包内方法，仅放置路径经 importSettings(DISMANTLE_ITEM) 调用）。
+     * <p>
+     * 直接赋值不调 saveChanges：放置流程中本方法在 addPart 完成后调用，此时
+     * updateAfterPartChange 已触发 host 保存，无需重复写盘；且若未来在 addToWorld 前
+     * 调用（getHost() 为 null），saveChanges 会 NPE——直接赋值对两种时机均安全
+     * （生命周期正确性，非兜底）。
+     *
+     * @param pages 放置物品 CUSTOM_PATTERN_PAGES 组件携带的页数（无组件时为 1）
+     */
+    void initPagesFromStack(int pages) {
+        this.pages = clampPages(pages);
+    }
+
+    /**
+     * 页数收敛到 [1, maxFramePatternPages()]；发生截断时输出告警日志（readFromNBT/setPages 共用）。
+     *
+     * @param rawPages 待收敛的原始页数
+     * @return 收敛后的页数
+     */
+    private int clampPages(int rawPages) {
+        int max = ChexsonsaeutilsCompatibilityConfig.maxFramePatternPages();
+        int clamped = Math.max(1, Math.min(rawPages, max));
+        if (clamped != rawPages) {
+            LOGGER.warn("样板页数截断：old={}, new={}, maxPages={}", rawPages, clamped, max);
+        }
+        return clamped;
+    }
+
+    /**
+     * 按面板朝向解析相邻机器的物品 handler。
+     * <p>
+     * 服务端查询面板朝向相邻方块的 ITEM capability（能力方向 = 面板所在侧的反向），
+     * 无相邻方块或无 capability 时返回 null——逻辑层 {@code resolveMachineHandler()}
+     * 据此跳过该方向（面板恒单方向，跳过即拒绝推送）。客户端不参与推送，直接返回 null。
+     *
+     * @param direction 目标方向（面板忽略该参数，恒用面板朝向）
+     * @return 该方向的机器物品 handler；该方向无机器时返回 null
+     */
+    @Override
+    @Nullable
+    public IItemHandler getMachineItemHandler(Direction direction) {
+        if (isClientSide()) {
+            return null;
+        }
+        BlockEntity neighbor = getBlockEntity().getLevel()
+                .getBlockEntity(getBlockEntity().getBlockPos().relative(getSide()));
+        if (neighbor == null) {
+            return null;
+        }
+        return getBlockEntity().getLevel().getCapability(Capabilities.ItemHandler.BLOCK,
+                neighbor.getBlockPos(), neighbor.getBlockState(), neighbor, getSide().getOpposite());
+    }
+
+    /**
+     * 无参版物品 handler（兜底，接口约定永不返回 null）。
+     * <p>
+     * 带方向版忽略 direction 参数、恒查面板朝向（getSide() 邻居）；本无参版遍历
+     * 6 方向实际等价于单次查询（每方向都返回同一朝向的 handler），语义为兜底——
+     * 外部 ITEM capability 透传路径使用，全不可用时返回空实现。
+     */
+    @Override
+    public IItemHandler getMachineItemHandler() {
+        if (isClientSide()) {
+            return CustomPatternProviderLogicHost.EMPTY_ITEM_HANDLER;
+        }
+        for (var direction : Direction.values()) {
+            var handler = getMachineItemHandler(direction);
+            if (handler != null) {
+                return handler;
+            }
+        }
+        return CustomPatternProviderLogicHost.EMPTY_ITEM_HANDLER;
+    }
+
+    /**
+     * 按面板朝向解析相邻机器的能量 handler（appflux 灌电目标）。
+     * <p>
+     * 服务端查询面板朝向相邻方块的 ENERGY capability（能力方向 = 面板所在侧的反向），
+     * 无相邻方块或无 capability 时返回 null（该方向不可灌电）。
+     *
+     * @param direction 目标方向（面板忽略该参数，恒用面板朝向）
+     * @return 该方向的机器能量 handler；该方向无机器时返回 null
+     */
+    @Override
+    @Nullable
+    public IEnergyStorage getMachineEnergyHandler(Direction direction) {
+        if (isClientSide()) {
+            return null;
+        }
+        BlockEntity neighbor = getBlockEntity().getLevel()
+                .getBlockEntity(getBlockEntity().getBlockPos().relative(getSide()));
+        if (neighbor == null) {
+            return null;
+        }
+        return getBlockEntity().getLevel().getCapability(Capabilities.EnergyStorage.BLOCK,
+                neighbor.getBlockPos(), neighbor.getBlockState(), neighbor, getSide().getOpposite());
+    }
+
+    /**
+     * 无参版能量 handler（appflux 灌电目标，接口约定：新方块实现方向逻辑）。
+     * <p>
+     * 带方向版忽略 direction 参数、恒查面板朝向（getSide() 邻居）；本无参版遍历
+     * 6 方向实际等价于单次查询（每方向都返回同一朝向的 handler），语义为兜底——
+     * 全不可用时返回 null（注入器据此跳过灌电）。
+     */
+    @Override
+    @Nullable
+    public IEnergyStorage getMachineEnergyHandler() {
+        if (isClientSide()) {
+            return null;
+        }
+        for (var direction : Direction.values()) {
+            var handler = getMachineEnergyHandler(direction);
+            if (handler != null) {
+                return handler;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 注册面板能力：返回库存透传（外部管道/存储总线可访问 9 格返回库存）。
+     */
+    @SuppressWarnings("UnstableApiUsage")
+    public static void registerCapability(RegisterPartCapabilitiesEvent event) {
+        event.register(
+                AECapabilities.GENERIC_INTERNAL_INV,
+                (part, context) -> part.logic.getReturnInv(),
+                CustomPatternProviderPart.class
+        );
+    }
+}
