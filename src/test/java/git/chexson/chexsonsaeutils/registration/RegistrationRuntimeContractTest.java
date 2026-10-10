@@ -62,13 +62,14 @@ final class RegistrationRuntimeContractTest {
                     "auto_item_gen", "matter_mass_pattern_provider", "custom_pattern_provider")),
             new RegistryContract(BuiltInRegistries.ITEM, List.of(
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool",
-                    "multi_level_emitter", "infinity_cell", "auto_item_gen", "matter_mass_pattern_provider",
+                    "multi_level_emitter", "player_simulation_plane", "infinity_cell", "auto_item_gen", "matter_mass_pattern_provider",
                     "custom_pattern", "custom_pattern_provider_part", "custom_pattern_provider",
                     "matter_mass_pattern", "matter_mass")),
             new RegistryContract(BuiltInRegistries.BLOCK_ENTITY_TYPE, List.of(
                     "auto_item_gen", "extreme_assembler", "ae_direct_processing_machine",
                     "ae2_parallel_cpu_tool", "matter_mass_pattern_provider", "custom_pattern_provider")),
             new RegistryContract(BuiltInRegistries.MENU, List.of(
+                    "simulation_amount", "player_simulation_plane",
                     "extreme_assembler", "ae_direct_processing_machine", "ae2_parallel_cpu_tool_cpu",
                     "custom_pattern_provider", "custom_pattern_encoder", "custom_pattern_upgrade",
                     "multi_level_emitter_menu", "matter_mass_pattern_provider", "matter_mass_view")),

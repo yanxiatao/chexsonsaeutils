@@ -1,0 +1,18 @@
+// 独立真实服务端行为验收；仅在显式使用本 init 脚本时编译和加载，不进入发布 JAR。
+gradle.afterProject { project ->
+    if (project != project.rootProject) return
+    def gameTests = project.sourceSets.create('playerSimulationGameTest') {
+        java.srcDir(project.file('tools/integration-tests/playersimulation/src'))
+        resources.srcDir(project.file('tools/integration-tests/playersimulation/resources'))
+        compileClasspath += project.sourceSets.main.output + project.sourceSets.main.compileClasspath
+        runtimeClasspath += project.sourceSets.main.output + project.sourceSets.main.runtimeClasspath
+    }
+    project.neoForge.mods.chexsonsaeutils.sourceSet(gameTests)
+    project.neoForge.runs.create('playerSimulationGameTest') {
+        type = 'gameTestServer'
+        logLevel = org.slf4j.event.Level.INFO
+        gameDirectory = project.file('build/playerSimulationGameTest')
+        systemProperty 'neoforge.enabledGameTestNamespaces', 'chexsonsaeutils'
+        systemProperty 'neoforge.gameTestServer', 'true'
+    }
+}

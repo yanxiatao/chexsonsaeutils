@@ -1,0 +1,29 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "ISI",
+    "PAP",
+    "IRI"
+  ],
+  "key": {
+    "I": {
+      "item": "minecraft:iron_ingot"
+    },
+    "S": {
+      "item": "minecraft:stone_button"
+    },
+    "P": {
+      "item": "ae2:formation_plane"
+    },
+    "A": {
+      "item": "ae2:engineering_processor"
+    },
+    "R": {
+      "item": "minecraft:redstone"
+    }
+  },
+  "result": {
+    "id": "chexsonsaeutils:player_simulation_plane",
+    "count": 1
+  }
+}

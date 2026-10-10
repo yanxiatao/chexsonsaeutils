@@ -98,6 +98,12 @@ public final class ChexsonsaeutilsContent {
             AE2_PARALLEL_CPU_TOOL.item();
     public static final Supplier<Item> MULTI_LEVEL_EMITTER_ITEM =
             ITEMS.register(MultiLevelEmitterItem.id(), MultiLevelEmitterItem::createItem);
+    public static final Supplier<Item> PLAYER_SIMULATION_PLANE_ITEM =
+            ITEMS.register("player_simulation_plane",git.chexson.chexsonsaeutils.bootstrap.playersimulation.PlayerSimulationRegistration::createItem);
+    public static final Supplier<MenuType<git.chexson.chexsonsaeutils.menu.playersimulation.SimulationAmountMenu>> SIMULATION_AMOUNT_MENU =
+            MENU_TYPES.register("simulation_amount",() -> git.chexson.chexsonsaeutils.menu.playersimulation.SimulationAmountMenu.TYPE);
+    public static final Supplier<MenuType<git.chexson.chexsonsaeutils.menu.playersimulation.PlayerSimulationMenu>> PLAYER_SIMULATION_PLANE_MENU =
+            MENU_TYPES.register("player_simulation_plane",() -> git.chexson.chexsonsaeutils.menu.playersimulation.PlayerSimulationMenu.TYPE);
     public static final Supplier<InfinityCellItem> INFINITY_CELL_ITEM =
             ITEMS.register(CellRegistration.CELL_ITEM_ID, InfinityCellItem::new);
     public static final RegisteredBlock<AutoItemGenBlock> AUTO_ITEM_GEN =
@@ -174,6 +180,7 @@ public final class ChexsonsaeutilsContent {
                     .icon(() -> new ItemStack(EXTREME_ASSEMBLER_ITEM.get()))
                     .displayItems((parameters, output) -> {
                         output.accept(MULTI_LEVEL_EMITTER_ITEM.get());
+                        output.accept(PLAYER_SIMULATION_PLANE_ITEM.get());
                         output.accept(EXTREME_ASSEMBLER_ITEM.get());
                         output.accept(AE_DIRECT_PROCESSING_MACHINE_ITEM.get());
                         output.accept(AE2_PARALLEL_CPU_TOOL_ITEM.get());
@@ -226,6 +233,7 @@ public final class ChexsonsaeutilsContent {
         registerCustomPatternProviderBootstrap();
         registerMatterMassPatternProviderBootstrap();
         registerMultiLevelEmitterBootstrap();
+        git.chexson.chexsonsaeutils.bootstrap.playersimulation.PlayerSimulationRegistration.bootstrap(PLAYER_SIMULATION_PLANE_ITEM.get());
         if (ChexsonsaeutilsCompatibilityConfig.boolValue(
                 ChexsonsaeutilsCompatibilityConfig.INFINITY_CELL_ENABLED)) {
             CellRegistration.bootstrap(INFINITY_CELL_ITEM);

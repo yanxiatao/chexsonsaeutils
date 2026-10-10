@@ -32,6 +32,10 @@ public final class ChexsonsaeutilsClientScreens {
     /** 在菜单类型注册完成后的客户端事件中，按既定顺序绑定屏幕和发射器阈值提交行为。 */
     public static void register(RegisterMenuScreensEvent event) {
         registerMultiLevelEmitterClientBindings();
+        event.register(ChexsonsaeutilsContent.SIMULATION_AMOUNT_MENU.get(),
+                git.chexson.chexsonsaeutils.client.gui.playersimulation.SimulationAmountScreen::new);
+        event.register(ChexsonsaeutilsContent.PLAYER_SIMULATION_PLANE_MENU.get(),
+                git.chexson.chexsonsaeutils.client.gui.playersimulation.PlayerSimulationScreen::new);
         event.register(ChexsonsaeutilsContent.EXTREME_ASSEMBLER_MENU.get(), ExtremeAssemblerScreen::new);
         event.register(ChexsonsaeutilsContent.AE_DIRECT_PROCESSING_MACHINE_MENU.get(),
                 AEDirectProcessingMachineScreen::new);
