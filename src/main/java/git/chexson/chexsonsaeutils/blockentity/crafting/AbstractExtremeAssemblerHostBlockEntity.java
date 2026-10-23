@@ -60,7 +60,8 @@ import java.util.Set;
  */
 public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworkedBlockEntity
         implements PatternContainer, ICraftingProvider, InternalInventoryHost,
-        HolderBatchProvider, DeclaredBatchHost, git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoExactBatchHost, PatternMatrixSource {
+        HolderBatchProvider, DeclaredBatchHost, git.chexson.chexsonsaeutils.crafting.hostbatch.ImmediateBatchOutputHost,
+        git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoExactBatchHost, PatternMatrixSource {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -700,6 +701,15 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
 
     public IItemHandler getAutomationItemHandler() {
         return automationItemHandler;
+    }
+
+    /** CPU 已完成本批登记后才调用；只交付真实缓冲，不在 push 内回调或遍历网络存储。 */
+    @Override
+    public void deliverBufferedBatchOutputs(DeclaredBatchOutputReceiver receiver) {
+        IGrid currentGrid = getGrid();
+        if (!getMainNode().isActive() || currentGrid == null || pendingVirtualOutputs.isEmpty()) return;
+        CraftingOutputRouter.claimBufferedOutputs(pendingVirtualOutputs, currentGrid, receiver);
+        saveChanges();
     }
 
     protected void serverTick() {

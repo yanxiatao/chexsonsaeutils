@@ -133,8 +133,7 @@ public final class GraphCompiler {
         private static final int MAX_KEYS = 65536;
 
         /**
-         * Per-input fuzzy template options above this decline to the tree
-         * planners (candidate × class variant pairs).
+         * 每槽实际合法的不同模板超过此数时拒绝图求解；不计不合法的同物品组件变体。
          */
         private static final int MAX_TEMPLATE_OPTIONS = 64;
 
@@ -318,74 +317,115 @@ public final class GraphCompiler {
             return reach == null ? wat : reach.key();
         }
 
+        /** 显式 DFS 帧保留样板与槽顺序、祖先过滤和后序生产者登记，不占 JVM 调用栈。 */
+        private static final class ExpansionFrame {
+            private final AEKey rawKey;
+            private final boolean topLevel;
+            private final IPatternDetails.IInput parentInput;
+            private AEKey key;
+            private List<IPatternDetails> patterns;
+            private List<GraphPattern> compiled;
+            private int patternIndex;
+            private IPatternDetails.IInput[] children;
+            private int childIndex;
+
+            private ExpansionFrame(AEKey rawKey, boolean topLevel, IPatternDetails.IInput parentInput) {
+                this.rawKey = rawKey;
+                this.topLevel = topLevel;
+                this.parentInput = parentInput;
+            }
+        }
+
         @Nullable
         private String expand(AEKey rawKey, LinkedHashSet<AEKey> pathKeys, boolean topLevel,
                 @Nullable IPatternDetails.IInput parentInput) {
-            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Planning compilation cancelled");
-            AEKey key = topLevel ? rawKey : resolveNodeKey(rawKey, parentInput);
-            if (!visited.add(key)) {
-                return null;
-            }
-            if (++unpublishedProgress >= 256) publishProgress();
-            if (visited.size() > MAX_KEYS) {
-                return "graph too large (more than " + MAX_KEYS + " keys)";
-            }
-            if (canEmitFor(key)) {
-                emittable.add(key);
-                // ⑥ 静默口之一：身份被 emit 抢走，本键到此为止（今天只有 trace 的 emittable= 看得见）
-                emittableGrab.record(key, null);
-                return null;
-            }
-
-            var patterns = craftingFor(key);
-            if (topLevel) {
-                rootCraftingForCount = patterns.size();
-            }
-            expandedKeyCount++;
-            this.providerListHits += patterns.size();
-            if (GraphDiagnostics.traceActive()) {
-                // canEmitFor 只为凑诊断参数，不能无条件调用（编译要逐键走这里）
-                GraphDiagnostics.trace("expand key=%s emittable=%s getCraftingFor=%d topLevel=%s",
-                        key, canEmitFor(key), patterns.size(), topLevel);
-            }
-            if (patterns.isEmpty()) {
-                // ⑥ 静默口之一：AE2 的提供者清单一个都没递回来（今天连 trace 都不打）。
-                // 一个候选都没递出来 ⇒ 同进 zeroCandidate 的覆盖面账。
-                noProvider.record(key, null);
-                noteSkipTier(key, "noProvider");
-                zeroCandidate.recordEntry(foldKeyToken(String.valueOf(key))
-                        + ",pats=0,via=" + skipTierToken(key));
-                return null;
-            }
-            for (var details : patterns) {
-                if (this.reachablePatternSet.add(details)) {
-                    this.reachablePatterns.add(details);
-                }
-            }
-
-            List<GraphPattern> compiled = new ArrayList<>(patterns.size());
-            // 单份可变路径集：进入本键时把它压进去，退出时弹出。此前每个键都要
-            // 复制一份祖先链（658 个键 × 链深）——DFS 里 visited 保证每键只展开一次，
-            // 压栈/弹栈与复制在语义上等价。祖先判定 = 在集合里且不是本键。
-            pathKeys.add(key);
+            var pending = new java.util.ArrayDeque<ExpansionFrame>();
+            pending.push(new ExpansionFrame(rawKey, topLevel, parentInput));
             try {
-                for (var details : patterns) {
-                    var decline = compilePattern(details, key, pathKeys, pathKeys, compiled);
-                    if (decline != null) {
-                        return decline;
+                while (!pending.isEmpty()) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new java.util.concurrent.CancellationException("Planning compilation cancelled");
                     }
+                    var frame = pending.peek();
+                    if (frame.key == null) {
+                        AEKey key = frame.topLevel ? frame.rawKey : resolveNodeKey(frame.rawKey, frame.parentInput);
+                        if (!visited.add(key)) {
+                            pending.pop();
+                            continue;
+                        }
+                        if (++unpublishedProgress >= 256) publishProgress();
+                        if (visited.size() > MAX_KEYS) {
+                            return "graph too large (more than " + MAX_KEYS + " keys)";
+                        }
+                        if (canEmitFor(key)) {
+                            emittable.add(key);
+                            // ⑥ 静默口之一：身份被 emit 抢走，本键到此为止（今天只有 trace 的 emittable= 看得见）
+                            emittableGrab.record(key, null);
+                            pending.pop();
+                            continue;
+                        }
+
+                        var patterns = craftingFor(key);
+                        if (frame.topLevel) {
+                            rootCraftingForCount = patterns.size();
+                        }
+                        expandedKeyCount++;
+                        this.providerListHits += patterns.size();
+                        if (GraphDiagnostics.traceActive()) {
+                            // canEmitFor 只为凑诊断参数，不能无条件调用（编译要逐键走这里）
+                            GraphDiagnostics.trace("expand key=%s emittable=%s getCraftingFor=%d topLevel=%s",
+                                    key, canEmitFor(key), patterns.size(), frame.topLevel);
+                        }
+                        if (patterns.isEmpty()) {
+                            // ⑥ 静默口之一：AE2 的提供者清单一个都没递回来（今天连 trace 都不打）。
+                            // 一个候选都没递出来 ⇒ 同进 zeroCandidate 的覆盖面账。
+                            noProvider.record(key, null);
+                            noteSkipTier(key, "noProvider");
+                            zeroCandidate.recordEntry(foldKeyToken(String.valueOf(key))
+                                    + ",pats=0,via=" + skipTierToken(key));
+                            pending.pop();
+                            continue;
+                        }
+                        for (var details : patterns) {
+                            if (this.reachablePatternSet.add(details)) {
+                                this.reachablePatterns.add(details);
+                            }
+                        }
+                        frame.key = key;
+                        frame.patterns = List.copyOf(patterns);
+                        frame.compiled = new ArrayList<>(patterns.size());
+                        pathKeys.add(key);
+                    }
+                    if (frame.children != null && frame.childIndex < frame.children.length) {
+                        var raw = frame.children[frame.childIndex++];
+                        pending.push(new ExpansionFrame(raw.getPossibleInputs()[0].what(), false, raw));
+                        continue;
+                    }
+                    if (frame.patternIndex < frame.patterns.size()) {
+                        int before = frame.compiled.size();
+                        var decline = compilePattern(frame.patterns.get(frame.patternIndex++),
+                                frame.key, pathKeys, pathKeys, frame.compiled);
+                        if (decline != null) return decline;
+                        frame.children = before == frame.compiled.size() ? null
+                                : rawPatternInputs.get(frame.compiled.getLast());
+                        frame.childIndex = 0;
+                        continue;
+                    }
+                    if (!frame.compiled.isEmpty()) {
+                        producers.put(frame.key, frame.compiled);
+                    } else {
+                        zeroCandidate.recordEntry(foldKeyToken(String.valueOf(frame.key))
+                                + ",pats=" + frame.patterns.size() + ",via=" + skipTierToken(frame.key));
+                    }
+                    pathKeys.remove(frame.key);
+                    pending.pop();
                 }
+                return null;
             } finally {
-                pathKeys.remove(key);
+                for (var frame : pending) {
+                    if (frame.key != null) pathKeys.remove(frame.key);
+                }
             }
-            if (!compiled.isEmpty()) {
-                producers.put(key, compiled);
-            } else {
-                // ⑥ 实机问不出的那一型：AE2 递来了清单（pats>0）、却一张没进 producers。
-                zeroCandidate.recordEntry(foldKeyToken(String.valueOf(key))
-                        + ",pats=" + patterns.size() + ",via=" + skipTierToken(key));
-            }
-            return null;
         }
 
         /** 祖先链包含 {@code candidate}（本键自身不算祖先）。 */
@@ -580,20 +620,6 @@ public final class GraphCompiler {
             compiled.add(pattern);
             rawPatternInputs.put(pattern, patternInputs);
 
-            for (int x = 0; x < patternInputs.length; x++) {
-                var raw = patternInputs[x];
-                var childPossibles = possiblesBySlot[x];
-                var childRaw = childPossibles[0].what();
-                // The tree planner resolves child keys through findCraftedStack
-                // before recursing; a resolved key landing back on the ancestor
-                // chain (e.g. a substitute pointing at this pattern's own
-                // output) makes the tree terminate as a pattern-less leaf — the
-                // child simply compiles as a pattern-less key.
-                var decline = expand(childRaw, childPath, false, raw);
-                if (decline != null) {
-                    return decline;
-                }
-            }
             return null;
         }
 
@@ -760,7 +786,7 @@ public final class GraphCompiler {
                         }
                         var candidates = new ArrayList<GraphInput.Candidate>();
                         Set<AEKey> valid = null;
-                        int options = 0;
+                        var validOptions = new java.util.HashSet<GraphInput.Candidate>();
                         for (var stack : raw.getPossibleInputs()) {
                             if (stack == null) {
                                 continue;
@@ -770,22 +796,22 @@ public final class GraphCompiler {
                             if (members == null) {
                                 // Single-member class: the candidate itself is the
                                 // only template option.
-                                options++;
                                 if (raw.isValid(stack.what(), level)) {
+                                    validOptions.add(new GraphInput.Candidate(stack.what(), stack.amount()));
                                     valid = addTo(valid, stack.what());
                                 }
                                 continue;
                             }
                             for (var member : members) {
-                                options++;
                                 if (raw.isValid(member, level)) {
+                                    validOptions.add(new GraphInput.Candidate(member, stack.amount()));
                                     valid = addTo(valid, member);
                                 }
                             }
                         }
-                        if (options > MAX_TEMPLATE_OPTIONS) {
+                        if (validOptions.size() > MAX_TEMPLATE_OPTIONS) {
                             return "fuzzy combination too large on pattern " + pattern.source().getDefinition()
-                                    + " slot " + x + " key " + input.key() + " options " + options;
+                                    + " slot " + x + " key " + input.key() + " options " + validOptions.size();
                         }
                         if (input.mode() != GraphInput.Mode.NORMAL) {
                             // Closed-form circular accounting assumes the resolved
@@ -797,7 +823,11 @@ public final class GraphCompiler {
                         }
                         List<GraphInput.Candidate> extractCandidates;
                         Set<AEKey> validVariants;
-                        if (candidates.size() == 1 && valid != null && valid.size() == 1
+                        // 真实合成样板可能重复声明同一键、同一数量；这仍是精确输入。
+                        // 数量不同的同键候选保留顺位竞争，不得仅凭合法键只有一个就合并。
+                        boolean repeatedExact = !candidates.isEmpty() && candidates.stream().allMatch(candidate ->
+                                candidate.key().equals(input.key()) && candidate.amount() == input.amountPerCraft());
+                        if ((candidates.size() == 1 || repeatedExact) && valid != null && valid.size() == 1
                                 && valid.contains(input.key())) {
                             // Exact-key fast path: the only valid template is the
                             // node key itself.

@@ -45,6 +45,8 @@ import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
  */
 public final class LinearPlanner {
 
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+
     /**
      * Requests above this cap decline instead of attempting; every accounting
      * product stays far below the 2^53 exact-double range. Only enforced when
@@ -75,6 +77,11 @@ public final class LinearPlanner {
 
     /** Planning recursion ceiling — configurable fallback for very deep chains. */
     private static final int MAX_DEPTH = ChexsonsaeutilsCompatibilityConfig.graphPlanningMaxDepth();
+
+    /** 已证明的无环路径不会重复经过生产键，迭代深度由拓扑规模而非 JVM 递归上限约束。 */
+    private static int iterativeDepthLimit(CraftGraph graph) {
+        return graph.producersByOutput().size() + 1;
+    }
 
     private LinearPlanner() {
     }
@@ -332,6 +339,10 @@ public final class LinearPlanner {
          * modpack 实测单次计算攒出 39 MB 文本，格式化本身就是整秒级开销）。
          */
         private long requestCount;
+        /** 宽需求按 attempt 汇总，实机可直接确认整批是否命中及是否仍有大量分轮。 */
+        private long wideBatchCount;
+        private long wideTerminalCount;
+        private long wideChunkCount;
         private long branchFailureCount;
         /** 首槽精确终端证明会失败、从而省去实际试探的批次数。 */
         private long prunedBatchCount;
@@ -375,6 +386,10 @@ public final class LinearPlanner {
         /** 失败后才建立的结构索引：全图能产出或返回的键不能被当作纯库存瓶颈。 */
         @Nullable
         private Set<AEKey> replenishableKeys;
+
+        /** 首次超 long 生产需求才建立，多次尝试共享纯结构证明；窄量不支付图扫描开销。 */
+        @Nullable
+        private BatchPlanningEligibility batchEligibility;
 
         private int[] outputIdsOf(GraphPattern pattern) {
             var cached = patternOutputIdCache.get(pattern);
@@ -499,6 +514,9 @@ public final class LinearPlanner {
                 this.traceSites = GraphDiagnostics.traceActive();
                 this.budgetCheckCountdown = 1;
                 this.requestCount = 0;
+                this.wideBatchCount = 0;
+                this.wideTerminalCount = 0;
+                this.wideChunkCount = 0;
                 this.branchFailureCount = 0;
                 this.prunedBatchCount = 0;
                 this.missingSiteCount = 0;
@@ -524,6 +542,10 @@ public final class LinearPlanner {
                 }
                 return this.state;
             } finally {
+                if (wideBatchCount != 0 || wideTerminalCount != 0 || wideChunkCount != 0) {
+                    LOGGER.info("Graph planning wide batching: target={} simulation={} batches={} terminals={} chunks={} requests={} branchFailures={}",
+                            root.what, simulate, wideBatchCount, wideTerminalCount, wideChunkCount, requestCount, branchFailureCount);
+                }
                 publishProgress();
                 this.state.releaseRollback();
             }
@@ -574,6 +596,7 @@ public final class LinearPlanner {
                 if (chunk <= 0L) {
                     return;
                 }
+                wideChunkCount++;
                 request(site, chunk);
                 remaining = remaining.subtract(PlanAmount.of(chunk));
                 if (remaining.signum() <= 0L) {
@@ -583,8 +606,8 @@ public final class LinearPlanner {
         }
 
         /**
-         * 仅合并无环、唯一生产路线、无副产或退料的确定链。
-         * 宽根的余量写入原库存账；窄根保持原有分轮及共享输入竞争语义。
+         * 合并已证明无分轮竞争的确定 DAG，允许多输入与共享材料。
+         * 未证明的区域保持原有确定单链资格与分轮语义。
          * 只检查结构，不建立槽位节点，库存满足的后续节点仍不收节点费。
          */
         private boolean canBatchWide(Site site) {
@@ -594,6 +617,13 @@ public final class LinearPlanner {
             if (site.templates != null || site.graph.cycleKind() != CraftGraph.CycleKind.NONE) {
                 site.wideBatchable = false;
                 return false;
+            }
+            if (batchEligibility == null) {
+                batchEligibility = new BatchPlanningEligibilityImpl(site.graph, iterativeDepthLimit(site.graph), this::checkBudget);
+            }
+            if (batchEligibility.allows(site.what, site.amount, site == root, iterativeDepthLimit(site.graph) - depth)) {
+                site.wideBatchable = true;
+                return true;
             }
             if (site == root && wideRootRequest) {
                 site.wideBatchable = batchableRootRoutes(site.what, site.amount, site.routes, 0);
@@ -653,56 +683,99 @@ public final class LinearPlanner {
             return true;
         }
 
-        /** 已证明无跨轮竞争的宽需求一次结算；仍使用原有宽账和回滚日志。 */
+        /** 已证明的确定 DAG 用显式调用帧结算，库存、逐槽顺序与失败回滚仍由原账本负责。 */
         private void requestLinearWide(Site site, PlanAmount requestedAmount) {
-            if (++depth > MAX_DEPTH) {
-                throw new RecursionTooDeepException();
-            }
+            int initialDepth = depth;
+            var pending = new java.util.ArrayDeque<WideRequestFrame>();
+            var rootFrame = new WideRequestFrame(site, requestedAmount);
+            pending.push(rootFrame);
             try {
-                checkBudget();
-                state.addStackBytesWide(site.what, site.amount, requestedAmount);
-                var remaining = requestedAmount.subtract(state.extractTemplatesByIdWide(
-                        site.what, site.keyId(), site.amount, requestedAmount));
-                if (remaining.signum() <= 0) {
-                    return;
-                }
-                if (!site.slotsBuilt) {
-                    site.countAllSlots();
-                }
-                requestCount++;
-                var route = (RouteOrdering.Route.Pattern) site.routes.getFirst();
-                var pattern = route.pattern();
-                var demand = WideMath.mul(site.amount, remaining);
-                var times = demand.ceilDiv(PlanAmount.of(pattern.outputPerCraft()));
-                int mark = state.journal();
-                try {
-                    var slots = site.slotsFor(route);
-                    for (int index = 0; index < pattern.inputs().size(); index++) {
-                        var input = pattern.inputs().get(index);
-                        request(slots[index], WideMath.mul(input.multiplier(), times));
+                while (!pending.isEmpty()) {
+                    checkBudget();
+                    var frame = pending.peek();
+                    var current = frame.site;
+                    if (frame.pattern == null) {
+                        wideBatchCount++;
+                        if (++depth > iterativeDepthLimit(current.graph)) throw new RecursionTooDeepException();
+                        state.addStackBytesWide(current.what, current.amount, frame.requested);
+                        var remaining = frame.requested.subtract(state.extractTemplatesByIdWide(
+                                current.what, current.keyId(), current.amount, frame.requested));
+                        if (remaining.signum() <= 0) {
+                            pending.pop();
+                            depth--;
+                            continue;
+                        }
+                        if (!current.slotsBuilt) current.countAllSlots();
+                        requestCount++;
+                        var route = (RouteOrdering.Route.Pattern) current.routes.getFirst();
+                        frame.pattern = route.pattern();
+                        frame.demand = WideMath.mul(current.amount, remaining);
+                        frame.times = frame.demand.ceilDiv(PlanAmount.of(frame.pattern.outputPerCraft()));
+                        frame.mark = state.journal();
+                        frame.slots = current.slotsFor(route);
                     }
-                    state.insertByIdWide(site.what, site.keyId(), WideMath.mul(pattern.outputPerCraft(), times));
-                    state.addCrafting(pattern.source(), times);
-                    state.addBytes(times);
-                } catch (BranchFailure failure) {
-                    branchFailureCount++;
-                    state.undoTo(mark);
-                    throw failure;
+                    if (frame.index < frame.pattern.inputs().size()) {
+                        int index = frame.index++;
+                        var child = frame.slots[index];
+                        var amount = WideMath.mul(frame.pattern.inputs().get(index).multiplier(), frame.times);
+                        // 资格证明保证所有后代都是精确单路线；终端与库存短路仍在原入口结算。
+                        if (child.routes.isEmpty() || child.isEmittable()
+                                || state.availableExactByIdWide(child.what, child.keyId())
+                                        .compareTo(WideMath.mul(child.amount, amount)) >= 0) {
+                            requestTerminalWide(child, amount, iterativeDepthLimit(child.graph));
+                        } else {
+                            pending.push(new WideRequestFrame(child, amount));
+                        }
+                        continue;
+                    }
+                    state.insertByIdWide(current.what, current.keyId(),
+                            WideMath.mul(frame.pattern.outputPerCraft(), frame.times));
+                    state.addCrafting(frame.pattern.source(), frame.times);
+                    state.addBytes(frame.times);
+                    if (!state.extractByIdWide(current.what, current.keyId(), frame.demand).equals(frame.demand)) {
+                        throw new IllegalStateException("Wide linear production did not fulfill its exact demand");
+                    }
+                    pending.pop();
+                    depth--;
                 }
-                if (!state.extractByIdWide(site.what, site.keyId(), demand).equals(demand)) {
-                    throw new IllegalStateException("Wide linear production did not fulfill its exact demand");
-                }
+            } catch (BranchFailure failure) {
+                branchFailureCount++;
+                if (rootFrame.mark >= 0) state.undoTo(rootFrame.mark);
+                throw failure;
             } finally {
-                depth--;
+                depth = initialDepth;
+            }
+        }
+
+        /** 一层生产在子槽返回后继续结算；mark 保留失败时根站点已提取库存的既有语义。 */
+        private static final class WideRequestFrame {
+            private final Site site;
+            private final PlanAmount requested;
+            private GraphPattern pattern;
+            private Site[] slots;
+            private PlanAmount demand;
+            private PlanAmount times;
+            private int index;
+            private int mark = -1;
+
+            private WideRequestFrame(Site site, PlanAmount requested) {
+                this.site = site;
+                this.requested = requested;
             }
         }
 
         /** 终端与足量库存一次结算，不执行生产路线。 */
         private void requestTerminalWide(Site site, PlanAmount requestedAmount) {
+            requestTerminalWide(site, requestedAmount, MAX_DEPTH);
+        }
+
+        /** 迭代生产中的终端只占一个短调用帧，沿用其已经证明的拓扑深度界。 */
+        private void requestTerminalWide(Site site, PlanAmount requestedAmount, int depthLimit) {
             if (requestedAmount.signum() <= 0) {
                 return;
             }
-            if (++depth > MAX_DEPTH) {
+            wideTerminalCount++;
+            if (++depth > depthLimit) {
                 throw new RecursionTooDeepException();
             }
             try {
@@ -1985,6 +2058,20 @@ public final class LinearPlanner {
             if (memo != null) {
                 return memo;
             }
+            if (graph.cycleKind() == CraftGraph.CycleKind.NONE
+                    && graph.byproductSupply().isEmpty() && graph.remainderSupply().isEmpty()) {
+                if (batchCapacityEligibility == null) {
+                    batchCapacityEligibility = new BatchPlanningEligibilityImpl(graph, iterativeDepthLimit(graph), () -> {
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw new java.util.concurrent.CancellationException("Capacity calculation cancelled");
+                        }
+                    });
+                }
+                if (batchCapacityEligibility.allows(key, 1, true, iterativeDepthLimit(graph))) {
+                    cacheBatchCapacities(key);
+                    return keyCaps.get(key);
+                }
+            }
             // Optimistic in-flight marker: re-entering a key mid-computation
             // returns UNBOUNDED so the bound can only over-approximate —
             // "below request proves failure" stays valid on cyclic walks.
@@ -2015,6 +2102,50 @@ public final class LinearPlanner {
             cap = cap.max(PlanAmount.ZERO);
             keyCaps.put(key, cap);
             return cap;
+        }
+
+        /** 与批量求解共用结构证明；后序计算宽域产能，缺料后的剪枝也不再递归整条压缩链。 */
+        private BatchPlanningEligibility batchCapacityEligibility;
+
+        private void cacheBatchCapacities(AEKey key) {
+            var pending = new java.util.ArrayDeque<AEKey>();
+            pending.push(key);
+            while (!pending.isEmpty()) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new java.util.concurrent.CancellationException("Capacity calculation cancelled");
+                }
+                var current = pending.peek();
+                if (keyCaps.containsKey(current)) {
+                    pending.pop();
+                    continue;
+                }
+                if (graph.emittable().contains(current)) {
+                    keyCaps.put(current, UNBOUNDED);
+                    pending.pop();
+                    continue;
+                }
+                var producers = graph.producersByOutput().get(current);
+                if (producers == null || producers.isEmpty()) {
+                    keyCaps.put(current, graph.supplyAmount(current));
+                    pending.pop();
+                    continue;
+                }
+                var pattern = producers.getFirst();
+                boolean ready = true;
+                for (var input : pattern.inputs()) {
+                    if (!keyCaps.containsKey(input.key())) {
+                        pending.push(input.key());
+                        ready = false;
+                        break;
+                    }
+                }
+                if (!ready) continue;
+                // 子键都已记账，既有发数上界函数的 supplyWide 只会命中缓存。
+                var cap = graph.supplyAmount(current)
+                        .add(scaleByOutput(firingBound(pattern), pattern.outputPerCraft()));
+                keyCaps.put(current, cap.max(PlanAmount.ZERO));
+                pending.pop();
+            }
         }
 
         /**

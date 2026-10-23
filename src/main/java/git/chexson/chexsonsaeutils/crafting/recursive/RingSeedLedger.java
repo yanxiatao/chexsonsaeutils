@@ -63,13 +63,14 @@ import java.util.function.Function;
  * 不是 {@code value} 那份饱和镜像：镜像在 {@code > long} 的订单上把留底那两笔复加同时顶到
  * {@code Long.MAX_VALUE}，那截"到底还差几枚"就读不出来了。
  *
- * <p>本账本的<b>在册名单随发数每轮现算</b>（{@link #seedAmounts()}／{@link #seedDemandsByFamily()} 每次读
+ * <p>完整样板集合已证明无环时，其任意子图也无环，可复用空环种结论；新增样板会撤销证明。
+ * 有环或尚未证明的图，本账本的<b>在册名单随发数每轮现算</b>（{@link #seedAmounts()}／{@link #seedDemandsByFamily()} 每次读
  * 都重派生一次，不按任务表条数缓存）：资格读的是筛图那一句（{@code outstandingFirings <= 0} 的样板整张
  * 出图，它那一枚键跟着出分量），缓存会让"5/4 这一档跑到 4/4 该入册"等成"有人出表才入册"，
  * 而取料点上的留底复加读的是本 tick 的发数 ⇒ 两侧不会在同一趟上对账。
  *
- * <p>每趟<b>重算</b>的是这四格：谁还在册（筛图）、分量归属（SCC）、资格（这一枚键被分量里哪张还没跑完的
- * 样板吃掉）、每发量×发数的复加。<b>唯一跨读复用</b>的一格是每张样板<b>自己</b>那两半每发量表
+ * <p>未命中无环证明时，每趟<b>重算</b>的是这四格：谁还在册（筛图）、分量归属（SCC）、资格（这一枚键被分量里哪张还没跑完的
+ * 样板吃掉）、每发量×发数的复加。该路径<b>跨读复用</b>的一格是每张样板<b>自己</b>那两半每发量表
  * （{@link #perFiringTablesByPattern}）：它们只由样板的 definition 与输入/输出槽决定、与发数无关，
  * 是这趟派生里唯一"发数变了它也不变"的那一截，于是每 tick 那两趟读点不再各算一遍槽位。
  *
@@ -224,7 +225,7 @@ public final class RingSeedLedger<P> {
     /**
      * 环种键与起步量：与 {@code RecursiveTaskOrdering} 的 internalItems 同一口径。
      *
-     * <p><b>每次读都现派生</b>（不再有"按任务表条数缓存"那一格）：在册名单读的是 {@link #rebuild}
+     * <p>除完整图已证明无环的情形外，<b>每次读都现派生</b>（不再有"按任务表条数缓存"那一格）：在册名单读的是 {@link #rebuild}
      * 筛图那一句的发数（发数归零的整张出图），而发数每 tick 都在减，
      * 缓存会让册子滞后于取料点上那份按本 tick 发数复加的留底。
      * 现派生的是筛图/SCC/资格/复加那四格，每张样板的两半每发表从 {@link #perFiringTablesByPattern}
@@ -245,7 +246,7 @@ public final class RingSeedLedger<P> {
      * 旁人能从池子里多取走少掉的那一截，A 分量的成员还能免扣 B 分量那份口粮。
      * "同槽多候选是任选其一"那一档的取最大不在这里，在 {@link #perFiringConsumes} 的槽内合并。
      *
-     * <p><b>每次读都现派生</b>：册上"这一枚精确键在不在册"那一格读的是 {@link #rebuild} 的筛图——
+     * <p>除完整图已证明无环的情形外，<b>每次读都现派生</b>：册上"这一枚精确键在不在册"那一格读的是 {@link #rebuild} 的筛图——
      * {@code outstandingFirings <= 0} 的样板整张出图，它那一枚键跟着出分量（还它的那一张一发不欠时，
      * 这一枚键与吃它的那一张就不再同分量，见 {@link #collectSeed} 抬头）。发数每 tick 都在减而任务条数
      * 可以一动不动——按条数缓存会让 {@code 5/4} 跑到 {@code 4/4} 该入册的那一档等成"有人出表才入册"，
@@ -256,7 +257,22 @@ public final class RingSeedLedger<P> {
         return seedDemandsByFamily;
     }
 
+    /** 已证明无环的完整样板集合；删任务或改变发数不会令其子图产生环。 */
+    private Set<IPatternDetails> provenAcyclicPatterns = Set.of();
+
     private void rebuild() {
+        rebuild(false);
+    }
+
+    private void rebuild(boolean diagnosticSnapshot) {
+        if (!provenAcyclicPatterns.containsAll(remainingExecutionsByPattern.keySet())) {
+            provenAcyclicPatterns = Set.of();
+        }
+        if (!diagnosticSnapshot && !provenAcyclicPatterns.isEmpty()) {
+            seedAmounts = new KeyCounter();
+            seedDemandsByFamily = Map.of();
+            return;
+        }
         // 三张表按节点下标对齐（patterns/consumes/returns）：发数只在下面这一句用，不再随行带一份。
         // 两半每发表从 memo 领（第一趟才真算），筛图与后面的 SCC／资格/复加照旧每趟现算
         List<IPatternDetails> patterns = new ArrayList<>();
@@ -341,6 +357,12 @@ public final class RingSeedLedger<P> {
                         patterns, nextKeyMembers, nextKeyConsume, nextKeyReturn);
             }
         }
+        // 只有全体在册任务均进入本次证明、且每个 SCC 都是单节点时才能复用。
+        // 不能把“当前活跃子图无环”当成完整任务集无环：零发任务随后可能恢复或挂上义务。
+        if (patternCount == remainingExecutionsByPattern.size()
+                && (keyNodes.isEmpty() || diagComponents == patternCount + keyNodes.size())) {
+            provenAcyclicPatterns = Set.copyOf(patterns);
+        }
         this.seedAmounts = nextSeedAmounts;
         this.diagSeeds = nextSeedAmounts.size();
         // 精确种键 → 物品本体族：分组只在这一处做（留底那把尺按族查表），族内各键各记一份、不并账
@@ -361,7 +383,8 @@ public final class RingSeedLedger<P> {
 
     /** 一行读出本账本的派生过程：图规模、成环情况与最终环种键数。 */
     public String derivationReport() {
-        rebuild();
+        // 诊断必须展示本次任务与发数筛图的真实规模，不展示被复用证明的旧计数。
+        rebuild(true);
         var described = new StringBuilder(" ringDiag=[patterns=").append(diagPatterns)
                 .append(", keys=").append(diagKeys)
                 .append(", scc=").append(diagComponents)

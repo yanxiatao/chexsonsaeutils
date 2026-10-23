@@ -654,7 +654,15 @@ final class ParallelBatchExtraction {
          * 现在每 scope 各留最紧一格，{@link #describeMinCell()} 三格一起打，没跑过的那格印 {@code -}。
          * 判据表达式、{@code executions} 算式与 {@code 份数} 的来源一字未动。
          */
-        private final String[] minCells = newMinCellCells();
+        private final MinCell[] minCells = new MinCell[MinCellScope.values().length];
+        /** 捕获不可变数值；只有该格最终需要输出时才生成数千位十进制文本。 */
+        private record MinCell(int slot, AEKey key, BigInteger units, BigInteger available,
+                PlanAmount quota, long usable, BigInteger keyAsk, BigInteger familyAsk, long cap, long firings) {
+            String render() {
+                return cellReadout(slot, key, units, available, quota, usable, keyAsk, familyAsk, cap)
+                        + CELL_SEP_COMMA + "份数=" + firings;
+            }
+        }
         private final long[] minCellFiringsByScope = newMinCellFirings();
 
         /**
@@ -720,9 +728,8 @@ final class ParallelBatchExtraction {
                 return; // 只留这一趟里最紧那一格
             }
             minCellFiringsByScope[index] = cellFirings;
-            minCells[index] = cellReadout(slotIndex, key, exactUnits, exactAvailable, quota,
-                    usableReadout, exactKeyAsk, exactFamilyAsk, cap)
-                    + CELL_SEP_COMMA + "份数=" + cellFirings;
+            minCells[index] = new MinCell(slotIndex, key, exactUnits, exactAvailable, quota,
+                    usableReadout, exactKeyAsk, exactFamilyAsk, cap, cellFirings);
         }
 
         /**
@@ -731,7 +738,11 @@ final class ParallelBatchExtraction {
          * 第三方键串的空白在 {@link #cellReadout} 那一个出口折成 {@code "_"}。
          */
         String describeMinCell() {
-            return describeMinCells(minCells);
+            var rendered = newMinCellCells();
+            for (int index = 0; index < minCells.length; index++) {
+                if (minCells[index] != null) rendered[index] = minCells[index].render();
+            }
+            return describeMinCells(rendered);
         }
 
         /** 三格一起打（100 轮累加后的那份表也用这一把尺）：没跑过的那格印 {@code -}，不冒充"没有这一趟"。 */
@@ -759,7 +770,7 @@ final class ParallelBatchExtraction {
                 if (minCellFiringsByScope[index] >= 0L
                         && (firings[index] < 0L || minCellFiringsByScope[index] < firings[index])) {
                     firings[index] = minCellFiringsByScope[index];
-                    cells[index] = minCells[index];
+                    cells[index] = minCells[index].render();
                 }
             }
         }

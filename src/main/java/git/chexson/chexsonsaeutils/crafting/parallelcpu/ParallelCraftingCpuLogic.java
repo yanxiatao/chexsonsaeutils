@@ -166,6 +166,8 @@ final class ParallelCraftingCpuLogic {
      * （lane 级早有轮转，任务级缺失是最后一块）。
      */
     private int taskResumeIndex;
+    /** 任务成功会删表，跨 tick 必须按样板身份续扫，旧下标只适用于同一份快照。 */
+    @Nullable private IPatternDetails taskResumePattern;
     /** 本 tick 任务循环实际评估了几条（诊断：断点是否真的在推进，还是每 tick 都从头重扫）。 */
     private long lastSweepVisited;
     /** 诊断：提取失败后从网络搬进 CPU 库存的批数与件数（0 批 = 这条通道没起作用）。 */
@@ -281,6 +283,8 @@ final class ParallelCraftingCpuLogic {
 
         suppressChangeNotifications = true;
         this.job = new ParallelExecutingCraftingJob(plan, this::postChange, linkCpu, playerId);
+        taskResumeIndex = 0;
+        taskResumePattern = null;
         for (AEKey forgiven : forgivenUnbounded) {
             // 提交这一步核对的无限来源键要立刻进作业：后面每一批的配额封顶、占料锁与
             // waitingFor 都按这份集合放行，晚一步就又是一份永远等不到的"正在合成"。
@@ -442,6 +446,17 @@ final class ParallelCraftingCpuLogic {
         return job.orderingInternalItems();
     }
 
+    /** 删除已完成任务后重新定位尚未评估的身份，不能沿用旧快照下标跳过刚变为就绪的任务。 */
+    static <T> int resumeTaskIndex(List<Map.Entry<IPatternDetails, T>> tasks,
+            @Nullable IPatternDetails nextPattern, int previousIndex) {
+        if (tasks.isEmpty()) return 0;
+        if (nextPattern == null) return Math.floorMod(previousIndex, tasks.size());
+        for (int index = 0; index < tasks.size(); index++) {
+            if (tasks.get(index).getKey() == nextPattern) return index;
+        }
+        return 0;
+    }
+
     private long executeCrafting(
             List<Map.Entry<IPatternDetails, ParallelExecutingCraftingJob.TaskProgress>> orderedTasks,
             CraftingService craftingService,
@@ -521,8 +536,9 @@ final class ParallelCraftingCpuLogic {
         // 折叠宿主读数为 0 时，先看清是哪一类宿主在真正收料、哪一类永远忙。
         var providerStats = new java.util.HashMap<String, long[]>();
         int taskCount = orderedTasks.size();
-        int startIndex = Math.floorMod(taskResumeIndex, Math.max(1, taskCount));
+        int startIndex = resumeTaskIndex(orderedTasks, taskResumePattern, taskResumeIndex);
         int swept = 0;
+        boolean sweepCompleted = true;
         taskLoop:
         for (int taskOffset = 0; taskOffset < taskCount; taskOffset++) {
             swept++;
@@ -531,6 +547,8 @@ final class ParallelCraftingCpuLogic {
             if (!hasTickBudget(budgetLedger)) {
                 // 本任务未评估：断点留在本任务，下 tick 重试它
                 taskResumeIndex = taskIndex;
+                taskResumePattern = task.getKey();
+                sweepCompleted = false;
                 break;
             }
             if (taskMayLeaveTable(task.getKey(), task.getValue(), job.batchObligations)) {
@@ -558,6 +576,7 @@ final class ParallelCraftingCpuLogic {
                 }
                 job.materialBackoffUntil.remove(details);
                 job.materialBackoffMissing.remove(details);
+                job.materialWakeIndex.remove(details);
             }
             // 环种的"这一轮不许被旁人抽走"不在这里判：它只有取料点上那一份尺（留底见
             // ParallelPlanReservation#spendableAfterRingSeedReserve，夹完的 spendable 由配给分支与
@@ -655,6 +674,10 @@ final class ParallelCraftingCpuLogic {
                         batchPushKMax = Math.max(batchPushKMax, push.accepted());
                         batchGotMax = Math.max(batchGotMax, push.accepted());
                         batchRemainMax = Math.max(batchRemainMax, task.getValue().value);
+                        settleImmediateBatch(declaredBatchHost, job, details, inventory,
+                                lane.cluster().level(), planReservation, poolLedger, batchProbe,
+                                (sourceGrid, what, available) -> sourceGrid == lane.cluster().grid()
+                                        ? claimDeclaredOutput(what, available) : BigInteger.ZERO);
                         lane.cluster().refreshLaneState(lane);
                         if (taskMayLeaveTable(task.getKey(), task.getValue(),
                                 job.batchObligations)) {
@@ -922,6 +945,8 @@ final class ParallelCraftingCpuLogic {
             }
             if (stopAfterCurrentTask) {
                 taskResumeIndex = (taskIndex + 1) % taskCount;
+                taskResumePattern = orderedTasks.get(taskResumeIndex).getKey();
+                sweepCompleted = false;
                 break;
             }
         }
@@ -929,8 +954,9 @@ final class ParallelCraftingCpuLogic {
         // 早退的分支（预算耗尽 / 停在本任务）都已经把 taskResumeIndex 写好，
         // 这里再无条件归零就等于<b>每 tick 都从表头重扫</b>：排在断点之后的任务永远轮不到，
         // 实机形态是若干生产者池里首个候选>0（src=...<-poolFirst>0）却永远 ann=0、整条 lane pushed=0。
-        if (swept >= taskCount) {
+        if (sweepCompleted) {
             taskResumeIndex = 0;
+            taskResumePattern = null;
         }
         lastSweepVisited = swept;
         lastNoCandKey = batchProbe.noCandKey;
@@ -1305,7 +1331,7 @@ final class ParallelCraftingCpuLogic {
      * 漏键只能等 TTL，大批量任务即为伪死锁。多索引一个富余键的代价只是
      * 一次多余重试。
      */
-    private static void recordMaterialBackoff(
+    static void recordMaterialBackoff(
             ParallelExecutingCraftingJob job,
             IPatternDetails details,
             long currentTick
@@ -1325,37 +1351,48 @@ final class ParallelCraftingCpuLogic {
             }
         }
         job.materialBackoffMissing.put(details, missing);
+        job.materialWakeIndex.register(details, missing);
     }
 
     /**
      * 库存键变动时唤醒以该键为缺口的退避任务（精准唤醒，替代 TTL 轮询）。
      * 模糊槽的候选键是主键模板，实际到达的可能是同类模糊变体（exact 键不同、
-     * 主键相同）——精确匹配失败后按主键再比一次，变体入库同样能唤醒。
+     * 主键相同）——精确匹配失败后，还必须由输入槽确认实际变体合法，才能唤醒。
      */
     private void wakeMaterialBackoff(@Nullable AEKey what) {
-        ParallelExecutingCraftingJob currentJob = job;
+        if (what == null || job == null || job.materialBackoffMissing.isEmpty()) return;
+        wakeMaterialBackoff(job, what, lane.cluster().level());
+    }
+
+    /** 同物品的组件变体只有真正通过输入槽 isValid 时才唤醒，压缩等级不能互相唤醒。 */
+    static void wakeMaterialBackoff(@Nullable ParallelExecutingCraftingJob currentJob,
+            @Nullable AEKey what, @Nullable net.minecraft.world.level.Level level) {
         if (what == null || currentJob == null || currentJob.materialBackoffMissing.isEmpty()) {
             return;
         }
-        Object primary = null;
-        for (var iterator = currentJob.materialBackoffMissing.entrySet().iterator(); iterator.hasNext(); ) {
-            var entry = iterator.next();
-            if (entry.getValue().contains(what)) {
-                currentJob.materialBackoffUntil.remove(entry.getKey());
-                iterator.remove();
+        for (var pattern : currentJob.materialWakeIndex.candidates(what)) {
+            var missing = currentJob.materialBackoffMissing.get(pattern);
+            if (missing == null) {
+                currentJob.materialWakeIndex.remove(pattern);
                 continue;
             }
-            if (primary == null) {
-                primary = what.getPrimaryKey();
-            }
-            for (AEKey missingKey : entry.getValue()) {
-                if (missingKey.getPrimaryKey().equals(primary)) {
-                    currentJob.materialBackoffUntil.remove(entry.getKey());
-                    iterator.remove();
-                    break;
-                }
+            if (missing.contains(what) || acceptsArrivingVariant(pattern, what, level)) {
+                currentJob.materialBackoffUntil.remove(pattern);
+                currentJob.materialBackoffMissing.remove(pattern);
+                currentJob.materialWakeIndex.remove(pattern);
             }
         }
+    }
+
+    private static boolean acceptsArrivingVariant(IPatternDetails pattern, AEKey arriving,
+            @Nullable net.minecraft.world.level.Level level) {
+        for (var input : pattern.getInputs()) {
+            for (var candidate : input.getPossibleInputs()) {
+                if (candidate != null && candidate.what().getPrimaryKey().equals(arriving.getPrimaryKey())
+                        && input.isValid(arriving, level)) return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1755,6 +1792,23 @@ final class ParallelCraftingCpuLogic {
         progress.consumeFirings(accepted);
         return new DeclaredPush(acceptedFirings,
                 CraftingCpuHelper.calculatePatternPower(prototype.holder()), false);
+    }
+
+    /**
+     * 即时装配宿主在同一轮内付清本批材料并回流真实产物，让随后依赖任务继续执行。
+     * 继续使用既有精确取料、配额、义务和销账入口；付不清时保留原回流与重试路径。
+     */
+    static void settleImmediateBatch(DeclaredBatchHost host, ParallelExecutingCraftingJob job,
+            IPatternDetails details, ListCraftingInventory inventory,
+            @Nullable net.minecraft.world.level.Level level, ParallelPlanReservation reservation,
+            ParallelPoolLedger ledger, @Nullable ParallelBatchExtraction.Probe probe,
+            git.chexson.chexsonsaeutils.crafting.hostbatch.DeclaredBatchOutputReceiver receiver) {
+        if (!(host instanceof git.chexson.chexsonsaeutils.crafting.hostbatch.ImmediateBatchOutputHost immediate)) return;
+        var owed = job.batchObligations.pendingFirings(details);
+        if (owed.signum() > 0) {
+            payObligationBatch(job, details, owed, inventory, level, reservation, ledger, null, probe);
+        }
+        if (!job.batchObligations.hasPending(details)) immediate.deliverBufferedBatchOutputs(receiver);
     }
 
     /** 按实际原型逐族合并一发用量；跨槽同族不能各自重复使用整份计划配额。 */
@@ -3768,6 +3822,8 @@ final class ParallelCraftingCpuLogic {
     }
 
     void readFromNBT(CompoundTag data, HolderLookup.Provider registries) {
+        taskResumeIndex = 0;
+        taskResumePattern = null;
         String resumePath = poolLedger.path("resume");
         inventory.readFromNBT(data.getList("inventory", Tag.TAG_COMPOUND), registries);
         poolLedger.restore(resumePath);
@@ -4614,18 +4670,34 @@ final class ParallelCraftingCpuLogic {
         });
     }
 
-    /** 真实中间产物直接入宽域池；终点交付继续使用 requester 的既有交付口。 */
+    /** 中间产物及手动订单终点直接入宽域池；有 requester 的终点保留既有交付口。 */
     BigInteger claimDeclaredOutput(AEKey what, BigInteger available) {
-        if (!lane.cluster().canProcessJobs() || job == null || job.link.isCanceled()) {
+        if (!lane.cluster().canProcessJobs() || job == null || job.link.isCanceled() || routingStandaloneOutput) {
             return BigInteger.ZERO;
         }
         String returnPath = poolLedger.path("return-wide");
         try {
+            if (!job.dyeableRecursivePlan && what.matches(job.finalOutput) && job.link.isStandalone()) {
+                return claimDeclaredStandaloneOutput(job, (WideCraftingInventory) inventory,
+                        what, available, this::postChange);
+            }
             return claimDeclaredIntermediateOutput(job, (WideCraftingInventory) inventory,
                     what, available, this::postChange);
         } finally {
             poolLedger.restore(returnPath);
         }
+    }
+
+    /** 手动订单只收尚欠且未缓存在池中的终点；磁盘实收前不扣最终订单余量。 */
+    static BigInteger claimDeclaredStandaloneOutput(ParallelExecutingCraftingJob job,
+            WideCraftingInventory pool, AEKey what, BigInteger available, Consumer<AEKey> changed) {
+        if (available.signum() <= 0 || job.dyeableRecursivePlan || !job.link.isStandalone()
+                || job.link.isCanceled() || !what.matches(job.finalOutput)) return BigInteger.ZERO;
+        var remaining = job.exactRemainingAmount == null ? BigInteger.valueOf(job.remainingAmount)
+                : job.exactRemainingAmount.exactValue();
+        var bufferedKey = ParallelBatchExtraction.resolvePoolKey(pool, what);
+        var unbuffered = remaining.subtract(pool.amount(bufferedKey)).max(BigInteger.ZERO);
+        return claimDeclaredBufferedOutput(job, pool, what, available.min(unbuffered), changed);
     }
 
     /** 按精确等待账转移实物；库存、进度、等待量与到账流水全程使用精确数量。 */
@@ -4635,6 +4707,12 @@ final class ParallelCraftingCpuLogic {
                 && !isDyeableRecursiveInternalItem(job, what))) {
             return BigInteger.ZERO;
         }
+        return claimDeclaredBufferedOutput(job, pool, what, available, changed);
+    }
+
+    /** 按实际等待份额完成一次精确到账，所有调用者共用同一套库存与进度记账。 */
+    private static BigInteger claimDeclaredBufferedOutput(ParallelExecutingCraftingJob job,
+            WideCraftingInventory pool, AEKey what, BigInteger available, Consumer<AEKey> changed) {
         AEKey owedKey = ParallelBatchExtraction.resolvePoolKey(job.waitingFor, what);
         var waiting = (WideCraftingInventory) job.waitingFor;
         BigInteger accepted = waiting.extractExact(owedKey, available, Actionable.SIMULATE);
@@ -4962,6 +5040,8 @@ final class ParallelCraftingCpuLogic {
         );
 
         this.job = null;
+        taskResumeIndex = 0;
+        taskResumePattern = null;
         this.requesterLink = null;
         this.storeItems();
     }

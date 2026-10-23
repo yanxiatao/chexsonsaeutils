@@ -148,6 +148,8 @@ final class ParallelExecutingCraftingJob {
     final Map<IPatternDetails, Long> materialBackoffUntil = new HashMap<>();
     /** 退避样板的缺口键索引：库存该键变动时即刻唤醒（postChange 驱动）。 */
     final Map<IPatternDetails, Set<AEKey>> materialBackoffMissing = new HashMap<>();
+    /** 只覆盖当前退避任务；不保存进 NBT，作业恢复后从实际缺料重新登记。 */
+    final MaterialWakeIndex materialWakeIndex = new MaterialWakeIndexImpl();
     GenericStack finalOutput;
     long remainingAmount;
     /** 明确提交的宽域根订单与其剩余交付量；long 字段只供 AE2 状态界面读取。 */

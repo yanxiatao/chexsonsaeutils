@@ -17,6 +17,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Collections;
 
 public final class LocalPatternProviderFacade {
 
@@ -26,6 +30,10 @@ public final class LocalPatternProviderFacade {
     private final DecodedPatternEntryCache decodedPatternEntryCache;
     private final Map<Integer, IMolecularAssemblerSupportedPattern> supportedPatternsBySlot = new LinkedHashMap<>();
     private List<IPatternDetails> cachedAvailablePatterns = List.of();
+    /** 提供者通常回传登记的同一个样板对象；接单检查不应重复解读其组件。 */
+    private final Set<IPatternDetails> availablePatternInstances = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** 等价样板壳仍沿用去色后的完整定义身份，不能只按物品或输出判断。 */
+    private final Set<PatternIdentity> availablePatternIdentities = new HashSet<>();
     private boolean providerVisibleSetUpdatePending;
 
     public LocalPatternProviderFacade(
@@ -46,7 +54,7 @@ public final class LocalPatternProviderFacade {
 
     public void clear() {
         supportedPatternsBySlot.clear();
-        cachedAvailablePatterns = List.of();
+        replaceAvailablePatterns(List.of());
     }
 
     public void refreshDirtyPatterns() {
@@ -74,7 +82,7 @@ public final class LocalPatternProviderFacade {
         if (changed) {
             List<IPatternDetails> rebuiltPatterns = rebuildUniqueAvailablePatterns();
             boolean providerVisibleSetChanged = !sameAvailablePatterns(cachedAvailablePatterns, rebuiltPatterns);
-            cachedAvailablePatterns = rebuiltPatterns;
+            replaceAvailablePatterns(rebuiltPatterns);
             if (providerVisibleSetChanged) {
                 host.recordProviderUpdate();
                 providerVisibleSetUpdatePending = true;
@@ -94,12 +102,20 @@ public final class LocalPatternProviderFacade {
     }
 
     public boolean contains(IPatternDetails patternDetails) {
-        for (IPatternDetails cached : cachedAvailablePatterns) {
-            if (samePatternIdentity(cached, patternDetails)) {
-                return true;
-            }
-        }
-        return false;
+        return availablePatternInstances.contains(patternDetails)
+                || availablePatternIdentities.contains(PatternIdentity.capture(patternDetails));
+    }
+
+    /** 样板刷新与清空共用的原子替换口；索引和公开列表必须来自同一份已解码名单。 */
+    void replaceAvailablePatterns(List<IPatternDetails> patterns) {
+        var snapshot = List.copyOf(patterns);
+        var identities = new HashSet<PatternIdentity>();
+        for (var pattern : snapshot) identities.add(PatternIdentity.capture(pattern));
+        availablePatternInstances.clear();
+        availablePatternIdentities.clear();
+        availablePatternInstances.addAll(snapshot);
+        availablePatternIdentities.addAll(identities);
+        cachedAvailablePatterns = snapshot;
     }
 
     public int activePatternCount() {

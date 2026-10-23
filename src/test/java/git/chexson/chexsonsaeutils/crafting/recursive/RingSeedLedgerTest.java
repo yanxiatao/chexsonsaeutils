@@ -29,6 +29,45 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class RingSeedLedgerTest {
 
+    @Test
+    void provenAcyclicUniverseSkipsRepeatedProgressAndTopologyReadsButInvalidatesOnNewPattern() {
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var first = of(Items.PAPER, FakeInput.stack(ORE, 1), new GenericStack(SEED, 1));
+        var second = of(Items.BOOK, FakeInput.stack(SEED, 1), new GenericStack(PRODUCT, 1));
+        Map<IPatternDetails, Long> tasks = new HashMap<>();
+        tasks.put(first, 5L);
+        tasks.put(second, 5L);
+        var ledger = new RingSeedLedger<>(tasks, count -> { calls.incrementAndGet(); return PlanAmount.of(count); });
+        assertTrue(ledger.seedAmounts().isEmpty());
+        assertEquals(2, calls.get());
+        calls.set(0);
+        tasks.put(first, 0L);
+        tasks.remove(second);
+        assertTrue(ledger.seedDemandsByFamily().isEmpty());
+        assertTrue(ledger.seedAmounts().isEmpty());
+        assertEquals(0, calls.get(), "无环图的子图仍无环，不应重复读取发数重建 SCC");
+        var ring = selfFeedingRing();
+        tasks.put(ring, 3L);
+        assertEquals(1, ledger.seedAmounts().get(SEED));
+        tasks.put(ring, 0L);
+        assertTrue(ledger.seedAmounts().isEmpty());
+        tasks.put(ring, 4L);
+        assertEquals(1, ledger.seedAmounts().get(SEED));
+    }
+
+    @Test
+    void inactiveCycleMemberCannotBeExcludedFromAnAcyclicCertificate() {
+        var forward = of(Items.PAPER, FakeInput.stack(ORE, 1), new GenericStack(SEED, 1));
+        var back = of(Items.BOOK, FakeInput.stack(SEED, 1), new GenericStack(ORE, 1));
+        Map<IPatternDetails, Long> tasks = new HashMap<>();
+        tasks.put(forward, 2L);
+        tasks.put(back, 0L);
+        var ledger = new RingSeedLedger<>(tasks, PlanAmount::of);
+        assertTrue(ledger.seedAmounts().isEmpty());
+        tasks.put(back, 2L);
+        assertTrue(!ledger.seedAmounts().isEmpty(), "恢复零发成员后必须重新识别闭环");
+    }
+
     private static final AEKey SEED = AEItemKey.of(Items.NETHERITE_SCRAP);
     private static final AEKey ORE = AEItemKey.of(Items.IRON_ORE);
     private static final AEKey PRODUCT = AEItemKey.of(Items.IRON_INGOT);
