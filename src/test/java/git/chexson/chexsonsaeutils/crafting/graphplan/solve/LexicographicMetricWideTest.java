@@ -42,6 +42,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class LexicographicMetricWideTest {
 
+    @Test
+    void fractionalFluidByteTieKeepsFirstRouteAfterExactComparison() {
+        var target = appeng.api.stacks.AEFluidKey.of(net.minecraft.world.level.material.Fluids.LAVA);
+        var water = appeng.api.stacks.AEFluidKey.of(net.minecraft.world.level.material.Fluids.WATER);
+        var inputs = new java.util.ArrayList<GraphInput>();
+        for (int i = 0; i < 125; i++) {
+            inputs.add(new GraphInput(water, 8, 1, GraphInput.Mode.NORMAL, null, null, null, false));
+        }
+        var first = new GraphPattern(new FakeDetails(Items.CLOCK), target, 1,
+                List.of(new GenericStack(target, 1)), inputs);
+        var second = new GraphPattern(new FakeDetails(Items.COMPASS), target, 1,
+                List.of(new GenericStack(target, 1)), List.of(
+                        new GraphInput(water, 1000, 1, GraphInput.Mode.NORMAL, null, null, null, false)));
+        var graph = new CraftGraph(target, Map.of(target, List.of(first, second)),
+                Map.of(first.source(), first, second.source(), second), List.of(first.source(), second.source()),
+                Map.of(), Map.of(), Map.of(), Map.of(water, 1000L), java.util.Set.of(), Map.of(), false, null, 2, 2);
+        var result = LinearPlanner.solve(graph, CalculationStrategy.CRAFT_LESS, 1, true);
+        assertFalse(result.hasDeclined(), result::declineReason);
+        assertFalse(result.simulation());
+        assertEquals(1L, result.state().craftsWide().getAmount(first.source()).fastValue(),
+                "两路均用一桶水、执行一发，精确字节同价时保持第一条路线");
+        assertEquals(0L, result.state().craftsWide().getAmount(second.source()).fastValue());
+        assertEquals(BigInteger.valueOf(1000), result.state().used().getExact(water));
+    }
+
     private static final AEItemKey IRON = AEItemKey.of(Items.IRON_INGOT);
     /** 路线 A 的三枚原料（每发各吃 7 枚）。 */
     private static final AEItemKey DIRT = AEItemKey.of(Items.DIRT);

@@ -1180,8 +1180,8 @@ public final class LinearPlanner {
          * 定序兜底仍是最后一档的 {@code index}，语义没动。
          *
          * <p>第一档（剩余需求）与最后一档（下标）本来就是 {@code long} 精确量，
-         * 装箱进同一只数组只为让一次比较走一把尺。字节仍在 double 精确域时沿用
-         * 原差值取整顺序；越出该域后读取节点费与物料费的精确账，避免 long 饱和改变选路。
+         * 装箱进同一只数组只为让一次比较走一把尺。字节在精确账上先相减再取整，
+         * 避免浮点舍入和 long 饱和改变选路。
          */
         private long fireRoutesLexicographic(Site site, List<RouteOrdering.Route> routes,
                 long totalRequested, boolean multiBranch) {
@@ -1191,8 +1191,7 @@ public final class LinearPlanner {
             PlanAmount baseUsed = totalOf(saved.used());
             PlanAmount baseEmitted = totalOf(saved.emitted());
             PlanAmount baseCrafts = totalCrafts(saved);
-            double baseBytes = saved.bytes();
-            PlanAmount exactBaseBytes = saved.byteAccount().value();
+            var baseBytes = saved.byteAccount().copy();
             long bestFulfilled = 0;
             PlanAmount[] bestMetric = null;
             long bestLeftover = 0L;
@@ -1233,10 +1232,7 @@ public final class LinearPlanner {
                         totalOf(saved.used()).subtract(baseUsed),
                         totalOf(saved.emitted()).subtract(baseEmitted),
                         totalCrafts(saved).subtract(baseCrafts),
-                        // 字节差值：常态保留 AE2 顺序，大数使用精确账
-                        Math.abs(saved.bytes()) < 9_007_199_254_740_992.0 && Math.abs(baseBytes) < 9_007_199_254_740_992.0
-                                ? PlanAmount.of((long) Math.ceil(saved.bytes() - baseBytes))
-                                : saved.byteAccount().value().subtract(exactBaseBytes),
+                        saved.byteAccount().roundedDifference(baseBytes),
                         PlanAmount.of(index)
                 };
                 if (bestMetric == null || lexicographicCompare(metric, bestMetric) < 0) {
@@ -1615,8 +1611,8 @@ public final class LinearPlanner {
                     }
                     case RETURNED, CONSUMED_RETURNING -> {
                         request(slots[x], input.multiplier());
-                        state.addStackBytes(input.key(), input.amountPerCraft(),
-                                WideMath.wideMul(input.multiplier(), times - 1));
+                        state.addStackBytesWide(input.key(), input.amountPerCraft(),
+                                WideMath.mul(input.multiplier(), times - 1));
                     }
                 }
             }
@@ -1639,8 +1635,7 @@ public final class LinearPlanner {
                         } else {
                             state.insert(input.remainderKey(), WideMath.mul(input.multiplier(), times));
                         }
-                        state.addStackBytes(input.remainderKey(),
-                                WideMath.wideMul(input.multiplier(), times), 1);
+                        state.addStackBytes(input.remainderKey(), input.multiplier(), times);
                     }
                     default -> {
                     }

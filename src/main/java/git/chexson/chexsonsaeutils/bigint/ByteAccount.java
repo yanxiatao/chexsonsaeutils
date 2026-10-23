@@ -9,9 +9,8 @@ import appeng.api.stacks.AEKey;
  * 精确字节账本：复刻 AE2 {@code addStackBytes} 的 double 累加器（位模式一致），
  * 同时按 {@code amountPerByte} 分组保留精确整数账。
  *
- * <p>读取规则：double 未离开精确域（|bytes| &lt; 2^53 且有限）时以 double 为准
- * （{@code (long) Math.ceil}），既有场景逐位不变；越界才切换到
- * 「Σ 桶和通分 lcm 后整除上取整」的精确值。
+ * <p>正式计费始终使用「Σ 桶和通分 lcm 后整除上取整」的精确值。
+ * double 只保留 AE2 诊断读数：即使总量小于 2^53，分数累加也可能跨过取整边界。
  *
  * <p>桶值走 long 快路径（{@code fastByApb}），只有真正溢出 long 域的桶才落宽表
  * （{@code wideByApb}），且宽值回落 long 域时自动降级——所以「加了再减回去」
@@ -19,9 +18,6 @@ import appeng.api.stacks.AEKey;
  * 3 个 {@link PlanAmount}，是 42 万站点规模下求解耗时的最大单项。
  */
 public final class ByteAccount {
-    /** double 整数精确上限：2^53。 */
-    private static final double EXACT_DOUBLE_LIMIT = 9_007_199_254_740_992.0;
-
     private double ae2Bytes;
     private java.math.BigDecimal plainBytes = java.math.BigDecimal.ZERO;
     /**
@@ -42,6 +38,12 @@ public final class ByteAccount {
     }
 
     public void addBytes(double bytes) {
+        this.ae2Bytes += bytes;
+        this.plainBytes = this.plainBytes.add(java.math.BigDecimal.valueOf(bytes));
+    }
+
+    /** long 节点费直接写入整数账，禁止先转为 double 后再恢复。 */
+    public void addBytes(long bytes) {
         this.ae2Bytes += bytes;
         this.plainBytes = this.plainBytes.add(java.math.BigDecimal.valueOf(bytes));
     }
@@ -145,40 +147,40 @@ public final class ByteAccount {
         return this.ae2Bytes;
     }
 
-    /** AE2 读法 {@code (long) Math.ceil(bytes)} 的精确对应值。 */
+    /** 正式字节费：精确累计后统一向上取整，浮点诊断值不参与决策。 */
     public PlanAmount value() {
-        double bytes = this.ae2Bytes;
-        if (Double.isFinite(bytes) && Math.abs(bytes) < EXACT_DOUBLE_LIMIT) {
-            return PlanAmount.of((long) Math.ceil(bytes));
-        }
         return exactValue();
+    }
+
+    /** 路线增量先精确相减再取整，不能用两个已取整总量相减替代。 */
+    public PlanAmount roundedDifference(ByteAccount baseline) {
+        var difference = copy();
+        difference.plainBytes = this.plainBytes.subtract(baseline.plainBytes);
+        for (int i = 0; i < baseline.bucketCount; i++) {
+            BigInteger wide = baseline.bucketWide == null ? null : baseline.bucketWide[i];
+            BigInteger amount = wide != null ? wide : BigInteger.valueOf(baseline.bucketFast[i]);
+            difference.addBucketWide(baseline.bucketApb[i], amount.negate());
+        }
+        return difference.exactValue();
     }
 
     /** 精确值：节点费与物料桶通分后统一向上取整，不遗漏任何费用。 */
     public PlanAmount exactValue() {
-        long lcm = 1L;
+        BigInteger lcm = BigInteger.ONE;
         for (int i = 0; i < this.bucketCount; i++) {
-            lcm = lcm / gcd(lcm, this.bucketApb[i]) * this.bucketApb[i];
+            var apb = BigInteger.valueOf(this.bucketApb[i]);
+            lcm = lcm.divide(lcm.gcd(apb)).multiply(apb);
         }
         PlanAmount numerator = PlanAmount.ZERO;
         for (int i = 0; i < this.bucketCount; i++) {
             BigInteger wide = this.bucketWide == null ? null : this.bucketWide[i];
             PlanAmount bucket = wide != null ? PlanAmount.of(wide) : PlanAmount.of(this.bucketFast[i]);
-            numerator = numerator.add(bucket.multiply(PlanAmount.of(lcm / this.bucketApb[i])));
+            numerator = numerator.add(bucket.multiply(PlanAmount.of(lcm.divide(BigInteger.valueOf(this.bucketApb[i])))));
         }
         // AE2 公式末尾 ×8：分子统一带上 8
         return PlanAmount.of(new java.math.BigDecimal(numerator.multiply(PlanAmount.of(8L)).exactValue())
-                .add(this.plainBytes.multiply(java.math.BigDecimal.valueOf(lcm)))
-                .divide(java.math.BigDecimal.valueOf(lcm), 0, java.math.RoundingMode.CEILING).toBigIntegerExact());
-    }
-
-    private static long gcd(long a, long b) {
-        while (b != 0L) {
-            long t = a % b;
-            a = b;
-            b = t;
-        }
-        return a;
+                .add(this.plainBytes.multiply(new java.math.BigDecimal(lcm)))
+                .divide(new java.math.BigDecimal(lcm), 0, java.math.RoundingMode.CEILING).toBigIntegerExact());
     }
 
     public ByteAccount copy() {

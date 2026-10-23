@@ -14,6 +14,63 @@ import git.chexson.chexsonsaeutils.bigint.ByteAccount;
 
 class ByteAccountTest {
 
+    @Test
+    void routeByteDeltaRoundsAfterSubtractionIncludingWideAndFractionalFees() {
+        var water = appeng.api.stacks.AEFluidKey.of(net.minecraft.world.level.material.Fluids.WATER);
+        var account = new ByteAccount();
+        account.addBytes(git.chexson.chexsonsaeutils.bigint.PlanAmount.of(BigInteger.TEN.pow(30)));
+        account.add(water, 999, 1);
+        var baseline = account.copy();
+        account.add(water, 2, 1);
+        assertEquals(1L, account.roundedDifference(baseline).fastValue());
+        assertEquals(0L, baseline.roundedDifference(account).fastValue());
+        account.restore(baseline);
+        assertEquals(0L, account.roundedDifference(baseline).fastValue());
+        assertEquals(BigInteger.TEN.pow(30).add(BigInteger.ONE), baseline.value().exactValue());
+    }
+
+    @Test
+    void mixedResourceDenominatorsDoNotOverflowDuringExactSummation() {
+        var account = new ByteAccount();
+        for (long apb : new long[] {2_147_483_647L, 2_147_483_629L, 2_147_483_587L}) {
+            account.addBucket(apb, apb * 1000 + 1);
+        }
+        assertEquals(24_001L, account.value().fastValue());
+    }
+
+    @Test
+    void longNodeFeesPreserveEveryIntegerAndUndo() {
+        long bytes = (1L << 53) + 1L;
+        var account = new ByteAccount();
+        account.addBytes(bytes);
+        assertEquals(BigInteger.valueOf(bytes), account.value().exactValue());
+        var state = new git.chexson.chexsonsaeutils.crafting.graphplan.solve.GraphPlanningState(
+                java.util.Map.of(), java.util.Map.of());
+        state.addBytes(3L);
+        int mark = state.journal();
+        state.addBytes(bytes);
+        assertEquals(BigInteger.valueOf(bytes).add(BigInteger.valueOf(3)), state.byteAccount().value().exactValue());
+        state.undoTo(mark);
+        assertEquals(3L, state.byteAccount().value().fastValue());
+    }
+
+    @Test
+    void fractionalFluidFeesRoundOnlyAfterExactAccumulation() {
+        var account = new ByteAccount();
+        var water = appeng.api.stacks.AEFluidKey.of(net.minecraft.world.level.material.Fluids.WATER);
+        for (int i = 0; i < 1000; i++) account.add(water, 1, 1);
+        assertEquals(BigInteger.ONE, account.value().exactValue());
+        assertTrue(account.ae2Bytes() > 1.0, "浮点诊断值仍保留原始累加结果");
+    }
+
+    @Test
+    void fractionalFeeIsNotLostBesideLargeIntegerNodeFees() {
+        var account = new ByteAccount();
+        account.addBytes((1L << 53) - 1);
+        account.add(appeng.api.stacks.AEFluidKey.of(net.minecraft.world.level.material.Fluids.WATER), 1, 1);
+        assertEquals(BigInteger.ONE.shiftLeft(53), account.value().exactValue());
+    }
+
     private static AEItemKey paper() {
         return AEItemKey.of(new ItemStack(Items.PAPER));
     }

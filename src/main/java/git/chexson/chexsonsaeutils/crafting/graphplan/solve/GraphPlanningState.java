@@ -255,7 +255,7 @@ public final class GraphPlanningState {
         return this.byteAccount.ae2Bytes();
     }
 
-    /** Exact byte ledger; precise value wins once the double leaves its exact domain. */
+    /** 正式字节计费账；double 只用于诊断。 */
     public ByteAccount byteAccount() {
         return this.byteAccount;
     }
@@ -732,6 +732,11 @@ public final class GraphPlanningState {
     public void addBytes(PlanAmount bytes) {
         this.nodeBytesAccum += bytes.exactValue().doubleValue();
         journal.plainBytes(bytes);
+    }
+
+    /** 普通批量的 long 发数同样必须以整数真值入账，并参与精确回滚。 */
+    public void addBytes(long bytes) {
+        addBytes(PlanAmount.of(bytes));
     }
 
     public void addBytes(double bytes) {
