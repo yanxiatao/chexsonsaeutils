@@ -25,6 +25,8 @@ public final class EnhancedCraftingStatusFormatting {
      * 观感与今天完全一致；超过它才走下面的宽域阶梯 / 科学计数 / 全量千分位。
      */
     private static final BigInteger LONG_MAX = WideCeilings.LONG_ACCOUNT;
+    /** 线程隔离避免 NumberFormat/缓存跨线程竞争；容量由实现类限制。 */
+    private static final ThreadLocal<CraftingAmountText> TEXT = ThreadLocal.withInitial(CraftingAmountTextImpl::new);
 
     /**
      * 宽域 SLOT 缩写阶梯（3 位一组）：{@code K} 起，一路续到 {@code De}（10^33）。
@@ -69,6 +71,10 @@ public final class EnhancedCraftingStatusFormatting {
      * 上限才走宽域阶梯 / 科学计数 / 全量千分位（FULL 恒给全量真值，不缩写）。
      */
     public static String formatAmount(BigInteger amount, AmountFormat format, AmountNumberStyle style) {
+        return amount == null ? "" : TEXT.get().format(null, amount, format, style);
+    }
+
+    static String formatUncached(BigInteger amount, AmountFormat format, AmountNumberStyle style) {
         if (amount == null) {
             return "";
         }
@@ -92,11 +98,16 @@ public final class EnhancedCraftingStatusFormatting {
      */
     public static String formatAmount(AEKey key, BigInteger amount, AmountFormat format,
             AmountNumberStyle style) {
+        return amount == null ? "" : TEXT.get().format(key, amount, format, style);
+    }
+
+    static String formatUncached(AEKey key, BigInteger amount, AmountFormat format,
+            AmountNumberStyle style) {
         if (amount == null) {
             return "";
         }
         if (key == null) {
-            return formatAmount(amount, format, style);
+            return formatUncached(amount, format, style);
         }
         boolean scientificSlot = style == AmountNumberStyle.SCIENTIFIC && format == AmountFormat.SLOT;
         if (!scientificSlot && amount.abs().compareTo(LONG_MAX) <= 0) {
@@ -153,10 +164,11 @@ public final class EnhancedCraftingStatusFormatting {
      * 科学计数：3 位有效数字 + {@code e<指数>}，例 {@code 1.62e36}。
      */
     static String formatScientific(BigInteger amount) {
-        int exponent = amount.abs().toString().length() - 1;
-        BigDecimal mantissa = new BigDecimal(amount).movePointLeft(exponent)
-                .setScale(2, RoundingMode.DOWN);
-        return String.format(Locale.ROOT, "%se%d", mantissa.toPlainString(), exponent);
+        String digits = amount.abs().toString();
+        // 原规则是三位有效数字向零截断；直接读取前三位，无需再做巨整数十次幂除法。
+        return (amount.signum() < 0 ? "-" : "") + digits.charAt(0) + "."
+                + (digits.length() > 1 ? digits.charAt(1) : '0')
+                + (digits.length() > 2 ? digits.charAt(2) : '0') + "e" + (digits.length() - 1);
     }
 
     private static String formatSlotAmount(long amount) {

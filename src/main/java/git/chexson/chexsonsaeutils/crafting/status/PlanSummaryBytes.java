@@ -26,12 +26,12 @@ public final class PlanSummaryBytes {
 
     /** 空值仅表示原生摘要没有精确扩展，十进制传输不经过 long。 */
     public static void write(FriendlyByteBuf buffer, @Nullable BigInteger bytes) {
-        buffer.writeUtf(bytes == null ? "" : bytes.toString());
+        git.chexson.chexsonsaeutils.network.codec.PacketTextWire.write(buffer, bytes == null ? "" : bytes.toString());
     }
 
     /** 非法负字节拒绝读取，不能悄悄替换为饱和值。 */
     public static @Nullable BigInteger read(FriendlyByteBuf buffer) {
-        String encoded = buffer.readUtf();
+        String encoded = git.chexson.chexsonsaeutils.network.codec.PacketTextWire.read(buffer);
         if (encoded.isEmpty()) return null;
         BigInteger bytes = new BigInteger(encoded);
         if (bytes.signum() < 0) throw new IllegalArgumentException("计划字节不能为负数");

@@ -18,14 +18,17 @@ public final class PlayerSimulationRegistration {
         return new PartItem<>(new Item.Properties(),PlayerSimulationPart.class,
                 item -> new PlayerSimulationPart(item,(player,part) -> MenuOpener.open(PlayerSimulationMenu.TYPE,player,MenuLocators.forPart(part))));
     }
-    /** 公共启动阶段注册原生升级卡和成型面板模型。 */
+    /** 预初始化阶段注册动态面板的全部模型，避免 AE2 冻结模型表后才注册。 */
+    public static void registerModels() {
+        PartModels.registerModels(PlayerSimulationPart.getModels().stream()
+                .flatMap(model -> model.getModels().stream()).toList());
+    }
+    /** 公共启动阶段注册原生升级卡。 */
     public static void bootstrap(Item item) {
         Upgrades.add(AEItems.CRAFTING_CARD,item,1);
         Upgrades.add(AEItems.FUZZY_CARD,item,1);
         Upgrades.add(AEItems.REDSTONE_CARD,item,1);
         Upgrades.add(AEItems.SPEED_CARD,item,4);
         Upgrades.add(AEItems.CAPACITY_CARD,item,5);
-        PartModels.registerModels(PlayerSimulationPart.getModels().stream()
-                .flatMap(model -> model.getModels().stream()).toList());
     }
 }

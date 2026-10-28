@@ -1,0 +1,420 @@
+package git.chexson.chexsonsaeutils.crafting.depgraph;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** 图编译与路径选择的行为场景；由类别测试统一调用。 */
+public final class GraphScenarios {
+    private GraphScenarios() {}
+
+    /** 执行本包的行为场景，保留各场景名称与状态隔离。 */
+    public static void verify(java.nio.file.Path temporaryRoot) {
+        org.junit.jupiter.api.Assertions.assertAll("git.chexson.chexsonsaeutils.crafting.depgraph",
+                () -> DependencyGraphsCases.verify(temporaryRoot)
+        );
+    }
+
+    /** DependencyGraphsCases 的独立场景夹具，按类别统一执行。 */
+    public static final class DependencyGraphsCases {
+        void denseSccMatchesMutualReachabilityIncludingParallelEdges() {
+            var random = new Random(20261007L);
+            for (int sample = 0; sample < 160; sample++) {
+                int count = 1 + random.nextInt(24);
+                int[][] successors = new int[count][];
+                boolean[][] reachable = new boolean[count][count];
+                for (int node = 0; node < count; node++) {
+                    reachable[node][node] = true;
+                    successors[node] = new int[random.nextInt(count + 1)];
+                    for (int edge = 0; edge < successors[node].length; edge++) {
+                        int to = random.nextInt(count);
+                        successors[node][edge] = to;
+                        reachable[node][to] = true;
+                    }
+                }
+                // 独立的传递闭包判据：互相可达当且仅当处于同一强连通分量。
+                for (int through = 0; through < count; through++) {
+                    for (int from = 0; from < count; from++) {
+                        for (int to = 0; to < count; to++) {
+                            reachable[from][to] |= reachable[from][through] && reachable[through][to];
+                        }
+                    }
+                }
+                var components = DependencyGraphs.stronglyConnectedComponents(successors);
+                int[] partition = DependencyGraphs.assertCondensationAcyclic(components, successors);
+                assertEquals(count, components.stream().mapToInt(List::size).sum());
+                for (int from = 0; from < count; from++) {
+                    for (int to = 0; to < count; to++) {
+                        assertEquals(reachable[from][to] && reachable[to][from], partition[from] == partition[to]);
+                    }
+                }
+            }
+        }
+
+        void denseSccHandlesDeepCycleWithoutRecursion() {
+            int count = 20_000;
+            int[][] successors = new int[count][];
+            for (int node = 0; node < count; node++) {
+                successors[node] = new int[] {(node + 1) % count};
+            }
+            var components = DependencyGraphs.stronglyConnectedComponents(successors);
+            assertEquals(1, components.size());
+            assertEquals(count, components.getFirst().size());
+            assertEquals(count, DependencyGraphs.assertCondensationAcyclic(components, successors).length);
+        }
+
+        void denseCondensationRejectsIncorrectSplitOfCycle() {
+            assertThrows(IllegalStateException.class, () -> DependencyGraphs.assertCondensationAcyclic(
+                    List.of(List.of(0), List.of(1)), new int[][] {{1, 1}, {0}}));
+        }
+
+        private static List<String> order(List<String> nodes, Map<String, List<String>> dependencies) {
+            return DependencyGraphs.orderDependencyFirst(nodes, dependencies::get);
+        }
+
+        private static Map<String, List<String>> deps(Object... pairs) {
+            Map<String, List<String>> map = new LinkedHashMap<>();
+            for (int index = 0; index < pairs.length; index += 2) {
+                String consumer = (String) pairs[index];
+                @SuppressWarnings("unchecked")
+                List<String> dependencies = (List<String>) pairs[index + 1];
+                map.put(consumer, dependencies);
+            }
+            return map;
+        }
+
+        void emptyAndNullInputsReturnEmpty() {
+            assertEquals(List.of(), DependencyGraphs.orderDependencyFirst(List.of(), node -> List.of()));
+            assertEquals(List.of(), DependencyGraphs.orderDependencyFirst(null, node -> List.of()));
+            assertEquals(List.of(), DependencyGraphs.orderDependencyFirst(List.of("A"), null));
+            assertEquals(List.of(), order(Arrays.asList((String) null), Map.of()));
+        }
+
+        void fifoTieBreakMatchesLegacyKahn() {
+            // Legacy FIFO Kahn emits A, B, D, C here; a min-index priority queue would emit A, B, C, D.
+            List<String> nodes = List.of("A", "B", "C", "D");
+            Map<String, List<String>> dependencies = deps("D", List.of("A"), "C", List.of("B"));
+
+            List<String> ordered = order(nodes, dependencies);
+
+            assertEquals(List.of("A", "B", "D", "C"), ordered);
+            assertEquals(referenceFifoKahn(nodes, dependencies), ordered);
+        }
+
+        void isolatedNodesAndEmptyDependenciesAreIncluded() {
+            List<String> ordered = order(
+                    List.of("A", "B", "C"),
+                    deps("B", List.of())
+            );
+            assertEquals(List.of("A", "B", "C"), ordered);
+        }
+
+        void nullDependencyCollectionAndMembersAreIgnored() {
+            Map<String, List<String>> dependencies = new LinkedHashMap<>();
+            dependencies.put("B", null);
+            dependencies.put("A", Arrays.asList((String) null));
+
+            assertEquals(List.of("A", "B"), order(List.of("A", "B"), dependencies));
+        }
+
+        void selfLoopsAreIgnored() {
+            assertEquals(
+                    List.of("A", "B"),
+                    order(List.of("A", "B"), deps("A", List.of("A"), "B", List.of("B", "A")))
+            );
+        }
+
+        void dependenciesOutsideNodeSetAreIgnored() {
+            assertEquals(
+                    List.of("A", "B"),
+                    order(List.of("A", "B"), deps("A", List.of("Z"), "B", List.of("A", "Z")))
+            );
+        }
+
+        void duplicateNodesAndEdgesAreCollapsed() {
+            List<String> ordered = order(
+                    Arrays.asList("A", "B", "A"),
+                    deps("B", List.of("A", "A"))
+            );
+            assertEquals(List.of("A", "B"), ordered);
+        }
+
+        void crossComponentDependenciesAlwaysComeFirst() {
+            List<String> nodes = List.of("A", "B", "C", "D", "E", "F");
+            Map<String, List<String>> dependencies = deps(
+                    "A", List.of("B"),
+                    "B", List.of("A"),
+                    "C", List.of("B"),
+                    "E", List.of("D")
+            );
+
+            List<String> ordered = order(nodes, dependencies);
+
+            assertEquals(List.of("A", "B", "C", "D", "E", "F"), ordered);
+        }
+
+        void randomDagsMatchReferenceFifoKahn() {
+            Random random = new Random(42L);
+            int nodeCount = 150;
+            List<String> nodes = new ArrayList<>(nodeCount);
+            for (int index = 0; index < nodeCount; index++) {
+                nodes.add(String.format("n%03d", index));
+            }
+
+            Map<String, List<String>> dependencies = new LinkedHashMap<>();
+            for (int consumer = 0; consumer < nodeCount; consumer++) {
+                List<String> producers = new ArrayList<>();
+                for (int producer = 0; producer < consumer; producer++) {
+                    if (random.nextInt(100) < 3) {
+                        producers.add(nodes.get(producer));
+                    }
+                }
+                dependencies.put(nodes.get(consumer), producers);
+            }
+
+            List<String> expected = referenceFifoKahn(nodes, dependencies);
+            assertEquals(nodeCount, expected.size(), "generated graph must stay acyclic");
+            assertEquals(expected, order(nodes, dependencies));
+        }
+
+        void randomGraphSccPartitionMatchesRecursiveReference() {
+            Random random = new Random(7L);
+            int nodeCount = 80;
+            List<String> nodes = new ArrayList<>(nodeCount);
+            for (int index = 0; index < nodeCount; index++) {
+                nodes.add(String.format("g%03d", index));
+            }
+
+            Map<String, List<String>> dependencies = new LinkedHashMap<>();
+            for (String node : nodes) {
+                List<String> producers = new ArrayList<>();
+                for (String candidate : nodes) {
+                    if (candidate != node && random.nextInt(100) < 4) {
+                        producers.add(candidate);
+                    }
+                }
+                dependencies.put(node, producers);
+            }
+
+            Set<Set<String>> expectedPartition = new HashSet<>(referenceStronglyConnectedComponents(
+                    nodes,
+                    consumerAdjacency(nodes, dependencies)
+            ));
+            Set<Set<String>> actualPartition = new HashSet<>();
+            for (List<Integer> component : DependencyGraphs.stronglyConnectedComponents(
+                    indexConsumersOf(nodes, dependencies), nodeCount)) {
+                Set<String> members = new HashSet<>();
+                for (int memberIndex : component) {
+                    members.add(nodes.get(memberIndex));
+                }
+                actualPartition.add(members);
+            }
+            assertEquals(expectedPartition, actualPartition);
+
+            List<String> ordered = order(nodes, dependencies);
+            assertEquals(nodeCount, ordered.size());
+            assertEquals(new HashSet<>(nodes), new HashSet<>(ordered));
+
+            Map<String, Integer> positionOf = new HashMap<>();
+            for (int index = 0; index < ordered.size(); index++) {
+                positionOf.put(ordered.get(index), index);
+            }
+            Map<String, Set<String>> partitionOf = new HashMap<>();
+            for (Set<String> component : expectedPartition) {
+                for (String member : component) {
+                    partitionOf.put(member, component);
+                }
+            }
+            for (Map.Entry<String, List<String>> entry : dependencies.entrySet()) {
+                for (String dependency : entry.getValue()) {
+                    if (partitionOf.get(dependency) != partitionOf.get(entry.getKey())) {
+                        assertTrue(
+                                positionOf.get(dependency) < positionOf.get(entry.getKey()),
+                                "cross-component dependency " + dependency + " must precede " + entry.getKey()
+                        );
+                    }
+                }
+            }
+        }
+
+        private static List<String> referenceFifoKahn(
+                List<String> nodeOrder,
+                Map<String, List<String>> dependenciesByConsumer
+        ) {
+            Map<String, Integer> indegree = new LinkedHashMap<>();
+            Map<String, List<String>> adjacency = new LinkedHashMap<>();
+            for (String node : nodeOrder) {
+                indegree.putIfAbsent(node, 0);
+                adjacency.putIfAbsent(node, new ArrayList<>());
+            }
+            for (Map.Entry<String, List<String>> entry : dependenciesByConsumer.entrySet()) {
+                String consumer = entry.getKey();
+                if (!adjacency.containsKey(consumer)) {
+                    continue;
+                }
+                for (String dependency : entry.getValue()) {
+                    if (dependency == null || dependency.equals(consumer) || !adjacency.containsKey(dependency)) {
+                        continue;
+                    }
+                    adjacency.get(dependency).add(consumer);
+                    indegree.merge(consumer, 1, Integer::sum);
+                }
+            }
+
+            ArrayDeque<String> ready = new ArrayDeque<>();
+            for (Map.Entry<String, Integer> entry : indegree.entrySet()) {
+                if (entry.getValue() == 0) {
+                    ready.addLast(entry.getKey());
+                }
+            }
+
+            List<String> ordered = new ArrayList<>();
+            while (!ready.isEmpty()) {
+                String current = ready.removeFirst();
+                ordered.add(current);
+                for (String consumer : adjacency.get(current)) {
+                    int next = indegree.get(consumer) - 1;
+                    indegree.put(consumer, next);
+                    if (next == 0) {
+                        ready.addLast(consumer);
+                    }
+                }
+            }
+            return ordered;
+        }
+
+        private static Map<String, Set<String>> consumerAdjacency(
+                List<String> nodes,
+                Map<String, List<String>> dependencies
+        ) {
+            Map<String, Set<String>> consumersOf = new LinkedHashMap<>();
+            for (String node : nodes) {
+                consumersOf.put(node, new LinkedHashSet<>());
+            }
+            for (Map.Entry<String, List<String>> entry : dependencies.entrySet()) {
+                String consumer = entry.getKey();
+                for (String dependency : entry.getValue()) {
+                    if (dependency != consumer && consumersOf.containsKey(dependency)) {
+                        consumersOf.get(dependency).add(consumer);
+                    }
+                }
+            }
+            return consumersOf;
+        }
+
+        private static List<LinkedHashSet<Integer>> indexConsumersOf(
+                List<String> nodes,
+                Map<String, List<String>> dependencies
+        ) {
+            Map<String, Integer> indexOf = new LinkedHashMap<>();
+            for (int index = 0; index < nodes.size(); index++) {
+                indexOf.put(nodes.get(index), index);
+            }
+            List<LinkedHashSet<Integer>> consumersOf = new ArrayList<>(nodes.size());
+            for (int index = 0; index < nodes.size(); index++) {
+                consumersOf.add(new LinkedHashSet<>());
+            }
+            for (Map.Entry<String, List<String>> entry : dependencies.entrySet()) {
+                Integer consumerIndex = indexOf.get(entry.getKey());
+                for (String dependency : entry.getValue()) {
+                    Integer dependencyIndex = indexOf.get(dependency);
+                    if (consumerIndex != null
+                            && dependencyIndex != null
+                            && !dependencyIndex.equals(consumerIndex)) {
+                        consumersOf.get(dependencyIndex).add(consumerIndex);
+                    }
+                }
+            }
+            return consumersOf;
+        }
+
+        private static List<Set<String>> referenceStronglyConnectedComponents(
+                List<String> nodes,
+                Map<String, Set<String>> consumersOf
+        ) {
+            Map<String, Integer> discovery = new HashMap<>();
+            Map<String, Integer> lowlink = new HashMap<>();
+            Set<String> onStack = new HashSet<>();
+            Deque<String> stack = new ArrayDeque<>();
+            int[] clock = {0};
+            List<Set<String>> components = new ArrayList<>();
+            for (String node : nodes) {
+                if (!discovery.containsKey(node)) {
+                    referenceTarjanDfs(
+                            node, consumersOf, discovery, lowlink, onStack, stack, clock, components
+                    );
+                }
+            }
+            return components;
+        }
+
+        private static void referenceTarjanDfs(
+                String node,
+                Map<String, Set<String>> consumersOf,
+                Map<String, Integer> discovery,
+                Map<String, Integer> lowlink,
+                Set<String> onStack,
+                Deque<String> stack,
+                int[] clock,
+                List<Set<String>> components
+        ) {
+            discovery.put(node, clock[0]);
+            lowlink.put(node, clock[0]);
+            clock[0]++;
+            stack.push(node);
+            onStack.add(node);
+
+            for (String successor : consumersOf.getOrDefault(node, Set.of())) {
+                if (!discovery.containsKey(successor)) {
+                    referenceTarjanDfs(
+                            successor, consumersOf, discovery, lowlink, onStack, stack, clock, components
+                    );
+                    lowlink.put(node, Math.min(lowlink.get(node), lowlink.get(successor)));
+                } else if (onStack.contains(successor)) {
+                    lowlink.put(node, Math.min(lowlink.get(node), discovery.get(successor)));
+                }
+            }
+
+            if (lowlink.get(node).equals(discovery.get(node))) {
+                Set<String> component = new HashSet<>();
+                String member;
+                do {
+                    member = stack.pop();
+                    onStack.remove(member);
+                    component.add(member);
+                } while (!member.equals(node));
+                components.add(component);
+            }
+        }
+
+        static void verify(java.nio.file.Path temporaryRoot) {
+            org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases",
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.denseSccMatchesMutualReachabilityIncludingParallelEdges", () -> new DependencyGraphsCases().denseSccMatchesMutualReachabilityIncludingParallelEdges()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.denseSccHandlesDeepCycleWithoutRecursion", () -> new DependencyGraphsCases().denseSccHandlesDeepCycleWithoutRecursion()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.denseCondensationRejectsIncorrectSplitOfCycle", () -> new DependencyGraphsCases().denseCondensationRejectsIncorrectSplitOfCycle()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.emptyAndNullInputsReturnEmpty", () -> new DependencyGraphsCases().emptyAndNullInputsReturnEmpty()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.fifoTieBreakMatchesLegacyKahn", () -> new DependencyGraphsCases().fifoTieBreakMatchesLegacyKahn()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.isolatedNodesAndEmptyDependenciesAreIncluded", () -> new DependencyGraphsCases().isolatedNodesAndEmptyDependenciesAreIncluded()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.nullDependencyCollectionAndMembersAreIgnored", () -> new DependencyGraphsCases().nullDependencyCollectionAndMembersAreIgnored()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.selfLoopsAreIgnored", () -> new DependencyGraphsCases().selfLoopsAreIgnored()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.dependenciesOutsideNodeSetAreIgnored", () -> new DependencyGraphsCases().dependenciesOutsideNodeSetAreIgnored()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.duplicateNodesAndEdgesAreCollapsed", () -> new DependencyGraphsCases().duplicateNodesAndEdgesAreCollapsed()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.crossComponentDependenciesAlwaysComeFirst", () -> new DependencyGraphsCases().crossComponentDependenciesAlwaysComeFirst()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.randomDagsMatchReferenceFifoKahn", () -> new DependencyGraphsCases().randomDagsMatchReferenceFifoKahn()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("DependencyGraphsCases.randomGraphSccPartitionMatchesRecursiveReference", () -> new DependencyGraphsCases().randomGraphSccPartitionMatchesRecursiveReference())
+            );
+        }
+    }
+}

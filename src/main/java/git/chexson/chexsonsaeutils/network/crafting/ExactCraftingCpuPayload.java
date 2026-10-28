@@ -35,15 +35,14 @@ public record ExactCraftingCpuPayload(int containerId, int cpuSerial, CraftingCp
     }
     private static void write(RegistryFriendlyByteBuf buf, Map<AEKey, BigInteger> map) {
         buf.writeVarInt(map.size());
-        map.forEach((key, amount) -> { AEKey.writeKey(buf, key); buf.writeByteArray(amount.toByteArray()); });
+        map.forEach((key, amount) -> { AEKey.writeKey(buf, key); git.chexson.chexsonsaeutils.network.codec.ExactAmountWire.write(buf, amount); });
     }
     private static Map<AEKey, BigInteger> read(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
-        if (count < 0 || count > 100000) throw new IllegalArgumentException("CPU 精确条目数量无效");
+        int count = git.chexson.chexsonsaeutils.network.codec.ExactAmountWire.readCount(buf);
         var map = new HashMap<AEKey, BigInteger>();
         for (int i = 0; i < count; i++) {
             var key = AEKey.readKey(buf);
-            var value = new BigInteger(buf.readByteArray(4096));
+            var value = git.chexson.chexsonsaeutils.network.codec.ExactAmountWire.read(buf);
             if (key == null || value.signum() < 0 || map.put(key, value) != null)
                 throw new IllegalArgumentException("CPU 精确条目无效");
         }

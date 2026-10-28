@@ -227,7 +227,8 @@ tasks.named('test', Test).configure {
         }
     }
     systemProperty 'user.dir', project.projectDir.absolutePath
-    // 迭代期只跑一片：-Ponly=graphplan 或 -Ponly=WideAmountConfirmLines（按 FQCN 子串匹配）。
+    // 按类别筛选：--tests '*FeatureCategoryTest.materialClosureAndTransactions'。
+    // -Ponly 保留给类别测试类筛选，例如 -Ponly=PerformanceCategoryTest。
     // 切片只用于快速反馈；收口必须不带 -Ponly 跑一次全量，否则回归看不见。
     if (project.hasProperty('only')) {
         String slice = project.property('only').toString()

@@ -15,6 +15,8 @@ import java.util.Map;
 public final class NeoEcoParallelCraftingCPUMenu extends ParallelCraftingCPUMenu implements ECOBigOrderStatusHost {
     private int exactSerial = -1, progressSerial = -1;
     private Map<AEKey, ExactAmount> stored = Map.of(), active = Map.of(), pending = Map.of();
+    private final git.chexson.chexsonsaeutils.crafting.status.ExactMenuFrame<ExactAmount> exactFrames =
+            new git.chexson.chexsonsaeutils.crafting.status.ExactMenuFrameImpl<>();
     private ECOBigOrderProgress progress;
     public NeoEcoParallelCraftingCPUMenu(int id, Inventory inventory, AE2ParallelCpuToolBlockEntity host) {
         super(id, inventory, host);
@@ -22,9 +24,9 @@ public final class NeoEcoParallelCraftingCPUMenu extends ParallelCraftingCPUMenu
     @Override public void neoecoae$applyExactAmounts(int serial, boolean full, MapDelta<AEKey, ExactAmount> storage,
             MapDelta<AEKey, ExactAmount> crafting, MapDelta<AEKey, ExactAmount> scheduled) {
         if (serial != getSelectedCpuSerial() || (!full && serial != exactSerial)) return;
-        stored = storage.apply(full ? Map.of() : stored);
-        active = crafting.apply(full ? Map.of() : active);
-        pending = scheduled.apply(full ? Map.of() : pending);
+        stored = exactFrames.apply(stored, storage.updates(), storage.removed(), full);
+        active = exactFrames.apply(active, crafting.updates(), crafting.removed(), full);
+        pending = exactFrames.apply(pending, scheduled.updates(), scheduled.removed(), full);
         exactSerial = serial;
     }
     private BigInteger value(Map<AEKey, ExactAmount> amounts, AEKey key) {

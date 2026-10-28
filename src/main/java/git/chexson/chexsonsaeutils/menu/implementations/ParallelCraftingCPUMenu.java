@@ -223,6 +223,9 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
 
         private static List<CraftingCpuListEntry> readFromPacket(RegistryFriendlyByteBuf data) {
             int count = data.readInt();
+            // 每条至少包含 serial/storage/coProcessors/name 标志/progress 这 21 字节固定字段。
+            if (count < 0 || count > data.readableBytes() / 21)
+                throw new io.netty.handler.codec.DecoderException("CPU 列表计数超出已接收包体");
             ArrayList<CraftingCpuListEntry> result = new ArrayList<>(count);
             for (int i = 0; i < count; i++) {
                 result.add(CraftingCpuListEntry.readFromPacket(data));
@@ -258,7 +261,7 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
                     data.readBoolean() ? ComponentSerialization.TRUSTED_STREAM_CODEC.decode(data) : null,
                     data.readEnum(CpuSelectionMode.class),
                     GenericStack.readBuffer(data),
-                    new java.math.BigInteger(data.readByteArray(4096)),
+                    git.chexson.chexsonsaeutils.network.codec.ExactAmountWire.read(data),
                     data.readFloat(),
                     data.readVarLong());
         }
@@ -273,7 +276,7 @@ public class ParallelCraftingCPUMenu extends CraftingCPUMenu {
             }
             data.writeEnum(mode);
             GenericStack.writeBuffer(currentJob, data);
-            data.writeByteArray(exactRemaining.toByteArray());
+            git.chexson.chexsonsaeutils.network.codec.ExactAmountWire.write(data, exactRemaining);
             data.writeFloat(progress);
             data.writeVarLong(elapsedTimeNanos);
         }

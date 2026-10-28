@@ -43,6 +43,12 @@ public final class WideAmountCraftConfirmScreen extends CraftConfirmScreen imple
     @Nullable
     private WideLedgerSnapshot cachedSnapshot;
     private boolean loggedMissingProvenance = false;
+    private TitleState cachedTitleState;
+    private Component cachedTitle;
+
+    /** 缓存键涵盖可独立同步的字段，不能只按 plan 引用判断。 */
+    private record TitleState(CraftingPlanSummary plan, java.math.BigInteger bytes, String rawBytes,
+            long millis, String solver, String phase, long steps, long elapsed, java.util.Locale locale) {}
 
     public WideAmountCraftConfirmScreen(CraftConfirmMenu menu, Inventory playerInventory, Component title) {
         // 与 AE2 注册自己的确认屏用的是同一份风格文档（assets/ae2/screens/craft_confirm.json，
@@ -64,51 +70,58 @@ public final class WideAmountCraftConfirmScreen extends CraftConfirmScreen imple
      */
     private void chexsonsaeutils$refreshTitle() {
         CraftingPlanSummary plan = getMenu().getPlan();
-        if (getMenu() instanceof git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressMenu progress
-                && !progress.planningPhase().isEmpty()) {
-            Component phase = Component.translatable("gui.chexsonsaeutils.planning.phase." + progress.planningPhase().toLowerCase(java.util.Locale.ROOT));
-            Component status = progress.planningPhase().equals("EXTERNAL") || progress.planningPhase().equals("NATIVE")
-                    ? Component.translatable("gui.chexsonsaeutils.planning.indeterminate", phase,
-                            NumberFormat.getInstance().format(progress.planningElapsedMillis()))
-                    : Component.translatable("gui.chexsonsaeutils.planning.progress", phase,
-                            NumberFormat.getInstance().format(progress.planningSteps()),
-                            NumberFormat.getInstance().format(progress.planningElapsedMillis()));
-            setTextContent(AEBaseScreen.TEXT_ID_DIALOG_TITLE, GuiText.CraftingPlan.text(status));
-            return;
-        }
-        if (plan == null) return;
-        java.math.BigInteger exactBytes = git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.resolve(plan,
-                getMenu() instanceof WideAmountMenuSource source ? source.chexsonsaeutils$syncedExactBytes() : "");
-        long millis = -1L;
-        String solverId = "";
-        if (getMenu() instanceof MenuProvenanceHost host
-                && !host.chexsonsaeutils$menuProvenanceSolver().isEmpty()) {
+        var enhanced = plan instanceof EnhancedCraftingPlanSummary value ? value : null;
+        var progress = getMenu() instanceof git.chexson.chexsonsaeutils.crafting.progress.PlanningProgressMenu value
+                ? value : null;
+        long millis = enhanced == null ? -1L : enhanced.chexsonsaeutils$planningMillis();
+        String solver = enhanced == null ? "" : enhanced.chexsonsaeutils$solver();
+        if (getMenu() instanceof MenuProvenanceHost host && !host.chexsonsaeutils$menuProvenanceSolver().isEmpty()) {
             millis = host.chexsonsaeutils$menuProvenanceMillis();
-            solverId = host.chexsonsaeutils$menuProvenanceSolver();
-        } else if (plan instanceof EnhancedCraftingPlanSummary enhanced
-                && !enhanced.chexsonsaeutils$solver().isEmpty()) {
-            millis = enhanced.chexsonsaeutils$planningMillis();
-            solverId = enhanced.chexsonsaeutils$solver();
+            solver = host.chexsonsaeutils$menuProvenanceSolver();
         }
-        if (solverId.isEmpty()) {
+        String phase = progress == null ? "" : progress.planningPhase();
+        var state = new TitleState(plan, enhanced == null ? null : enhanced.chexsonsaeutils$exactBytes(),
+                getMenu() instanceof WideAmountMenuSource source ? source.chexsonsaeutils$syncedExactBytes() : "",
+                millis, solver, phase, phase.isEmpty() ? 0L : progress.planningSteps(),
+                phase.isEmpty() ? 0L : progress.planningElapsedMillis(), java.util.Locale.getDefault());
+        if (!state.equals(cachedTitleState)) {
+            cachedTitle = chexsonsaeutils$buildTitle(state);
+            cachedTitleState = state;
+        }
+        // 父类每帧会覆盖标题；复用组件，但仍须每帧写回。
+        if (cachedTitle != null) setTextContent(AEBaseScreen.TEXT_ID_DIALOG_TITLE, cachedTitle);
+    }
+
+    @Nullable
+    private Component chexsonsaeutils$buildTitle(TitleState state) {
+        if (!state.phase().isEmpty()) {
+            Component phase = Component.translatable("gui.chexsonsaeutils.planning.phase."
+                    + state.phase().toLowerCase(java.util.Locale.ROOT));
+            Component status = state.phase().equals("EXTERNAL") || state.phase().equals("NATIVE")
+                    ? Component.translatable("gui.chexsonsaeutils.planning.indeterminate", phase,
+                            NumberFormat.getInstance().format(state.elapsed()))
+                    : Component.translatable("gui.chexsonsaeutils.planning.progress", phase,
+                            NumberFormat.getInstance().format(state.steps()), NumberFormat.getInstance().format(state.elapsed()));
+            return GuiText.CraftingPlan.text(status);
+        }
+        CraftingPlanSummary plan = state.plan();
+        if (plan == null) return null;
+        java.math.BigInteger exactBytes = git.chexson.chexsonsaeutils.crafting.status.PlanSummaryBytes.resolve(plan, state.rawBytes());
+        if (state.solver().isEmpty()) {
             if (!loggedMissingProvenance) {
                 loggedMissingProvenance = true;
                 LOGGER.debug("Craft confirm summary carries no planning provenance; keeping AE2 title");
             }
             if (!exactBytes.equals(java.math.BigInteger.valueOf(plan.getUsedBytes()))) {
-                setTextContent(AEBaseScreen.TEXT_ID_DIALOG_TITLE, GuiText.CraftingPlan.text(
-                        GuiText.BytesUsed.text(NumberFormat.getInstance().format(
-                                exactBytes))));
+                return GuiText.CraftingPlan.text(GuiText.BytesUsed.text(NumberFormat.getInstance().format(exactBytes)));
             }
-            return;
+            return null;
         }
-        Component solver = Component.translatable(PlanningProvenance.solverTranslationKey(solverId));
-        Component provenance = Component.translatable(
-                "gui.chexsonsaeutils.crafting_plan.provenance",
-                NumberFormat.getInstance().format(Math.max(0L, millis)),
-                chexsonsaeutils$formatBytes(exactBytes),
-                solver);
-        setTextContent(AEBaseScreen.TEXT_ID_DIALOG_TITLE, GuiText.CraftingPlan.text(provenance));
+        Component solver = Component.translatable(PlanningProvenance.solverTranslationKey(state.solver()));
+        Component provenance = Component.translatable("gui.chexsonsaeutils.crafting_plan.provenance",
+                NumberFormat.getInstance().format(Math.max(0L, state.millis())),
+                chexsonsaeutils$formatBytes(exactBytes), solver);
+        return GuiText.CraftingPlan.text(provenance);
     }
 
     private static String chexsonsaeutils$formatBytes(java.math.BigInteger bytes) {

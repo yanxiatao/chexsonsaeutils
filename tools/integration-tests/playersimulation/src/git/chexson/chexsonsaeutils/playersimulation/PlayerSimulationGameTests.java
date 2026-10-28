@@ -37,8 +37,7 @@ public final class PlayerSimulationGameTests {
         if (!"using".equals(result) && !"mining".equals(result)) actor.cancel();
         return result;
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void miningUsesToolSpeedAndConsumesDurability(GameTestHelper helper) {
+    private static void miningUsesToolSpeedAndConsumesDurability(GameTestHelper helper) {
         helper.setBlock(FRONT,Blocks.STONE);
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.IRON_PICKAXE);
         buffer.set(0,key,new ItemStack(Items.IRON_PICKAXE));var returns = new ArrayList<ItemStack>();
@@ -50,18 +49,16 @@ public final class PlayerSimulationGameTests {
         helper.assertTrue(buffer.get(0).getDamageValue() == 1,"正常挖掘必须损耗一次工具耐久");
         helper.assertTrue(returns.isEmpty(),"工具仍保留在缓存");
         helper.assertTrue(!actor.busy(),"完成挖掘后必须结束动作");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void emptyHandRightClickTogglesLever(GameTestHelper helper) {
+    private static void emptyHandRightClickTogglesLever(GameTestHelper helper) {
         helper.setBlock(FRONT,Blocks.LEVER.defaultBlockState());
         var actor = actor(helper);var buffer = new SimulationBuffer();
         act(actor,buffer,null,SimulationSettings.Click.RIGHT,SimulationSettings.Target.BLOCK,new ArrayList<>());
         helper.assertTrue(helper.getBlockState(FRONT).getValue(LeverBlock.POWERED),"空手右键应触发原版拉杆交互");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void entityAttackUsesMainHandAttributes(GameTestHelper helper) {
+    private static void entityAttackUsesMainHandAttributes(GameTestHelper helper) {
         Cow cow = helper.spawn(EntityType.COW,new net.minecraft.world.phys.Vec3(2.5,2,2.5));
         cow.setNoAi(true);float health = cow.getHealth();
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.IRON_SWORD);
@@ -69,20 +66,18 @@ public final class PlayerSimulationGameTests {
         act(actor,buffer,key,SimulationSettings.Click.LEFT,SimulationSettings.Target.ENTITY,new ArrayList<>());
         helper.assertTrue(cow.getHealth() <= health - 5,"攻击必须使用铁剑属性，不能按空手伤害计算");
         helper.assertTrue(buffer.get(0).getDamageValue() == 1,"攻击应消耗铁剑耐久");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void entityRightClickReturnsMilkBucket(GameTestHelper helper) {
+    private static void entityRightClickReturnsMilkBucket(GameTestHelper helper) {
         Cow cow = helper.spawn(EntityType.COW,new net.minecraft.world.phys.Vec3(2.5,2,2.5));cow.setNoAi(true);
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.BUCKET);
         buffer.set(0,key,new ItemStack(Items.BUCKET));var returned = new ArrayList<ItemStack>();
         act(actor,buffer,key,SimulationSettings.Click.RIGHT,SimulationSettings.Target.ENTITY,returned);
         helper.assertTrue(buffer.get(0).isEmpty(),"挤奶应消耗缓存中的空桶");
         helper.assertTrue(returned.size() == 1 && returned.getFirst().is(Items.MILK_BUCKET),"挤奶必须返还真实奶桶");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void continuousUseSurvivesHandSettlement(GameTestHelper helper) {
+    private static void continuousUseSurvivesHandSettlement(GameTestHelper helper) {
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.MILK_BUCKET);
         buffer.set(0,key,new ItemStack(Items.MILK_BUCKET));var returned = new ArrayList<ItemStack>();
         act(actor,buffer,key,SimulationSettings.Click.RIGHT,SimulationSettings.Target.AIR,returned);
@@ -95,11 +90,10 @@ public final class PlayerSimulationGameTests {
         helper.assertTrue(!actor.busy(),"饮用应自然完成，不能被默认 20 tick 的主动释放时间打断");
         helper.assertTrue(buffer.get(0).isEmpty(),"奶桶必须真实消耗");
         helper.assertTrue(returned.size() == 1 && returned.getFirst().is(Items.BUCKET),"持续使用结束应返还空桶");
-        helper.succeed();
+
     }
 
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void itemCooldownCanBeMatchedOrIgnored(GameTestHelper helper) {
+    private static void itemCooldownCanBeMatchedOrIgnored(GameTestHelper helper) {
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.ENDER_PEARL);
         buffer.set(0,key,new ItemStack(Items.ENDER_PEARL,4));var returned = new ArrayList<ItemStack>();
         act(actor,buffer,key,SimulationSettings.Click.RIGHT,SimulationSettings.Target.AIR,returned);
@@ -109,10 +103,9 @@ public final class PlayerSimulationGameTests {
         helper.assertTrue("cooldown".equals(state) && buffer.get(0).getCount() == 3,"匹配 CD 时不能再次发射");
         act(actor,buffer,key,SimulationSettings.Click.RIGHT,SimulationSettings.Target.AIR,returned);
         helper.assertTrue(buffer.get(0).getCount() == 2,"忽略 CD 时可再次执行实际物品使用");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void cancelledLeftClickDoesNotBreakOrDamageTool(GameTestHelper helper) {
+    private static void cancelledLeftClickDoesNotBreakOrDamageTool(GameTestHelper helper) {
         helper.setBlock(FRONT,Blocks.STONE);
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.IRON_PICKAXE);
         buffer.set(0,key,new ItemStack(Items.IRON_PICKAXE));
@@ -126,7 +119,7 @@ public final class PlayerSimulationGameTests {
             helper.assertBlockPresent(Blocks.STONE,FRONT);
             helper.assertTrue(!actor.busy() && buffer.get(0).getDamageValue() == 0,"取消后不能持续挖掘或消耗工具");
         } finally { net.neoforged.neoforge.common.NeoForge.EVENT_BUS.unregister(listener); }
-        helper.succeed();
+
     }
 
     @GameTest(template="empty",timeoutTicks=150)
@@ -179,8 +172,7 @@ public final class PlayerSimulationGameTests {
         helper.assertBlockNotPresent(Blocks.STONE,FRONT);
         return ticks;
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void efficiencyImprovesMiningAndDoesNotLeakToNextTool(GameTestHelper helper) {
+    private static void efficiencyImprovesMiningAndDoesNotLeakToNextTool(GameTestHelper helper) {
         int normal = mineTicks(helper,new ItemStack(Items.IRON_PICKAXE));
         int efficient = mineTicks(helper,enchanted(helper,net.minecraft.world.item.enchantment.Enchantments.EFFICIENCY,5));
         helper.assertTrue(efficient < normal,"效率附魔必须实际加快持续挖掘");
@@ -194,10 +186,9 @@ public final class PlayerSimulationGameTests {
         int ticks = 0;
         do { act(actor,buffer,key,SimulationSettings.Click.LEFT,SimulationSettings.Target.BLOCK,new ArrayList<>()); ticks++; } while (actor.busy() && ticks < 100);
         helper.assertTrue(ticks == normal,"换成普通工具必须移除先前效率属性");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void silkTouchUsesActualCachedEnchantment(GameTestHelper helper) {
+    private static void silkTouchUsesActualCachedEnchantment(GameTestHelper helper) {
         helper.setBlock(FRONT,Blocks.STONE);
         var tool = enchanted(helper,net.minecraft.world.item.enchantment.Enchantments.SILK_TOUCH,1);
         var buffer = new SimulationBuffer();var marker = AEItemKey.of(Items.IRON_PICKAXE);
@@ -209,10 +200,9 @@ public final class PlayerSimulationGameTests {
                 new net.minecraft.world.phys.AABB(helper.absolutePos(FRONT)).inflate(1));
         helper.assertTrue(drops.stream().anyMatch(e -> e.getItem().is(Items.STONE)),"精准采集必须掉落石头而非圆石");
         helper.assertTrue(buffer.get(0).isEnchanted() && buffer.get(0).getDamageValue() == 1,"结算必须保留实际附魔和耐久");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void fortuneAndUnbreakingAffectNativeMining(GameTestHelper helper) {
+    private static void fortuneAndUnbreakingAffectNativeMining(GameTestHelper helper) {
         var tool = enchanted(helper,net.minecraft.world.item.enchantment.Enchantments.FORTUNE,3);
         tool.enchant(helper.getLevel().registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT)
                 .getOrThrow(net.minecraft.world.item.enchantment.Enchantments.UNBREAKING),3);
@@ -231,7 +221,7 @@ public final class PlayerSimulationGameTests {
                 .filter(e -> e.getItem().is(Items.DIAMOND)).mapToInt(e -> e.getItem().getCount()).sum();
         helper.assertTrue(diamonds > 16,"固定随机种子下时运必须增加矿物掉落");
         helper.assertTrue(buffer.get(0).getDamageValue() < 16,"固定随机种子下耐久附魔必须减少工具损耗");
-        helper.succeed();
+
     }
     @GameTest(template="empty",timeoutTicks=180)
     @SuppressWarnings("unchecked")
@@ -324,8 +314,7 @@ public final class PlayerSimulationGameTests {
                     throw new AssertionError("本测试不产生库存副产物: " + stack);
                 });
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void leftTapAbortsButContinuousHoldFinishesMining(GameTestHelper helper) {
+    private static void leftTapAbortsButContinuousHoldFinishesMining(GameTestHelper helper) {
         helper.setBlock(FRONT,Blocks.OBSIDIAN);
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.DIAMOND_PICKAXE);
         buffer.set(0,key,new ItemStack(Items.DIAMOND_PICKAXE));
@@ -346,10 +335,9 @@ public final class PlayerSimulationGameTests {
         helper.assertBlockNotPresent(Blocks.OBSIDIAN,FRONT);
         helper.assertTrue(actor.busy() && buffer.get(0).getDamageValue() == 1,"持续按住不会在挖掘完成后自动松开，工具只损耗一次");
         actor.cancel();helper.assertTrue(!actor.busy(),"外部停止必须能解除持续按住");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void rightTapReleasesAndContinuousHoldKeepsShieldRaised(GameTestHelper helper) {
+    private static void rightTapReleasesAndContinuousHoldKeepsShieldRaised(GameTestHelper helper) {
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.SHIELD);
         buffer.set(0,key,new ItemStack(Items.SHIELD));
         press(actor,buffer,key,SimulationSettings.Click.RIGHT,SimulationSettings.Target.AIR,SimulationSettings.Press.TAP,20,true);
@@ -357,10 +345,9 @@ public final class PlayerSimulationGameTests {
         for (int i = 0; i < 250; i++) press(actor,buffer,key,SimulationSettings.Click.RIGHT,SimulationSettings.Target.AIR,SimulationSettings.Press.HOLD,-1,i == 0);
         helper.assertTrue(actor.busy() && actor.inventory().player.isUsingItem(),"持续按住 250 tick 仍应保持盾牌使用状态");
         actor.cancel();helper.assertTrue(!actor.busy(),"取消后必须停止盾牌持续使用");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void continuousHoldRespectsRepeatInterval(GameTestHelper helper) {
+    private static void continuousHoldRespectsRepeatInterval(GameTestHelper helper) {
         helper.setBlock(FRONT,Blocks.LEVER.defaultBlockState());
         var actor = actor(helper);var buffer = new SimulationBuffer();
         press(actor,buffer,null,SimulationSettings.Click.RIGHT,SimulationSettings.Target.BLOCK,SimulationSettings.Press.HOLD,-1,true);
@@ -369,10 +356,9 @@ public final class PlayerSimulationGameTests {
         helper.assertTrue(helper.getBlockState(FRONT).getValue(LeverBlock.POWERED),"持续按住不能绕过加速间隔每 tick 切换拉杆");
         press(actor,buffer,null,SimulationSettings.Click.RIGHT,SimulationSettings.Target.BLOCK,SimulationSettings.Press.HOLD,-1,true);
         helper.assertTrue(!helper.getBlockState(FRONT).getValue(LeverBlock.POWERED),"间隔到期后可继续按住重复交互");
-        actor.cancel();helper.succeed();
+        actor.cancel();
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void modEnchantmentTicksAndEquipmentEventsUseActualItem(GameTestHelper helper) {
+    private static void modEnchantmentTicksAndEquipmentEventsUseActualItem(GameTestHelper helper) {
         var custom = net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.ENCHANTMENT,
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("chexsonsaeutils","simulation_test"));
         var tool = enchanted(helper,custom,1);var key = AEItemKey.of(tool);var buffer = new SimulationBuffer();buffer.set(0,key,tool);
@@ -401,7 +387,7 @@ public final class PlayerSimulationGameTests {
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.unregister(equipment);
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.unregister(tick);
         }
-        actor.cancel();helper.succeed();
+        actor.cancel();
     }
 
     @GameTest(template="empty",timeoutTicks=180)
@@ -436,8 +422,7 @@ public final class PlayerSimulationGameTests {
         });
     }
 
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void fixedFacesReachNativeRightClickEventsWithoutMovingTarget(GameTestHelper helper) {
+    private static void fixedFacesReachNativeRightClickEventsWithoutMovingTarget(GameTestHelper helper) {
         helper.setBlock(FRONT,Blocks.STONE);
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.STICK);
         buffer.set(0,key,new ItemStack(Items.STICK));
@@ -458,10 +443,9 @@ public final class PlayerSimulationGameTests {
             }
             helper.assertTrue(hits.size() == 7,"自动及六个固定面应分别执行一次右键回调");
         } finally { net.neoforged.neoforge.common.NeoForge.EVENT_BUS.unregister(listener); }
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void fixedFaceControlsNativeTorchPlacement(GameTestHelper helper) {
+    private static void fixedFaceControlsNativeTorchPlacement(GameTestHelper helper) {
         helper.setBlock(FRONT,Blocks.STONE);
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.TORCH);
         buffer.set(0,key,new ItemStack(Items.TORCH));
@@ -476,10 +460,9 @@ public final class PlayerSimulationGameTests {
         helper.assertBlockPresent(Blocks.WALL_TORCH,FRONT.east());
         helper.assertTrue(helper.getBlockState(FRONT.east()).getValue(net.minecraft.world.level.block.WallTorchBlock.FACING) == Direction.EAST,"点击东面应按原版放置朝东的墙火把");
         helper.assertTrue(buffer.get(0).isEmpty(),"侧面放置也必须真实消耗物品");
-        helper.succeed();
+
     }
-    @GameTest(template="empty",timeoutTicks=100)
-    public static void fixedFaceIsKeptForMiningStartStopAndAbort(GameTestHelper helper) {
+    private static void fixedFaceIsKeptForMiningStartStopAndAbort(GameTestHelper helper) {
         var actor = actor(helper);var buffer = new SimulationBuffer();var key = AEItemKey.of(Items.IRON_PICKAXE);
         var actions = new ArrayList<net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.LeftClickBlock.Action>();
         Direction[] expected = {Direction.UP};
@@ -507,7 +490,59 @@ public final class PlayerSimulationGameTests {
                 actor.cancel();
             }
         } finally { net.neoforged.neoforge.common.NeoForge.EVENT_BUS.unregister(listener); }
+
+    }
+
+
+    /** 同步交互按一个类别执行；每个场景恢复方块和实体，异步网络场景仍各自等待完成。 */
+    @GameTest(template="empty",timeoutTicks=100)
+    public static void nativeInteractionsAndEnchantments(GameTestHelper helper) {
+        resetInteractionArea(helper);
+        miningUsesToolSpeedAndConsumesDurability(helper);
+        resetInteractionArea(helper);
+        emptyHandRightClickTogglesLever(helper);
+        resetInteractionArea(helper);
+        entityAttackUsesMainHandAttributes(helper);
+        resetInteractionArea(helper);
+        entityRightClickReturnsMilkBucket(helper);
+        resetInteractionArea(helper);
+        continuousUseSurvivesHandSettlement(helper);
+        resetInteractionArea(helper);
+        itemCooldownCanBeMatchedOrIgnored(helper);
+        resetInteractionArea(helper);
+        cancelledLeftClickDoesNotBreakOrDamageTool(helper);
+        resetInteractionArea(helper);
+        efficiencyImprovesMiningAndDoesNotLeakToNextTool(helper);
+        resetInteractionArea(helper);
+        silkTouchUsesActualCachedEnchantment(helper);
+        resetInteractionArea(helper);
+        fortuneAndUnbreakingAffectNativeMining(helper);
+        resetInteractionArea(helper);
+        leftTapAbortsButContinuousHoldFinishesMining(helper);
+        resetInteractionArea(helper);
+        rightTapReleasesAndContinuousHoldKeepsShieldRaised(helper);
+        resetInteractionArea(helper);
+        continuousHoldRespectsRepeatInterval(helper);
+        resetInteractionArea(helper);
+        modEnchantmentTicksAndEquipmentEventsUseActualItem(helper);
+        resetInteractionArea(helper);
+        fixedFacesReachNativeRightClickEventsWithoutMovingTarget(helper);
+        resetInteractionArea(helper);
+        fixedFaceControlsNativeTorchPlacement(helper);
+        resetInteractionArea(helper);
+        fixedFaceIsKeptForMiningStartStopAndAbort(helper);
         helper.succeed();
     }
 
+    private static void resetInteractionArea(GameTestHelper helper) {
+        var minimum = helper.absolutePos(new BlockPos(0, 1, 0));
+        var maximum = helper.absolutePos(new BlockPos(6, 6, 6));
+        var area = new net.minecraft.world.phys.AABB(minimum.getX(), minimum.getY(), minimum.getZ(),
+                maximum.getX() + 1, maximum.getY() + 1, maximum.getZ() + 1);
+        helper.getLevel().getEntitiesOfClass(net.minecraft.world.entity.Entity.class, area)
+                .forEach(net.minecraft.world.entity.Entity::discard);
+        for (BlockPos position : BlockPos.betweenClosed(new BlockPos(0, 1, 0), new BlockPos(6, 6, 6))) {
+            helper.setBlock(position, Blocks.AIR);
+        }
+    }
 }

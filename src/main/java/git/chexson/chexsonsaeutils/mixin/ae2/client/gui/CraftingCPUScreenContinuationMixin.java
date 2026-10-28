@@ -24,6 +24,8 @@ public abstract class CraftingCPUScreenContinuationMixin extends AEBaseScreen<Cr
 
     @Unique
     private Map<String, Long> waitingStackAmounts = Map.of();
+    @Unique
+    private String chexsonsaeutils$cachedWaitingLines;
 
     protected CraftingCPUScreenContinuationMixin(CraftingCPUMenu menu, Inventory playerInventory, Component title,
             ScreenStyle style) {
@@ -34,10 +36,15 @@ public abstract class CraftingCPUScreenContinuationMixin extends AEBaseScreen<Cr
     private void chexsonsaeutils$updateContinuationDetail(CallbackInfo ci) {
         if (menu instanceof CraftingContinuationTracker.SelectedCpuDetailHost host) {
             partialWaiting = host.chexsonsaeutils$partialWaiting();
-            waitingStackAmounts = parseWaitingStackLines(host.chexsonsaeutils$waitingStackLines());
+            String raw = host.chexsonsaeutils$waitingStackLines();
+            if (!java.util.Objects.equals(raw, chexsonsaeutils$cachedWaitingLines)) {
+                waitingStackAmounts = parseWaitingStackLines(raw);
+                chexsonsaeutils$cachedWaitingLines = raw;
+            }
         } else {
             partialWaiting = false;
             waitingStackAmounts = Map.of();
+            chexsonsaeutils$cachedWaitingLines = null;
         }
     }
 

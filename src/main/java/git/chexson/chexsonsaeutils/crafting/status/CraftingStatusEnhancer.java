@@ -91,9 +91,8 @@ public final class CraftingStatusEnhancer {
     /** 在同步写入时排序一次，渲染时只取前几项，避免每帧全量排序。 */
     public static List<java.math.BigInteger> normalizePatternTimes(List<java.math.BigInteger> patternTimes) {
         if (patternTimes == null) return List.of();
-        if (patternTimes.size() > 100000) throw new IllegalArgumentException("样板次数条目数量无效");
         for (var times : patternTimes)
-            if (times == null || times.signum() < 0 || times.toByteArray().length > 4096)
+            if (times == null || times.signum() < 0)
                 throw new IllegalArgumentException("样板次数无效");
         return patternTimes.stream().sorted(Comparator.reverseOrder()).toList();
     }

@@ -63,7 +63,8 @@ public abstract class NeoEcoInventoryHandlerMixin extends DelegatingMEInventory
     public BigInteger insertBigInteger(AEKey key, BigInteger amount, Actionable mode, IActionSource source) {
         if (amount.signum() < 0) throw new IllegalArgumentException("存储插入量不得为负");
         if (!allowInsertion || !partitionList.matchesFilter(key, partitionListMode)) return BigInteger.ZERO;
-        BigInteger accepted = ECOBigIntegerStorage.insert(getDelegate(), key, amount, mode, source);
+        BigInteger accepted = git.chexson.chexsonsaeutils.integration.neoecoae.NeoEcoExactStorageInsertion.insert(
+                getDelegate(), key, amount, mode, source);
         if (mode == Actionable.MODULATE && accepted.signum() > 0
                 && (Object) this instanceof NeoEcoExactStorageActivity activity) {
             activity.exactStorageInserted();

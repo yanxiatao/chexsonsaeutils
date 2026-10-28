@@ -9,6 +9,7 @@ import java.util.*;
 
 /** 预览专用不可变生产关系；候选输入不是实际扣料，依赖层级不是执行时间线。 */
 public record PlanGraph(List<Node> nodes, List<Edge> edges, String problem) {
+    private static final int MAX_SYNC_BYTES = 524288;
     public PlanGraph(List<Node> nodes, List<Edge> edges) { this(nodes, edges, ""); }
     public static final PlanGraph EMPTY = new PlanGraph(List.of(), List.of());
     public PlanGraph {
@@ -84,21 +85,28 @@ public record PlanGraph(List<Node> nodes, List<Edge> edges, String problem) {
         // 摘要包还携带 AE2 的物料行，图扩展单独限额，避免大图使预览断线。
         var temporary = new RegistryFriendlyByteBuf(io.netty.buffer.Unpooled.buffer(), b.registryAccess());
         try {
-            writeBody(temporary);
-            if (temporary.readableBytes() > 524288) {
-                com.mojang.logging.LogUtils.getLogger().warn("合成图同步超过 512 KiB：{} 字节", temporary.readableBytes());
-                b.writeUtf("合成图超过 512 KiB 同步上限"); b.writeVarInt(0); b.writeVarInt(0);
-            } else { b.writeUtf(problem); b.writeBytes(temporary); }
+            if (!writeBody(temporary)) {
+                com.mojang.logging.LogUtils.getLogger().warn("合成图同步达到 512 KiB 预算，停止编码附加图：nodes={} edges={}", nodes.size(), edges.size());
+                git.chexson.chexsonsaeutils.network.codec.PacketTextWire.write(b, "合成图超过 512 KiB 同步上限"); b.writeVarInt(0); b.writeVarInt(0);
+            } else { git.chexson.chexsonsaeutils.network.codec.PacketTextWire.write(b, problem); b.writeBytes(temporary); }
         } finally { temporary.release(); }
     }
-    private void writeBody(RegistryFriendlyByteBuf b) {
+    private boolean writeBody(RegistryFriendlyByteBuf b) {
         b.writeVarInt(nodes.size());
-        for (var n : nodes) { AEKey.writeKey(b, n.key); b.writeBoolean(n.pattern); number(b, n.amount); number(b, n.stored); number(b, n.missing); }
+        for (var n : nodes) {
+            AEKey.writeKey(b, n.key); b.writeBoolean(n.pattern);
+            if (!number(b, n.amount) || !number(b, n.stored) || !number(b, n.missing)) return false;
+        }
         b.writeVarInt(edges.size());
-        for (var e : edges) { b.writeVarInt(e.from); b.writeVarInt(e.to); number(b, e.amount); b.writeBoolean(e.input); b.writeBoolean(e.alternative); b.writeBoolean(e.remainder); }
+        for (var e : edges) {
+            b.writeVarInt(e.from); b.writeVarInt(e.to);
+            if (!number(b, e.amount)) return false;
+            b.writeBoolean(e.input); b.writeBoolean(e.alternative); b.writeBoolean(e.remainder);
+        }
+        return b.readableBytes() <= MAX_SYNC_BYTES;
     }
     public static PlanGraph read(RegistryFriendlyByteBuf b) {
-        String problem = b.readUtf();
+        String problem = git.chexson.chexsonsaeutils.network.codec.PacketTextWire.read(b);
         int size = bounded(b.readVarInt(), 20000); var nodes = new ArrayList<Node>(size);
         for (int i = 0; i < size; i++) nodes.add(new Node(AEKey.readKey(b), b.readBoolean(), number(b), number(b), number(b)));
         size = bounded(b.readVarInt(), 60000); var edges = new ArrayList<Edge>(size);
@@ -106,6 +114,14 @@ public record PlanGraph(List<Node> nodes, List<Edge> edges, String problem) {
         return new PlanGraph(nodes, edges, problem);
     }
     private static int bounded(int n, int max) { if (n < 0 || n > max) throw new IllegalArgumentException("合成图计数无效"); return n; }
-    private static void number(RegistryFriendlyByteBuf b, BigInteger n) { b.writeUtf(n.toString(), 4096); }
-    private static BigInteger number(RegistryFriendlyByteBuf b) { var n = new BigInteger(b.readUtf(4096)); positive(n); return n; }
+    /** 数量不能先撞到固定字符上限；与整张图共用字节预算，超预算由调用方明确省略附加图。 */
+    private static boolean number(RegistryFriendlyByteBuf b, BigInteger n) {
+        if (b.readableBytes() >= MAX_SYNC_BYTES || n.bitLength() > MAX_SYNC_BYTES * 4) return false;
+        String decimal = n.toString();
+        // 数量只有 ASCII 数字，预留最多三个字节的字符串长度前缀。
+        if ((long) b.readableBytes() + decimal.length() + 3 > MAX_SYNC_BYTES) return false;
+        b.writeUtf(decimal, MAX_SYNC_BYTES);
+        return true;
+    }
+    private static BigInteger number(RegistryFriendlyByteBuf b) { var n = new BigInteger(b.readUtf(MAX_SYNC_BYTES)); positive(n); return n; }
 }

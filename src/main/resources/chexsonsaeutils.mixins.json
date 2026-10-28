@@ -8,6 +8,8 @@
     "ae2.blockentity.SelfPoweredControllerEnergyMixin",
     "ae2.blockentity.SelfPoweredControllerConnectionMixin",
     "ae2.menu.CraftConfirmMenuRemoteAccessor",
+    "ae2.menu.PatternAccessMenuPacketBatchMixin",
+    "ae2.menu.MenuStringPacketBoundsMixin",
     "ae2.automation.StorageLevelEmitterPartAccessor",
     "ae2.menu.CraftConfirmMenuContinuationMixin",
     "ae2.menu.CraftConfirmMenuPlanningProgressMixin",
@@ -79,6 +81,7 @@
   ],
   "client": [
     "ae2.client.gui.AbstractTableRendererAccessor",
+    "ae2.client.gui.PatternAccessScreenBatchRefreshMixin",
     "ae2.client.gui.EditBoxAccessor",
     "ae2.client.gui.CraftConfirmScreenContinuationMixin",
     "ae2.client.gui.CraftConfirmScreenGraphMixin",

@@ -38,7 +38,7 @@ public abstract class CraftingPlanSummaryEntryEnhancedStatusMixin implements Enh
     private void chexsonsaeutils$writePatternTimes(RegistryFriendlyByteBuf buffer, CallbackInfo ci) {
         buffer.writeVarInt(chexsonsaeutils$patternTimes.size());
         for (java.math.BigInteger patternTime : chexsonsaeutils$patternTimes) {
-            buffer.writeByteArray(patternTime.toByteArray());
+            git.chexson.chexsonsaeutils.network.codec.ExactAmountWire.write(buffer, patternTime);
         }
     }
 
@@ -47,11 +47,10 @@ public abstract class CraftingPlanSummaryEntryEnhancedStatusMixin implements Enh
             RegistryFriendlyByteBuf buffer,
             CallbackInfoReturnable<CraftingPlanSummaryEntry> cir
     ) {
-        int size = buffer.readVarInt();
-        if (size < 0 || size > 100000) throw new IllegalArgumentException("样板次数条目数量无效");
+        int size = git.chexson.chexsonsaeutils.network.codec.ExactAmountWire.readCount(buffer);
         List<java.math.BigInteger> patternTimes = new ArrayList<>(size);
         for (int index = 0; index < size; index++) {
-            var amount = new java.math.BigInteger(buffer.readByteArray(4096));
+            var amount = git.chexson.chexsonsaeutils.network.codec.ExactAmountWire.read(buffer);
             if (amount.signum() < 0) throw new IllegalArgumentException("样板次数不得为负");
             patternTimes.add(amount);
         }

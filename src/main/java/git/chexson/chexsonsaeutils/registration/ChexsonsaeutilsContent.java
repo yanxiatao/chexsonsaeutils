@@ -229,6 +229,14 @@ public final class ChexsonsaeutilsContent {
         // 物质团物品／查看菜单／UUID 三枚把手自持在 item.mattermass 宿主（M2-A），本处只 dispatch 一次
         MatterMassRegistration.register(modEventBus);
         git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.register(modEventBus);
+        registerPartModels();
+    }
+
+    /** 在模组构造阶段登记 AE2 部件模型；AE2 会在后续初始化中冻结模型表。 */
+    private static void registerPartModels() {
+        git.chexson.chexsonsaeutils.bootstrap.terminal.BigIntTerminalRegistration.registerModels();
+        git.chexson.chexsonsaeutils.bootstrap.playersimulation.PlayerSimulationRegistration.registerModels();
+        PartModels.registerModels(CustomPatternProviderPart.MODELS);
     }
 
     public static void registerCommonContent() {
@@ -253,8 +261,6 @@ public final class ChexsonsaeutilsContent {
                 ChexsonsaeutilsCompatibilityConfig.MATTER_MASS_PATTERN_PROVIDER_ENABLED)) {
             MatterMassCellRegistration.bootstrap(MatterMassRegistration.MATTER_MASS_ITEM);
         }
-        // 面板模型注册（PartModels 冻结发生在客户端模型加载阶段，common setup 注册安全）
-        PartModels.registerModels(CustomPatternProviderPart.MODELS);
     }
 
     /**

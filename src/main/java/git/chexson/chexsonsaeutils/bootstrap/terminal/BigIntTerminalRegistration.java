@@ -22,10 +22,12 @@ public final class BigIntTerminalRegistration {
             MENUS.register("wide_craft_confirm", () -> git.chexson.chexsonsaeutils.menu.crafting.WideCraftConfirmMenu.TYPE);
     private BigIntTerminalRegistration() {}
     public static void register(IEventBus bus) { ITEMS.register(bus); MENUS.register(bus); }
+    public static void registerModels() {
+        appeng.api.parts.PartModels.registerModels(BigIntCraftingTerminalPart.MODELS);
+    }
     public static void bootstrap() {
         git.chexson.chexsonsaeutils.network.crafting.WideCraftRequestPayload.bind(git.chexson.chexsonsaeutils.menu.crafting.WideCraftRequestHandler::handle);
         git.chexson.chexsonsaeutils.crafting.request.CraftingRequestCompatibilityAccess.bind(new git.chexson.chexsonsaeutils.integration.craftingrequest.CraftingRequestCompatibilityImpl());
-        appeng.api.parts.PartModels.registerModels(BigIntCraftingTerminalPart.MODELS);
         git.chexson.chexsonsaeutils.terminal.storage.TerminalInventoryAccess.bind(TerminalStorageAssembly.reader());
     }
 }

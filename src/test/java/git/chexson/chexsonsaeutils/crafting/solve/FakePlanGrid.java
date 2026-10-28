@@ -310,8 +310,8 @@ public final class FakePlanGrid {
         public final FakeRequester requester;
 
         private FakeGrid(Map<AEKey, Long> inventory, Map<AEKey, List<IPatternDetails>> patterns,
-                java.util.Set<AEKey> emittable) {
-            this.storage = new FakeStorage(inventory);
+                java.util.Set<AEKey> emittable, MEStorage liveStorage) {
+            this.storage = new FakeStorage(inventory, liveStorage);
             this.crafting = new FakeCraftingService(patterns, emittable);
             this.node = new FakeNode(this);
             this.requester = new FakeRequester(node);
@@ -384,12 +384,19 @@ public final class FakePlanGrid {
 
         public static final class Builder {
             private final Map<AEKey, Long> inventory = new HashMap<>();
+            private MEStorage liveStorage;
             /** 样板登记簿：键＝样板的 primary output（＝AE2 的 {@code craftableItems} 键），值为该键的清单。 */
             private final Map<AEKey, List<IPatternDetails>> patterns = new java.util.LinkedHashMap<>();
             private final java.util.Set<AEKey> emittable = new java.util.HashSet<>();
 
             public Builder storage(Map<AEKey, Long> inv) {
                 inventory.putAll(inv);
+                return this;
+            }
+
+            /** 为真实库存存取场景显式注入接口，替代动态反射代理。 */
+            public Builder liveStorage(MEStorage storage) {
+                liveStorage = java.util.Objects.requireNonNull(storage);
                 return this;
             }
 
@@ -404,21 +411,27 @@ public final class FakePlanGrid {
             }
 
             public FakeGrid build() {
-                return new FakeGrid(inventory, patterns, emittable);
+                return new FakeGrid(inventory, patterns, emittable, liveStorage);
             }
         }
     }
 
     public static final class FakeStorage implements IStorageService {
         private final KeyCounter cached = new KeyCounter();
+        private final MEStorage liveStorage;
 
         public FakeStorage(Map<AEKey, Long> inventory) {
+            this(inventory, null);
+        }
+
+        private FakeStorage(Map<AEKey, Long> inventory, MEStorage liveStorage) {
+            this.liveStorage = liveStorage;
             inventory.forEach(cached::add);
         }
 
         @Override
         public MEStorage getInventory() {
-            return null;
+            return liveStorage;
         }
 
         @Override
