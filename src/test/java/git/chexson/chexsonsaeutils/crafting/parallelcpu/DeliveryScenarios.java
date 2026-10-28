@@ -85,6 +85,7 @@ public final class DeliveryScenarios {
     /** 执行本包的行为场景，保留各场景名称与状态隔离。 */
     public static void verify(java.nio.file.Path temporaryRoot) {
         org.junit.jupiter.api.Assertions.assertAll("git.chexson.chexsonsaeutils.crafting.parallelcpu",
+                () -> ReliabilityScenarios.verify(temporaryRoot),
                 () -> ParallelCpuPersistenceCases.verify(temporaryRoot),
                 () -> ParallelExpectedOutputLedgerCases.verify(temporaryRoot),
                 () -> ParallelRecursiveBeyondLongOrderCases.verify(temporaryRoot),
@@ -140,7 +141,7 @@ public final class DeliveryScenarios {
             job.materialAllocation.recordConsumption(FIRST, MATERIAL, BigInteger.valueOf(29));
             job.batchObligations.incur(FIRST, BigInteger.valueOf(3));
             job.addFinalOutputDelivered(PRODUCT, 40L);
-            job.remainingAmount = 60L;
+            job.recordFinalOutputAccepted(40L);
             job.waitingFor.insert(PRODUCT, 60L, Actionable.MODULATE);
             job.initialItemsRemaining.insertExact(MATERIAL, WIDE, Actionable.MODULATE);
             job.initialItemsCursor = 1;
@@ -182,7 +183,9 @@ public final class DeliveryScenarios {
             var plan = new CraftingPlan(new GenericStack(PRODUCT, Long.MAX_VALUE), 0L, false, false,
                     new KeyCounter(), new KeyCounter(), new KeyCounter(), Map.of(FIRST, Long.MAX_VALUE, SECOND, 1L));
             var link = new CraftingLink(CraftingCpuHelper.generateLinkData(lane.laneId(), true, false), lane.linkCpu());
-            var job = new ParallelExecutingCraftingJob(plan, ignored -> {}, link, null);
+            var exactPlan = new WideAmountCraftingPlan(plan, WideLedgerSnapshot.empty(), WideCraftSnapshot.empty(),
+                    Set.of(), PlanAmount.of(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE)));
+            var job = new ParallelExecutingCraftingJob(exactPlan, ignored -> {}, link, null);
             job.tasks.get(FIRST).consumeFirings(42L);
             job.addFinalOutputDelivered(PRODUCT, 42L);
             var restored = new ParallelExecutingCraftingJob(job.writeToNBT(REGISTRIES), REGISTRIES, ignored -> {}, lane);
@@ -500,152 +503,75 @@ public final class DeliveryScenarios {
         /** FIX-G：终点键里<b>不经任务表</b>、随计划直接出门的那一截（1e12 枚，单笔塞得进 long）。 */
         private static final BigInteger EMITTED_CHUNK = new BigInteger("1000000000000");
 
-        /**
-         * 主线那一档：{@code >long} 订单、实物<b>交齐</b> ⇒ 收工判据必须成立。
-         *
-         * <p>交付分两轮进账（AE2 交付通道单笔 ≤ {@code long}），交付账按宽域累加到 1e19。
-         * 未修树上这一条红：订单量交回 {@code null} ⇒ 判据恒假。
-         */
+        /** 真正越出 long 的订单携带精确根量，不能交满饱和视图就结束。 */
         void beyondLongOrderClosesOncePhysicallyDeliveredInFull() {
             var producer = new FakePattern(AEItemKey.of(Items.GLOWSTONE), new GenericStack(PRODUCT, 1L));
-            var job = newJob(producer, ORDER_WIDE, Map.of(), -1L);
-
-            // 差一口气：先交一轮 long 天花板，还欠 7.77e17 枚
+            var job = newJob(producer, ORDER_WIDE, Map.of(), new KeyCounter(), PlanAmount.of(ORDER_WIDE));
             job.addFinalOutputDelivered(PRODUCT, LONG_MAX);
             assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
-                    "只交了 " + LONG_MAX + " 枚、订单是 1e19 枚：差 " + TAIL_CHUNK + " 枚就不许收工");
-
-            // 第二轮把剩下的交齐
+                    "交到 long 天花板时，精确根订单仍欠 " + TAIL_CHUNK);
             job.addFinalOutputDelivered(PRODUCT, TAIL_CHUNK.longValueExact());
-            assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
-                    "终点订单量 > Long.MAX_VALUE、实物交齐 ⇒ 收工判据必须成立（判据读不出订单量"
-                            + "就是把 long 出口那道哨兵当成『没有量』，这一档于是永远走不到 finishJob）："
-                            + "交付账=" + job.finalOutputDeliveredAmount().exactValue());
-
-            // 同一把尺的两侧读数：订单量取的是宽域真值，不是饱和哨兵
-            assertNotNull(job.finalOutputOrderAmount(), "哨兵这一档必须由宽域份数账反推出订单量");
-            assertEquals(ORDER_WIDE, job.finalOutputOrderAmount().exactValue(),
-                    "订单量必须等于 1e19 枚真值——交回 Long.MAX_VALUE 就是把哨兵当量");
-            assertEquals(ORDER_WIDE, job.finalOutputDeliveredAmount().exactValue(),
-                    "两轮实物交付在宽域交付账上凑齐 1e19 枚");
+            assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
+            assertEquals(ORDER_WIDE, job.finalOutputOrderAmount().exactValue());
+            assertEquals(ORDER_WIDE, job.finalOutputDeliveredAmount().exactValue());
         }
 
-        /**
-         * 两型分开：读数是哨兵时，<b>反推不出真值</b>那一型明确不判；<b>真值恰好是
-         * {@code Long.MAX_VALUE}</b> 那一型照判。两型在 long 出口上长得一模一样（都是
-         * {@code 9223372036854775807}），分开它们的只有宽域份数账。
-         */
-        void sentinelWithoutDerivableTruthJudgesNothingWhileTrueLongMaxJudges() {
-            // 型一：任务表里没有产出终点键的样板 ⇒ 反推不出订单量 ⇒ 不判（交满也不收工）。
-            //
-            // FIX-G 顺手将这一臂的夹具改成<b>空任务表</b>：上一版把 unrelated×1 发留在表上，
-            // {@code isDyeableRecursiveJobComplete} 那条老臂（任务表空 且 waitingFor 空）当场恒假，
-            // 这一句 assertFalse 于是被夹具顺带满足——它压根没打在交付臂上。现在表是空的，拦住老臂的
-            // 只剩 {@code waitingFor} 上那一截不经任务表直接出门的残量，断言问的才是交付臂本身：
-            // 订单量算不出来 ⇒ 交付量凑得再满也不许放行。
+        /** 无宽域根量时 GenericStack 的 long 就是真值，不依赖任务表反推。 */
+        void finiteLongMaxWithoutExactCarrierUsesTheExplicitOrder() {
             var unrelated = new FakePattern(AEItemKey.of(Items.GLOWSTONE),
                     new GenericStack(AEItemKey.of(Items.IRON_INGOT), 1L));
-            var noTruth = newJob(unrelated, null, Map.of(), -1L, emittedIron(5L));
-            assertTrue(noTruth.tasks.isEmpty(), "夹具：任务表是空的，这一句判据只能由交付臂给出");
-            assertFalse(noTruth.waitingFor.list.isEmpty(),
-                    "夹具：不经任务表直接出门的那一截挂在 waitingFor 上，老臂（两格全空）恒假");
-            assertNull(noTruth.finalOutputOrderAmount(),
-                    "反推不出真值就明说不判：不许拿饱和哨兵顶一个'看起来到了'的订单量；"
-                            + "出门那一截不是终点键，也不许被算成终点产量");
-            noTruth.addFinalOutputDelivered(PRODUCT, LONG_MAX);
-            assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(noTruth),
-                    "订单量算不出来的那一型只能等任务表自己清空，不许被交付量凑齐（空表下这一句打的正是交付臂）");
+            var job = newJob(unrelated, null, Map.of(), emittedIron(5L), null);
+            assertTrue(job.tasks.isEmpty());
+            assertFalse(job.waitingFor.list.isEmpty(), "使空任务表的完成分支不能掩盖根量判定");
+            assertEquals(PlanAmount.of(LONG_MAX), job.finalOutputOrderAmount(),
+                    "有限 MAX 订单不应因缺少终点生产样板而变成未知量");
+            job.addFinalOutputDelivered(PRODUCT, LONG_MAX - 1);
+            assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
+            job.addFinalOutputDelivered(PRODUCT, 1);
+            assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
 
-            // 型二：终点份数＝Long.MAX_VALUE、每发 1 枚 ⇒ 真值就是 9223372036854775807，不是哨兵
-            var producer = new FakePattern(AEItemKey.of(Items.REDSTONE_BLOCK), new GenericStack(PRODUCT, 1L));
-            var trueMax = newJob(producer, null, Map.of(producer, LONG_MAX), -1L);
-            assertNotNull(trueMax.finalOutputOrderAmount(),
-                    "真值恰好是 Long.MAX_VALUE 的那一型是一个数得出来的数，必须与'反推不出'分开");
-            assertEquals(BigInteger.valueOf(LONG_MAX), trueMax.finalOutputOrderAmount().exactValue(),
-                    "订单量＝终点份数 Long.MAX × 每发 1 枚");
-            trueMax.addFinalOutputDelivered(PRODUCT, LONG_MAX);
-            assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(trueMax),
-                    "真 Long.MAX 订单交齐就该收工：把这一型也一并弃权，等于把真订单当成哨兵扔掉");
+            var producer = new FakePattern(AEItemKey.of(Items.REDSTONE_BLOCK), new GenericStack(PRODUCT, 2L));
+            var rounded = newJob(producer, null, Map.of(producer, LONG_MAX / 2 + 1), new KeyCounter(), null);
+            assertEquals(PlanAmount.of(LONG_MAX), rounded.finalOutputOrderAmount(),
+                    "即使配方毛产量为 MAX+1，订单仍是明确提交的 MAX");
+            rounded.addFinalOutputDelivered(PRODUCT, LONG_MAX);
+            assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(rounded));
         }
 
-        /**
-         * FIX-G：终点键有一截<b>不经任务表</b>、随计划直接出门（构造那趟把它插进 {@code waitingFor}）时，
-         * 反推出来的订单量必须含那一截。
-         *
-         * <p>漏掉它的后果是<b>偏小＝提前收工</b>：交付账刚交满"任务表那一截的毛量"就判成收工，
-         * 而订单实际还差直接出门的那一截。这一档只在哨兵那一型上被读到（订单越出 {@code long}，
-         * {@code long} 出口交回的是哨兵，唯一还完整的读数就是这份反推产量）。
-         *
-         * <p>未修树红在 {@code finalOutputOrderAmount} 少 {@code 1e12} 枚、且交满毛量就被判成完成。
-         */
+        /** 宽域根订单同时覆盖样板产出和 EMIT 产出，不得仅交齐其中一部分便收尾。 */
         void terminalChunkEmittedOutsideTheTaskTableStillCountsIntoTheOrder() {
             var producer = new FakePattern(AEItemKey.of(Items.GLOWSTONE), new GenericStack(PRODUCT, 1L));
-            // 订单真值 1e19 枚＝任务表那一截（1e19-1e12 发 × 每发 1 枚）＋直接出门那一截（1e12 枚）
-            var job = newJob(producer, ORDER_WIDE.subtract(EMITTED_CHUNK), Map.of(), -1L,
-                    emittedTerminal(EMITTED_CHUNK.longValueExact()));
-
-            assertNotNull(job.finalOutputOrderAmount(), "哨兵这一档必须由宽域终点量反推订单量");
-            assertEquals(ORDER_WIDE, job.finalOutputOrderAmount().exactValue(),
-                    "订单量必须含直接出门的那一截 1e12 枚——少算它就是偏小，偏小＝提前收工");
-
-            // 交满"不含那一截的毛量"：任务表那一截整笔交齐（单笔 ≤ long，分两轮进账）
+            var job = newJob(producer, ORDER_WIDE.subtract(EMITTED_CHUNK), Map.of(),
+                    emittedTerminal(EMITTED_CHUNK.longValueExact()), PlanAmount.of(ORDER_WIDE));
+            assertEquals(ORDER_WIDE, job.finalOutputOrderAmount().exactValue());
             job.addFinalOutputDelivered(PRODUCT, LONG_MAX);
             job.addFinalOutputDelivered(PRODUCT,
                     ORDER_WIDE.subtract(EMITTED_CHUNK).subtract(BigInteger.valueOf(LONG_MAX)).longValueExact());
-            assertEquals(ORDER_WIDE.subtract(EMITTED_CHUNK), job.finalOutputDeliveredAmount().exactValue(),
-                    "交付账此刻正好是任务表那一截");
-            assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
-                    "还差直接出门的那一截 1e12 枚就判收工＝提前收工：订单量偏小是这一条的根因");
-
+            assertEquals(ORDER_WIDE.subtract(EMITTED_CHUNK), job.finalOutputDeliveredAmount().exactValue());
+            assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job), "尚欠计划中直接发出的那一截");
             job.addFinalOutputDelivered(PRODUCT, EMITTED_CHUNK.longValueExact());
-            assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job),
-                    "补上那一截才算交齐（两侧都不许在比较前窄化）");
+            assertTrue(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job));
         }
 
-        /**
-         * 建一份带递归契约的计划：终点件 {@code PRODUCT × Long.MAX_VALUE}（{@code >long} 订单在
-         * {@code long} 出口上就长成这一格），契约定版量交回 {@code -1}＝没有定版量，退回计划终点量。
-         *
-         * @param wideFirings 走宽域份数账的发数（{@code >long} 那一档）；给 {@code null} 即不进这份账
-         * @param longTimes   AE2 那份代表值字典（塞得进 {@code long} 的发数从这一格来）
-         */
         private static ParallelExecutingCraftingJob newJob(IPatternDetails producer,
-                BigInteger wideFirings, Map<IPatternDetails, Long> longTimes, long contractAmount) {
-            return newJob(producer, wideFirings, longTimes, contractAmount, new KeyCounter());
-        }
-
-        /**
-         * 同一份夹具，多给一格<b>不经任务表直接出门</b>的量（{@code plan.emittedItems()}：构造那一趟
-         * 把它插进 {@code waitingFor}，{@code patternTimes()} 与宽域份数账里都没有它）。
-         */
-        private static ParallelExecutingCraftingJob newJob(IPatternDetails producer,
-                BigInteger wideFirings, Map<IPatternDetails, Long> longTimes, long contractAmount,
-                KeyCounter emittedItems) {
+                BigInteger wideFirings, Map<IPatternDetails, Long> longTimes,
+                KeyCounter emittedItems, PlanAmount exactOrder) {
             var counter = new WideCraftCounter();
-            if (wideFirings != null) {
-                counter.add(producer, PlanAmount.of(wideFirings));
-            }
+            if (wideFirings != null) counter.add(producer, PlanAmount.of(wideFirings));
             var base = new CraftingPlan(new GenericStack(PRODUCT, LONG_MAX), 0L, true, false,
                     new KeyCounter(), emittedItems, new KeyCounter(), longTimes);
             var plan = new RecursiveCraftingPlan(base, new KeyCounter(), new KeyCounter(),
-                    contractAmount, Map.of(), Map.of(), WideLedgerSnapshot.empty(),
-                    WideCraftSnapshot.capture(counter));
-            return new ParallelExecutingCraftingJob(plan, ignored -> {
-            }, null, null);
+                    -1L, Map.of(), Map.of(), WideLedgerSnapshot.empty(), WideCraftSnapshot.capture(counter),
+                    Set.of(), Map.of(), exactOrder);
+            return new ParallelExecutingCraftingJob(plan, ignored -> {}, null, null);
         }
 
-        /** 出门那一截就是终点键本身：订单量必须把它算进去。 */
         private static KeyCounter emittedTerminal(long amount) {
-            var emitted = new KeyCounter();
-            emitted.add(PRODUCT, amount);
-            return emitted;
+            var emitted = new KeyCounter(); emitted.add(PRODUCT, amount); return emitted;
         }
 
-        /** 出门那一截是<b>别的</b>键：一枚也不许算进终点产量。 */
         private static KeyCounter emittedIron(long amount) {
-            var emitted = new KeyCounter();
-            emitted.add(AEItemKey.of(Items.IRON_INGOT), amount);
-            return emitted;
+            var emitted = new KeyCounter(); emitted.add(AEItemKey.of(Items.IRON_INGOT), amount); return emitted;
         }
 
         /** 只产一格的样板替身：终点键的产量按 {@code 每发量 × 发数} 算。 */
@@ -670,7 +596,7 @@ public final class DeliveryScenarios {
         static void verify(java.nio.file.Path temporaryRoot) {
             org.junit.jupiter.api.Assertions.assertAll("ParallelRecursiveBeyondLongOrderCases",
                 () -> org.junit.jupiter.api.Assertions.assertAll("ParallelRecursiveBeyondLongOrderCases.beyondLongOrderClosesOncePhysicallyDeliveredInFull", () -> new ParallelRecursiveBeyondLongOrderCases().beyondLongOrderClosesOncePhysicallyDeliveredInFull()),
-                () -> org.junit.jupiter.api.Assertions.assertAll("ParallelRecursiveBeyondLongOrderCases.sentinelWithoutDerivableTruthJudgesNothingWhileTrueLongMaxJudges", () -> new ParallelRecursiveBeyondLongOrderCases().sentinelWithoutDerivableTruthJudgesNothingWhileTrueLongMaxJudges()),
+                () -> org.junit.jupiter.api.Assertions.assertAll("ParallelRecursiveBeyondLongOrderCases.finiteLongMaxWithoutExactCarrierUsesTheExplicitOrder", () -> new ParallelRecursiveBeyondLongOrderCases().finiteLongMaxWithoutExactCarrierUsesTheExplicitOrder()),
                 () -> org.junit.jupiter.api.Assertions.assertAll("ParallelRecursiveBeyondLongOrderCases.terminalChunkEmittedOutsideTheTaskTableStillCountsIntoTheOrder", () -> new ParallelRecursiveBeyondLongOrderCases().terminalChunkEmittedOutsideTheTaskTableStillCountsIntoTheOrder())
             );
         }
@@ -869,10 +795,10 @@ public final class DeliveryScenarios {
             // ---------------------------------------------------------------------------------
             // 真收尾层：AE2 交货到账口那一句 insert 起，走完 finishJob(true)
             // ---------------------------------------------------------------------------------
-            var resumeJob = newRecursiveJob(tail, 0L, newCpuLink());
+            var resumeJob = newRecursiveJob(tail, 0L, newRequesterCpuLink());
             resumeJob.waitingFor.insert(PRODUCT, ORDER, Actionable.MODULATE);
             resumeJob.waitingFor.insert(TAIL_MATERIAL, 7L, Actionable.MODULATE);
-            var lane = new ParallelCraftingLaneState(null, UUID.randomUUID(), 0L);
+            var lane = new ParallelCraftingLaneState(diagnosticCluster(), UUID.randomUUID(), 0L);
             var logic = lane.logic();
             var logicTag = new CompoundTag();
             logicTag.put("job", resumeJob.writeToNBT(REGISTRIES));
@@ -899,7 +825,7 @@ public final class DeliveryScenarios {
 
         /** 退出前已到账 40 枚，重进后再到 60 枚：累计到齐即收尾，并真实交付全部 100 枚。 */
         void partialDeliveryBeforeReloadCountsTowardActualFinalDeliveryAfterReload() {
-            var job = newRecursiveJob(Map.of(), newCpuLink());
+            var job = newRecursiveJob(Map.of(), newRequesterCpuLink());
             job.addFinalOutputDelivered(PRODUCT, 40L);
             job.waitingFor.insert(PRODUCT, 60L, Actionable.MODULATE);
             job.waitingFor.insert(TAIL_MATERIAL, 7L, Actionable.MODULATE);
@@ -908,7 +834,7 @@ public final class DeliveryScenarios {
             var saved = new CompoundTag();
             saved.put("job", job.writeToNBT(REGISTRIES));
             saved.put("inventory", pool.writeToNBT(REGISTRIES));
-            var lane = new ParallelCraftingLaneState(null, UUID.randomUUID(), 0L);
+            var lane = new ParallelCraftingLaneState(diagnosticCluster(), UUID.randomUUID(), 0L);
             lane.logic().readFromNBT(saved, REGISTRIES);
             var link = (CraftingLink) lane.getLastLink();
             var requester = new RecordingRequester();
@@ -1062,20 +988,17 @@ public final class DeliveryScenarios {
             var lane = offlineLaneSeededWith(job, network);
             var logic = lane.logic();
             var cpuLink = (CraftingLink) lane.getLastLink();
-            var requester = new RecordingRequester();
-            tieLinkToRequester(cpuLink, requester);
 
             assertTrue(logic.tickCraftingLogic(null, null, 0L, null, null),
                     "任务表已空：这一 tick 推不出任何一发，返回 idle 才对得上产线那条调度");
 
-            assertTrue(cpuLink.isDone(), "tick 收尾没把作业推进 finishJob(true)：链接仍不是完成态");
+            assertFalse(logic.hasJob(), "手动订单必须真正释放作业；原生 standalone link 没有收货 nexus");
             assertFalse(lane.isLaneActive(),
                     "判据成立却没人问：作业仍挂在 lane 上（实机那一跑只能手动取消，取消后那颗种不退网、下一条 lane 的环饿死）");
             assertEquals(1L, network.stored(SEED), "环起步借的那颗种必须经 storeItems() 退回网络");
             assertEquals(0L, network.stored(PRODUCT), "网络侧不许多出终点产物：收工不伪造实物");
             assertTrue(logic.isInventoryEmpty(), "收尾后 CPU 池必须是空池");
-            assertTrue(requesteeDeliveries(requester).isEmpty(),
-                    "planned 那一腿没有实物回执：requester 一枚不收，交付账也不许被这一改推进");
+            assertTrue(cpuLink.isStandalone(), "直投网络的手动订单不绑定 requester");
         }
 
         /**
@@ -1304,6 +1227,11 @@ public final class DeliveryScenarios {
         private static CraftingLink newCpuLink() {
             return new CraftingLink(
                     CraftingCpuHelper.generateLinkData(UUID.randomUUID(), true, false),
+                    (appeng.api.networking.crafting.ICraftingCPU) null);
+        }
+
+        private static CraftingLink newRequesterCpuLink() {
+            return new CraftingLink(CraftingCpuHelper.generateLinkData(UUID.randomUUID(), false, false),
                     (appeng.api.networking.crafting.ICraftingCPU) null);
         }
 

@@ -7,16 +7,23 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.MEStorage;
 import appeng.api.storage.cells.ISaveProvider;
+import com.extendedae_plus.api.bridge.CompatUpgradeProvider;
+import com.extendedae_plus.compat.UpgradeSlotCompat;
+import com.extendedae_plus.items.materials.ChannelCardItem;
 import com.extendedae_plus.api.storage.InfinityBigIntegerCellHandler;
 import com.extendedae_plus.api.storage.InfinityBigIntegerCellInventory;
 import com.extendedae_plus.init.ModItems;
 import com.extendedae_plus.util.storage.InfinityConstants;
 import com.extendedae_plus.util.storage.InfinityDataStorage;
 import com.extendedae_plus.util.storage.InfinityStorageManager;
+import git.chexson.chexsonsaeutils.bootstrap.patternprovider.CustomPatternProviderRegistration;
 import git.chexson.chexsonsaeutils.cell.InfinityCellInventory;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.CustomPatternProviderLogic;
+import git.chexson.chexsonsaeutils.helpers.custompatternprovider.ProviderTestSupport;
 import git.chexson.chexsonsaeutils.integration.terminalstorage.extendedaeplus.PlusExactStorageAdapterImpl;
 import git.chexson.chexsonsaeutils.terminal.storage.*;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,6 +37,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.items.ItemStackHandler;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -38,8 +46,64 @@ final class PlusTerminalCategoryTest {
     @Test
     void verifyLoadedIntegration() {
         org.junit.jupiter.api.Assertions.assertAll("PlusTerminalCategoryTest",
-                PlusTerminalStorageSdkCases::verify
+                PlusTerminalStorageSdkCases::verify,
+                PlusTerminalCategoryTest::customProviderPreservesParentChannelCardHooks
         );
+    }
+
+    /** 通过真实 Plus API 和 FML 注入的父类验证升级库存，不直接引用 mixin 实现类。 */
+    private static void customProviderPreservesParentChannelCardHooks() {
+        assertTrue(ModList.get().isLoaded("extendedae_plus"));
+        assertEquals("1.6.3", ModList.get().getModContainerById("extendedae_plus").orElseThrow()
+                .getModInfo().getVersion().toString());
+        assertTrue(UpgradeSlotCompat.shouldManageLocalUpgradeInventory(),
+                "本验收需要 Plus 自有 compat_upgrades 分支，不能被 AppFlux 升级库存替代");
+        var original = providerWithPlusHooks();
+        var upgrades = assertInstanceOf(CompatUpgradeProvider.class, original.logic).eap$getCompatUpgrades();
+        assertTrue(upgrades.size() > 0, "Plus 必须为父类创建真实升级库存");
+        var card = new ItemStack(ModItems.CHANNEL_CARD.get());
+        var owner = UUID.fromString("1203d823-d653-4fb8-bdb4-56f46445b18e");
+        ChannelCardItem.setOwnerUUID(card, owner);
+        ChannelCardItem.setTeamName(card, "provider-persistence-regression");
+        assertTrue(upgrades.insertItem(0, card.copy(), false).isEmpty(),
+                "频道卡必须通过定制供应器已注册的正常升级校验");
+        var copper = AEItemKey.of(Items.COPPER_INGOT);
+        assertEquals(3, original.logic.getReturnInv().insert(copper, 3, Actionable.MODULATE, IActionSource.empty()));
+        var saved = original.save();
+        assertTrue(saved.contains("compat_upgrades"), "super.writeToNBT 必须执行 Plus 保存回调");
+
+        var loaded = providerWithPlusHooks();
+        loaded.logic.readFromNBT(saved, ProviderTestSupport.REGISTRIES);
+        var loadedUpgrades = assertInstanceOf(CompatUpgradeProvider.class, loaded.logic).eap$getCompatUpgrades();
+        var loadedCard = loadedUpgrades.getStackInSlot(0);
+        assertTrue(ItemStack.matches(card, loadedCard), "频道卡数量和全部组件必须保留");
+        assertEquals(owner, ChannelCardItem.getOwnerUUID(loadedCard));
+        assertEquals("provider-persistence-regression", ChannelCardItem.getTeamName(loadedCard));
+        assertEquals(1, loadedUpgrades.getInstalledUpgrades(ModItems.CHANNEL_CARD.get()));
+        var drops = new ArrayList<ItemStack>();
+        loaded.logic.addDrops(drops);
+        assertEquals(1, drops.stream().filter(stack -> stack.is(ModItems.CHANNEL_CARD.get()))
+                .mapToLong(ItemStack::getCount).sum(), "super.addDrops 必须恰好返还一张频道卡");
+        assertEquals(3, drops.stream().filter(copper::matches).mapToLong(ItemStack::getCount).sum(),
+                "子类返回栏不得因保留父类 hook 而重读或丢失");
+
+        loaded.logic.clearContent();
+        assertTrue(loadedUpgrades.isEmpty(), "super.clearContent 必须清空 Plus 升级库存");
+        assertTrue(loaded.logic.getReturnInv().isEmpty());
+        var afterClear = new ArrayList<ItemStack>();
+        loaded.logic.addDrops(afterClear);
+        assertTrue(afterClear.stream().allMatch(ItemStack::isEmpty), "清空后不能再次掉落频道卡或原料");
+    }
+
+    private static ProviderTestSupport.Host providerWithPlusHooks() {
+        var host = new ProviderTestSupport.Host(new ItemStackHandler(1),
+                new ProviderTestSupport.BoundedStorage(2, 64)) {
+            @Override public AEItemKey getTerminalIcon() {
+                return AEItemKey.of(CustomPatternProviderRegistration.CUSTOM_PATTERN_PROVIDER_ITEM.get());
+            }
+        };
+        host.logic = new CustomPatternProviderLogic(host.node, host, 1, ProviderTestSupport.NO_INTEGRATION);
+        return host;
     }
 
     private static final class PlusTerminalStorageSdkCases {

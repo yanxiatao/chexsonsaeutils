@@ -18,6 +18,7 @@ import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.helpers.patternprovider.PatternContainer;
 import appeng.me.helpers.MachineSource;
 import appeng.me.service.CraftingService;
+import appeng.util.SettingsFrom;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 import git.chexson.chexsonsaeutils.bigint.ClampedMath;
@@ -56,12 +57,16 @@ import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSearch;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -85,6 +90,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
 
     /** 标记与实体样板分库存；机器页提供四行九列。 */
     public static final int MACHINE_BINDING_SLOTS = 36;
+    private static final String NBT_DISMANTLE_WORK = "chexsonsaeutils:direct_processing_work";
     private static final String NBT_MACHINE_BINDINGS = "machineBindings";
     private static final String NBT_MACHINE_BINDING = "machineBinding";
     private static final String NBT_PATTERN_SLOTS = "patternSlots";
@@ -223,7 +229,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         data.putInt(NBT_PENDING_OUTPUT_RETRY_BACKOFF, pendingOutputRetryBackoffTicks);
         executionQueue.writeToTag(data, NBT_EXECUTION_QUEUE, registries);
         if (!pendingOutputBatches.isEmpty()) {
-            data.put(NBT_PENDING_OUTPUT, writePendingOutputBatches(registries));
+            data.put(NBT_PENDING_OUTPUT, writePendingOutputBatches(pendingOutputBatches, registries));
         }
         writePatternSlots(data, registries);
     }
@@ -258,7 +264,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         executionQueue.readFromTag(data, NBT_EXECUTION_QUEUE, registries);
         pendingOutputBatches.clear();
         if (data.contains(NBT_PENDING_OUTPUT)) {
-            readPendingOutputBatches(registries, data.getList(NBT_PENDING_OUTPUT, Tag.TAG_COMPOUND));
+            readPendingOutputBatches(pendingOutputBatches, registries, data.getList(NBT_PENDING_OUTPUT, Tag.TAG_COMPOUND));
         }
         readPatternSlots(data, registries);
         clearPatternExposureCaches();
@@ -466,6 +472,57 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
     }
 
     @Override
+    public void exportSettings(SettingsFrom mode, DataComponentMap.Builder builder, @Nullable Player player) {
+        super.exportSettings(mode, builder, player);
+        if (mode == SettingsFrom.DISMANTLE_ITEM) {
+            exportDismantleWork(mode, builder, executionQueue, pendingOutputBatches, getLevel().registryAccess());
+        }
+    }
+
+    @Override
+    public void importSettings(SettingsFrom mode, DataComponentMap input, @Nullable Player player) {
+        super.importSettings(mode, input, player);
+        if (mode == SettingsFrom.DISMANTLE_ITEM
+                && importDismantleWork(mode, input, executionQueue, pendingOutputBatches, getLevel().registryAccess())) {
+            pendingOutputRetryDelayTicks = 0;
+            pendingOutputRetryBackoffTicks = 0;
+            saveChanges();
+        }
+    }
+
+    // 已接单任务和待回流产物属于机器内容；保持剩余工时、执行份数和来源 CPU，重新放置后继续。
+    static void exportDismantleWork(SettingsFrom mode, DataComponentMap.Builder builder,
+            ProcessingExecutionQueue queue, ArrayDeque<PendingOutputBatch> pending,
+            HolderLookup.Provider registries) {
+        if (mode != SettingsFrom.DISMANTLE_ITEM || queue.isIdle() && pending.isEmpty()) {
+            return;
+        }
+        CompoundTag work = new CompoundTag();
+        queue.writeToTag(work, NBT_EXECUTION_QUEUE, registries);
+        work.put(NBT_PENDING_OUTPUT, writePendingOutputBatches(pending, registries));
+        CompoundTag data = builder.build().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+        data.put(NBT_DISMANTLE_WORK, work);
+        builder.set(DataComponents.CUSTOM_DATA, CustomData.of(data));
+    }
+
+    static boolean importDismantleWork(SettingsFrom mode, DataComponentMap input,
+            ProcessingExecutionQueue queue, ArrayDeque<PendingOutputBatch> pending,
+            HolderLookup.Provider registries) {
+        if (mode != SettingsFrom.DISMANTLE_ITEM) {
+            return false;
+        }
+        CompoundTag data = input.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+        if (!data.contains(NBT_DISMANTLE_WORK, Tag.TAG_COMPOUND)) {
+            return false;
+        }
+        CompoundTag work = data.getCompound(NBT_DISMANTLE_WORK);
+        queue.readFromTag(work, NBT_EXECUTION_QUEUE, registries);
+        pending.clear();
+        readPendingOutputBatches(pending, registries, work.getList(NBT_PENDING_OUTPUT, Tag.TAG_COMPOUND));
+        return true;
+    }
+
+    @Override
     public void addAdditionalDrops(Level level, BlockPos pos, List<ItemStack> drops) {
         super.addAdditionalDrops(level, pos, drops);
         for (int slot = 0; slot < MACHINE_BINDING_SLOTS; slot++) {
@@ -478,14 +535,7 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                 drops.add(stack.copy());
             }
         }
-        for (PendingOutputBatch batch : pendingOutputBatches) {
-            if (batch == null || batch.isEmpty()) continue;
-            for (GenericStack stack : batch.payload()) {
-                if (stack != null && stack.what() != null) {
-                    stack.what().addDrops(stack.amount(), drops, level, pos);
-                }
-            }
-        }
+        // 任务与待回流产物已导出到机器掉落物，不能再作为额外掉落重复发放。
     }
 
     @Override
@@ -1194,9 +1244,9 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return List.copyOf(stacks);
     }
 
-    private ListTag writePendingOutputBatches(HolderLookup.Provider registries) {
+    private static ListTag writePendingOutputBatches(Iterable<PendingOutputBatch> pending, HolderLookup.Provider registries) {
         ListTag tag = new ListTag();
-        for (PendingOutputBatch batch : pendingOutputBatches) {
+        for (PendingOutputBatch batch : pending) {
             if (batch == null || batch.isEmpty()) {
                 continue;
             }
@@ -1210,7 +1260,8 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
         return tag;
     }
 
-    private void readPendingOutputBatches(HolderLookup.Provider registries, ListTag tag) {
+    private static void readPendingOutputBatches(ArrayDeque<PendingOutputBatch> pending,
+            HolderLookup.Provider registries, ListTag tag) {
         for (Tag entry : tag) {
             if (entry instanceof CompoundTag batchTag && batchTag.contains(NBT_BATCH_PAYLOAD)) {
                 List<GenericStack> payload = readStacks(
@@ -1221,14 +1272,14 @@ public class AEDirectProcessingMachineBlockEntity extends AENetworkedBlockEntity
                         ? batchTag.getUUID(NBT_BATCH_SOURCE_CRAFTING_ID)
                         : null;
                 if (!payload.isEmpty()) {
-                    pendingOutputBatches.addLast(new PendingOutputBatch(payload, null, sourceCraftingId));
+                    pending.addLast(new PendingOutputBatch(payload, null, sourceCraftingId));
                 }
                 continue;
             }
             if (entry instanceof CompoundTag stackTag) {
                 GenericStack stack = GenericStack.readTag(registries, stackTag);
                 if (stack != null) {
-                    pendingOutputBatches.addLast(new PendingOutputBatch(List.of(stack), null, null));
+                    pending.addLast(new PendingOutputBatch(List.of(stack), null, null));
                 }
             }
         }

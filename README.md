@@ -32,6 +32,27 @@ Applied Energistics 2 的实用扩展模组，补充合成、样板、存储与�
 
 将模组及必需依赖放入 `mods` 目录。配置文件为 `config/chexsonsaeutils-common.toml`，也可从模组配置界面编辑。JEI、Configured、KubeJS 及其他集成模组按需安装；更新依赖时需确认对应功能的兼容性。
 
+## 从源码构建
+
+安装 Java 21 后运行：
+
+```sh
+./gradlew --no-daemon build
+```
+
+Windows 使用 `gradlew.bat`。依赖均由 Gradle 从 Maven、Modrinth 或 CurseMaven 下载，
+无需复制 JAR 到 `libs/` 或 `reference-sources/`。版本和发布文件 ID 固定在
+`gradle.properties`，首次构建需要网络。构建结果位于 `build/libs/`；`build` 同时执行
+默认回归测试与 JSON 资源校验。
+
+可选模组的真实 SDK 验收单独启用，也使用相同的在线坐标，例如：
+
+```sh
+./gradlew --no-daemon test -I tools/integration-tests/neoecoae/neoeco-sdk-test.init.gradle --tests '*NeoEcoSdkCategoryTest'
+```
+
+仓库的 GitHub Actions 对 PR 执行构建、测试和架构检查，测试报告作为运行产物保留。
+
 ## AI 编写提醒
 
 本模组的代码、文档和部分资源主要由 AI 在开发者指令下编写、迁移与整理，并由人工取舍和审阅。可能存在缺陷或兼容问题；用于重要存档或服务器前，请先备份并在测试环境确认实际表现。

@@ -15,6 +15,7 @@ import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.helpers.patternprovider.PatternContainer;
+import appeng.util.SettingsFrom;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
@@ -36,12 +37,16 @@ import git.chexson.chexsonsaeutils.menu.matrix.PatternMatrixSource;
 import git.chexson.chexsonsaeutils.menu.matrix.PatternSlotStore;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.items.IItemHandler;
@@ -65,6 +70,7 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
+    private static final String NBT_DISMANTLE_OUTPUTS = "chexsonsaeutils:extreme_assembler_outputs";
     private static final String NBT_VIRTUAL_PENDING_OUTPUTS = "virtualPendingOutputs";
     private static final String NBT_VIRTUAL_AMOUNT_WIDE = "#virtualAmountWide";
 
@@ -135,6 +141,48 @@ public abstract class AbstractExtremeAssemblerHostBlockEntity extends AENetworke
             data.remove(NBT_VIRTUAL_PENDING_OUTPUTS);
         }
         saveCustomState(data, registries);
+    }
+
+    @Override
+    public void exportSettings(SettingsFrom mode, DataComponentMap.Builder builder, @Nullable Player player) {
+        super.exportSettings(mode, builder, player);
+        if (mode == SettingsFrom.DISMANTLE_ITEM) {
+            exportDismantleOutputs(mode, builder, pendingVirtualOutputs, getLevel().registryAccess());
+        }
+    }
+
+    @Override
+    public void importSettings(SettingsFrom mode, DataComponentMap input, @Nullable Player player) {
+        super.importSettings(mode, input, player);
+        if (mode == SettingsFrom.DISMANTLE_ITEM
+                && importDismantleOutputs(mode, input, pendingVirtualOutputs, getLevel().registryAccess())) {
+            virtualReturnStalled = false;
+            saveChanges();
+        }
+    }
+
+    // 数量保存在机器掉落物中；无论多大都不展开成物品实体，记忆卡也不能复制产物。
+    static void exportDismantleOutputs(SettingsFrom mode, DataComponentMap.Builder builder,
+            WideKeyCounter outputs, HolderLookup.Provider registries) {
+        if (mode != SettingsFrom.DISMANTLE_ITEM || outputs.isEmpty()) {
+            return;
+        }
+        CompoundTag data = builder.build().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+        data.put(NBT_DISMANTLE_OUTPUTS, writeVirtualOutputs(outputs, registries));
+        builder.set(DataComponents.CUSTOM_DATA, CustomData.of(data));
+    }
+
+    static boolean importDismantleOutputs(SettingsFrom mode, DataComponentMap input,
+            WideKeyCounter outputs, HolderLookup.Provider registries) {
+        if (mode != SettingsFrom.DISMANTLE_ITEM) {
+            return false;
+        }
+        CompoundTag data = input.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+        if (!data.contains(NBT_DISMANTLE_OUTPUTS, Tag.TAG_LIST)) {
+            return false;
+        }
+        readVirtualOutputs(outputs, data.getList(NBT_DISMANTLE_OUTPUTS, Tag.TAG_COMPOUND), registries);
+        return true;
     }
 
     /** 保留 GenericStack 条目结构，只对超 long 的数量附加精确值。 */

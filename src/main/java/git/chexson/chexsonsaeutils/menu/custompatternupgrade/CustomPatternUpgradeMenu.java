@@ -3,6 +3,7 @@ package git.chexson.chexsonsaeutils.menu.custompatternupgrade;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 
 import appeng.api.inventories.InternalInventory;
@@ -62,6 +63,16 @@ public class CustomPatternUpgradeMenu extends AEBaseMenu {
 
         this.host.setInventoryChangedHandler(this::onHostInventoryChanged);
         updateState();
+    }
+
+    @Override
+    public void removed(Player player) {
+        super.removed(player);
+        Container remainingInput = host.detachInventory();
+        if (isServerSide()) {
+            // clearContainer 同时覆盖正常关闭、死亡与断线；背包满时由原版掉落余量。
+            clearContainer(player, remainingInput);
+        }
     }
 
     /**

@@ -22,6 +22,7 @@ public final class PatternMatrixServerSync {
 
     private final Map<Integer, ObservedSlot> observedSlots = new HashMap<>();
     private int scanCursor;
+    private long nextRevision = 1L;
 
     /** 扫描并按包发出变化。 */
     public void broadcastChanges(PatternMatrixSource source, Sender sender) {
@@ -87,7 +88,8 @@ public final class PatternMatrixServerSync {
                 source.patternMatrixDisplayStack(slot),
                 statusCode,
                 reasonCode,
-                source.patternMatrixSearchTerms(slot)
+                source.patternMatrixSearchTerms(slot),
+                nextRevision++
         ));
         observedSlots.put(slot, new ObservedSlot(stored.copy(), detailVersion, statusCode, reasonCode));
     }

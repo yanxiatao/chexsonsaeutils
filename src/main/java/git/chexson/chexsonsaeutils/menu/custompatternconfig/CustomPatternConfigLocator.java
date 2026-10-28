@@ -1,6 +1,8 @@
 package git.chexson.chexsonsaeutils.menu.custompatternconfig;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import org.jetbrains.annotations.Nullable;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceKey;
@@ -14,7 +16,7 @@ import appeng.menu.locator.MenuLocators;
  * 定制样板编码 GUI 的菜单定位器（MenuHostLocator 实现）。
  * <p>
  * 动机：编码 GUI 直接编辑供应器样板槽中的原样板（原地转换，无样板副本），
- * 宿主需要定位到打开它的供应器：携带供应器位置（BlockPos + 维度）与
+ * 宿主需要定位到打开它的供应器：携带供应器位置（BlockPos + 维度 + 面板方向）与
  * 样板槽序号（patternSlotIndex）。网络序列化通过
  * {@link MenuLocators#register} 注册（类名 + 读写器），位置用
  * FriendlyByteBuf 的 writeBlockPos/writeResourceKey 读写（与
@@ -26,6 +28,7 @@ public class CustomPatternConfigLocator implements MenuHostLocator {
     private final BlockPos pos;
     private final ResourceKey<Level> dimension;
     private final int patternSlotIndex;
+    @Nullable private final Direction partSide;
 
     /**
      * @param pos              供应器方块位置
@@ -33,9 +36,15 @@ public class CustomPatternConfigLocator implements MenuHostLocator {
      * @param patternSlotIndex 供应器样板槽序号（patternInventory 内索引）
      */
     public CustomPatternConfigLocator(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex) {
+        this(pos, dimension, patternSlotIndex, null);
+    }
+
+    public CustomPatternConfigLocator(BlockPos pos, ResourceKey<Level> dimension, int patternSlotIndex,
+            @Nullable Direction partSide) {
         this.pos = pos;
         this.dimension = dimension;
         this.patternSlotIndex = patternSlotIndex;
+        this.partSide = partSide;
     }
 
     @Override
@@ -45,20 +54,22 @@ public class CustomPatternConfigLocator implements MenuHostLocator {
         }
         // 宿主缺失（方块被拆）时由 Host 内部延迟定位处理（getProvider 返回 null，
         // 菜单逻辑 Fail Fast），locate 本身只负责构造宿主
-        return hostInterface.cast(new CustomPatternConfigHost(this.pos, this.dimension, this.patternSlotIndex));
+        return hostInterface.cast(new CustomPatternConfigHost(this.pos, this.dimension, this.patternSlotIndex, this.partSide));
     }
 
     public static void writeToPacket(CustomPatternConfigLocator locator, FriendlyByteBuf buf) {
         buf.writeBlockPos(locator.pos);
         buf.writeResourceKey(locator.dimension);
         buf.writeInt(locator.patternSlotIndex);
+        buf.writeNullable(locator.partSide, FriendlyByteBuf::writeEnum);
     }
 
     public static CustomPatternConfigLocator readFromPacket(FriendlyByteBuf buf) {
         return new CustomPatternConfigLocator(
                 buf.readBlockPos(),
                 buf.readResourceKey(Registries.DIMENSION),
-                buf.readInt());
+                buf.readInt(),
+                buf.readNullable(b -> b.readEnum(Direction.class)));
     }
 
     /**
@@ -74,6 +85,7 @@ public class CustomPatternConfigLocator implements MenuHostLocator {
     @Override
     public String toString() {
         return "CustomPatternConfigLocator[" + this.dimension + " " + this.pos
-                + " slot=" + this.patternSlotIndex + "]";
+                + " slot=" + this.patternSlotIndex
+                + (this.partSide != null ? " side=" + this.partSide : "") + "]";
     }
 }

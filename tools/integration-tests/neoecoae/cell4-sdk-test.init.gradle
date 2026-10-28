@@ -1,8 +1,6 @@
 // 叠加实际整合包 Cell4，不改写原 JAR 或关闭其 Mixin。
 gradle.afterProject { project ->
     if (project != project.rootProject) return
-    def cell4 = project.file('reference-sources/Cell4-1.21.1-NeoForge-1.0.4fix3.jar')
-    if (!cell4.isFile()) throw new GradleException("Cell4 集成验收缺少原始模组：${cell4}")
-    project.dependencies.add('testImplementation', project.files(cell4))
+    project.dependencies.add('testImplementation', project.onlineMods.cell4)
     project.sourceSets.test.java.srcDir(project.file('tools/integration-tests/cell4/src'))
 }

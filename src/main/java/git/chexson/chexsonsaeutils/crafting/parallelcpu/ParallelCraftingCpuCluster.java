@@ -146,6 +146,7 @@ public final class ParallelCraftingCpuCluster {
                 requester
         );
         if (submitResult == null || !submitResult.successful()) {
+            retainRefundLane(lane);
             return submitResult == null ? offlineSubmission(grid, "lane-returned-null") : submitResult;
         }
 
@@ -177,6 +178,7 @@ public final class ParallelCraftingCpuCluster {
                 requester
         );
         if (submitResult == null || !submitResult.successful()) {
+            retainRefundLane(lane);
             return submitResult == null ? offlineSubmission(grid, "partial-lane-returned-null") : submitResult;
         }
 
@@ -658,7 +660,15 @@ public final class ParallelCraftingCpuCluster {
             return;
         }
         lane.cancel();
-        removeLane(lane);
+        if (!lane.isLaneActive()) removeLane(lane);
+        else refreshLaneState(lane);
+    }
+
+    /** 回滚暂时退不回网络的实物仍属于此 CPU，必须保留到后续 tick 或存档。 */
+    private void retainRefundLane(ParallelCraftingLaneState lane) {
+        if (!lane.isLaneActive()) return;
+        lanes.put(lane.laneId(), lane);
+        lane.markRegistered();
     }
 
     void removeLane(ParallelCraftingLaneState lane) {

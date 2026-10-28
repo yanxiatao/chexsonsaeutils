@@ -17,7 +17,7 @@
         "recipe": "chexsonsaeutils:ae2_parallel_cpu_tool"
       }
     }
-  ],
+  },
   "requirements": [
     [
       "has_controller",

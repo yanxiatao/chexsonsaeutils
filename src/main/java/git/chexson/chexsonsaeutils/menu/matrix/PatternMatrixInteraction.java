@@ -82,7 +82,7 @@ public final class PatternMatrixInteraction {
         }
     }
 
-    private static void pickupOrSetDown(
+    static void pickupOrSetDown(
             PatternMatrixSource source,
             InternalInventory cell,
             ItemStack stored,
@@ -100,12 +100,16 @@ public final class PatternMatrixInteraction {
             carriedSetter.accept(cell.addItems(hand.copy()));
             return;
         }
-        // 换出槽内样板 → 放入手上样板 → 放不下的部分回到手上并退回原样板
+        // 一格只容纳一张；多张样板无法与已有样板交换，保持双方原样。
+        if (hand.getCount() > cell.getSlotLimit(0)) {
+            return;
+        }
+        // 换出槽内样板；插入失败时必须恢复完整手持栈，不能只返还插入后的余量。
         ItemStack displaced = cell.extractItem(0, 1, false);
         ItemStack remainder = cell.addItems(hand.copy());
         if (!remainder.isEmpty()) {
             cell.setItemDirect(0, displaced);
-            carriedSetter.accept(remainder);
+            carriedSetter.accept(hand.copy());
             return;
         }
         carriedSetter.accept(displaced);

@@ -152,7 +152,7 @@ final class ParallelExecutingCraftingJob {
     final MaterialWakeIndex materialWakeIndex = new MaterialWakeIndexImpl();
     GenericStack finalOutput;
     long remainingAmount;
-    /** 明确提交的宽域根订单与其剩余交付量；long 字段只供 AE2 状态界面读取。 */
+    /** 提交时的权威根订单与其剩余交付量，包括恰好 Long.MAX_VALUE 的有限订单。 */
     @Nullable PlanAmount exactFinalOutputAmount;
     @Nullable PlanAmount exactRemainingAmount;
 
@@ -171,6 +171,19 @@ final class ParallelExecutingCraftingJob {
     @Nullable
     Integer playerId;
     boolean suspended;
+    /** 已接单批次的材料债务清算完成前，取消和成功收尾都不能释放库存。 */
+    boolean cancellationRequested;
+    boolean completionRequested;
+    /** 递归终产物进入 CPU 不代表 requester 已收货；此余额只按真实收货递减。 */
+    @Nullable PlanAmount requesterDeliveryRemaining;
+
+    boolean hasUnsettledBatchObligations() {
+        if (batchObligations.hasAnyPending()) return true;
+        for (int i = 0; i < unresolvedTasks.size(); i++) {
+            if (BatchObligationLedger.readEntry(unresolvedTasks.getCompound(i)).signum() > 0) return true;
+        }
+        return false;
+    }
     boolean dyeableRecursivePlan;
     long dyeableRecursiveFinalOutputAmount = -1L;
     /** 提交时的计划实例类名（瞬态）：续传作业固定报 resumed，一眼区分两条来源。 */
@@ -254,7 +267,7 @@ final class ParallelExecutingCraftingJob {
      * <p>这里<b>不</b>顺手清 {@code waitingFor}：那一本账同时挂着 {@code emittedItems} 与在途
      * 申报的<b>真实</b>数量，按键族整体摘掉会把该回来的实物一起拒收（{@code insertInternal}
      * 那道闸门）。无限来源的初始材料等待在源头就不进账——见 {@code ParallelCraftingCpuLogic
-     * #seedInitialWaitingFor}。
+     * #seedInitialInputs}。
      */
     void noteUnboundedSupply(@Nullable AEKey key) {
         if (key != null) {
@@ -566,6 +579,12 @@ final class ParallelExecutingCraftingJob {
         finalOutputDelivered.add(finalOutput.what(), amount);
     }
 
+    void addFinalOutputDelivered(@Nullable AEKey what, BigInteger amount) {
+        if (amount.signum() > 0 && isFinalOutputKey(what)) {
+            finalOutputDelivered.add(finalOutput.what(), amount);
+        }
+    }
+
     /**
      * 这一枚键是不是本作业的<b>终点键</b>：记交付账（{@link #addFinalOutputDelivered}）、建表那一趟认
      * 终点产量、以及交付臂认"谁的欠账算这一单的欠账"（{@link #producesFinalOutput}）问的都是这<b>一句</b>
@@ -607,51 +626,16 @@ final class ParallelExecutingCraftingJob {
     }
 
     /**
-     * 终点产物在<b>这份计划里</b>的宽域产量（终点份数 × 每发终点量，逐张产出终点键的样板相加，
-     * <b>再加</b>不经任务表、随计划直接出门（{@code emittedItems}）那一截终点键）：
-     * 提交建表那一刻算一次，只读。
-     *
-     * <p>两截都要算，漏任何一截这份读数就<b>偏小</b>：交付账刚交满"算得出的那一截"就判成收工，
-     * 而订单实际还差没算进去的那一截（偏小＝提前收工，FIX-G）。
-     *
-     * <p>它是订单量<b>越出 {@code long}</b> 时唯一还完整的读数：AE2 的 {@code GenericStack} 与
-     * {@code RecursivePlanContract} 那两格都是 {@code long}，订单一旦越过天花板就只交回
-     * {@link Long#MAX_VALUE} 那道<b>哨兵</b>（源头 {@code Ae2PlanConverter#toRecursivePlan} 把
-     * {@code result.finalAmount()}（{@code long}）同时写进这两处），而份数账在这一刀之前就已经是宽域
-     * （{@code WideCraftSnapshot}／{@link TaskProgress} 的侧值）。
-     *
-     * <p>{@code null}＝这份计划里<b>没有</b>产出终点键的样板（终点件从存储直接给、或这份出口没带份数账）
-     * ⇒ 反推不出真值，只能"不判"。这一型与"真值恰好是 {@code Long.MAX_VALUE}"两型分开：后者这里
-     * 是一个<b>数得出来的数</b>，照判。
-     *
-     * <p>提交时计算的原始产量与累计实际交付量一同保存，恢复时不使用剩余发数反推订单量。
-     * 这样退出重进后仍按退出前的累计交付进度判断收工。
-     *
-     * <p>这份产量是<b>毛</b>产量：递归环里终点键若还被环自己吃掉几发，这里会比订单量<b>大</b>，
-     * 判据因此只会更严、不会提前收工（宁可这一型走老路，也不把没交齐的单子判成交齐）。
+     * 提交时的终点毛产量：各样板发数乘产量，加上 emittedItems。
+     * 它可能包含配方取整余量和环内复用，不能用来反推根订单。
+     * 保留这份快照用于迁移旧 MAX 订单的 requester 余额：旧毛产量减旧余额才是已实际交付量。
      */
     @Nullable
     private PlanAmount finalOutputPlannedProduction;
 
     /**
-     * 这一作业要交出去的终点产物量：读数以契约定版量优先、缺省退回计划终点量（与 {@code ParallelCraftingCpuLogic
-     * #dyeableRecursiveFinalOutputAmountToFlush} 那一条同一道算式），判据与交付动作之间不留第二种口径。
-     *
-     * <p><b>{@code >long} 那一档是一个已知未闭合的岔口</b>：收尾 flush 与 {@code link.insert} 两条口
-     * 都只吃得下 {@code long}（台账 #72 那条"分轮交付"管的正是这一腿），所以订单越界时判据读的是这里的
-     * 宽域真值、交出去的动作仍按 {@code long} 那一截交，剩下的残量走 {@code storeItems()} 那条既有分轮
-     * 回网口回网络（料不会丢，但 requester 拿到的比订单少）。本刀不替它补分轮，也不许把这一格读回
-     * 饱和哨兵来"看起来对得上"。
-     *
-     * <p>读数塞得进 {@code long}（且不是 {@link Long#MAX_VALUE} 那道哨兵）时，那一格就是精确订单量，
-     * 直接交宽域值，<b>不</b>在比较前把任何一侧窄化——交付账 {@link #finalOutputDeliveredAmount} 本来就是
-     * 宽域账，两侧同一把尺。
-     *
-     * <p>读数是 {@link Long#MAX_VALUE} 那道<b>哨兵</b>时（订单量本身越出 {@code long}，计划出口就把它
-     * 饱和掉了），改拿 {@link #finalOutputPlannedProduction} 那份宽域真值：数得出来就交<b>真数</b>
-     * （真数恰好等于 {@code Long.MAX_VALUE} 也算数得出来，那一型照判），数不出来才交回 {@code null}
-     * ＝<b>不判</b>（{@link TaskProgress} 那条"饱和读数被逐批扣到 0 时把还剩 1e19 当成收工"的判据
-     * 同样管着这一格）。绝不顺手夹一个"看起来到了"的数。
+     * 收尾和完成判断均使用权威根订单。没有宽域根量的旧存档以原 long 订单为准，
+     * 包括恰好 Long.MAX_VALUE 的有限订单；真正越出 long 的订单必须携带精确根量。
      */
     @Nullable
     PlanAmount finalOutputOrderAmount() {
@@ -662,10 +646,7 @@ final class ParallelExecutingCraftingJob {
         if (readout <= 0L) {
             return null;
         }
-        if (readout != Long.MAX_VALUE) {
-            return PlanAmount.of(readout);
-        }
-        return finalOutputPlannedProduction;
+        return PlanAmount.of(readout);
     }
 
     /**
@@ -933,7 +914,7 @@ final class ParallelExecutingCraftingJob {
         this.finalOutput = plan.finalOutput();
         this.remainingAmount = this.finalOutput == null ? 0L : this.finalOutput.amount();
         var rootAmount = this.finalOutput == null ? PlanAmount.ZERO : WideAmountPlanCarrier.resolveFinalOutput(plan);
-        if (!rootAmount.isFast()) {
+        if (rootAmount.signum() > 0) {
             this.exactFinalOutputAmount = rootAmount;
             this.exactRemainingAmount = rootAmount;
         }
@@ -954,12 +935,7 @@ final class ParallelExecutingCraftingJob {
             this.dyeableRecursiveInternalItems.addAll(seedContract.chexsonsaeutils$dyeableRecursiveInternalItems());
         }
 
-        // FIX-G：终点键有一截<b>不经任务表</b>——它随计划直接出门（emittedItems），构造这一刻只插进
-        // waitingFor，patternTimes() 与宽域份数账里都没有它。反推订单量必须把这一截一起算上：
-        // 漏掉它，终点量就比订单<b>偏小</b>，交付账刚交满"任务表那一截的毛量"就判成收工，
-        // 而订单实际还差直接出门的那一截（偏小＝提前收工）。
-        // 相加全程在宽域上做：这一截的单笔读数塞得进 long（KeyCounter 的格子），而订单侧是宽域账，
-        // 两侧都不在比较前窄化；认终点键仍走 isFinalOutputKey 那一句，不是终点键的出门量一枚不算。
+        // 保存完整毛产量供旧余额迁移，含不经任务表的 emittedItems；它不参与根订单判定。
         PlanAmount terminalProduction = null;
         for (var entry : plan.emittedItems()) {
             waitingFor.insert(entry.getKey(), entry.getLongValue(), Actionable.MODULATE);
@@ -1001,12 +977,7 @@ final class ParallelExecutingCraftingJob {
                 // 进度跟踪器对计划量与实际回交量使用同一条单位归一化公式。
                 var amount = PlanAmount.of(output.amount()).multiply(executions);
                 timeTracker.addMaxItems(amount, output.what().getType());
-                // 终点产物的宽域产量＝终点份数（这一张样板在这份计划里跑几发，宽域真值）
-                // × 每发终点量。这份账是订单量越出 {@code long} 时唯一还完整的读数：AE2 的
-                // {@code GenericStack} 与契约定版量都是 {@code long}，越界那一刻只能长成
-                // {@link Long#MAX_VALUE} 那道哨兵。认终点键走 {@link #isFinalOutputKey} 那一句
-                // ——与交付账 {@link #addFinalOutputDelivered}、交付臂问欠账那三处同一把尺，
-                // 两把尺就会漏记或多记。
+                // 毛产量与根订单分别记账，配方取整和环内复用不能扩大收货请求。
                 if (output.amount() > 0L && isFinalOutputKey(output.what())) {
                     terminalProduction = (terminalProduction == null
                             ? PlanAmount.ZERO : terminalProduction)
@@ -1071,6 +1042,15 @@ final class ParallelExecutingCraftingJob {
                 data.getList(NBT_DYEABLE_RECURSIVE_INTERNAL_ITEMS, Tag.TAG_COMPOUND),
                 registries
         ));
+        boolean legacyRootAmount = exactFinalOutputAmount == null;
+        if (legacyRootAmount) {
+            // 没有宽域根量的旧计划，其 long 订单量就是真值，MAX 也不是未知量哨兵。
+            exactFinalOutputAmount = finalOutputOrderAmount();
+            if (exactFinalOutputAmount != null) {
+                exactRemainingAmount = PlanAmount.of(Math.max(0L, remainingAmount)).min(exactFinalOutputAmount);
+                remainingAmount = git.chexson.chexsonsaeutils.bigint.Ae2Amounts.toLong(exactRemainingAmount);
+            }
+        }
 
         ListTag tasksTag = data.getList(NBT_TASKS, Tag.TAG_COMPOUND);
         for (int index = 0; index < tasksTag.size(); index++) {
@@ -1089,6 +1069,23 @@ final class ParallelExecutingCraftingJob {
         }
 
         this.suspended = data.getBoolean(NBT_SUSPENDED) || !unresolvedTasks.isEmpty();
+        this.cancellationRequested = data.getBoolean("cancellationRequested");
+        this.completionRequested = data.getBoolean("completionRequested");
+        if (data.contains("requesterDeliveryRemaining", Tag.TAG_BYTE_ARRAY)) {
+            this.requesterDeliveryRemaining = PlanAmount.of(
+                    new BigInteger(data.getByteArray("requesterDeliveryRemaining")));
+            if (requesterDeliveryRemaining.signum() < 0) {
+                throw new IllegalArgumentException("递归收货余额不得为负");
+            }
+            if (legacyRootAmount && PlanAmount.of(Long.MAX_VALUE).equals(exactFinalOutputAmount)
+                    && finalOutputPlannedProduction != null) {
+                // 旧 MAX 订单错误地用毛产量初始化余额。保留其已真实交给 requester 的数量，
+                // 只修正尚欠量；上面补出的权威根量随 NBT 保存，使此迁移只执行一次。
+                PlanAmount delivered = finalOutputPlannedProduction.subtract(requesterDeliveryRemaining)
+                        .max(PlanAmount.ZERO);
+                requesterDeliveryRemaining = exactFinalOutputAmount.subtract(delivered).max(PlanAmount.ZERO);
+            }
+        }
         // 预期入网的产出账跟着作业回来，只为把它<b>原样退回</b>（#227 K2 的第二处退账，与负向终局
         // 走同一个 revoke 出口）：交回这一截枚数的凭据——那笔的在飞台账与它的 {@code batchId}——按
         // 既有口径<b>不落 NBT</b>（{@code batchId} 是 useless 侧现生成的内存态 UUID，重载后终局永不来），
@@ -1170,6 +1167,11 @@ final class ParallelExecutingCraftingJob {
             data.putInt(NBT_PLAYER_ID, playerId);
         }
         data.putBoolean(NBT_SUSPENDED, suspended);
+        data.putBoolean("cancellationRequested", cancellationRequested);
+        data.putBoolean("completionRequested", completionRequested);
+        if (requesterDeliveryRemaining != null) {
+            data.putByteArray("requesterDeliveryRemaining", requesterDeliveryRemaining.exactValue().toByteArray());
+        }
         data.putBoolean(NBT_DYEABLE_RECURSIVE_PLAN, dyeableRecursivePlan);
         data.putLong(NBT_DYEABLE_RECURSIVE_FINAL_OUTPUT_AMOUNT, dyeableRecursiveFinalOutputAmount);
         data.put(

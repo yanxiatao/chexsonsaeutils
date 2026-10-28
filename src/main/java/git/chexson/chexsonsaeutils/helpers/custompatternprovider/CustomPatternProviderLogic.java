@@ -48,6 +48,7 @@ package git.chexson.chexsonsaeutils.helpers.custompatternprovider;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 
@@ -315,10 +316,13 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
 
     @Override
     public void readFromNBT(CompoundTag tag, HolderLookup.Provider registries) {
-        // R2 NBT 顺序铁律：super 必须最前（读父类字段：configManager/patternInventory/
-        // priority（恒 0 闲置）/unlockEvent（闲置）/sendList（空）/sendDirection（闲置）/
-        // returnInv（空）），子类字段后读覆盖（顺序颠倒 = 存档静默丢失）。
-        super.readFromNBT(tag, registries);
+        // 父类仍负责共享样板、配置及第三方 mixin 的持久化回调，但不能再加载本类
+        // 独占的物料库存；否则父子各持有一份，子类回网后父类仍会在拆除时掉落旧副本。
+        var parentTag = tag.copy();
+        parentTag.remove(NBT_SEND_LIST);
+        parentTag.remove(NBT_SEND_DIRECTION);
+        parentTag.remove(NBT_RETURN_INV);
+        super.readFromNBT(parentTag, registries);
 
         var unlockEventType = tag.getByte(NBT_UNLOCK_EVENT);
         this.unlockEvent = switch (unlockEventType) {
@@ -340,18 +344,18 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             this.unlockStack = null;
         }
 
-        var sendListTag = tag.getList("sendList", Tag.TAG_COMPOUND);
+        this.sendList.clear();
+        var sendListTag = tag.getList(NBT_SEND_LIST, Tag.TAG_COMPOUND);
         for (int i = 0; i < sendListTag.size(); ++i) {
             var stack = GenericStack.readTag(registries, sendListTag.getCompound(i));
             if (stack != null) {
                 this.addToSendList(stack.what(), stack.amount());
             }
         }
-        if (tag.contains("sendDirection")) {
-            sendDirection = Direction.from3DDataValue(tag.getByte("sendDirection"));
-        }
+        sendDirection = tag.contains(NBT_SEND_DIRECTION)
+                ? Direction.from3DDataValue(tag.getByte(NBT_SEND_DIRECTION)) : null;
 
-        this.returnInv.readFromTag(tag.getList("returnInv", Tag.TAG_COMPOUND), registries);
+        this.returnInv.readFromTag(tag.getList(NBT_RETURN_INV, Tag.TAG_COMPOUND), registries);
         this.filteredImport = tag.getBoolean(NBT_FILTERED_IMPORT);
         this.activeExtract = tag.getBoolean(NBT_ACTIVE_EXTRACT);
         this.priority = tag.getInt(NBT_PRIORITY);
@@ -607,85 +611,79 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
             allInputs.addAll(counter);
         }
 
-        // 预检：输入足量 + 指定槽位未被异物占用（合并不覆盖）
+        // 先按目标槽累计完整写入计划。多个输入映射到同一空槽时也必须种类一致，
+        // 且容量/整数上限按累计数量检查；任何预检失败都不能改动机器或输入持有者。
+        var mappedInputs = new LinkedHashMap<Integer, GenericStack>();
+        var unmappedInputs = new ArrayList<GenericStack>();
         for (int i = 0; i < sparseInputs.size(); i++) {
             var sparseInput = sparseInputs.get(i);
             if (sparseInput == null) {
                 continue;
             }
-            if (!(sparseInput.what() instanceof AEItemKey itemKey)) {
-                return false; // 强制槽位写入仅支持物品输入（与普通路径对非物品返回 0 一致）
-            }
-            if (allInputs.get(itemKey) < sparseInput.amount()) {
+            if (!(sparseInput.what() instanceof AEItemKey itemKey)
+                    || sparseInput.amount() <= 0 || allInputs.get(itemKey) < sparseInput.amount()) {
                 return false;
             }
+            // 同种原料可分散在多个稀疏输入中，必须一起扣减预检余额。
+            allInputs.remove(itemKey, sparseInput.amount());
             int slot = i < slotMapping.length ? slotMapping[i] : -1;
             if (modifiable && slot >= 0 && slot < handler.getSlots()) {
                 var existing = handler.getStackInSlot(slot);
-                if (!existing.isEmpty() && !itemKey.matches(existing)) {
+                var planned = mappedInputs.get(slot);
+                if ((!existing.isEmpty() && !itemKey.matches(existing))
+                        || (planned != null && !itemKey.equals(planned.what()))) {
                     return false;
                 }
-                // S2 修复：合并后总量用 long 计算，超 int 上限时拒绝（grow 参数溢出会静默截断）
-                if ((long) existing.getCount() + sparseInput.amount() > Integer.MAX_VALUE) {
+                long plannedAmount = planned == null ? 0 : planned.amount();
+                long remainingCapacity = Integer.MAX_VALUE - (long) existing.getCount() - plannedAmount;
+                if (sparseInput.amount() > remainingCapacity) {
                     return false;
                 }
-                // S4 修复（严格模式）：槽容量上限校验——vanilla 容器（箱子等 Container 方块）的
-                // setItem 会对超限栈执行 limitSize 截断，强制合并超出槽上限的部分会被静默吞掉
-                // （网络已扣料、任务已推进 → 材料凭空消失）。此处按 NeoForge 插入约定取
-                // min(getSlotLimit, maxStackSize) 为有效上限，不足量整体拒绝推送，
-                // 由 AE2 阻塞等待机器腾出空间（正确流控，而非部分写入）。
-                // 突破模式跳过此校验：写入后读回实际存量、差额退回排队重试，同样不吞料。
-                // 空槽也要校验（probeStack 用 toStack 构造只为读 maxStackSize）；
-                // 若 existing 本身已是历史超限栈（count > limit），校验必然拒绝 → 推送永久阻塞，
-                // 这是可接受的 Fail Fast（暴露异常状态优于静默吞料）。
+                long amount = plannedAmount + sparseInput.amount();
                 if (!pattern.isOverflowStacksAllowed()) {
-                    var probeStack = existing.isEmpty()
-                            ? itemKey.toStack((int) Math.min(sparseInput.amount(), Integer.MAX_VALUE))
-                            : existing;
+                    var probeStack = existing.isEmpty() ? itemKey.toStack((int) amount) : existing;
                     int effectiveLimit = Math.min(handler.getSlotLimit(slot), probeStack.getMaxStackSize());
-                    if ((long) existing.getCount() + sparseInput.amount() > effectiveLimit) {
+                    if ((long) existing.getCount() + amount > effectiveLimit) {
                         return false;
                     }
                 }
+                mappedInputs.put(slot, new GenericStack(itemKey, amount));
+            } else {
+                unmappedInputs.add(sparseInput);
             }
         }
 
-        // 写入：指定槽位 setStackInSlot 合并（仅 modifiable handler），未指定槽位普通插入
-        for (int i = 0; i < sparseInputs.size(); i++) {
-            var sparseInput = sparseInputs.get(i);
-            if (sparseInput == null) {
-                continue;
+        // 显式槽位先落地，普通插入后执行，防止 -1 输入抢占已经预检的显式目标槽。
+        for (var entry : mappedInputs.entrySet()) {
+            int slot = entry.getKey();
+            var itemKey = (AEItemKey) entry.getValue().what();
+            long amount = entry.getValue().amount();
+            var existing = handler.getStackInSlot(slot);
+            long before = existing.getCount();
+            ItemStack merged = existing.isEmpty() ? itemKey.toStack((int) amount) : existing.copy();
+            if (!existing.isEmpty()) {
+                merged.grow((int) amount);
             }
-            var itemKey = (AEItemKey) sparseInput.what();
-            long amount = sparseInput.amount();
-            int slot = i < slotMapping.length ? slotMapping[i] : -1;
-            if (modifiable && slot >= 0 && slot < handler.getSlots()) {
-                var existing = handler.getStackInSlot(slot);
-                long before = existing.getCount();
-                // 空槽位合并修复：existing.copy() 对空栈产生 AIR 物品栈（item=Items.AIR），
-                // grow 后写入 AIR x N——网络已扣原料、箱子槽位看似为空、任务挂起等输出。
-                // 空槽位必须用 itemKey.toStack 创建真实物品栈；非空槽位才走 copy+grow 合并。
-                ItemStack merged = existing.isEmpty() ? itemKey.toStack((int) amount) : existing.copy();
-                if (!existing.isEmpty()) {
-                    merged.grow((int) amount); // 预检已保证合并后不超 int 上限
-                }
-                ((IItemHandlerModifiable) handler).setStackInSlot(slot, merged);
-                // 突破模式：读回实际存量计算真实写入量，差额退回 sendList 排队重试
-                // （vanilla 容器 setItem 会 limitSize 截断超限部分；支持超限的机器则全量写入）
-                if (pattern.isOverflowStacksAllowed()) {
-                    long written = handler.getStackInSlot(slot).getCount() - before;
-                    if (written < amount) {
-                        this.addToSendList(itemKey, amount - written);
-                    }
-                }
-            } else {
-                var remaining = ItemHandlerHelper.insertItemStacked(handler,
-                        itemKey.toStack((int) Math.min(amount, Integer.MAX_VALUE)), false);
-                if (!remaining.isEmpty()) {
-                    this.addToSendList(itemKey, remaining.getCount());
+            ((IItemHandlerModifiable) handler).setStackInSlot(slot, merged);
+            // 严格模式已预检有效容量，成功强写即完成交付。槽内快照不代表接受量：
+            // AE2 Condenser 等机器会在 setStackInSlot 中即时消耗输入，读回空槽不能补发。
+            // 突破模式仍保留原有截断补偿，避免 vanilla 容器截掉超出容量的部分。
+            if (pattern.isOverflowStacksAllowed()) {
+                var writtenStack = handler.getStackInSlot(slot);
+                long written = itemKey.matches(writtenStack) ? Math.max(0, writtenStack.getCount() - before) : 0;
+                if (written < amount) {
+                    this.addToSendList(itemKey, amount - written);
                 }
             }
-            allInputs.remove(itemKey, amount);
+        }
+        for (var input : unmappedInputs) {
+            var itemKey = (AEItemKey) input.what();
+            int attempted = (int) Math.min(input.amount(), Integer.MAX_VALUE);
+            var remaining = ItemHandlerHelper.insertItemStacked(handler, itemKey.toStack(attempted), false);
+            long inserted = (long) attempted - remaining.getCount();
+            if (inserted < input.amount()) {
+                this.addToSendList(itemKey, input.amount() - inserted);
+            }
         }
 
         onPushPatternSuccess(pushedPattern);
@@ -1041,10 +1039,6 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
 
     @Override
     public void addDrops(List<ItemStack> drops) {
-        for (var stack : getPatternInv()) {
-            drops.add(stack);
-        }
-
         for (var stack : this.sendList) {
             stack.what().addDrops(stack.amount(), drops, this.host.getBlockEntity().getLevel(),
                     this.host.getBlockEntity().getBlockPos());
@@ -1054,14 +1048,12 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
 
         // ExtendedAE_Plus 的 mixin 以 TAIL 注入父类 PatternProviderLogic.addDrops（频道卡库存
         // compatUpgrades 掉落）；子类覆写后注入不再触发，必须显式调 super 维持注入链。
-        // 安全：父类 PatternProviderLogic 自身无闲置库存（本类全部库存已在上方掉落），
-        // super 调用不会产生重复掉落。
+        // 共享样板库存仅由 super 掉落；readFromNBT 已隔离父类的发送/返回库存。
         super.addDrops(drops);
     }
 
     @Override
     public void clearContent() {
-        getPatternInv().clear();
         this.sendList.clear();
         this.returnInv.clear();
 

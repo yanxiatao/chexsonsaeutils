@@ -297,7 +297,7 @@ public class CustomPatternProviderMenu<T extends CustomPatternProviderLogicHost 
         }
         MenuOpener.open(CustomPatternEncoderMenu.TYPE, getPlayer(),
                 new CustomPatternConfigLocator(getHost().getBlockEntity().getBlockPos(),
-                        getHost().getBlockEntity().getLevel().dimension(), slot.getSlotIndex()));
+                        getHost().getBlockEntity().getLevel().dimension(), slot.getSlotIndex(), getHost().getPartSide()));
     }
 
     /**

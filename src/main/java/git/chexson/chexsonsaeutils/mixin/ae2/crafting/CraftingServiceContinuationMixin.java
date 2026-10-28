@@ -144,8 +144,7 @@ public abstract class CraftingServiceContinuationMixin {
         CraftingContinuationTracker.reconcileWaitingInputs(
                 this.grid,
                 this.craftingCPUClusters,
-                what,
-                false
+                what
         );
     }
 
@@ -154,8 +153,7 @@ public abstract class CraftingServiceContinuationMixin {
         CraftingContinuationTracker.reconcileWaitingInputs(
                 this.grid,
                 this.craftingCPUClusters,
-                null,
-                true
+                null
         );
     }
 

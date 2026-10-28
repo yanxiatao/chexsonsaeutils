@@ -387,15 +387,18 @@ public class Chexsonsaeutils {
     }
 
     private void onLevelUnload(LevelEvent.Unload event) {
-        if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level
-                && level.dimension() == Level.OVERWORLD) {
-            saveInfinityCellStore(level);
-            InfinityCellStore.awaitPendingWrites();
-            saveMatterMassStore(level);
+        if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level) {
+            git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker.release(level);
+            if (level.dimension() == Level.OVERWORLD) {
+                saveInfinityCellStore(level);
+                InfinityCellStore.awaitPendingWrites();
+                saveMatterMassStore(level);
+            }
         }
     }
 
     private void onServerStopping(ServerStoppingEvent event) {
+        git.chexson.chexsonsaeutils.crafting.status.CraftingContinuationTracker.clearAll();
         git.chexson.chexsonsaeutils.bootstrap.patterntransmitter.RemotePreviewAssembly.stop();
         InfinityCellStore.global().save(
                 event.getServer().getWorldPath(LevelResource.ROOT),

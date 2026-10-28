@@ -1,5 +1,6 @@
 package git.chexson.chexsonsaeutils.menu.custompatternupgrade;
 
+import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 
 import appeng.util.inv.AppEngInternalInventory;
@@ -39,6 +40,12 @@ public class CustomPatternUpgradeHost implements InternalInventoryHost {
 
     public CustomPatternUpgradeHost(CustomPatternProviderLogicHost pageHolder) {
         this.pageHolder = pageHolder;
+    }
+
+    /** 关闭会话时先断开自动扩容回调，再由菜单按原版规则归还剩余输入。 */
+    Container detachInventory() {
+        this.invChangeHandler = null;
+        return inventory.toContainer();
     }
 
     public AppEngInternalInventory getInventory() {

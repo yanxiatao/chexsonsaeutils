@@ -21,11 +21,11 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final String NEOECOAE_MOD_ID = "neoecoae";
     private static final String USELESS_MOD_ID = "useless_mod";
 
+    // Accessor/Invoker 只提供共享接口，不切换功能行为。原生规划和跨功能调用也依赖它们，
+    // 必须走 shouldApplyMixin 的默认启用分支，不能挂在某个消费者的配置开关上。
     private static final Set<String> REPLACEMENT_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.PatternEncodingTermMenuRuleMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.PatternEncodingTermScreenRuleMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsHelperAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCalculationAccessor",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessReplacementMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeReplacementMixin"
     );
@@ -33,26 +33,16 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftConfirmMenuContinuationMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftConfirmScreenContinuationMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceContinuationMixin",
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicContinuationLifecycleMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuContinuationMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftingCPUScreenContinuationMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftingStatusTableRendererContinuationMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.AbstractTableRendererAccessor"
-    );
-    private static final Set<String> CRAFTING_CPU_ACCESSOR_MIXINS = Set.of(
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingLinkAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.ExecutingCraftingJobTaskProgressAccessor"
+            "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CraftingStatusTableRendererContinuationMixin"
     );
     private static final Set<String> CRAFTING_CPU_PUSH_CONTEXT_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicHostBatchSourceContextMixin"
     );
     private static final Set<String> PARALLEL_CPU_ONLY_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingServiceParallelCpuMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeInvoker",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessFastAccessor",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeNodeFastAccessor",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingCPUMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.menu.CraftingStatusMenuParallelCpuMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.client.gui.CPUSelectionListParallelCpuMixin",
@@ -61,8 +51,7 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> AEA_DYEABLE_PATTERN_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingCpuLogicRecursivePlanMixin",
             "git.chexson.chexsonsaeutils.mixin.ae2.item.EncodedPatternItemDyeableClientMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsColorMixin",
-            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingTreeProcessAccessor"
+            "git.chexson.chexsonsaeutils.mixin.ae2.crafting.PatternDetailsColorMixin"
     );
     private static final Set<String> AEA_ENHANCED_CRAFTING_STATUS_MIXINS = Set.of(
             "git.chexson.chexsonsaeutils.mixin.ae2.crafting.CraftingStatusEnhancedStatusMixin",
@@ -126,11 +115,6 @@ public final class ChexsonsaeutilsMixinPlugin implements IMixinConfigPlugin {
         }
         if (CONTINUATION_ONLY_MIXINS.contains(mixinClassName)) {
             return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled");
-        }
-        if (CRAFTING_CPU_ACCESSOR_MIXINS.contains(mixinClassName)) {
-            return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.CRAFTING_CONTINUATION_ENABLED, "craftingContinuationEnabled")
-                    || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.DYEABLE_PATTERNS_ENABLED, "dyeablePatternsEnabled")
-                    || ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");
         }
         if (CRAFTING_CPU_PUSH_CONTEXT_MIXINS.contains(mixinClassName)) {
             return ChexsonsaeutilsCompatibilityConfig.featureEnabled(ChexsonsaeutilsCompatibilityConfig.ENHANCED_CRAFTING_STATUS_ENABLED, "enhancedCraftingStatusEnabled");

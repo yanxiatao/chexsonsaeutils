@@ -2290,9 +2290,9 @@ public final class CpuScenarios {
             assertTrue(keys.isEmpty());
             var job = new ParallelExecutingCraftingJob(plan, ignored -> {}, (CraftingLink) null, null);
             var missing = new KeyCounter(); missing.add(OUTPUT, 10);
-            ParallelCraftingCpuLogic.seedInitialWaitingFor(job, missing, null, storage, IActionSource.empty(), pool);
+            ParallelCraftingCpuLogic.seedInitialInputs(job, missing, null, storage, IActionSource.empty(), pool);
             assertFalse(job.isUnboundedSupply(OUTPUT));
-            assertEquals(BigInteger.TEN, WideCraftingInventory.amount(job.waitingFor, OUTPUT));
+            assertEquals(BigInteger.TEN, job.initialItemsRemaining.amount(OUTPUT));
         }
 
 
@@ -3923,12 +3923,12 @@ public final class CpuScenarios {
             missing.add(lava, Long.MAX_VALUE);
             missing.add(OUTPUT, 500L);
 
-            ParallelCraftingCpuLogic.seedInitialWaitingFor(job, missing, null, null,
+            ParallelCraftingCpuLogic.seedInitialInputs(job, missing, null, null,
                     IActionSource.empty(), null);
 
             assertEquals(0L, job.waitingFor.extract(lava, Long.MAX_VALUE, Actionable.SIMULATE),
                     "无限键不许挂在正在合成：那一笔料永远不会从网络来");
-            assertEquals(500L, job.waitingFor.extract(OUTPUT, Long.MAX_VALUE, Actionable.SIMULATE),
+            assertEquals(500L, job.initialItemsRemaining.extract(OUTPUT, Long.MAX_VALUE, Actionable.SIMULATE),
                     "普通键照旧挂账等实物，一个字不许少");
             assertTrue(job.isUnboundedSupply(lava));
         }
@@ -4184,7 +4184,7 @@ public final class CpuScenarios {
         }
 
         /**
-         * 部分提交那条腿（{@code seedInitialWaitingFor}）：网络仍然"报得出"而真取没给的那一口
+         * 部分提交那条腿（{@code seedInitialInputs}）：网络仍然"报得出"而真取没给的那一口
          * 不许挂进"正在合成"——挂上就是界面那个 9.2E，而且 {@code waitingFor} 不清空作业连完成
          * 都判不了。同一次调用里网络报 0 的普通键照旧挂账等实物。
          */
@@ -4200,14 +4200,14 @@ public final class CpuScenarios {
             missing.add(lava, Long.MAX_VALUE);
             missing.add(OUTPUT, 7L);
 
-            ParallelCraftingCpuLogic.seedInitialWaitingFor(job, missing, null,
+            ParallelCraftingCpuLogic.seedInitialInputs(job, missing, null,
                     new LyingInfiniteStorage(lava), IActionSource.empty(), new ListCraftingInventory(ignored -> {
             }));
 
             assertEquals(0L, job.waitingFor.extract(lava, Long.MAX_VALUE, Actionable.SIMULATE),
                     "报得出取不出的那一口不挂账");
             assertTrue(job.isUnboundedSupply(lava), "当场认下，后面每一批都按无限源放行");
-            assertEquals(7L, job.waitingFor.extract(OUTPUT, Long.MAX_VALUE, Actionable.SIMULATE),
+            assertEquals(7L, job.initialItemsRemaining.extract(OUTPUT, Long.MAX_VALUE, Actionable.SIMULATE),
                     "网络报 0 的普通键照旧挂账等实物");
         }
 
@@ -4231,12 +4231,12 @@ public final class CpuScenarios {
             var pool = new ListCraftingInventory(ignored -> {
             });
 
-            ParallelCraftingCpuLogic.seedInitialWaitingFor(job, missing, null,
+            ParallelCraftingCpuLogic.seedInitialInputs(job, missing, null,
                     new TrickleStorage(lava), IActionSource.empty(), pool);
 
             assertEquals(1L, pool.extract(lava, Long.MAX_VALUE, Actionable.SIMULATE),
                     "真给到的那一枚不许被吞掉");
-            assertEquals(4L, job.waitingFor.extract(lava, Long.MAX_VALUE, Actionable.SIMULATE),
+            assertEquals(4L, job.initialItemsRemaining.extract(lava, Long.MAX_VALUE, Actionable.SIMULATE),
                     "剩下的 4 枚照旧挂账等实物");
             assertFalse(job.isUnboundedSupply(lava), "确实在给料的网络不算谎报元件");
         }
@@ -5548,8 +5548,12 @@ public final class CpuScenarios {
 
             assertEquals(8L, logic.getWaitingFor(DECLARED),
                     "夹具前提：挂账真挂在样板申报的那一枚上");
-            assertEquals(0L, logic.getWaitingFor(IN_POOL),
-                    "夹具前提：交回来的那一枚落在另一个桶里（这一条改前改后同绿）");
+            var rawWaiting = new KeyCounter();
+            for (var entry : logic.getWaitingStacks()) rawWaiting.add(entry.getKey(), entry.getLongValue());
+            assertEquals(0L, rawWaiting.get(IN_POOL),
+                    "底层 AE2 计数器仍按主键引用分桶，交货实例直接读取不到申报实例");
+            assertEquals(8L, logic.getWaitingFor(IN_POOL),
+                    "CPU 接收读口必须与实收口一样解析等价键，返回真实等待量");
 
             assertEquals(8L, logic.insert(IN_POOL, 8L, Actionable.SIMULATE),
                     "实物回到账口必须认这笔回补：改前问账按交来的那一枚裸读 ⇒ EMPTY ⇒ 一枚都不收");
@@ -5615,7 +5619,7 @@ public final class CpuScenarios {
         /** CPU 侧那根 link，并按产线的成对口径接到收货方那根上（同一颗 nexus）。 */
         private static CraftingLink newCpuLinkTiedTo(ICraftingRequester requester) {
             var cpuLink = new CraftingLink(
-                    CraftingCpuHelper.generateLinkData(UUID.randomUUID(), true, false),
+                    CraftingCpuHelper.generateLinkData(UUID.randomUUID(), false, false),
                     (appeng.api.networking.crafting.ICraftingCPU) null);
             var nexus = new CraftingLinkNexus(cpuLink.getCraftingID());
             cpuLink.setNexus(nexus);
@@ -9306,6 +9310,8 @@ public final class CpuScenarios {
 
     /** ParallelSubmitArrivalQuotaCases 的独立场景夹具，按类别统一执行。 */
     public static final class ParallelSubmitArrivalQuotaCases {
+        // 部分提交允许未来补料，不再按当前到账量永久收窄。以下仍保留配给算法的独立有限供应边界，
+        // 每个此类场景先验证完整补料配额，再显式给出有限供应作为组件输入。
         /** 实机那格的形状：一单里唯一候选是 enriched_shining 一类"申报了却一份料都没到"的键。 */
         private static final long SESSION_QUOTA = 42_662_400_000L;
         private static final AEKey SHINING = AEItemKey.of(Items.NETHERITE_BLOCK);
@@ -9340,6 +9346,10 @@ public final class CpuScenarios {
             assertEquals(BigInteger.ZERO, familyArrivalOf(arrivals, SHINING),
                     "前提读数：这一族真到账 0（网络一枚都没交）");
             narrowEveryFamily(job, arrivals);
+            assertEquals(BigInteger.valueOf(SESSION_QUOTA), familyShareAcrossTable(job, SHINING),
+                    "补料仍可到达：统计完整需求时不得永久删除计划配额");
+            // 单独验证配给算法在显式有限供应下的旧边界；实际部分提交不执行这种永久收窄。
+            job.narrowPlanMaterialShareByArrival(SHINING, PlanAmount.of(0L), PlanAmount.of(0L));
 
             assertEquals(BigInteger.ZERO, MaterialAllocationFixtures.assignedSnapshot(job).get(consumer).getExact(SHINING),
                     "到账 0 且自产 0 ⇒ 假份额必须收到 0——取料点不再顶着配额空撞");
@@ -9347,8 +9357,7 @@ public final class CpuScenarios {
                     job.materialAllocation);
             assertEquals(0L, reservation.remainingQuota(consumer, SHINING),
                     "剩余配额读回 0：既有路径（同族别的候选／照实停在缺口）接手，不新增拒绝分支");
-            assertTrue(shortfall.isEmpty(),
-                    "declared shortfall 照旧不挂在途账——这刀只收账面，不动 waitingFor 语义");
+            assertEquals(SESSION_QUOTA, shortfall.get(SHINING), "缺料必须保留为后续补料需求");
         }
 
         // ----------------------------------------------------------------------------------------
@@ -9437,6 +9446,10 @@ public final class CpuScenarios {
                     new WideCraftingInventory(ignored -> {
                     }), IActionSource.empty(), arrivals);
             narrowEveryFamily(job, arrivals);
+            assertEquals(BigInteger.valueOf(SESSION_QUOTA), familyShareAcrossTable(job, SHINING),
+                    "补料仍可到达：统计完整需求时不得永久删除计划配额");
+            // 单独验证配给算法在显式有限供应下的旧边界；实际部分提交不执行这种永久收窄。
+            job.narrowPlanMaterialShareByArrival(SHINING, PlanAmount.of(0L), PlanAmount.of(0L));
 
             assertEquals(BigInteger.valueOf(300L), MaterialAllocationFixtures.assignedSnapshot(job).get(consumer).getExact(SHINING),
                     "份额 ← min(42662400000, 到账0 + 自产300)：自产那一截必须原样留下");
@@ -9487,8 +9500,8 @@ public final class CpuScenarios {
                     }), IActionSource.empty(), arrivals);
             assertEquals(BigInteger.ZERO, familyArrivalOf(arrivals, SHINING),
                     "前提读数：这一族真到账 0");
-            assertEquals(BigInteger.ZERO, familyOutsideArrivalOf(arrivals, SHINING),
-                    "前提读数：短掉那一截没有兜底（declared shortfall 不记量）");
+            assertEquals(BigInteger.ONE, familyOutsideArrivalOf(arrivals, SHINING),
+                    "计划中的一枚外部缺料仍允许未来补齐");
             narrowEveryFamily(job, arrivals);
 
             assertEquals(eachShare, MaterialAllocationFixtures.assignedSnapshot(job).get(first).getExact(SHINING),
@@ -9545,12 +9558,7 @@ public final class CpuScenarios {
             ParallelCraftingCpuLogic.adoptPlannedMaterialPlan(job, plan);
             ParallelCraftingCpuLogic.initializeSubmitMaterials(job, plan);
             ParallelCraftingCpuLogic.describePlanBalance(job, plan);
-            var arrivals = new CraftingContinuationPartialSubmit.FamilyArrivalLedger();
-            CraftingContinuationPartialSubmit.extractAvailableInitialItems(
-                    plan, gridOf(new HoldingNetwork(SHINING, BigInteger.ZERO)),
-                    new WideCraftingInventory(ignored -> {
-                    }), IActionSource.empty(), arrivals);
-            narrowEveryFamily(job, arrivals);
+            job.narrowPlanMaterialShareByArrival(SHINING, PlanAmount.ZERO, PlanAmount.ZERO);
             return job;
         }
 
@@ -9631,9 +9639,13 @@ public final class CpuScenarios {
                     IActionSource.empty(), arrivals);
             assertEquals(BigInteger.valueOf(60L), familyArrivalOf(arrivals, SHINING),
                     "本用例的前提：这一族真到账 60");
-            assertEquals(BigInteger.ZERO, familyOutsideArrivalOf(arrivals, SHINING),
-                    "缺口不挂在途账也不越一刀⇒ 池子里没有到账之外的兜底那一腿，必须照收");
+            assertEquals(BigInteger.valueOf(140), familyOutsideArrivalOf(arrivals, SHINING),
+                    "未到账的 140 枚仍可在后续补入");
             narrowEveryFamily(job, arrivals);
+            assertEquals(BigInteger.valueOf(200), familyShareAcrossTable(job, SHINING),
+                    "补料仍可到达：统计完整需求时不得永久删除计划配额");
+            // 单独验证配给算法在显式有限供应下的旧边界；实际部分提交不执行这种永久收窄。
+            job.narrowPlanMaterialShareByArrival(SHINING, PlanAmount.of(60L), PlanAmount.of(0L));
 
             // 真链第二步：账面份额——首位摊到整份到账，次位摊到 0，族合计一枚都不许多。
             assertEquals(BigInteger.valueOf(60L), MaterialAllocationFixtures.assignedSnapshot(job).get(ringConsumer).getExact(SHINING),
@@ -9657,7 +9669,7 @@ public final class CpuScenarios {
                     BigInteger.valueOf(100L), reservation, plainConsumer, SHINING,
                     plainConsumer.getInputs()[0], new java.util.HashMap<>()),
                     "取料点向次号放行 0：请求 100 被摊派后的份额夹死");
-            assertTrue(shortfall.isEmpty(), "短交照旧不挂在途账——这一刀只收账面");
+            assertEquals(140L, shortfall.get(SHINING), "保留实际初始缺口");
         }
 
         // ----------------------------------------------------------------------------------------
@@ -9677,6 +9689,10 @@ public final class CpuScenarios {
                     new WideCraftingInventory(ignored -> {
                     }), IActionSource.empty(), arrivals);
             narrowEveryFamily(job, arrivals);
+            assertEquals(BigInteger.valueOf(100), familyShareAcrossTable(job, SHINING),
+                    "补料仍可到达：统计完整需求时不得永久删除计划配额");
+            // 单独验证配给算法在显式有限供应下的旧边界；实际部分提交不执行这种永久收窄。
+            job.narrowPlanMaterialShareByArrival(SHINING, PlanAmount.of(60L), PlanAmount.of(0L));
             assertEquals(BigInteger.valueOf(60L), MaterialAllocationFixtures.assignedSnapshot(job).get(only).getExact(SHINING),
                     "单消费者＝摊派只有一位 ⇒ 与收窄前逐字同形：60");
             var reservation = ParallelPlanReservation.build(job.tasks.entrySet(), Map.of(),
@@ -9736,6 +9752,10 @@ public final class CpuScenarios {
                     new WideCraftingInventory(ignored -> {
                     }), IActionSource.empty(), arrivals);
             narrowEveryFamily(job, arrivals);
+            assertEquals(BigInteger.valueOf(40), familyShareAcrossTable(job, V1),
+                    "补料仍可到达：统计完整需求时不得永久删除计划配额");
+            // 单独验证配给算法在显式有限供应下的旧边界；实际部分提交不执行这种永久收窄。
+            job.narrowPlanMaterialShareByArrival(V1, PlanAmount.of(30L), PlanAmount.of(0L));
 
             // 真链第二步：账面份额——登记首位保住自己那一格 30，次位摊到 0，族合计＝族到账 30。
             var assigned = MaterialAllocationFixtures.assignedSnapshot(job).get(consumer);
@@ -9760,9 +9780,9 @@ public final class CpuScenarios {
             // 链上第一步的读数放最后钉：上面那条 V1 份额才是本用例要守的夹值，红字要落在那一条上。
             assertEquals(BigInteger.valueOf(30L), familyArrivalOf(arrivals, V1),
                     "前提读数：族到账合计＝V1 那 30 枚（全到账那一档也记在族这根轴上）");
-            assertEquals(BigInteger.ZERO, familyOutsideArrivalOf(arrivals, V1),
-                    "两档的缺口都不挂在途账、也不越一刀⇒ 到账就是上界，必须照收");
-            assertTrue(shortfall.isEmpty(), "短交照旧不挂在途账——这一刀只收账面");
+            assertEquals(BigInteger.TEN, familyOutsideArrivalOf(arrivals, V1),
+                    "另一变体的缺料仍是有效的计划原料需求");
+            assertEquals(10L, shortfall.get(V2), "干缺的变体仍须等待补料");
         }
 
         // ----------------------------------------------------------------------------------------
@@ -9809,6 +9829,10 @@ public final class CpuScenarios {
                     new WideCraftingInventory(ignored -> {
                     }), IActionSource.empty(), arrivals);
             narrowEveryFamily(job, arrivals);
+            assertEquals(BigInteger.valueOf(40), familyShareAcrossTable(job, V1),
+                    "补料仍可到达：统计完整需求时不得永久删除计划配额");
+            // 单独验证配给算法在显式有限供应下的旧边界；实际部分提交不执行这种永久收窄。
+            job.narrowPlanMaterialShareByArrival(V1, PlanAmount.of(20L), PlanAmount.of(0L));
 
             var assigned = MaterialAllocationFixtures.assignedSnapshot(job).get(consumer);
             assertEquals(BigInteger.valueOf(20L), assigned.getExact(V1),
@@ -9826,9 +9850,9 @@ public final class CpuScenarios {
             // 链上第一步的读数放最后钉（红字要落在上面那条族合计上）。
             assertEquals(BigInteger.valueOf(20L), familyArrivalOf(arrivals, V1),
                     "前提读数：族到账合计＝短交 10 ＋全到账 10＝20");
-            assertEquals(BigInteger.ZERO, familyOutsideArrivalOf(arrivals, V1),
-                    "两档的缺口都不挂在途账、也不越一刀⇒ 到账就是上界");
-            assertTrue(shortfall.isEmpty(), "短交照旧不挂在途账");
+            assertEquals(BigInteger.valueOf(20), familyOutsideArrivalOf(arrivals, V1),
+                    "短交部分登记为以后补料");
+            assertEquals(20L, shortfall.get(V1), "保留短交变体的真实缺口");
         }
 
         // ----------------------------------------------------------------------------------------
@@ -9886,6 +9910,10 @@ public final class CpuScenarios {
                     new WideCraftingInventory(ignored -> {
                     }), IActionSource.empty(), arrivals);
             narrowEveryFamily(job, arrivals);
+            assertEquals(demand.add(BigInteger.TEN), familyShareAcrossTable(job, V1),
+                    "补料仍可到达：统计完整需求时不得永久删除计划配额");
+            // 单独验证配给算法在显式有限供应下的旧边界；实际部分提交不执行这种永久收窄。
+            job.narrowPlanMaterialShareByArrival(V1, PlanAmount.of(BigInteger.valueOf(Long.MAX_VALUE)), PlanAmount.of(demand.subtract(BigInteger.valueOf(Long.MAX_VALUE))));
 
             var assigned = MaterialAllocationFixtures.assignedSnapshot(job).get(consumer);
             assertEquals(demand, assigned.getExact(V1),
@@ -9910,10 +9938,9 @@ public final class CpuScenarios {
             // 链上第一步的读数放最后钉（红字要落在上面那条"1.4e19 一枚都不许收"上）。
             assertEquals(new BigInteger("9223372036854775807"), familyArrivalOf(arrivals, V1),
                     "族到账只有\"一整刀\"这一截，1.4e19 的其余部分压根不在到账轴上");
-            assertEquals(new BigInteger("4776627963145224193"), familyOutsideArrivalOf(arrivals, V1),
-                    "\"提交这一步本来就不搬\"的那一截按量记进兜底池，不是记一面旗");
-            assertTrue(shortfall.isEmpty(),
-                    "\"提交这一步本来就不搬\"的那一截不挂在途账——界面那个永远不降的\"正在合成 9.2E\"");
+            assertEquals(new BigInteger("4776627963145224203"), familyOutsideArrivalOf(arrivals, V1),
+                    "宽域剩余原料与同族缺料都必须保留补料配额");
+            assertEquals(10L, shortfall.get(V2), "普通缺口保留，宽域余量由精确原料账继续提取");
         }
 
         // ----------------------------------------------------------------------------------------
@@ -9961,8 +9988,12 @@ public final class CpuScenarios {
                     new WideCraftingInventory(ignored -> {
                     }), IActionSource.empty(), arrivals);
             assertEquals(20L, shortfall.get(V1), "前提读数：V1 短的那 20 枚挂在途账——它是有实物兜底的量");
-            assertEquals(0L, shortfall.get(V2), "前提读数：V2 那一档不挂在途账（#117 的假份额本体）");
+            assertEquals(10L, shortfall.get(V2), "V2 的计划缺口也允许以后补齐");
             narrowEveryFamily(job, arrivals);
+            assertEquals(BigInteger.valueOf(40), familyShareAcrossTable(job, V1),
+                    "补料仍可到达：统计完整需求时不得永久删除计划配额");
+            // 单独验证配给算法在显式有限供应下的旧边界；实际部分提交不执行这种永久收窄。
+            job.narrowPlanMaterialShareByArrival(V1, PlanAmount.of(10L), PlanAmount.of(20L));
 
             var assigned = MaterialAllocationFixtures.assignedSnapshot(job).get(consumer);
             assertEquals(BigInteger.valueOf(30L), assigned.getExact(V1),
@@ -9975,8 +10006,8 @@ public final class CpuScenarios {
                     job.materialAllocation);
             assertEquals(30L, reservation.remainingQuota(consumer, V1), "族份额读回 30＝族池");
             // 链上第一步的读数放最后钉（红字要落在上面那条"V2 照旧被夹"上）。
-            assertEquals(BigInteger.valueOf(20L), familyOutsideArrivalOf(arrivals, V1),
-                    "挂进在途账的那一截照量记进兜底池：它正是 V1 摊得满的那一条腿");
+            assertEquals(BigInteger.valueOf(30L), familyOutsideArrivalOf(arrivals, V1),
+                    "两个变体的补料合计为 30");
             assertEquals(BigInteger.valueOf(10L), familyArrivalOf(arrivals, V1), "族到账 10");
         }
 
@@ -10021,8 +10052,12 @@ public final class CpuScenarios {
                     new WideCraftingInventory(ignored -> {
                     }), IActionSource.empty(), arrivals);
             assertEquals(20L, shortfall.get(V2), "前提读数：V2 短的那 20 枚挂在途账");
-            assertEquals(0L, shortfall.get(V1), "前提读数：V1 那一档不挂在途账");
+            assertEquals(10L, shortfall.get(V1), "V1 的计划缺口也允许以后补齐");
             narrowEveryFamily(job, arrivals);
+            assertEquals(BigInteger.valueOf(40), familyShareAcrossTable(job, V1),
+                    "补料仍可到达：统计完整需求时不得永久删除计划配额");
+            // 单独验证配给算法在显式有限供应下的旧边界；实际部分提交不执行这种永久收窄。
+            job.narrowPlanMaterialShareByArrival(V1, PlanAmount.of(10L), PlanAmount.of(20L));
 
             var assigned = MaterialAllocationFixtures.assignedSnapshot(job).get(consumer);
             assertEquals(BigInteger.valueOf(10L), assigned.getExact(V1),
