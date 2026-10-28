@@ -20,6 +20,7 @@ public final class PatternMatrixClientView {
     private ItemStack[] realStacks = new ItemStack[0];
     private int[] statusCodes = NO_CODES;
     private int[] reasonCodes = NO_CODES;
+    private long[] revisions = NO_BITS;
     private long[] matchBits = NO_BITS;
     private int matchCount;
     private int nonEmptySlots;
@@ -45,15 +46,18 @@ public final class PatternMatrixClientView {
         ItemStack[] nextReal = new ItemStack[target];
         int[] nextStatus = new int[target];
         int[] nextReason = new int[target];
+        long[] nextRevisions = new long[target];
         int copied = Math.min(target, displayStacks.length);
         System.arraycopy(displayStacks, 0, nextStacks, 0, copied);
         System.arraycopy(realStacks, 0, nextReal, 0, copied);
         System.arraycopy(statusCodes, 0, nextStatus, 0, copied);
         System.arraycopy(reasonCodes, 0, nextReason, 0, copied);
+        System.arraycopy(revisions, 0, nextRevisions, 0, copied);
         displayStacks = nextStacks;
         realStacks = nextReal;
         statusCodes = nextStatus;
         reasonCodes = nextReason;
+        revisions = nextRevisions;
         searchTerms.keySet().removeIf(slot -> slot >= target);
         recountNonEmptySlots();
         contentChangeCount++;
@@ -83,6 +87,7 @@ public final class PatternMatrixClientView {
                     && ItemStack.isSameItemSameComponents(displayStacks[slot], entry.displayStack())
                     && statusCodes[slot] == entry.statusCode()
                     && reasonCodes[slot] == entry.reasonCode()
+                    && revisions[slot] == entry.revision()
                     && searchTermsAt(slot).equals(entry.searchTerms())) {
                 continue;
             }
@@ -92,7 +97,8 @@ public final class PatternMatrixClientView {
             displayStacks[slot] = entry.displayStack().copy();
             statusCodes[slot] = entry.statusCode();
             reasonCodes[slot] = entry.reasonCode();
-            // 内容变了就作废按需索取的本体，界面下一帧会重新索取
+            revisions[slot] = entry.revision();
+            // 修订号也反映摘要相同的配方本体变化；界面下一帧重新索取本体。
             realStacks[slot] = ItemStack.EMPTY;
             changeCount++;
         }

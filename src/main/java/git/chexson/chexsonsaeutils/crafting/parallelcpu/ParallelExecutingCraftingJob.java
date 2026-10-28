@@ -171,6 +171,19 @@ final class ParallelExecutingCraftingJob {
     @Nullable
     Integer playerId;
     boolean suspended;
+    /** 已接单批次的材料债务清算完成前，取消和成功收尾都不能释放库存。 */
+    boolean cancellationRequested;
+    boolean completionRequested;
+    /** 递归终产物进入 CPU 不代表 requester 已收货；此余额只按真实收货递减。 */
+    @Nullable PlanAmount requesterDeliveryRemaining;
+
+    boolean hasUnsettledBatchObligations() {
+        if (batchObligations.hasAnyPending()) return true;
+        for (int i = 0; i < unresolvedTasks.size(); i++) {
+            if (BatchObligationLedger.readEntry(unresolvedTasks.getCompound(i)).signum() > 0) return true;
+        }
+        return false;
+    }
     boolean dyeableRecursivePlan;
     long dyeableRecursiveFinalOutputAmount = -1L;
     /** 提交时的计划实例类名（瞬态）：续传作业固定报 resumed，一眼区分两条来源。 */
@@ -254,7 +267,7 @@ final class ParallelExecutingCraftingJob {
      * <p>这里<b>不</b>顺手清 {@code waitingFor}：那一本账同时挂着 {@code emittedItems} 与在途
      * 申报的<b>真实</b>数量，按键族整体摘掉会把该回来的实物一起拒收（{@code insertInternal}
      * 那道闸门）。无限来源的初始材料等待在源头就不进账——见 {@code ParallelCraftingCpuLogic
-     * #seedInitialWaitingFor}。
+     * #seedInitialInputs}。
      */
     void noteUnboundedSupply(@Nullable AEKey key) {
         if (key != null) {
@@ -634,14 +647,8 @@ final class ParallelExecutingCraftingJob {
     private PlanAmount finalOutputPlannedProduction;
 
     /**
-     * 这一作业要交出去的终点产物量：读数以契约定版量优先、缺省退回计划终点量（与 {@code ParallelCraftingCpuLogic
-     * #dyeableRecursiveFinalOutputAmountToFlush} 那一条同一道算式），判据与交付动作之间不留第二种口径。
-     *
-     * <p><b>{@code >long} 那一档是一个已知未闭合的岔口</b>：收尾 flush 与 {@code link.insert} 两条口
-     * 都只吃得下 {@code long}（台账 #72 那条"分轮交付"管的正是这一腿），所以订单越界时判据读的是这里的
-     * 宽域真值、交出去的动作仍按 {@code long} 那一截交，剩下的残量走 {@code storeItems()} 那条既有分轮
-     * 回网口回网络（料不会丢，但 requester 拿到的比订单少）。本刀不替它补分轮，也不许把这一格读回
-     * 饱和哨兵来"看起来对得上"。
+     * 这一作业要交出去的终点产物量。收尾交付与完成判断均读取这份精确订单量。
+     * requester 的单次接口使用 long；宽域未交付余额另行保存，分轮真实接收后才清零。
      *
      * <p>读数塞得进 {@code long}（且不是 {@link Long#MAX_VALUE} 那道哨兵）时，那一格就是精确订单量，
      * 直接交宽域值，<b>不</b>在比较前把任何一侧窄化——交付账 {@link #finalOutputDeliveredAmount} 本来就是
@@ -1089,6 +1096,15 @@ final class ParallelExecutingCraftingJob {
         }
 
         this.suspended = data.getBoolean(NBT_SUSPENDED) || !unresolvedTasks.isEmpty();
+        this.cancellationRequested = data.getBoolean("cancellationRequested");
+        this.completionRequested = data.getBoolean("completionRequested");
+        if (data.contains("requesterDeliveryRemaining", Tag.TAG_BYTE_ARRAY)) {
+            this.requesterDeliveryRemaining = PlanAmount.of(
+                    new BigInteger(data.getByteArray("requesterDeliveryRemaining")));
+            if (requesterDeliveryRemaining.signum() < 0) {
+                throw new IllegalArgumentException("递归收货余额不得为负");
+            }
+        }
         // 预期入网的产出账跟着作业回来，只为把它<b>原样退回</b>（#227 K2 的第二处退账，与负向终局
         // 走同一个 revoke 出口）：交回这一截枚数的凭据——那笔的在飞台账与它的 {@code batchId}——按
         // 既有口径<b>不落 NBT</b>（{@code batchId} 是 useless 侧现生成的内存态 UUID，重载后终局永不来），
@@ -1170,6 +1186,11 @@ final class ParallelExecutingCraftingJob {
             data.putInt(NBT_PLAYER_ID, playerId);
         }
         data.putBoolean(NBT_SUSPENDED, suspended);
+        data.putBoolean("cancellationRequested", cancellationRequested);
+        data.putBoolean("completionRequested", completionRequested);
+        if (requesterDeliveryRemaining != null) {
+            data.putByteArray("requesterDeliveryRemaining", requesterDeliveryRemaining.exactValue().toByteArray());
+        }
         data.putBoolean(NBT_DYEABLE_RECURSIVE_PLAN, dyeableRecursivePlan);
         data.putLong(NBT_DYEABLE_RECURSIVE_FINAL_OUTPUT_AMOUNT, dyeableRecursiveFinalOutputAmount);
         data.put(

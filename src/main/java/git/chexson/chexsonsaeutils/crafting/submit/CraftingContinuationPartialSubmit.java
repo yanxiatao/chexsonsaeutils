@@ -112,15 +112,10 @@ public final class CraftingContinuationPartialSubmit {
     }
 
     /**
-     * 同四参入口，另把<b>真抽到手</b>的到账量按<b>物品本体族</b>记进 {@code familyArrivals}
-     * （可为 {@code null}），见 {@link FamilyArrivalLedger}。调用方
-     * （{@code ParallelCraftingCpuLogic#trySubmitPartialJob}）拿它把配给表收窄到真到账量。
-     *
-     * <p>需求越出 long 且网络<b>喂满一整刀</b>（{@code extracted == chunk}）的那一员、以及缺口
-     * 挂进在途账（{@code waitingFor}）的那一员，短掉的那一截按<b>量</b>记进
-     * {@code outsideArrivals}：前者是"提交这一步本来就不搬"、由执行侧按批从网络续取的量，后者是
-     * 别的分支正在做、会回池的实物。两笔都是<b>那一员自己</b>的兜底，不再当成整族的免夹金牌
-     * （台账 #133：把布尔豁免换成量）。
+     * 同四参入口，可选地按物品族记录实际到账量与仍需补齐的计划原料，用于诊断及配给算法验证。
+     * {@code outsideArrivals} 是未到账、允许以后补齐的外部原料，包括宽域分段提取余量与真实缺料；
+     * 它不表示其它分支已经派发的产物。部分提交保留计划配额，执行时仍以池内真实材料为限，
+     * 不按提交瞬间的库存永久缩减可执行份额。
      */
     public static KeyCounter extractAvailableInitialItems(
             ICraftingPlan plan,
@@ -136,36 +131,12 @@ public final class CraftingContinuationPartialSubmit {
     /** 存储提料逻辑只依赖公开库存接口；网络装配与精确账本计算分开。 */
     static KeyCounter extractAvailableInitialItemsFromStorage(ICraftingPlan plan, appeng.api.storage.MEStorage storage,
             ListCraftingInventory cpuInventory, IActionSource src, @Nullable FamilyArrivalLedger familyArrivals) {
-        KeyCounter requiredInitialItems = new KeyCounter();
-        requiredInitialItems.addAll(plan.usedItems());
-        // 计划自己声明"做不出来"的那一截（AE2 的缺口账）与"在途会回 CPU 的那一截"（usedItems）
-        // 是两件事：前者挂进 waitingFor 就是界面那个永远等不到的"正在合成 9.2E"，作业也永远
-        // 判不了完成（waitingFor 必须为空）。料照抽（IGNORE_MISSING 的语义不变），账不挂。
-        var usedKeys = new java.util.HashSet<AEKey>();
-        for (var entry : plan.usedItems()) {
-            if (entry.getKey() != null) {
-                usedKeys.add(entry.getKey());
-            }
-        }
-        var declaredShortfall = new java.util.HashSet<AEKey>();
-        for (var entry : plan.missingItems()) {
-            if (entry.getKey() != null) {
-                declaredShortfall.add(entry.getKey());
-            }
-        }
-        requiredInitialItems.addAll(plan.missingItems());
+        WideKeyCounter requiredInitialItems = requiredInitialAmounts(plan);
         KeyCounter missingInitialItems = new KeyCounter();
-        var wideLedgers = WideAmountPlanCarrier.resolveWideLedgers(plan);
 
-        for (var entry : requiredInitialItems) {
-            AEKey what = entry.getKey();
-            long toExtract = entry.getLongValue();
-            if (what == null || toExtract <= 0L) {
-                continue;
-            }
-            // 需求真值：宽域账有则用真值（可 >long，且只含真越界的键），否则那份 long 读数就是真值
-            var overflowed = wideLedgers.get(WideAmountKind.USED, what);
-            var remaining = overflowed != null ? overflowed : java.math.BigInteger.valueOf(toExtract);
+        for (AEKey what : requiredInitialItems.keys()) {
+            var remaining = requiredInitialItems.getExact(what);
+            if (what == null || remaining.signum() <= 0) continue;
             // 精确盘可一次交完整需求；普通盘仍只交一个 long 窗口
             boolean beyondOneChunk = remaining.compareTo(WideCeilings.LONG_ACCOUNT) > 0;
             long chunk = remaining.min(WideCeilings.LONG_ACCOUNT).longValue();
@@ -192,36 +163,13 @@ public final class CraftingContinuationPartialSubmit {
             if (gap.signum() <= 0L) {
                 continue;
             }
+            // 两张计划账都是外部原材料需求；缺口等待玩家补料，不是其它样板的在途产出。
+            // 执行期仍需原定配额，不能因为提交瞬间库存为零就永久删除该份额。
+            if (familyArrivals != null) familyArrivals.noteGapOutsideArrivals(what, PlanAmount.of(gap));
             if (beyondOneChunk) {
-                // 需求本来就超出一刀：没喂满的那一截（无论装不装得进 long）是"提交这一步本来
-                // 就不搬"的量，不是谁欠着的活。挂进 waitingFor 就是界面那个永远不降的"正在合成
-                // 9.2E"，而 waitingFor 不清空作业连完成都判不了；按批常态续取才是它的去处。
-                if (extracted.compareTo(java.math.BigInteger.valueOf(chunk)) >= 0 && familyArrivals != null) {
-                    // 连一整刀都喂满了：短掉的这一截 {@code = remaining - chunk} 压根不在到账轴上，
-                    // 由执行侧按批续取 ⇒ 把它照<b>量</b>并进这一族的兜底池（台账 #133）。
-                    // 没喂满整刀（extracted < chunk）时不记这一笔：网络此刻就给不起按批续取，
-                    // 差额没有实物兜底 ⇒ 那一截就是假配额，照 #117 收窄。
-                    familyArrivals.noteGapOutsideArrivals(what, PlanAmount.of(gap));
-                }
-                AELog.info("%s", describeShortfallRow(
-                        "beyond-long remainder not awaited（提交这一步不搬的那一截交给执行侧按批续取）",
-                        what, extracted, gap));
+                // 并行 CPU 把宽域余量保存在 initialItemsRemaining，按预算续取。
+                AELog.info("%s", describeShortfallRow("planned initial remainder", what, extracted, gap));
                 continue;
-            }
-            if (!shouldAwait(what, declaredShortfall, usedKeys)) {
-                // 缺口不挂在途账（计划的缺口账不是在途产出）而提交照放行：这一键的差额是
-                // "配额齐、池子空"的假份额本体——真到账量已在上面按族记进账本，收窄按族合计走。
-                // 这一档<b>不记</b>兜底量：没有任何东西在替它付，同族旁人有兜底也不许替它作保。
-                AELog.info("%s", describeShortfallRow(
-                        "declared shortfall not awaited（计划的缺口账不是在途产出）",
-                        what, extracted, gap));
-                continue;
-            }
-            if (familyArrivals != null) {
-                // 缺口挂进了在途账：那一截实物由别的分支正在做、会回池，同样是到账之外的兜底
-                // ⇒ 照量记进这一族的兜底池（台账 #133：过去记一个族根的布尔旗，于是同族那个
-                // 谁都没兜底的假配额也跟着不夹）。
-                familyArrivals.noteGapOutsideArrivals(what, PlanAmount.of(gap));
             }
             missingInitialItems.add(what, gap.longValue());
         }
@@ -342,16 +290,21 @@ public final class CraftingContinuationPartialSubmit {
         }
     }
 
-    /**
-     * 抽不到的那一截要不要挂进"正在合成"：只挂在途会回 CPU 的那一截。
-     *
-     * <p>{@code plan.missingItems()} 是规划期就确认做不出来的缺口账，不是谁正在做的活。挂上它就是
-     * 界面那个永远不降的"正在合成 9.2E"，而 {@code waitingFor} 不清空作业永远判不了完成。
-     * 同一键既在 used 又在 missing 时照挂：那一份确实有安排在途。
-     */
-    static boolean shouldAwait(AEKey what, java.util.Set<AEKey> declaredShortfall,
-            java.util.Set<AEKey> usedKeys) {
-        return !declaredShortfall.contains(what) || usedKeys.contains(what);
+    /** 合并计划两张外部原料账，先恢复各自真值再相加，避免同键 used + missing 回绕。 */
+    public static WideKeyCounter requiredInitialAmounts(ICraftingPlan plan) {
+        var required = new WideKeyCounter();
+        var wide = WideAmountPlanCarrier.resolveWideLedgers(plan);
+        for (var entry : plan.usedItems()) {
+            var exact = wide.get(WideAmountKind.USED, entry.getKey());
+            required.add(entry.getKey(), exact == null
+                    ? java.math.BigInteger.valueOf(entry.getLongValue()) : exact);
+        }
+        for (var entry : plan.missingItems()) {
+            var exact = wide.get(WideAmountKind.MISSING, entry.getKey());
+            required.add(entry.getKey(), exact == null
+                    ? java.math.BigInteger.valueOf(entry.getLongValue()) : exact);
+        }
+        return required;
     }
 
     static void seedInitialWaitingFor(ExecutingCraftingJob job, KeyCounter missingInitialItems) {

@@ -87,8 +87,6 @@ public final class RegistrationScenarios {
             for (String entry : List.of(
                     "ae2.menu.PatternEncodingTermMenuRuleMixin",
                     "ae2.client.gui.PatternEncodingTermScreenRuleMixin",
-                    "ae2.crafting.PatternDetailsHelperAccessor",
-                    "ae2.crafting.CraftingCalculationAccessor",
                     "ae2.crafting.CraftingTreeProcessReplacementMixin",
                     "ae2.crafting.CraftingTreeNodeReplacementMixin")) {
                 rows.add(ofKey(entry, KEY_REPLACEMENT));
@@ -100,29 +98,14 @@ public final class RegistrationScenarios {
                     "ae2.crafting.CraftingServiceContinuationMixin",
                     "ae2.menu.CraftingCPUMenuContinuationMixin",
                     "ae2.client.gui.CraftingCPUScreenContinuationMixin",
-                    "ae2.client.gui.CraftingStatusTableRendererContinuationMixin",
-                    "ae2.menu.CraftingCPUMenuAccessor",
-                    "ae2.client.gui.AbstractTableRendererAccessor")) {
+                    "ae2.client.gui.CraftingStatusTableRendererContinuationMixin")) {
                 rows.add(ofKey(entry, KEY_CONTINUATION));
-            }
-
-            List<String> cpuAccessorKeys = List.of(
-                    KEY_CONTINUATION, KEY_DYEABLE, KEY_ENHANCED);
-            for (String entry : List.of(
-                    "ae2.crafting.CraftingCpuLogicAccessor",
-                    "ae2.crafting.CraftingLinkAccessor",
-                    "ae2.crafting.ExecutingCraftingJobAccessor",
-                    "ae2.crafting.ExecutingCraftingJobTaskProgressAccessor")) {
-                rows.add(ofAny(entry, cpuAccessorKeys));
             }
 
             rows.add(ofKey("ae2.crafting.CraftingCpuLogicHostBatchSourceContextMixin", KEY_ENHANCED));
 
             for (String entry : List.of(
                     "ae2.crafting.CraftingServiceParallelCpuMixin",
-                    "ae2.crafting.CraftingTreeNodeInvoker",
-                    "ae2.crafting.CraftingTreeProcessFastAccessor",
-                    "ae2.crafting.CraftingTreeNodeFastAccessor",
                     "ae2.menu.CraftingCPUMenuParallelCpuMixin",
                     "ae2.menu.CraftingStatusMenuParallelCpuMixin",
                     "ae2.client.gui.CPUSelectionListParallelCpuMixin",
@@ -135,8 +118,7 @@ public final class RegistrationScenarios {
             for (String entry : List.of(
                     "ae2.crafting.CraftingCpuLogicRecursivePlanMixin",
                     "ae2.item.EncodedPatternItemDyeableClientMixin",
-                    "ae2.crafting.PatternDetailsColorMixin",
-                    "ae2.crafting.CraftingTreeProcessAccessor")) {
+                    "ae2.crafting.PatternDetailsColorMixin")) {
                 rows.add(ofKey(entry, KEY_DYEABLE));
             }
 
@@ -200,6 +182,18 @@ public final class RegistrationScenarios {
             }
 
             for (String entry : List.of(
+                    "ae2.crafting.PatternDetailsHelperAccessor",
+                    "ae2.crafting.CraftingCalculationAccessor",
+                    "ae2.menu.CraftingCPUMenuAccessor",
+                    "ae2.client.gui.AbstractTableRendererAccessor",
+                    "ae2.crafting.CraftingTreeNodeInvoker",
+                    "ae2.crafting.CraftingTreeProcessFastAccessor",
+                    "ae2.crafting.CraftingTreeNodeFastAccessor",
+                    "ae2.crafting.CraftingTreeProcessAccessor",
+                    "ae2.crafting.CraftingCpuLogicAccessor",
+                    "ae2.crafting.CraftingLinkAccessor",
+                    "ae2.crafting.ExecutingCraftingJobAccessor",
+                    "ae2.crafting.ExecutingCraftingJobTaskProgressAccessor",
                     "ae2.storage.CreativeCellSupplyMixin",
                     "ae2.blockentity.SelfPoweredControllerEnergyMixin",
                     "ae2.blockentity.SelfPoweredControllerConnectionMixin",
@@ -259,6 +253,51 @@ public final class RegistrationScenarios {
             }
         }
 
+        void activeConsumersKeepTheirSharedInterfaces() throws ClassNotFoundException {
+            // 检查消费者的依赖闭包，而不仅仅复述插件中的注册表。
+            var dependencies = Map.of(
+                    "ae2.crafting.CraftingTreeNodeNativeLimitQtyBatchMixin", List.of(
+                            "ae2.crafting.CraftingCalculationAccessor",
+                            "ae2.crafting.CraftingTreeNodeInvoker",
+                            "ae2.crafting.CraftingTreeNodeFastAccessor",
+                            "ae2.crafting.CraftingTreeProcessFastAccessor",
+                            "ae2.crafting.CraftingTreeProcessAccessor"),
+                    "ae2.client.gui.CraftConfirmTableRendererEnhancedStatusMixin", List.of(
+                            "ae2.client.gui.AbstractTableRendererAccessor"),
+                    "ae2.menu.CraftingCPUMenuContinuationMixin", List.of(
+                            "ae2.menu.CraftingCPUMenuAccessor",
+                            "ae2.crafting.CraftingCpuLogicAccessor",
+                            "ae2.crafting.ExecutingCraftingJobAccessor"));
+            var keys = List.of(KEY_REPLACEMENT, KEY_CONTINUATION, KEY_DYEABLE, KEY_ENHANCED, KEY_PARALLEL);
+            for (int mask = 0; mask < (1 << keys.size()); mask++) {
+                for (int i = 0; i < keys.size(); i++) CONFIG.get(keys.get(i)).set((mask & (1 << i)) != 0);
+                for (var consumer : dependencies.entrySet()) {
+                    if (!plugin.shouldApplyMixin("", MIXIN_PACKAGE + consumer.getKey())) continue;
+                    for (String dependency : consumer.getValue()) {
+                        assertTrue(plugin.shouldApplyMixin("", MIXIN_PACKAGE + dependency),
+                                consumer.getKey() + " requires " + dependency + " with config mask " + mask);
+                    }
+                }
+            }
+            // 默认门禁加载的真实 AE2 类必须已转换为这些接口，防止只改注册表而漏掉 mixins.json。
+            var targets = Map.of(
+                    "ae2.crafting.CraftingCalculationAccessor", "appeng.crafting.CraftingCalculation",
+                    "ae2.crafting.CraftingTreeNodeInvoker", "appeng.crafting.CraftingTreeNode",
+                    "ae2.crafting.CraftingTreeNodeFastAccessor", "appeng.crafting.CraftingTreeNode",
+                    "ae2.crafting.CraftingTreeProcessFastAccessor", "appeng.crafting.CraftingTreeProcess",
+                    "ae2.crafting.CraftingTreeProcessAccessor", "appeng.crafting.CraftingTreeProcess",
+                    "ae2.client.gui.AbstractTableRendererAccessor", "appeng.client.gui.me.crafting.AbstractTableRenderer");
+            for (var entry : targets.entrySet()) {
+                // NeoForge 默认单测运行在服务端；client mixin 不在该环境转换目标类。
+                if (entry.getValue().startsWith("appeng.client.")
+                        && !net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) continue;
+                Class<?> target = Class.forName(entry.getValue());
+                assertTrue(java.util.Arrays.stream(target.getInterfaces())
+                                .anyMatch(type -> type.getName().equals(MIXIN_PACKAGE + entry.getKey())),
+                        entry.getValue() + " must implement " + entry.getKey());
+            }
+        }
+
         static void verify(java.nio.file.Path temporaryRoot) {
             org.junit.jupiter.api.Assertions.assertAll("ChexsonsaeutilsMixinPluginRosterCases",
                 () -> org.junit.jupiter.api.Assertions.assertAll("ChexsonsaeutilsMixinPluginRosterCases.registeredMixinsFollowTheirConfigGates", () -> {
@@ -266,6 +305,7 @@ public final class RegistrationScenarios {
                             try {
                                 scenario.saveConfig();
                                 scenario.registeredMixinsFollowTheirConfigGates();
+                                scenario.activeConsumersKeepTheirSharedInterfaces();
                             } finally {
                                 scenario.restoreConfig();
                             }

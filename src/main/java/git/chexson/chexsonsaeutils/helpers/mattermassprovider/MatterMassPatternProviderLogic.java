@@ -353,24 +353,41 @@ public class MatterMassPatternProviderLogic extends CustomPatternProviderLogic {
     }
 
     /**
-     * PASS_THROUGH 交付：把待退回原料先整体模拟（任一装不下则阻塞重试，不丢料），
-     * 全部可容纳后实插回网络存储，随后以样板上报输出 insertIntoCpus 记账，
-     * 保证该产出的合成正常算作完成。
+     * PASS_THROUGH 交付：逐项按网络实际接受量减少待退回余额。
+     * 不同原料共享存储容量，独立的 SIMULATE 不能预留空间；部分交付时保存剩余
+     * 原料并继续阻塞，只有全部退回后才向 CPU 上报完成。
      */
     private boolean deliverInputsToNetwork(IGrid grid, PendingMass pending, AEItemKey matchingKey) {
         var storage = grid.getStorageService().getInventory();
-        for (var in : pending.returnInputs()) {
-            if (storage.insert(in.what(), in.amount(), Actionable.SIMULATE, mmActionSource) < in.amount()) {
-                return false;
+        var remaining = new ArrayList<>(pending.returnInputs());
+        boolean progressed = false;
+        for (int i = 0; i < remaining.size();) {
+            var input = remaining.get(i);
+            long inserted = storage.insert(input.what(), input.amount(), Actionable.MODULATE, mmActionSource);
+            if (inserted <= 0) {
+                i++;
+                continue;
             }
+            if (inserted >= input.amount()) {
+                remaining.remove(i);
+            } else {
+                remaining.set(i, new GenericStack(input.what(), input.amount() - inserted));
+                i++;
+            }
+            // 每次成功转移后立即更新所有权和存档状态，后续插入失败也不会重放已退回原料。
+            pendingMasses.set(0, new PendingMass(pending.patternUuid(), pending.contentsUuid(),
+                    pending.name(), List.copyOf(remaining)));
+            saveChanges();
+            progressed = true;
         }
-        for (var in : pending.returnInputs()) {
-            storage.insert(in.what(), in.amount(), Actionable.MODULATE, mmActionSource);
+        if (!remaining.isEmpty()) {
+            return progressed;
         }
         if (grid.getCraftingService() instanceof appeng.me.service.CraftingService craftingService) {
             craftingService.insertIntoCpus(matchingKey, 1, Actionable.MODULATE);
         }
         pendingMasses.remove(0);
+        saveChanges();
         return true;
     }
 

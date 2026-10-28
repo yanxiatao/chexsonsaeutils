@@ -74,6 +74,61 @@ public final class ProvidersScenarios {
             assertEquals(0L, AbstractExtremeAssemblerHostBlockEntity.deriveHolderExecutions(
                     pattern, new KeyCounter[]{held}));
         }
+        void dismantledMachineCarriesExactOutputsThroughItemSerialization() {
+            var registries = net.minecraft.core.RegistryAccess.fromRegistryOfRegistries(
+                    net.minecraft.core.registries.BuiltInRegistries.REGISTRY);
+            var outputs = new git.chexson.chexsonsaeutils.bigint.WideKeyCounter();
+            var exact = BigInteger.TEN.pow(100).add(BigInteger.valueOf(17));
+            outputs.add(OUTPUT, exact);
+            outputs.add(MATERIAL, BigInteger.valueOf(9));
+            var metadata = new net.minecraft.nbt.CompoundTag();
+            metadata.putString("unrelated", "preserved");
+            var components = net.minecraft.core.component.DataComponentMap.builder();
+            components.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA,
+                    net.minecraft.world.item.component.CustomData.of(metadata));
+            AbstractExtremeAssemblerHostBlockEntity.exportDismantleOutputs(appeng.util.SettingsFrom.DISMANTLE_ITEM,
+                    components, outputs, registries);
+            var carrier = new ItemStack(Items.CHEST);
+            carrier.applyComponents(components.build());
+            var savedItem = carrier.saveOptional(registries);
+            outputs.clear();
+            var restoredItem = ItemStack.parse(registries, savedItem).orElseThrow();
+            assertEquals(1, restoredItem.getCount());
+            assertTrue(savedItem.toString().length() < 4096, "物品载体大小只随种类与数字位数增长");
+            assertEquals("preserved", restoredItem.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA)
+                    .copyTag().getString("unrelated"));
+            var restored = new git.chexson.chexsonsaeutils.bigint.WideKeyCounter();
+            assertTrue(AbstractExtremeAssemblerHostBlockEntity.importDismantleOutputs(appeng.util.SettingsFrom.DISMANTLE_ITEM,
+                    restoredItem.getComponents(), restored, registries));
+            assertEquals(exact, restored.getExact(OUTPUT));
+            assertEquals(BigInteger.valueOf(9), restored.getExact(MATERIAL));
+            var payload = AbstractExtremeAssemblerHostBlockEntity.virtualOutputPayload(restored);
+            AbstractExtremeAssemblerHostBlockEntity.accountVirtualDelivery(restored, payload, List.of());
+            assertEquals(exact.subtract(BigInteger.valueOf(Long.MAX_VALUE)), restored.getExact(OUTPUT));
+            assertEquals(BigInteger.ZERO, restored.getExact(MATERIAL));
+        }
+
+        void memoryCardCannotExportOrImportBufferedResources() {
+            var registries = net.minecraft.core.RegistryAccess.fromRegistryOfRegistries(
+                    net.minecraft.core.registries.BuiltInRegistries.REGISTRY);
+            var outputs = new git.chexson.chexsonsaeutils.bigint.WideKeyCounter();
+            outputs.add(OUTPUT, BigInteger.TEN);
+            var settings = net.minecraft.core.component.DataComponentMap.builder();
+            AbstractExtremeAssemblerHostBlockEntity.exportDismantleOutputs(appeng.util.SettingsFrom.MEMORY_CARD,
+                    settings, outputs, registries);
+            assertFalse(settings.build().has(net.minecraft.core.component.DataComponents.CUSTOM_DATA));
+            var recovery = net.minecraft.core.component.DataComponentMap.builder();
+            AbstractExtremeAssemblerHostBlockEntity.exportDismantleOutputs(appeng.util.SettingsFrom.DISMANTLE_ITEM,
+                    recovery, outputs, registries);
+            var target = new git.chexson.chexsonsaeutils.bigint.WideKeyCounter();
+            target.add(MATERIAL, BigInteger.ONE);
+            assertFalse(AbstractExtremeAssemblerHostBlockEntity.importDismantleOutputs(appeng.util.SettingsFrom.MEMORY_CARD,
+                    recovery.build(), target, registries));
+            assertEquals(BigInteger.ZERO, target.getExact(OUTPUT));
+            assertEquals(BigInteger.ONE, target.getExact(MATERIAL));
+            assertEquals(BigInteger.TEN, outputs.getExact(OUTPUT));
+        }
+
         void wideOutputSurvivesReloadAndPartialSegmentDelivery() {
             var pattern = pattern(Items.FURNACE, new GenericStack(MATERIAL, 1L), new GenericStack(OUTPUT, 80L));
             var prototype = new KeyCounter();
@@ -208,6 +263,8 @@ public final class ProvidersScenarios {
 
         static void verify(java.nio.file.Path temporaryRoot) {
             org.junit.jupiter.api.Assertions.assertAll("ExtremeAssemblerBatchCountCases",
+                () -> new ExtremeAssemblerBatchCountCases().dismantledMachineCarriesExactOutputsThroughItemSerialization(),
+                () -> new ExtremeAssemblerBatchCountCases().memoryCardCannotExportOrImportBufferedResources(),
                 () -> org.junit.jupiter.api.Assertions.assertAll("ExtremeAssemblerBatchCountCases.stalledLogAmountRetainsAllDigitsAndAllKeys", () -> new ExtremeAssemblerBatchCountCases().stalledLogAmountRetainsAllDigitsAndAllKeys()),
                 () -> org.junit.jupiter.api.Assertions.assertAll("ExtremeAssemblerBatchCountCases.longMaxIsARealBatchRatherThanTheUninitializedMarker", () -> new ExtremeAssemblerBatchCountCases().longMaxIsARealBatchRatherThanTheUninitializedMarker()),
                 () -> org.junit.jupiter.api.Assertions.assertAll("ExtremeAssemblerBatchCountCases.finalPartialBatchKeepsItsActualCount", () -> new ExtremeAssemblerBatchCountCases().finalPartialBatchKeepsItsActualCount()),

@@ -1,11 +1,12 @@
 // Plus 1.6.3 与 NeoEco 真实 SDK 同时验证，默认构建仍不加载可选模组。
 gradle.afterProject { project ->
     if (project != project.rootProject) return
-    def jars = ['reference-sources/extendedae_plus-1.6.3.jar',
-                'reference-sources/neoecoae-21.2.0.jar',
-                'reference-sources/ldlib2-neoforge-1.21.1-2.2.8-all.jar'].collect { project.file(it) }
-    jars.each { if (!it.isFile()) throw new GradleException("精确终端 SDK 验证缺少依赖：${it}") }
-    project.dependencies.add('testImplementation', project.files(jars))
+    // Plus 的元数据对已安装 JEI 有最低版本要求；只升级此集成验收的测试依赖。
+    project.dependencies.add('testImplementation', "mezz.jei:jei-${project.minecraft_version}-neoforge:${project.plus_jei_version}")
+    project.ext.neoecoSdk = true
+    [project.onlineMods.extendedaePlus, project.onlineMods.neoecoae, project.onlineMods.ldlib].each {
+        project.dependencies.add('testImplementation', it)
+    }
     project.sourceSets.test.java.srcDir(project.file('tools/integration-tests/terminalstorage/src'))
     project.sourceSets.test.java.srcDir(project.file('tools/integration-tests/terminalstorage/plus-src'))
 }

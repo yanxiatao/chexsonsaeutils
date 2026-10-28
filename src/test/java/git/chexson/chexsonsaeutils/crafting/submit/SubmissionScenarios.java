@@ -46,23 +46,7 @@ public final class SubmissionScenarios {
         private static final AEKey ORE = AEItemKey.of(Items.IRON_ORE);
         private static final AEKey INGOT = AEItemKey.of(Items.IRON_INGOT);
 
-        void declaredShortfallIsNotAwaitedButInFlightUseStillIs() {
-            var declared = Set.of(LAVA);
-            var used = Set.of(ORE);
 
-            assertFalse(CraftingContinuationPartialSubmit.shouldAwait(LAVA, declared, used),
-                    "计划自己声明做不出来的那一截不许挂进正在合成");
-            assertTrue(CraftingContinuationPartialSubmit.shouldAwait(ORE, declared, used),
-                    "usedItems 那一截是有安排在途的，照挂");
-        }
-
-        void keyPresentInBothLedgersIsStillAwaited() {
-            var declared = Set.of(INGOT);
-            var used = Set.of(INGOT);
-
-            assertTrue(CraftingContinuationPartialSubmit.shouldAwait(INGOT, declared, used),
-                    "同一键既在 used 又在 missing：那一份确实有安排在途，不许顺手免挂");
-        }
 
         /**
          * 提交这一步<b>不搬</b>的那一截不许挂进"正在合成"：需求越出 long 时这条腿也只喂一刀，
@@ -121,6 +105,20 @@ public final class SubmissionScenarios {
             assertEquals(400L, missing.get(ORE),
                     "原生腿的缺口＝它自己那份 long 读数减真到账量 500−100=400，不许是饱和出来的大数");
             assertEquals(1, network.asks, "原生腿这一步每键只伸手一次");
+        }
+
+        void missingOnlyPlanRegistersTheFullRefillAndCombinedDemandDoesNotOverflow() {
+            var missing = counter(ORE, 9);
+            var plan = new CraftingPlan(new GenericStack(INGOT, 1), 0, true, false,
+                    new KeyCounter(), new KeyCounter(), missing, java.util.Map.of());
+            var cpu = new WideCraftingInventory(ignored -> {});
+            var gap = CraftingContinuationPartialSubmit.extractAvailableInitialItems(
+                    plan, gridOf(new WideNetwork(ORE, BigInteger.ZERO)), cpu, IActionSource.empty());
+            assertEquals(9L, gap.get(ORE), "原生计划 used 为空、missing 为 9 时，仍须登记全部补料");
+            var combined = new CraftingPlan(new GenericStack(INGOT, 1), 0, true, false,
+                    counter(ORE, Long.MAX_VALUE), new KeyCounter(), counter(ORE, 9), java.util.Map.of());
+            assertEquals(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.valueOf(9)),
+                    CraftingContinuationPartialSubmit.requiredInitialAmounts(combined).getExact(ORE));
         }
 
         /** 只带 used 宽域溢出账的计划：AE2 那份 long 读数顶在天花板上，真值挂在载体上。 */
@@ -186,8 +184,7 @@ public final class SubmissionScenarios {
 
         static void verify(java.nio.file.Path temporaryRoot) {
             org.junit.jupiter.api.Assertions.assertAll("PartialSubmitAwaitScopeCases",
-                () -> org.junit.jupiter.api.Assertions.assertAll("PartialSubmitAwaitScopeCases.declaredShortfallIsNotAwaitedButInFlightUseStillIs", () -> new PartialSubmitAwaitScopeCases().declaredShortfallIsNotAwaitedButInFlightUseStillIs()),
-                () -> org.junit.jupiter.api.Assertions.assertAll("PartialSubmitAwaitScopeCases.keyPresentInBothLedgersIsStillAwaited", () -> new PartialSubmitAwaitScopeCases().keyPresentInBothLedgersIsStillAwaited()),
+                () -> new PartialSubmitAwaitScopeCases().missingOnlyPlanRegistersTheFullRefillAndCombinedDemandDoesNotOverflow(),
                 () -> org.junit.jupiter.api.Assertions.assertAll("PartialSubmitAwaitScopeCases.beyondLongRemainderIsNotAwaitedButARealLongGapStillIs", () -> new PartialSubmitAwaitScopeCases().beyondLongRemainderIsNotAwaitedButARealLongGapStillIs()),
                 () -> org.junit.jupiter.api.Assertions.assertAll("PartialSubmitAwaitScopeCases.nativePlanWithoutCarrierIsSubmittedByItsOwnLongReadings", () -> new PartialSubmitAwaitScopeCases().nativePlanWithoutCarrierIsSubmittedByItsOwnLongReadings())
             );

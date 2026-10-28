@@ -93,6 +93,10 @@ final class FeatureCategoryTest {
     @DisplayName("供应器与可选模组桥接")
     void providersAndOptionalBridges(@TempDir Path temporaryRoot) {
         org.junit.jupiter.api.Assertions.assertAll("供应器与可选模组桥接",
+                () -> git.chexson.chexsonsaeutils.menu.custompatternupgrade.UpgradeScenarios.verify(temporaryRoot),
+                () -> git.chexson.chexsonsaeutils.menu.custompatternconfig.ConfigLocatorScenarios.verify(temporaryRoot),
+                () -> git.chexson.chexsonsaeutils.helpers.custompatternprovider.ProvidersScenarios.verify(temporaryRoot),
+                () -> git.chexson.chexsonsaeutils.helpers.mattermassprovider.ProvidersScenarios.verify(temporaryRoot),
                 () -> git.chexson.chexsonsaeutils.blockentity.crafting.ProvidersScenarios.verify(temporaryRoot),
                 () -> git.chexson.chexsonsaeutils.crafting.hostbatch.ProvidersScenarios.verify(temporaryRoot),
                 () -> git.chexson.chexsonsaeutils.integration.ae2ct.ProvidersScenarios.verify(temporaryRoot),
@@ -147,6 +151,7 @@ final class FeatureCategoryTest {
     @DisplayName("直连加工")
     void directProcessing(@TempDir Path temporaryRoot) {
         org.junit.jupiter.api.Assertions.assertAll("直连加工",
+                () -> git.chexson.chexsonsaeutils.blockentity.directprocessing.MachineRecoveryScenarios.verify(temporaryRoot),
                 () -> git.chexson.chexsonsaeutils.client.integration.jei.ProcessingScenarios.verify(temporaryRoot),
                 () -> git.chexson.chexsonsaeutils.crafting.directprocessing.ProcessingScenarios.verify(temporaryRoot),
                 () -> git.chexson.chexsonsaeutils.integration.directprocessing.ProcessingScenarios.verify(temporaryRoot)

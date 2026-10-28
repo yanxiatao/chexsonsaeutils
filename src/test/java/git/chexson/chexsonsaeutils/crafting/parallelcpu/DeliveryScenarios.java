@@ -85,6 +85,7 @@ public final class DeliveryScenarios {
     /** 执行本包的行为场景，保留各场景名称与状态隔离。 */
     public static void verify(java.nio.file.Path temporaryRoot) {
         org.junit.jupiter.api.Assertions.assertAll("git.chexson.chexsonsaeutils.crafting.parallelcpu",
+                () -> ReliabilityScenarios.verify(temporaryRoot),
                 () -> ParallelCpuPersistenceCases.verify(temporaryRoot),
                 () -> ParallelExpectedOutputLedgerCases.verify(temporaryRoot),
                 () -> ParallelRecursiveBeyondLongOrderCases.verify(temporaryRoot),
@@ -869,10 +870,10 @@ public final class DeliveryScenarios {
             // ---------------------------------------------------------------------------------
             // 真收尾层：AE2 交货到账口那一句 insert 起，走完 finishJob(true)
             // ---------------------------------------------------------------------------------
-            var resumeJob = newRecursiveJob(tail, 0L, newCpuLink());
+            var resumeJob = newRecursiveJob(tail, 0L, newRequesterCpuLink());
             resumeJob.waitingFor.insert(PRODUCT, ORDER, Actionable.MODULATE);
             resumeJob.waitingFor.insert(TAIL_MATERIAL, 7L, Actionable.MODULATE);
-            var lane = new ParallelCraftingLaneState(null, UUID.randomUUID(), 0L);
+            var lane = new ParallelCraftingLaneState(diagnosticCluster(), UUID.randomUUID(), 0L);
             var logic = lane.logic();
             var logicTag = new CompoundTag();
             logicTag.put("job", resumeJob.writeToNBT(REGISTRIES));
@@ -899,7 +900,7 @@ public final class DeliveryScenarios {
 
         /** 退出前已到账 40 枚，重进后再到 60 枚：累计到齐即收尾，并真实交付全部 100 枚。 */
         void partialDeliveryBeforeReloadCountsTowardActualFinalDeliveryAfterReload() {
-            var job = newRecursiveJob(Map.of(), newCpuLink());
+            var job = newRecursiveJob(Map.of(), newRequesterCpuLink());
             job.addFinalOutputDelivered(PRODUCT, 40L);
             job.waitingFor.insert(PRODUCT, 60L, Actionable.MODULATE);
             job.waitingFor.insert(TAIL_MATERIAL, 7L, Actionable.MODULATE);
@@ -908,7 +909,7 @@ public final class DeliveryScenarios {
             var saved = new CompoundTag();
             saved.put("job", job.writeToNBT(REGISTRIES));
             saved.put("inventory", pool.writeToNBT(REGISTRIES));
-            var lane = new ParallelCraftingLaneState(null, UUID.randomUUID(), 0L);
+            var lane = new ParallelCraftingLaneState(diagnosticCluster(), UUID.randomUUID(), 0L);
             lane.logic().readFromNBT(saved, REGISTRIES);
             var link = (CraftingLink) lane.getLastLink();
             var requester = new RecordingRequester();
@@ -1062,20 +1063,17 @@ public final class DeliveryScenarios {
             var lane = offlineLaneSeededWith(job, network);
             var logic = lane.logic();
             var cpuLink = (CraftingLink) lane.getLastLink();
-            var requester = new RecordingRequester();
-            tieLinkToRequester(cpuLink, requester);
 
             assertTrue(logic.tickCraftingLogic(null, null, 0L, null, null),
                     "任务表已空：这一 tick 推不出任何一发，返回 idle 才对得上产线那条调度");
 
-            assertTrue(cpuLink.isDone(), "tick 收尾没把作业推进 finishJob(true)：链接仍不是完成态");
+            assertFalse(logic.hasJob(), "手动订单必须真正释放作业；原生 standalone link 没有收货 nexus");
             assertFalse(lane.isLaneActive(),
                     "判据成立却没人问：作业仍挂在 lane 上（实机那一跑只能手动取消，取消后那颗种不退网、下一条 lane 的环饿死）");
             assertEquals(1L, network.stored(SEED), "环起步借的那颗种必须经 storeItems() 退回网络");
             assertEquals(0L, network.stored(PRODUCT), "网络侧不许多出终点产物：收工不伪造实物");
             assertTrue(logic.isInventoryEmpty(), "收尾后 CPU 池必须是空池");
-            assertTrue(requesteeDeliveries(requester).isEmpty(),
-                    "planned 那一腿没有实物回执：requester 一枚不收，交付账也不许被这一改推进");
+            assertTrue(cpuLink.isStandalone(), "直投网络的手动订单不绑定 requester");
         }
 
         /**
@@ -1304,6 +1302,11 @@ public final class DeliveryScenarios {
         private static CraftingLink newCpuLink() {
             return new CraftingLink(
                     CraftingCpuHelper.generateLinkData(UUID.randomUUID(), true, false),
+                    (appeng.api.networking.crafting.ICraftingCPU) null);
+        }
+
+        private static CraftingLink newRequesterCpuLink() {
+            return new CraftingLink(CraftingCpuHelper.generateLinkData(UUID.randomUUID(), false, false),
                     (appeng.api.networking.crafting.ICraftingCPU) null);
         }
 

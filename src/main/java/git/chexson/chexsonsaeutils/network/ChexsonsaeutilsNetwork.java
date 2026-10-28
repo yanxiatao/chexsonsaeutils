@@ -96,7 +96,7 @@ public final class ChexsonsaeutilsNetwork {
                 git.chexson.chexsonsaeutils.network.directprocessing.rules.DirectProcessingPackRulesPayload.STREAM_CODEC,
                 git.chexson.chexsonsaeutils.network.directprocessing.rules.DirectProcessingPackRulesPayload::handle
         );
-        var matrixRegistrar = event.registrar("1");
+        var matrixRegistrar = event.registrar("2");
         matrixRegistrar.playToServer(
                 PatternMatrixSearchPayload.TYPE,
                 PatternMatrixSearchPayload.STREAM_CODEC,

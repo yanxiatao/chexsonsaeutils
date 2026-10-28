@@ -169,6 +169,38 @@ public final class MatrixScenarios {
 
     /** PatternMatrixInteractionClickCases 的独立场景夹具，按类别统一执行。 */
     public static final class PatternMatrixInteractionClickCases {
+        void swappingMultiplePatternsPreservesEveryItem() {
+            for (int count : new int[]{2, 64}) {
+                var source = new PatternMatrixShiftInsertCases.FakeSource(1);
+                source.put(0, new ItemStack(Items.STONE));
+                var hand = new java.util.concurrent.atomic.AtomicReference<>(new ItemStack(Items.PAPER, count));
+                var cell = source.patternMatrixInventory().getSlotInv(0);
+
+                PatternMatrixInteraction.pickupOrSetDown(source, cell, cell.getStackInSlot(0), hand.get(), hand::set);
+
+                assertEquals(Items.STONE, cell.getStackInSlot(0).getItem());
+                assertEquals(1, cell.getStackInSlot(0).getCount());
+                assertEquals(Items.PAPER, hand.get().getItem());
+                assertEquals(count, hand.get().getCount());
+            }
+        }
+
+        void singlePatternSwapsAndEmptyCellStillAcceptsOneFromAStack() {
+            var source = new PatternMatrixShiftInsertCases.FakeSource(1);
+            source.put(0, new ItemStack(Items.STONE));
+            var hand = new java.util.concurrent.atomic.AtomicReference<>(new ItemStack(Items.PAPER));
+            var cell = source.patternMatrixInventory().getSlotInv(0);
+            PatternMatrixInteraction.pickupOrSetDown(source, cell, cell.getStackInSlot(0), hand.get(), hand::set);
+            assertEquals(Items.PAPER, cell.getStackInSlot(0).getItem());
+            assertEquals(Items.STONE, hand.get().getItem());
+
+            cell.setItemDirect(0, ItemStack.EMPTY);
+            hand.set(new ItemStack(Items.PAPER, 64));
+            PatternMatrixInteraction.pickupOrSetDown(source, cell, cell.getStackInSlot(0), hand.get(), hand::set);
+            assertEquals(1, cell.getStackInSlot(0).getCount());
+            assertEquals(63, hand.get().getCount());
+        }
+
         void pickupMapsLeftToPickupOrSetDownAndRightToSplit() {
             assertEquals(InventoryAction.PICKUP_OR_SET_DOWN,
                     PatternMatrixInteraction.clickAction(ClickType.PICKUP, false, false));
@@ -197,6 +229,8 @@ public final class MatrixScenarios {
 
         static void verify(java.nio.file.Path temporaryRoot) {
             org.junit.jupiter.api.Assertions.assertAll("PatternMatrixInteractionClickCases",
+                () -> new PatternMatrixInteractionClickCases().swappingMultiplePatternsPreservesEveryItem(),
+                () -> new PatternMatrixInteractionClickCases().singlePatternSwapsAndEmptyCellStillAcceptsOneFromAStack(),
                 () -> org.junit.jupiter.api.Assertions.assertAll("PatternMatrixInteractionClickCases.pickupMapsLeftToPickupOrSetDownAndRightToSplit", () -> new PatternMatrixInteractionClickCases().pickupMapsLeftToPickupOrSetDownAndRightToSplit()),
                 () -> org.junit.jupiter.api.Assertions.assertAll("PatternMatrixInteractionClickCases.quickMoveMapsLeftToShiftClickAndRightToPickupSingle", () -> new PatternMatrixInteractionClickCases().quickMoveMapsLeftToShiftClickAndRightToPickupSingle()),
                 () -> org.junit.jupiter.api.Assertions.assertAll("PatternMatrixInteractionClickCases.cloneOnlyDuplicatesInCreative", () -> new PatternMatrixInteractionClickCases().cloneOnlyDuplicatesInCreative()),
@@ -301,6 +335,56 @@ public final class MatrixScenarios {
             assertEquals(List.of(), sync.collectChanges(source, 100));
         }
 
+        void changedRecipeWithIdenticalSummaryInvalidatesCachedBody() {
+            FakeSource source = new FakeSource(1);
+            source.fixedDisplay = new ItemStack(Items.IRON_INGOT);
+            var recipe = new ItemStack(Items.PAPER);
+            var recipeData = new net.minecraft.nbt.CompoundTag();
+            recipeData.putInt("inputAmount", 1);
+            recipe.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA,
+                    net.minecraft.world.item.component.CustomData.of(recipeData));
+            source.put(0, recipe);
+            var sync = new PatternMatrixServerSync();
+            var view = new PatternMatrixClientView();
+            view.resize(1);
+            var original = sync.collectChanges(source, 10);
+            view.apply(original);
+            view.applyRealStacks(List.of(new PatternMatrixRealStack(0, recipe)));
+            int originalVersion = view.contentChangeCount();
+
+            recipeData.putInt("inputAmount", 2);
+            var changedRecipe = recipe.copy();
+            changedRecipe.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA,
+                    net.minecraft.world.item.component.CustomData.of(recipeData));
+            source.put(0, changedRecipe);
+            var changes = sync.collectChanges(source, 10);
+            assertEquals(1, changes.size());
+            assertTrue(ItemStack.isSameItemSameComponents(original.getFirst().displayStack(), changes.getFirst().displayStack()));
+            assertEquals(original.getFirst().searchTerms(), changes.getFirst().searchTerms());
+            assertTrue(changes.getFirst().revision() > original.getFirst().revision());
+            assertFalse(original.getFirst().sameContent(changes.getFirst()));
+
+            var registries = net.minecraft.core.RegistryAccess.fromRegistryOfRegistries(
+                    net.minecraft.core.registries.BuiltInRegistries.REGISTRY);
+            var buffer = new net.minecraft.network.RegistryFriendlyByteBuf(io.netty.buffer.Unpooled.buffer(), registries);
+            try {
+                PatternMatrixEntry.STREAM_CODEC.encode(buffer, changes.getFirst());
+                var decoded = PatternMatrixEntry.STREAM_CODEC.decode(buffer);
+                assertEquals(changes.getFirst().revision(), decoded.revision());
+                view.apply(List.of(decoded));
+            } finally {
+                buffer.release();
+            }
+            assertFalse(view.hasRealStack(0));
+            assertTrue(view.contentChangeCount() > originalVersion);
+            view.applyRealStacks(List.of(new PatternMatrixRealStack(0, changedRecipe)));
+            int currentVersion = view.contentChangeCount();
+            view.apply(changes);
+            assertTrue(view.hasRealStack(0), "相同修订的重复摘要不得再次作废已收到的本体");
+            assertEquals(currentVersion, view.contentChangeCount());
+            assertEquals(List.of(), sync.collectChanges(source, 10));
+        }
+
         void detailVersionBumpResendsDerivedDataWithoutStackChange() {
             FakeSource source = new FakeSource(3);
             source.put(2, stack());
@@ -395,6 +479,7 @@ public final class MatrixScenarios {
             private final int[] statusCodes;
             private final int[] reasonCodes;
             private long detailVersion;
+            private ItemStack fixedDisplay;
 
             private FakeSource(int totalSlots) {
                 this.inventory = new AppEngInternalInventory(new FakeHost(), Math.max(1, totalSlots), 1);
@@ -418,7 +503,7 @@ public final class MatrixScenarios {
 
             @Override
             public ItemStack patternMatrixDisplayStack(int slot) {
-                return inventory.getStackInSlot(slot).copy();
+                return fixedDisplay == null ? inventory.getStackInSlot(slot).copy() : fixedDisplay.copy();
             }
 
             @Override
@@ -461,6 +546,7 @@ public final class MatrixScenarios {
 
         static void verify(java.nio.file.Path temporaryRoot) {
             org.junit.jupiter.api.Assertions.assertAll("PatternMatrixServerSyncCases",
+                () -> new PatternMatrixServerSyncCases().changedRecipeWithIdenticalSummaryInvalidatesCachedBody(),
                 () -> org.junit.jupiter.api.Assertions.assertAll("PatternMatrixServerSyncCases.firstBroadcastSendsOnlyOccupiedSlotsOnce", () -> new PatternMatrixServerSyncCases().firstBroadcastSendsOnlyOccupiedSlotsOnce()),
                 () -> org.junit.jupiter.api.Assertions.assertAll("PatternMatrixServerSyncCases.scanStopsAtThePerCallBudgetAndResumesWhereItStopped", () -> new PatternMatrixServerSyncCases().scanStopsAtThePerCallBudgetAndResumesWhereItStopped()),
                 () -> org.junit.jupiter.api.Assertions.assertAll("PatternMatrixServerSyncCases.clearingAnObservedSlotEmitsOneEmptyEntry", () -> new PatternMatrixServerSyncCases().clearingAnObservedSlotEmitsOneEmptyEntry()),

@@ -34,11 +34,13 @@ import java.util.WeakHashMap;
 import java.util.function.ToLongFunction;
 
 public final class CraftingContinuationTracker {
-    private static final Map<ServerLevel, CraftingContinuationTracker> INSTANCES = new WeakHashMap<>();
+    // Tracker 持有 level，因此 WeakHashMap 不能释放世界；生命周期由服务端卸载事件明确结束。
+    private static final Map<ServerLevel, CraftingContinuationTracker> INSTANCES = new HashMap<>();
 
     private final ServerLevel level;
     private final Map<UUID, CraftingContinuationWaitingDetail> trackedJobs = new LinkedHashMap<>();
     private final Map<UUID, Map<AEKey, Long>> observedAvailableWaitingStacks = new HashMap<>();
+    private final Map<CraftingCPUCluster, UUID> observedCpuJobs = new WeakHashMap<>();
 
     private CraftingContinuationTracker(ServerLevel level) {
         this.level = level;
@@ -47,6 +49,15 @@ public final class CraftingContinuationTracker {
 
     public static CraftingContinuationTracker get(ServerLevel level) {
         return INSTANCES.computeIfAbsent(level, CraftingContinuationTracker::new);
+    }
+
+    /** 世界卸载只释放内存索引，等待明细仍由世界 SavedData 保存供下次加载。 */
+    public static void release(ServerLevel level) {
+        INSTANCES.remove(level);
+    }
+
+    public static void clearAll() {
+        INSTANCES.clear();
     }
 
     public static void syncSelectedCpuDetailForMenu(CraftingCPUMenu menu) {
@@ -85,73 +96,38 @@ public final class CraftingContinuationTracker {
     public void rebuildAfterLoad(ServerLevel level) {
         trackedJobs.clear();
         observedAvailableWaitingStacks.clear();
+        observedCpuJobs.clear();
         trackedJobs.putAll(CraftingContinuationSavedData.get(level).snapshotWaitingDetails());
     }
 
     public static void reconcileWaitingInputs(
             @Nullable IGrid grid,
             Iterable<CraftingCPUCluster> cpus,
-            @Nullable AEKey changedStack,
-            boolean retainLiveCrafts
+            @Nullable AEKey changedStack
     ) {
-        if (grid == null || cpus == null) {
-            return;
-        }
-
-        Map<ServerLevel, Set<UUID>> liveCraftIdsByLevel = new HashMap<>();
+        if (grid == null || cpus == null) return;
         for (CraftingCPUCluster cpu : cpus) {
-            if (cpu == null || !(cpu.getLevel() instanceof ServerLevel serverLevel)) {
-                continue;
-            }
-
-            liveCraftIdsByLevel.computeIfAbsent(serverLevel, ignored -> new HashSet<>());
-            CraftingContinuationTracker service = get(serverLevel);
-            UUID craftId = service.reconcileWaitingInputs(grid, cpu, changedStack);
-            if (craftId != null) {
-                liveCraftIdsByLevel.get(serverLevel).add(craftId);
+            if (cpu != null && cpu.getLevel() instanceof ServerLevel serverLevel) {
+                get(serverLevel).reconcileWaitingInputs(grid, cpu, changedStack);
             }
         }
-
-        if (!retainLiveCrafts) {
-            return;
-        }
-
-        for (var entry : liveCraftIdsByLevel.entrySet()) {
-            get(entry.getKey()).retainLiveCrafts(entry.getValue());
-        }
+        // 此处只有一个 grid 的 CPU；消失的 CPU 也可能卸载或迁网，不能据此删除世界级明细。
     }
 
     public static void reconcileWaitingInputsOnServerEndTick(
             @Nullable IGrid grid,
             Iterable<CraftingCPUCluster> cpus
     ) {
-        if (grid == null || cpus == null) {
-            return;
-        }
-
+        if (grid == null || cpus == null) return;
         var cachedInventory = grid.getStorageService().getCachedInventory();
-        Map<ServerLevel, Set<UUID>> liveCraftIdsByLevel = new HashMap<>();
         boolean availabilityIncreased = false;
-
         for (CraftingCPUCluster cpu : cpus) {
-            if (cpu == null || !(cpu.getLevel() instanceof ServerLevel serverLevel)) {
-                continue;
-            }
-
-            liveCraftIdsByLevel.computeIfAbsent(serverLevel, ignored -> new HashSet<>());
-            CraftingContinuationTracker service = get(serverLevel);
-            if (service.recordWaitingAvailability(cpu, cachedInventory, liveCraftIdsByLevel.get(serverLevel))) {
+            if (cpu != null && cpu.getLevel() instanceof ServerLevel serverLevel
+                    && get(serverLevel).recordWaitingAvailability(cpu, cachedInventory)) {
                 availabilityIncreased = true;
             }
         }
-
-        for (var entry : liveCraftIdsByLevel.entrySet()) {
-            get(entry.getKey()).retainObservedAvailability(entry.getValue());
-        }
-
-        if (availabilityIncreased) {
-            reconcileWaitingInputs(grid, cpus, null, false);
-        }
+        if (availabilityIncreased) reconcileWaitingInputs(grid, cpus, null);
     }
 
     public @Nullable CraftingContinuationStatusSnapshot buildSnapshot(CraftingCPUCluster cpu) {
@@ -161,6 +137,7 @@ public final class CraftingContinuationTracker {
 
         CraftingCpuLogicAccessor logicAccessor = (CraftingCpuLogicAccessor) cpu.craftingLogic;
         ExecutingCraftingJob job = logicAccessor.getJob();
+        observeCpuJob(cpu, job);
         if (job == null) {
             return null;
         }
@@ -301,6 +278,7 @@ public final class CraftingContinuationTracker {
     ) {
         CraftingCpuLogicAccessor logicAccessor = (CraftingCpuLogicAccessor) cpu.craftingLogic;
         ExecutingCraftingJob job = logicAccessor.getJob();
+        observeCpuJob(cpu, job);
         if (job == null) {
             return null;
         }
@@ -372,11 +350,11 @@ public final class CraftingContinuationTracker {
 
     private boolean recordWaitingAvailability(
             CraftingCPUCluster cpu,
-            appeng.api.stacks.KeyCounter cachedInventory,
-            Set<UUID> liveCraftIds
+            appeng.api.stacks.KeyCounter cachedInventory
     ) {
         CraftingCpuLogicAccessor logicAccessor = (CraftingCpuLogicAccessor) cpu.craftingLogic;
         ExecutingCraftingJob job = logicAccessor.getJob();
+        observeCpuJob(cpu, job);
         if (job == null) {
             return false;
         }
@@ -389,7 +367,6 @@ public final class CraftingContinuationTracker {
             return false;
         }
 
-        liveCraftIds.add(craftId);
         Map<AEKey, Long> liveWaitingKeys = snapshotWaitingKeys(jobAccessor);
         if (liveWaitingKeys.isEmpty()) {
             observedAvailableWaitingStacks.remove(craftId);
@@ -409,15 +386,16 @@ public final class CraftingContinuationTracker {
                 : hasAvailabilityIncrease(previousAvailableWaitingStacks, currentAvailableWaitingStacks);
     }
 
-    private void retainLiveCrafts(Set<UUID> liveCraftIds) {
-        Set<UUID> safeLiveCraftIds = liveCraftIds == null ? Set.of() : Set.copyOf(liveCraftIds);
-        trackedJobs.keySet().removeIf(craftId -> !safeLiveCraftIds.contains(craftId));
-        CraftingContinuationSavedData.get(level).retainLiveCrafts(safeLiveCraftIds);
+    private void observeCpuJob(CraftingCPUCluster cpu, @Nullable ExecutingCraftingJob job) {
+        UUID current = job == null ? null : ((ExecutingCraftingJobAccessor) job).getLink().getCraftingID();
+        UUID completed = updateObservedJob(observedCpuJobs, cpu, current);
+        if (completed != null) clearCompletedJob(completed);
     }
 
-    private void retainObservedAvailability(Set<UUID> liveCraftIds) {
-        Set<UUID> safeLiveCraftIds = liveCraftIds == null ? Set.of() : Set.copyOf(liveCraftIds);
-        observedAvailableWaitingStacks.keySet().removeIf(craftId -> !safeLiveCraftIds.contains(craftId));
+    /** 只回收同一台已观察 CPU 确认结束或替换的作业；其它网格和暂时不可见的 CPU 不受影响。 */
+    static <C> @Nullable UUID updateObservedJob(Map<C, UUID> observed, C cpu, @Nullable UUID current) {
+        UUID previous = current == null ? observed.remove(cpu) : observed.put(cpu, current);
+        return previous != null && !previous.equals(current) ? previous : null;
     }
 
     private static Map<AEKey, Long> snapshotWaitingKeys(ExecutingCraftingJobAccessor jobAccessor) {

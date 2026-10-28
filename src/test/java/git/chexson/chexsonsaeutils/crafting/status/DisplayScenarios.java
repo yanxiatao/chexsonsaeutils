@@ -46,6 +46,7 @@ public final class DisplayScenarios {
     /** 执行本包的行为场景，保留各场景名称与状态隔离。 */
     public static void verify(java.nio.file.Path temporaryRoot) {
         org.junit.jupiter.api.Assertions.assertAll("git.chexson.chexsonsaeutils.crafting.status",
+                DisplayScenarios::continuationCleanupIsScopedToObservedCpuTransitions,
                 () -> CraftingAmountTextCases.verify(temporaryRoot),
                 () -> CraftingPreviewRowsCases.verify(temporaryRoot),
                 () -> EnhancedCraftingStatusFormattingStyleWiringCases.verify(temporaryRoot),
@@ -58,6 +59,30 @@ public final class DisplayScenarios {
                 () -> PlanSummaryBytesCases.verify(temporaryRoot),
                 () -> WideAmountConfirmLinesCases.verify(temporaryRoot)
         );
+    }
+
+    static void continuationCleanupIsScopedToObservedCpuTransitions() {
+        Object firstGridCpu = new Object();
+        Object secondGridCpu = new Object();
+        UUID firstJob = UUID.randomUUID();
+        UUID secondJob = UUID.randomUUID();
+        Map<Object, UUID> observed = new HashMap<>();
+        Map<UUID, String> details = new HashMap<>();
+        details.put(firstJob, "first grid");
+        details.put(secondJob, "second grid");
+        assertNull(CraftingContinuationTracker.updateObservedJob(observed, firstGridCpu, firstJob));
+        assertNull(CraftingContinuationTracker.updateObservedJob(observed, secondGridCpu, secondJob));
+        // 一张网格重建只重见自己的 CPU，不能把同世界其它网格或卸载 CPU 的记录删掉。
+        assertNull(CraftingContinuationTracker.updateObservedJob(observed, firstGridCpu, firstJob));
+        assertEquals(secondJob, observed.get(secondGridCpu));
+        UUID completed = CraftingContinuationTracker.updateObservedJob(observed, firstGridCpu, null);
+        assertEquals(firstJob, completed);
+        details.remove(completed);
+        assertEquals(Map.of(secondJob, "second grid"), details);
+        assertEquals(Map.of(secondGridCpu, secondJob), observed);
+        UUID replacement = UUID.randomUUID();
+        assertEquals(secondJob, CraftingContinuationTracker.updateObservedJob(observed, secondGridCpu, replacement));
+        assertEquals(replacement, observed.get(secondGridCpu));
     }
 
     /** 执行本包的按需度量，保留各场景名称与状态隔离。 */

@@ -1,10 +1,9 @@
 // 精确终端可选集成验证：使用仓库中真实 NeoEcoAE 与 LDLib SDK。
 gradle.afterProject { project ->
     if (project != project.rootProject) return
-    def jars = ["reference-sources/neoecoae-${project.neoecoae_version}.jar",
-                'reference-sources/ldlib2-neoforge-1.21.1-2.2.40-all.jar'].collect { project.file(it) }
-    jars.each { if (!it.isFile()) throw new GradleException("精确终端 SDK 验证缺少依赖：${it}") }
     project.ext.neoecoSdk = true
-    project.dependencies.add('testImplementation', project.files(jars))
+    [project.onlineMods.neoecoae, project.onlineMods.ldlib].each {
+        project.dependencies.add('testImplementation', it)
+    }
     project.sourceSets.test.java.srcDir(project.file('tools/integration-tests/terminalstorage/src'))
 }
