@@ -24,8 +24,10 @@ import git.chexson.chexsonsaeutils.bigint.PlanAmount;
 import git.chexson.chexsonsaeutils.bigint.WideCraftSnapshot;
 import git.chexson.chexsonsaeutils.bigint.WideCraftingInventory;
 import git.chexson.chexsonsaeutils.bigint.WideLedgerSnapshot;
+import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
 import git.chexson.chexsonsaeutils.crafting.hostcpu.ParallelCpuHost;
 import git.chexson.chexsonsaeutils.crafting.recursive.WideAmountCraftingPlan;
+import git.chexson.chexsonsaeutils.crafting.recursive.RecursiveCraftingPlan;
 import git.chexson.chexsonsaeutils.integration.hostbatch.ProviderBatchCapabilitiesFactoryImpl;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -56,13 +58,15 @@ final class ReliabilityScenarios {
             new Recipe(Items.CYAN_CANDLE), new Recipe(Items.BROWN_CANDLE),
             new Recipe(Items.GRAY_CANDLE), new Recipe(Items.LIME_CANDLE), new Recipe(Items.PINK_CANDLE));
     private static final Recipe RECIPE = RECIPES.getFirst();
+    private static final Recipe DOUBLE_RECIPE = new Recipe(Items.PURPLE_CANDLE, 2);
 
     static {
         PatternDetailsHelper.registerDecoder(new IPatternDetailsDecoder() {
             @Override public boolean isEncodedPattern(ItemStack stack) {
-                return RECIPES.stream().anyMatch(recipe -> stack.is(recipe.item));
+                return stack.is(DOUBLE_RECIPE.item) || RECIPES.stream().anyMatch(recipe -> stack.is(recipe.item));
             }
             @Override public IPatternDetails decodePattern(AEItemKey key, Level level) {
+                if (DOUBLE_RECIPE.getDefinition().equals(key)) return DOUBLE_RECIPE;
                 return RECIPES.stream().filter(recipe -> recipe.getDefinition().equals(key)).findFirst().orElse(null);
             }
         });
@@ -75,7 +79,14 @@ final class ReliabilityScenarios {
                 ReliabilityScenarios::ordinaryDeclaredReceiptFinishesAfterSettlingRetainedZeroTask,
                 ReliabilityScenarios::cancelledAndFailedSubmissionRefundsSurviveReload,
                 ReliabilityScenarios::recursiveRequesterRetriesExactRemainderAfterReload,
-                ReliabilityScenarios::zeroStockPartialSubmissionRetainsExternalDemand);
+                ReliabilityScenarios::zeroStockPartialSubmissionRetainsExternalDemand,
+                ReliabilityScenarios::fullStorageInitialReceiptsSurviveReloadWithoutDoubleExtraction,
+                ReliabilityScenarios::cancelledLinkStopsReceivingInitialMaterialsImmediately,
+                ReliabilityScenarios::recursiveRequesterDeclaredFinalOutputReturnsToCpu,
+                ReliabilityScenarios::recursiveInternalFinalReturnsDoNotCountAsNetDelivery,
+                ReliabilityScenarios::legacyNetworkFinalOutputRecoveryRetainsRejectedInventory,
+                ReliabilityScenarios::finiteLongMaxOrderReturnsRoundedSurplusAfterReload,
+                ReliabilityScenarios::legacyLongMaxRequesterBalanceMigratesOnlyOnce);
     }
 
     private static void pausedCancellationSettlesWideDebtAcrossReload() {
@@ -263,6 +274,258 @@ final class ReliabilityScenarios {
         assertTrue(lane.logic().isInventoryEmpty());
     }
 
+    private static void fullStorageInitialReceiptsSurviveReloadWithoutDoubleExtraction() {
+        var network = new Storage();
+        network.contents.put(MATERIAL, BigInteger.valueOf(3));
+        network.insertLimit = BigInteger.ZERO;
+        var cluster = cluster(network);
+        var used = new KeyCounter(); used.add(MATERIAL, 3);
+        var missing = new KeyCounter(); missing.add(MATERIAL, 6);
+        var plan = new CraftingPlan(new GenericStack(PRODUCT, 9), 0, true, false,
+                used, new KeyCounter(), missing, Map.of(RECIPE, 9L));
+        assertTrue(cluster.submitPartialJob(cluster.grid(), plan, null, IActionSource.empty(), 0).successful());
+        var lane = activeLane(cluster);
+        assertEquals(3, lane.logic().getBufferedAmount(MATERIAL));
+        assertEquals(BigInteger.valueOf(6), readJob(lane).initialItemsRemaining.amount(MATERIAL));
+        assertEquals(PlanAmount.ZERO, readJob(lane).waitingForExact(MATERIAL));
+        assertEquals(0, network.insert(MATERIAL, 6, Actionable.SIMULATE, IActionSource.empty()));
+
+        var index = new ParallelCpuWaitingIndex(); index.refreshLane(lane);
+        assertEquals(6, index.getRequestedAmount(MATERIAL), "初始缺口必须进入正常 CPU 接收索引");
+        var before = lane.writeToNBT(REGISTRIES);
+        assertEquals(6, index.insertIntoLanes(MATERIAL, 6, Actionable.SIMULATE));
+        assertEquals(before, lane.writeToNBT(REGISTRIES), "SIMULATE 不能改变库存、缺口或进度");
+        assertEquals(2, index.insertIntoLanes(MATERIAL, 2, Actionable.MODULATE));
+        assertEquals(5, lane.logic().getBufferedAmount(MATERIAL));
+        assertEquals(4, index.getRequestedAmount(MATERIAL));
+
+        var restored = ParallelCraftingLaneState.readFromNBT(cluster, lane.writeToNBT(REGISTRIES), REGISTRIES, 1);
+        index.rebuild(List.of(restored));
+        assertEquals(4, index.insertIntoLanes(MATERIAL, 6, Actionable.MODULATE));
+        assertEquals(9, restored.logic().getBufferedAmount(MATERIAL));
+        assertEquals(BigInteger.ZERO, readJob(restored).initialItemsRemaining.amount(MATERIAL));
+        assertEquals(PlanAmount.ZERO, readJob(restored).waitingForExact(MATERIAL), "补料不得冲销产物等待账");
+        assertEquals(0.0f, readJob(restored).timeTracker.getProgress(), "补料不得冒充成品进度");
+        assertEquals(0, index.getRequestedAmount(MATERIAL));
+        assertEquals(0, restored.insertIntoWaiting(MATERIAL, 1, Actionable.MODULATE));
+
+        network.contents.put(MATERIAL, BigInteger.valueOf(20));
+        network.insertLimit = MAX;
+        var provider = new ProductionProvider();
+        var energy = new Energy();
+        var service = new appeng.me.service.CraftingService(cluster.grid(), cluster.grid().getStorageService(), energy) {
+            @Override public Iterable<appeng.api.networking.crafting.ICraftingProvider> getProviders(IPatternDetails key) {
+                return List.of(provider);
+            }
+        };
+        for (int tick = 1; tick < 20 && restored.logic().hasJob(); tick++) {
+            tickAndReturn(restored, service, energy, provider, tick);
+        }
+        assertFalse(restored.logic().hasJob());
+        assertEquals(9, provider.consumed);
+        assertEquals(BigInteger.valueOf(9), network.amount(PRODUCT));
+        assertEquals(BigInteger.valueOf(20), network.amount(MATERIAL), "已直接收到的六枚不能再次从网络提取");
+        assertEquals(BigInteger.valueOf(3), network.extracted(MATERIAL));
+        assertTrue(restored.logic().isInventoryEmpty());
+    }
+
+    private static void cancelledLinkStopsReceivingInitialMaterialsImmediately() {
+        var cluster = cluster(new Storage());
+        var missing = new KeyCounter(); missing.add(MATERIAL, 3);
+        var plan = new CraftingPlan(new GenericStack(PRODUCT, 3), 0, true, false,
+                new KeyCounter(), new KeyCounter(), missing, Map.of(RECIPE, 3L));
+        assertTrue(cluster.submitPartialJob(cluster.grid(), plan, null, IActionSource.empty(), 0).successful());
+        var lane = activeLane(cluster);
+        lane.getLastLink().cancel();
+        assertFalse(readJob(lane).cancellationRequested, "模拟 requester 取消后、CPU 下一 tick 之前的窗口");
+        var index = new ParallelCpuWaitingIndex(); index.refreshLane(lane);
+        assertEquals(0, index.getRequestedAmount(MATERIAL));
+        assertEquals(0, lane.insertIntoWaiting(MATERIAL, 3, Actionable.SIMULATE));
+        assertEquals(0, lane.insertIntoWaiting(MATERIAL, 3, Actionable.MODULATE));
+        assertEquals(BigInteger.valueOf(3), readJob(lane).initialItemsRemaining.amount(MATERIAL));
+        assertEquals(0, lane.logic().getBufferedAmount(MATERIAL));
+    }
+
+    private static void recursiveRequesterDeclaredFinalOutputReturnsToCpu() {
+        var network = new Storage();
+        var cluster = cluster(network);
+        var lane = registeredLane(cluster);
+        var job = recursiveJob(lane, RECIPE, 4, 4);
+        job.tasks.get(RECIPE).consumeFirings(4);
+        var output = new WideKeyCounter(); output.add(PRODUCT, BigInteger.valueOf(4));
+        var planned = ParallelCraftingCpuLogic.reserveExpectedWaitingWide(job, output, new WideKeyCounter(), output);
+        assertFalse(job.link.isStandalone());
+        assertTrue(job.dyeableRecursivePlan);
+        assertTrue(planned.isEmpty(), "requester 的最终产物不能申报为直投网络");
+        assertEquals(PlanAmount.of(4), job.waitingForExact(PRODUCT));
+        load(lane, job, PRODUCT, BigInteger.ZERO);
+        var requester = new Requester();
+        attach((CraftingLink) lane.getLastLink(), requester);
+        assertEquals(BigInteger.valueOf(4), lane.logic().claimDeclaredOutput(PRODUCT, BigInteger.valueOf(4)));
+        assertEquals(PlanAmount.of(4), readJob(lane).finalOutputDeliveredAmount());
+        assertEquals(PlanAmount.ZERO, readJob(lane).exactRemainingAmount);
+        assertEquals(PlanAmount.ZERO, readJob(lane).waitingForExact(PRODUCT));
+        lane.logic().tickCraftingLogic(null, null, 1, null, null);
+        assertTrue(lane.logic().hasJob(), "requester 暂拒收时保留实物与作业");
+        assertEquals(4, lane.logic().getBufferedAmount(PRODUCT));
+        assertTrue(readJob(lane).completionRequested);
+        requester.limit = Long.MAX_VALUE;
+        lane.logic().tickCraftingLogic(null, null, 2, null, null);
+        assertFalse(lane.logic().hasJob());
+        assertEquals(BigInteger.valueOf(4), requester.delivered);
+        assertEquals(BigInteger.ZERO, network.amount(PRODUCT));
+        assertEquals(BigInteger.ZERO, network.extracted(PRODUCT), "新任务不应依赖收尾时再从网络取回终点");
+    }
+
+    private static void recursiveInternalFinalReturnsDoNotCountAsNetDelivery() {
+        var lane = registeredLane(cluster(new Storage()));
+        var job = recursiveJob(lane, RECIPE, 4, 4);
+        job.dyeableRecursiveInternalItems.add(PRODUCT, 1);
+        var output = new WideKeyCounter(); output.add(PRODUCT, BigInteger.valueOf(8));
+        assertTrue(ParallelCraftingCpuLogic.reserveExpectedWaitingWide(
+                job, output, new WideKeyCounter(), output).isEmpty());
+        var pool = new WideCraftingInventory(ignored -> {});
+        assertEquals(BigInteger.valueOf(8), ParallelCraftingCpuLogic.claimDeclaredIntermediateOutput(
+                job, pool, PRODUCT, BigInteger.valueOf(8), ignored -> {}));
+        assertEquals(BigInteger.valueOf(8), pool.amount(PRODUCT));
+        assertEquals(PlanAmount.ZERO, job.finalOutputDeliveredAmount(), "环内毛回流不是净订单交付");
+        assertEquals(PlanAmount.of(4), job.exactRemainingAmount);
+        assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(job), "内部环尚未运行完不能停止派发");
+        var restored = new ParallelExecutingCraftingJob(job.writeToNBT(REGISTRIES), REGISTRIES, ignored -> {}, lane);
+        assertEquals(PlanAmount.ZERO, restored.finalOutputDeliveredAmount());
+        assertEquals(PlanAmount.of(4), restored.exactRemainingAmount);
+        assertFalse(ParallelCraftingCpuLogic.isDyeableRecursiveJobComplete(restored));
+    }
+
+    private static void legacyNetworkFinalOutputRecoveryRetainsRejectedInventory() {
+        var network = new Storage();
+        network.contents.put(PRODUCT, BigInteger.valueOf(6));
+        var cluster = cluster(network);
+        var lane = registeredLane(cluster);
+        var job = recursiveJob(lane, RECIPE, 2, 4);
+        job.tasks.get(RECIPE).consumeFirings(2);
+        job.batchObligations.incur(RECIPE, BigInteger.TWO);
+        job.completionRequested = true;
+        job.requesterDeliveryRemaining = PlanAmount.of(4);
+        load(lane, job, PRODUCT, BigInteger.ZERO);
+        var requester = new Requester(); attach((CraftingLink) lane.getLastLink(), requester);
+        lane.logic().tickCraftingLogic(null, null, 1, null, null);
+        assertEquals(BigInteger.ZERO, network.extracted(PRODUCT), "清偿已有材料义务之前不能提网收尾");
+        assertEquals(BigInteger.TWO, readJob(lane).batchObligations.pendingFirings(RECIPE));
+        lane.logic().insertBuffered(MATERIAL, 2, Actionable.MODULATE);
+        lane.logic().tickCraftingLogic(null, null, 2, null, null);
+        assertFalse(readJob(lane).hasUnsettledBatchObligations());
+        assertEquals(4, lane.logic().getBufferedAmount(PRODUCT));
+        assertEquals(BigInteger.valueOf(2), network.amount(PRODUCT));
+        assertEquals(BigInteger.ZERO, requester.delivered);
+        assertEquals(BigInteger.valueOf(4), network.extracted(PRODUCT));
+
+        var restored = ParallelCraftingLaneState.readFromNBT(cluster, lane.writeToNBT(REGISTRIES), REGISTRIES, 3);
+        attach((CraftingLink) restored.getLastLink(), requester);
+        requester.limit = 2;
+        restored.logic().tickCraftingLogic(null, null, 3, null, null);
+        assertEquals(BigInteger.TWO, requester.delivered);
+        assertEquals(2, restored.logic().getBufferedAmount(PRODUCT));
+        assertEquals(PlanAmount.of(2), readJob(restored).requesterDeliveryRemaining);
+        requester.limit = 0;
+        restored.logic().tickCraftingLogic(null, null, 4, null, null);
+        assertEquals(BigInteger.valueOf(4), network.extracted(PRODUCT), "拒收后池内实物不能被重复从网络提取");
+        var resumed = ParallelCraftingLaneState.readFromNBT(cluster, restored.writeToNBT(REGISTRIES), REGISTRIES, 5);
+        CraftingLink link = (CraftingLink) resumed.getLastLink(); attach(link, requester);
+        requester.limit = Long.MAX_VALUE;
+        resumed.logic().tickCraftingLogic(null, null, 5, null, null);
+        assertFalse(resumed.logic().hasJob());
+        assertTrue(link.isDone());
+        assertEquals(BigInteger.valueOf(4), requester.delivered);
+        assertEquals(BigInteger.TWO, network.amount(PRODUCT));
+        assertEquals(BigInteger.valueOf(4), network.extracted(PRODUCT));
+        assertTrue(resumed.logic().isInventoryEmpty());
+    }
+
+    private static void finiteLongMaxOrderReturnsRoundedSurplusAfterReload() {
+        var network = new Storage();
+        var cluster = cluster(network);
+        var lane = registeredLane(cluster);
+        long firings = Long.MAX_VALUE / 2 + 1;
+        var job = recursiveJob(lane, DOUBLE_RECIPE, firings, Long.MAX_VALUE);
+        job.tasks.clear();
+        var gross = MAX.add(BigInteger.ONE);
+        assertEquals(gross, BigInteger.valueOf(firings).multiply(BigInteger.TWO));
+        assertEquals(PlanAmount.of(MAX), job.finalOutputOrderAmount());
+        var output = new WideKeyCounter(); output.add(PRODUCT, gross);
+        assertTrue(ParallelCraftingCpuLogic.reserveExpectedWaitingWide(
+                job, output, new WideKeyCounter(), output).isEmpty());
+        load(lane, job, PRODUCT, BigInteger.ZERO);
+        var requester = new Requester(); requester.requested = MAX;
+        attach((CraftingLink) lane.getLastLink(), requester);
+        assertEquals(gross, lane.logic().claimDeclaredOutput(PRODUCT, gross));
+        lane.logic().tickCraftingLogic(null, null, 1, null, null);
+        assertEquals(PlanAmount.of(MAX), readJob(lane).requesterDeliveryRemaining);
+        assertEquals(PlanAmount.of(gross), readJob(lane).finalOutputDeliveredAmount(),
+                "兼容的两个 NBT 交付字段不能相加两遍");
+        var restored = ParallelCraftingLaneState.readFromNBT(cluster, lane.writeToNBT(REGISTRIES), REGISTRIES, 2);
+        CraftingLink link = (CraftingLink) restored.getLastLink(); attach(link, requester);
+        assertEquals(PlanAmount.of(MAX), readJob(restored).finalOutputOrderAmount());
+        requester.limit = Long.MAX_VALUE;
+        restored.logic().tickCraftingLogic(null, null, 2, null, null);
+        assertFalse(restored.logic().hasJob());
+        assertTrue(link.isDone());
+        assertEquals(MAX, requester.delivered, "只交原始有限订单，不要求收货方再收配方余量");
+        assertEquals(BigInteger.ONE, network.amount(PRODUCT));
+        assertEquals(BigInteger.ZERO, network.extracted(PRODUCT));
+        assertTrue(restored.logic().isInventoryEmpty());
+    }
+
+    private static void legacyLongMaxRequesterBalanceMigratesOnlyOnce() {
+        var network = new Storage();
+        var cluster = cluster(network);
+        var lane = registeredLane(cluster);
+        var job = recursiveJob(lane, DOUBLE_RECIPE, Long.MAX_VALUE / 2 + 1, Long.MAX_VALUE);
+        job.tasks.clear();
+        job.addFinalOutputDelivered(PRODUCT, MAX.add(BigInteger.ONE));
+        job.recordFinalOutputAccepted(PlanAmount.of(MAX.add(BigInteger.ONE)));
+        job.completionRequested = true;
+        job.requesterDeliveryRemaining = PlanAmount.of(3); // 旧毛产量 MAX+1，已交 MAX-2。
+        var legacy = job.writeToNBT(REGISTRIES);
+        legacy.remove("exactFinalOutputAmount");
+        legacy.remove("exactRemainingAmount");
+        legacy.remove("exactFinalOutputDelivered");
+        load(lane, legacy, PRODUCT, BigInteger.valueOf(3));
+        assertEquals(PlanAmount.of(MAX), readJob(lane).finalOutputOrderAmount());
+        assertEquals(PlanAmount.of(2), readJob(lane).requesterDeliveryRemaining);
+        var restored = ParallelCraftingLaneState.readFromNBT(cluster, lane.writeToNBT(REGISTRIES), REGISTRIES, 1);
+        assertEquals(PlanAmount.of(2), readJob(restored).requesterDeliveryRemaining,
+                "新格式再次恢复不能重复减掉毛产量多出的一枚");
+        var requester = new Requester(); requester.requested = MAX; requester.delivered = MAX.subtract(BigInteger.TWO);
+        attach((CraftingLink) restored.getLastLink(), requester);
+        restored.logic().tickCraftingLogic(null, null, 1, null, null);
+        assertEquals(PlanAmount.of(2), readJob(restored).requesterDeliveryRemaining);
+        requester.limit = Long.MAX_VALUE;
+        restored.logic().tickCraftingLogic(null, null, 2, null, null);
+        assertFalse(restored.logic().hasJob());
+        assertEquals(MAX, requester.delivered);
+        assertEquals(BigInteger.ONE, network.amount(PRODUCT));
+        assertEquals(BigInteger.ZERO, network.extracted(PRODUCT));
+        assertTrue(restored.logic().isInventoryEmpty());
+    }
+
+    private static ParallelExecutingCraftingJob recursiveJob(
+            ParallelCraftingLaneState lane, Recipe recipe, long firings, long order) {
+        var base = new CraftingPlan(new GenericStack(PRODUCT, order), 0, false, false,
+                new KeyCounter(), new KeyCounter(), new KeyCounter(), Map.of(recipe, firings));
+        var plan = new RecursiveCraftingPlan(base, new KeyCounter(), new KeyCounter(), order,
+                Map.of(), Map.of(), WideLedgerSnapshot.empty(), WideCraftSnapshot.empty(),
+                Set.of(), Map.of(), PlanAmount.of(order));
+        var link = new CraftingLink(CraftingCpuHelper.generateLinkData(lane.laneId(), false, false), lane.linkCpu());
+        return new ParallelExecutingCraftingJob(plan, ignored -> {}, link, null);
+    }
+
+    private static ParallelExecutingCraftingJob readJob(ParallelCraftingLaneState lane) {
+        var tag = new CompoundTag(); lane.logic().writeToNBT(tag, REGISTRIES);
+        assertTrue(tag.contains("job"));
+        return new ParallelExecutingCraftingJob(tag.getCompound("job"), REGISTRIES, ignored -> {}, lane);
+    }
+
     private static void tickAndReturn(ParallelCraftingLaneState lane, appeng.me.service.CraftingService service,
             Energy energy, ProductionProvider provider, long tick) {
         lane.logic().tickCraftingLogic(energy, service, tick, null, null);
@@ -336,8 +599,13 @@ final class ReliabilityScenarios {
     }
 
     private static void load(ParallelCraftingLaneState lane, ParallelExecutingCraftingJob job, AEKey key, BigInteger amount) {
-        var tag = new CompoundTag(); tag.put("job", job.writeToNBT(REGISTRIES));
-        var pool = new WideCraftingInventory(ignored -> {}); pool.insertExact(key, amount, Actionable.MODULATE);
+        load(lane, job.writeToNBT(REGISTRIES), key, amount);
+    }
+
+    private static void load(ParallelCraftingLaneState lane, CompoundTag job, AEKey key, BigInteger amount) {
+        var tag = new CompoundTag(); tag.put("job", job);
+        var pool = new WideCraftingInventory(ignored -> {});
+        if (amount.signum() > 0) pool.insertExact(key, amount, Actionable.MODULATE);
         tag.put("inventory", pool.writeToNBT(REGISTRIES)); lane.logic().readFromNBT(tag, REGISTRIES);
     }
 
@@ -349,9 +617,12 @@ final class ReliabilityScenarios {
 
     private static final class Requester implements ICraftingRequester {
         long limit;
+        BigInteger requested;
         BigInteger delivered = BigInteger.ZERO;
         @Override public long insertCraftedItems(ICraftingLink link, AEKey key, long amount, Actionable mode) {
-            long accepted = Math.min(limit, amount);
+            BigInteger offered = BigInteger.valueOf(Math.min(limit, amount));
+            if (requested != null) offered = offered.min(requested.subtract(delivered).max(BigInteger.ZERO));
+            long accepted = offered.longValueExact();
             if (mode == Actionable.MODULATE) delivered = delivered.add(BigInteger.valueOf(accepted));
             return accepted;
         }
@@ -362,11 +633,16 @@ final class ReliabilityScenarios {
 
     private static final class Storage implements MEStorage {
         final Map<AEKey, BigInteger> contents = new HashMap<>();
+        final Map<AEKey, BigInteger> extractions = new HashMap<>();
         BigInteger insertLimit = MAX;
+        BigInteger extracted(AEKey key) { return extractions.getOrDefault(key, BigInteger.ZERO); }
         BigInteger amount(AEKey key) { return contents.getOrDefault(key, BigInteger.ZERO); }
         @Override public long extract(AEKey key, long amount, Actionable mode, IActionSource source) {
             var extracted = amount(key).min(BigInteger.valueOf(amount));
-            if (mode == Actionable.MODULATE) contents.put(key, amount(key).subtract(extracted));
+            if (mode == Actionable.MODULATE) {
+                contents.put(key, amount(key).subtract(extracted));
+                extractions.merge(key, extracted, BigInteger::add);
+            }
             return extracted.longValueExact();
         }
         @Override public long insert(AEKey key, long amount, Actionable mode, IActionSource source) {
@@ -379,7 +655,9 @@ final class ReliabilityScenarios {
 
     private static final class Recipe implements IPatternDetails {
         private final net.minecraft.world.item.Item item;
-        Recipe(net.minecraft.world.item.Item item) { this.item = item; }
+        private final long output;
+        Recipe(net.minecraft.world.item.Item item) { this(item, 1); }
+        Recipe(net.minecraft.world.item.Item item, long output) { this.item = item; this.output = output; }
         @Override public AEItemKey getDefinition() { return AEItemKey.of(item); }
         @Override public IInput[] getInputs() {
             return new IInput[] {new IInput() {
@@ -389,6 +667,6 @@ final class ReliabilityScenarios {
                 @Override public AEKey getRemainingKey(AEKey key) { return null; }
             }};
         }
-        @Override public List<GenericStack> getOutputs() { return List.of(new GenericStack(PRODUCT, 1)); }
+        @Override public List<GenericStack> getOutputs() { return List.of(new GenericStack(PRODUCT, output)); }
     }
 }

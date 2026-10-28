@@ -96,6 +96,7 @@ public final class RegistrationScenarios {
                     "ae2.menu.CraftConfirmMenuContinuationMixin",
                     "ae2.client.gui.CraftConfirmScreenContinuationMixin",
                     "ae2.crafting.CraftingServiceContinuationMixin",
+                    "ae2.crafting.CraftingCpuLogicContinuationLifecycleMixin",
                     "ae2.menu.CraftingCPUMenuContinuationMixin",
                     "ae2.client.gui.CraftingCPUScreenContinuationMixin",
                     "ae2.client.gui.CraftingStatusTableRendererContinuationMixin")) {
@@ -267,6 +268,8 @@ public final class RegistrationScenarios {
                     "ae2.menu.CraftingCPUMenuContinuationMixin", List.of(
                             "ae2.menu.CraftingCPUMenuAccessor",
                             "ae2.crafting.CraftingCpuLogicAccessor",
+                            "ae2.crafting.ExecutingCraftingJobAccessor"),
+                    "ae2.crafting.CraftingCpuLogicContinuationLifecycleMixin", List.of(
                             "ae2.crafting.ExecutingCraftingJobAccessor"));
             var keys = List.of(KEY_REPLACEMENT, KEY_CONTINUATION, KEY_DYEABLE, KEY_ENHANCED, KEY_PARALLEL);
             for (int mask = 0; mask < (1 << keys.size()); mask++) {

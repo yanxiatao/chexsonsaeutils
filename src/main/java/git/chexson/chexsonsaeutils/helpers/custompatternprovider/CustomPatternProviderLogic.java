@@ -665,11 +665,15 @@ public class CustomPatternProviderLogic extends PatternProviderLogic {
                 merged.grow((int) amount);
             }
             ((IItemHandlerModifiable) handler).setStackInSlot(slot, merged);
-            // 包括突破模式下会截断的 vanilla 容器：仅以读回的真实增量结算。
-            var writtenStack = handler.getStackInSlot(slot);
-            long written = itemKey.matches(writtenStack) ? Math.max(0, writtenStack.getCount() - before) : 0;
-            if (written < amount) {
-                this.addToSendList(itemKey, amount - written);
+            // 严格模式已预检有效容量，成功强写即完成交付。槽内快照不代表接受量：
+            // AE2 Condenser 等机器会在 setStackInSlot 中即时消耗输入，读回空槽不能补发。
+            // 突破模式仍保留原有截断补偿，避免 vanilla 容器截掉超出容量的部分。
+            if (pattern.isOverflowStacksAllowed()) {
+                var writtenStack = handler.getStackInSlot(slot);
+                long written = itemKey.matches(writtenStack) ? Math.max(0, writtenStack.getCount() - before) : 0;
+                if (written < amount) {
+                    this.addToSendList(itemKey, amount - written);
+                }
             }
         }
         for (var input : unmappedInputs) {

@@ -1,6 +1,7 @@
 package git.chexson.chexsonsaeutils.helpers.custompatternprovider;
 
 import appeng.api.config.Actionable;
+import appeng.api.config.CondenserOutput;
 import appeng.api.config.Settings;
 import appeng.api.config.YesNo;
 import appeng.api.networking.security.IActionSource;
@@ -8,20 +9,28 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
+import appeng.blockentity.misc.CondenserBlockEntity;
+import appeng.core.definitions.AEBlockEntities;
+import appeng.core.definitions.AEBlocks;
+import appeng.core.definitions.AEItems;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomPatternRegistration;
 import git.chexson.chexsonsaeutils.crafting.custompattern.CustomProcessingPattern;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.neoforged.neoforge.items.IItemHandler;
+import net.neoforged.neoforge.items.IItemHandlerModifiable;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import static git.chexson.chexsonsaeutils.helpers.custompatternprovider.ProviderTestSupport.REGISTRIES;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Material conservation across normal provider pushes, persistence, and removal. */
@@ -40,7 +49,9 @@ public final class ProvidersScenarios {
                 ProvidersScenarios::repeatedMappingCannotOverflowAnIntegerStack,
                 ProvidersScenarios::automaticInputCannotOccupyAnExplicitSlotFirst,
                 ProvidersScenarios::automaticAndExplicitSameInputRetainTheRemainder,
+                ProvidersScenarios::strictMappedInputConsumedByCondenserIsNotReplayed,
                 ProvidersScenarios::clampedOverflowAndLongAutomaticInputRetainEveryItem,
+                ProvidersScenarios::overflowKeepsSupportedOverstacksAndRejectedWrites,
                 ProvidersScenarios::reloadAndRepeatedReadDropEachHeldItemOnce,
                 ProvidersScenarios::reloadThenDeliverLeavesNoParentGhostInventory);
     }
@@ -130,6 +141,39 @@ public final class ProvidersScenarios {
         assertEquals(1, queued(host.save(), DIAMOND));
     }
 
+    private static void strictMappedInputConsumedByCondenserIsNotReplayed() {
+        var condenser = new CondenserBlockEntity(AEBlockEntities.CONDENSER.get(), BlockPos.ZERO,
+                AEBlocks.CONDENSER.block().defaultBlockState());
+        // Real internal slot order: input, output, storage component.
+        condenser.getInternalInventory().setItemDirect(2, AEItems.CELL_COMPONENT_1K.stack());
+        condenser.getConfigManager().putSetting(Settings.CONDENSER_OUTPUT, CondenserOutput.MATTER_BALLS);
+        assertEquals(256.0, condenser.getRequiredPower(), "use the default AE2 matter ball recipe");
+        assertTrue(condenser.getStorage() >= 1024.0);
+
+        // This is the real capability handler registered by AE2 for its condenser.
+        var machine = condenser.getExternalInv().toItemHandler();
+        assertInstanceOf(IItemHandlerModifiable.class, machine);
+        assertTrue(machine.getStackInSlot(0).isEmpty());
+        var host = host(machine);
+        var matterBall = AEItemKey.of(AEItems.MATTER_BALL.stack());
+        var inputs = List.of(new GenericStack(COBBLESTONE, 64), new GenericStack(COBBLESTONE, 192));
+        var pattern = pattern(host, inputs, List.of(new GenericStack(matterBall, 1)), new int[]{0, -1}, false);
+        assertFalse(pattern.isOverflowStacksAllowed());
+
+        for (int execution = 0; execution < 4; execution++) {
+            assertTrue(host.logic.pushPattern(pattern, holder(inputs)));
+            assertFalse(host.logic.isBusy());
+        }
+
+        var output = machine.getStackInSlot(1);
+        assertTrue(matterBall.matches(output));
+        double accountedMaterial = condenser.getStoredPower() + output.getCount() * condenser.getRequiredPower();
+        assertAll(
+                () -> assertEquals(4, output.getCount(), "four paid executions must create four matter balls"),
+                () -> assertEquals(1024.0, accountedMaterial,
+                        "the provider received only 4 * 256 inputs; consumed mapped inputs cannot be resent"));
+    }
+
     private static void clampedOverflowAndLongAutomaticInputRetainEveryItem() {
         var clampingMachine = new ItemStackHandler(1) {
             @Override public void setStackInSlot(int slot, ItemStack stack) {
@@ -150,6 +194,27 @@ public final class ProvidersScenarios {
         var automaticPattern = pattern(automaticHost, automaticInputs, new int[]{-1}, false);
         assertTrue(automaticHost.logic.pushPattern(automaticPattern, holder(automaticInputs)));
         assertEquals(amount, automaticMachine.getStackInSlot(0).getCount() + queued(automaticHost.save(), IRON));
+    }
+
+    private static void overflowKeepsSupportedOverstacksAndRejectedWrites() {
+        var inputs = List.of(new GenericStack(DIAMOND, 80));
+        var machine = new ItemStackHandler(1);
+        var host = host(machine);
+        var pattern = pattern(host, inputs, new int[]{0}, true);
+        assertTrue(host.logic.pushPattern(pattern, holder(inputs)));
+        assertEquals(80, machine.getStackInSlot(0).getCount(), "a supported forced overstack must stay intact");
+        assertEquals(0, queued(host.save(), DIAMOND));
+
+        var rejectingMachine = new ItemStackHandler(1) {
+            @Override public void setStackInSlot(int slot, ItemStack stack) {}
+            @Override public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) { return stack; }
+        };
+        var rejectingHost = host(rejectingMachine);
+        var rejectedPattern = pattern(rejectingHost, inputs, new int[]{0}, true);
+        assertTrue(rejectingHost.logic.pushPattern(rejectedPattern, holder(inputs)));
+        assertTrue(rejectingMachine.getStackInSlot(0).isEmpty());
+        assertTrue(rejectingHost.logic.isBusy());
+        assertEquals(80, queued(rejectingHost.save(), DIAMOND), "a rejected overflow write must retain every input");
     }
 
     private static void reloadAndRepeatedReadDropEachHeldItemOnce() {
@@ -207,14 +272,19 @@ public final class ProvidersScenarios {
         return host;
     }
 
-    private static ProviderTestSupport.Host host(ItemStackHandler machine) {
+    private static ProviderTestSupport.Host host(IItemHandler machine) {
         return ProviderTestSupport.Host.custom(machine, new ProviderTestSupport.BoundedStorage(10, Long.MAX_VALUE));
     }
 
     private static CustomProcessingPattern pattern(ProviderTestSupport.Host host, List<GenericStack> inputs,
             int[] mapping, boolean overflow) {
+        return pattern(host, inputs, List.of(new GenericStack(IRON, 1)), mapping, overflow);
+    }
+
+    private static CustomProcessingPattern pattern(ProviderTestSupport.Host host, List<GenericStack> inputs,
+            List<GenericStack> outputs, int[] mapping, boolean overflow) {
         var stack = new ItemStack(CustomPatternRegistration.CUSTOM_PATTERN_ITEM.get());
-        CustomProcessingPattern.encode(stack, inputs, List.of(new GenericStack(IRON, 1)), mapping, new int[0], overflow);
+        CustomProcessingPattern.encode(stack, inputs, outputs, mapping, new int[0], overflow);
         host.logic.getPatternInv().setItemDirect(0, stack);
         host.logic.updatePatterns();
         // AE2's global decoder requires a live Level. This fixture has no world, so register

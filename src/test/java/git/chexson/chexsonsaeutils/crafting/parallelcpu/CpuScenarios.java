@@ -5548,8 +5548,12 @@ public final class CpuScenarios {
 
             assertEquals(8L, logic.getWaitingFor(DECLARED),
                     "夹具前提：挂账真挂在样板申报的那一枚上");
-            assertEquals(0L, logic.getWaitingFor(IN_POOL),
-                    "夹具前提：交回来的那一枚落在另一个桶里（这一条改前改后同绿）");
+            var rawWaiting = new KeyCounter();
+            for (var entry : logic.getWaitingStacks()) rawWaiting.add(entry.getKey(), entry.getLongValue());
+            assertEquals(0L, rawWaiting.get(IN_POOL),
+                    "底层 AE2 计数器仍按主键引用分桶，交货实例直接读取不到申报实例");
+            assertEquals(8L, logic.getWaitingFor(IN_POOL),
+                    "CPU 接收读口必须与实收口一样解析等价键，返回真实等待量");
 
             assertEquals(8L, logic.insert(IN_POOL, 8L, Actionable.SIMULATE),
                     "实物回到账口必须认这笔回补：改前问账按交来的那一枚裸读 ⇒ EMPTY ⇒ 一枚都不收");

@@ -1,19 +1,29 @@
 package git.chexson.chexsonsaeutils.crafting.status;
 
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.config.Actionable;
 import appeng.api.stacks.*;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AmountFormat;
 import appeng.core.localization.GuiText;
+import appeng.blockentity.crafting.CraftingBlockEntity;
+import appeng.core.definitions.AEBlockEntities;
+import appeng.core.definitions.AEBlocks;
 import appeng.crafting.CraftingPlan;
+import appeng.crafting.execution.CraftingCpuHelper;
+import appeng.crafting.inv.ListCraftingInventory;
+import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.menu.me.crafting.CraftingPlanSummary;
 import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import git.chexson.chexsonsaeutils.bigint.*;
 import git.chexson.chexsonsaeutils.bigint.WideKeyCounter;
 import git.chexson.chexsonsaeutils.bigint.WideLedgerSnapshot;
 import git.chexson.chexsonsaeutils.config.ChexsonsaeutilsCompatibilityConfig;
+import git.chexson.chexsonsaeutils.crafting.contract.CraftingContinuationWaitingBranch;
+import git.chexson.chexsonsaeutils.crafting.contract.CraftingContinuationWaitingDetail;
+import git.chexson.chexsonsaeutils.crafting.persistence.CraftingContinuationSavedData;
 import git.chexson.chexsonsaeutils.crafting.recursive.RecursiveCraftingPlan;
 import git.chexson.chexsonsaeutils.crafting.recursive.WideAmountCraftingPlan;
 import git.chexson.chexsonsaeutils.crafting.solve.FakePlanGrid;
@@ -24,11 +34,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.Fluids;
@@ -47,6 +60,7 @@ public final class DisplayScenarios {
     public static void verify(java.nio.file.Path temporaryRoot) {
         org.junit.jupiter.api.Assertions.assertAll("git.chexson.chexsonsaeutils.crafting.status",
                 DisplayScenarios::continuationCleanupIsScopedToObservedCpuTransitions,
+                ContinuationLifecycleCases::verify,
                 () -> CraftingAmountTextCases.verify(temporaryRoot),
                 () -> CraftingPreviewRowsCases.verify(temporaryRoot),
                 () -> EnhancedCraftingStatusFormattingStyleWiringCases.verify(temporaryRoot),
@@ -83,6 +97,190 @@ public final class DisplayScenarios {
         UUID replacement = UUID.randomUUID();
         assertEquals(secondJob, CraftingContinuationTracker.updateObservedJob(observed, secondGridCpu, replacement));
         assertEquals(replacement, observed.get(secondGridCpu));
+    }
+
+    /** 走已启用 Mixin 的原生 AE2 生命周期，不能用手工移除 Map 代替 CPU 结束回调。 */
+    private static final class ContinuationLifecycleCases {
+        private record CpuFixture(CraftingCPUCluster cpu, CraftingBlockEntity core) {}
+
+        static void verify() {
+            assertAll("ContinuationLifecycleCases",
+                    ContinuationLifecycleCases::nativeCompletionAndCancellationRemoveOnlyFinishedJob,
+                    ContinuationLifecycleCases::destroyedCpuClearsRecordsWithoutAnotherObservation,
+                    ContinuationLifecycleCases::chunkUnloadPreservesRecordsAndReloadedCancellationCleansThem,
+                    ContinuationLifecycleCases::failedFinishKeepsRecordsUntilJobIsActuallyCleared,
+                    ContinuationLifecycleCases::untrackedCpuWithoutCoreCanStillBeCancelled);
+        }
+
+        static void nativeCompletionAndCancellationRemoveOnlyFinishedJob() throws Exception {
+            for (boolean success : new boolean[]{true, false}) {
+                CraftingContinuationTracker.clearAll();
+                try {
+                    var data = new CraftingContinuationSavedData();
+                    var tracker = new CraftingContinuationTracker(data);
+                    UUID endedId = UUID.randomUUID();
+                    UUID otherGridId = UUID.randomUUID();
+                    tracker.trackJob(detail(endedId));
+                    tracker.trackJob(detail(otherGridId));
+                    var ended = cpu(endedId);
+                    var otherGrid = cpu(otherGridId);
+                    var link = ended.cpu().craftingLogic.getLastLink();
+                    data.setDirty(false);
+                    if (success) {
+                        ended.cpu().craftingLogic.insert(AEItemKey.of(Items.PAPER), 1, Actionable.MODULATE);
+                        assertFalse(link.isCanceled());
+                    } else {
+                        ended.cpu().cancelJob();
+                        assertTrue(link.isCanceled());
+                    }
+                    assertFalse(ended.cpu().craftingLogic.hasJob());
+                    assertTrue(otherGrid.cpu().craftingLogic.hasJob());
+                    assertTrue(data.isDirty(), "作业清理必须标记 SavedData，才能从下一次存档中消失");
+                    assertEquals(Map.of(otherGridId, detail(otherGridId)), data.snapshotWaitingDetails());
+                    assertEquals(data.snapshotWaitingDetails(), roundTrip(data).snapshotWaitingDetails());
+                    assertEquals(Set.of(otherGridId), trackedIds(tracker));
+                } finally {
+                    CraftingContinuationTracker.clearAll();
+                }
+            }
+        }
+
+        static void destroyedCpuClearsRecordsWithoutAnotherObservation() throws Exception {
+            CraftingContinuationTracker.clearAll();
+            try {
+                var data = new CraftingContinuationSavedData();
+                var tracker = new CraftingContinuationTracker(data);
+                UUID destroyedId = UUID.randomUUID();
+                UUID otherGridId = UUID.randomUUID();
+                tracker.trackJob(detail(destroyedId));
+                tracker.trackJob(detail(otherGridId));
+                var destroyed = cpu(destroyedId);
+                // destroy -> blockEntity.updateStatus(null) -> breakCluster -> cancelJob。
+                // 不打开菜单、不执行下一次 tracker tick，模拟 CPU 已从服务集合中移走。
+                destroyed.cpu().destroy();
+                assertTrue(destroyed.cpu().isDestroyed());
+                assertFalse(destroyed.cpu().craftingLogic.hasJob());
+                assertEquals(Set.of(otherGridId), trackedIds(tracker));
+                assertEquals(Map.of(otherGridId, detail(otherGridId)), roundTrip(data).snapshotWaitingDetails());
+            } finally {
+                CraftingContinuationTracker.clearAll();
+            }
+        }
+
+        static void chunkUnloadPreservesRecordsAndReloadedCancellationCleansThem() throws Exception {
+            CraftingContinuationTracker.clearAll();
+            try {
+                var data = new CraftingContinuationSavedData();
+                var tracker = new CraftingContinuationTracker(data);
+                UUID unloadedId = UUID.randomUUID();
+                UUID otherGridId = UUID.randomUUID();
+                tracker.trackJob(detail(unloadedId));
+                tracker.trackJob(detail(otherGridId));
+                var unloaded = cpu(unloadedId);
+                unloaded.core().onChunkUnloaded();
+                assertTrue(unloaded.cpu().craftingLogic.hasJob(), "卸载节点不是取消合成");
+                assertFalse(unloaded.cpu().craftingLogic.getLastLink().isCanceled());
+                assertEquals(Set.of(unloadedId, otherGridId), trackedIds(tracker));
+                CraftingContinuationTracker.clearAll();
+                var restoredData = roundTrip(data);
+                assertEquals(data.snapshotWaitingDetails(), restoredData.snapshotWaitingDetails());
+                var restoredTracker = new CraftingContinuationTracker(restoredData);
+                // 重建索引后、尚未观察任何 CPU 时，也必须能按已恢复的 ID 清理。
+                unloaded.cpu().cancelJob();
+                assertEquals(Set.of(otherGridId), trackedIds(restoredTracker));
+                assertEquals(Map.of(otherGridId, detail(otherGridId)), roundTrip(restoredData).snapshotWaitingDetails());
+                assertEquals(Set.of(unloadedId, otherGridId), data.snapshotWaitingDetails().keySet(),
+                        "clearAll 只释放旧内存索引，不能删除旧世界存档");
+            } finally {
+                CraftingContinuationTracker.clearAll();
+            }
+        }
+
+        static void failedFinishKeepsRecordsUntilJobIsActuallyCleared() throws Exception {
+            CraftingContinuationTracker.clearAll();
+            try {
+                var data = new CraftingContinuationSavedData();
+                var tracker = new CraftingContinuationTracker(data);
+                UUID craftId = UUID.randomUUID();
+                tracker.trackJob(detail(craftId));
+                var fixture = cpu(craftId);
+                java.util.function.Consumer<AEKey> failedListener = ignored -> {
+                    throw new IllegalStateException("finish notification failed");
+                };
+                fixture.cpu().craftingLogic.addListener(failedListener);
+                assertThrows(IllegalStateException.class, fixture.cpu()::cancelJob);
+                assertTrue(fixture.cpu().craftingLogic.hasJob());
+                assertEquals(Map.of(craftId, detail(craftId)), data.snapshotWaitingDetails());
+                assertEquals(Set.of(craftId), trackedIds(tracker));
+                fixture.cpu().craftingLogic.removeListener(failedListener);
+                fixture.cpu().cancelJob();
+                assertFalse(fixture.cpu().craftingLogic.hasJob());
+                assertTrue(data.snapshotWaitingDetails().isEmpty());
+                assertTrue(trackedIds(tracker).isEmpty());
+            } finally {
+                CraftingContinuationTracker.clearAll();
+            }
+        }
+
+        static void untrackedCpuWithoutCoreCanStillBeCancelled() {
+            CraftingContinuationTracker.clearAll();
+            try {
+                var cpu = new CraftingCPUCluster(BlockPos.ZERO, BlockPos.ZERO);
+                loadJob(cpu, UUID.randomUUID());
+                assertDoesNotThrow(cpu::cancelJob);
+                assertFalse(cpu.craftingLogic.hasJob());
+            } finally {
+                CraftingContinuationTracker.clearAll();
+            }
+        }
+
+        private static CraftingContinuationWaitingDetail detail(UUID craftId) {
+            String paper = CraftingContinuationTracker.encodeKeyForSync(AEItemKey.of(Items.PAPER));
+            return new CraftingContinuationWaitingDetail(craftId, paper, 1,
+                    List.of(new CraftingContinuationWaitingBranch("waiting", 0, Map.of(paper, 1L))), List.of());
+        }
+
+        private static CpuFixture cpu(UUID craftId) throws Exception {
+            var cpu = new CraftingCPUCluster(BlockPos.ZERO, BlockPos.ZERO);
+            var core = new CraftingBlockEntity(AEBlockEntities.CRAFTING_UNIT.get(), BlockPos.ZERO,
+                    AEBlocks.CRAFTING_UNIT.block().defaultBlockState());
+            var addBlock = CraftingCPUCluster.class.getDeclaredMethod("addBlockEntity", CraftingBlockEntity.class);
+            addBlock.setAccessible(true);
+            addBlock.invoke(cpu, core);
+            core.updateStatus(cpu);
+            loadJob(cpu, craftId);
+            return new CpuFixture(cpu, core);
+        }
+
+        private static void loadJob(CraftingCPUCluster cpu, UUID craftId) {
+            var registries = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
+            var paper = AEItemKey.of(Items.PAPER);
+            var waiting = new ListCraftingInventory(ignored -> {});
+            waiting.insert(paper, 1, Actionable.MODULATE);
+            var jobTag = new CompoundTag();
+            jobTag.put("link", CraftingCpuHelper.generateLinkData(craftId, true, false));
+            jobTag.put("finalOutput", GenericStack.writeTag(registries, new GenericStack(paper, 1)));
+            jobTag.putLong("remainingAmount", 1);
+            jobTag.put("waitingFor", waiting.writeToNBT(registries));
+            var cpuTag = new CompoundTag();
+            cpuTag.put("job", jobTag);
+            cpu.craftingLogic.readFromNBT(cpuTag, registries);
+            assertTrue(cpu.craftingLogic.hasJob());
+        }
+
+        private static CraftingContinuationSavedData roundTrip(CraftingContinuationSavedData data) throws Exception {
+            var registries = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
+            var read = CraftingContinuationSavedData.class.getDeclaredMethod("read", CompoundTag.class,
+                    HolderLookup.Provider.class);
+            read.setAccessible(true);
+            return (CraftingContinuationSavedData) read.invoke(null, data.save(new CompoundTag(), registries), registries);
+        }
+
+        private static Set<?> trackedIds(CraftingContinuationTracker tracker) throws Exception {
+            var field = CraftingContinuationTracker.class.getDeclaredField("trackedJobs");
+            field.setAccessible(true);
+            return Set.copyOf(((Map<?, ?>) field.get(tracker)).keySet());
+        }
     }
 
     /** 执行本包的按需度量，保留各场景名称与状态隔离。 */

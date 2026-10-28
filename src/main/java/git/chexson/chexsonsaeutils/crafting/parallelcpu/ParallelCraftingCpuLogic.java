@@ -2864,6 +2864,10 @@ final class ParallelCraftingCpuLogic {
      * 按键类型与本体族识别替代输入；只决定实物回收去向，不改变份额或执行发数。
      */
     private static boolean requiresOutputInCpu(ParallelExecutingCraftingJob job, AEKey what) {
+        // 有收货方的终点必须回 CPU 再交付，不能仅凭直投网络回执结单。
+        if (job.isFinalOutputKey(what) && job.link != null && !job.link.isStandalone()) {
+            return true;
+        }
         if (isDyeableRecursiveInternalItem(job, what)) {
             return true;
         }
@@ -3646,9 +3650,9 @@ final class ParallelCraftingCpuLogic {
             BigInteger extracted = git.chexson.chexsonsaeutils.api.storage.ExactStorageExtraction.extract(
                     storage, key, wanted, Actionable.MODULATE, source);
             if (extracted.signum() > 0) {
+                job.initialItemsRemaining.extractExact(key, extracted, Actionable.MODULATE);
                 if (pool instanceof WideCraftingInventory wide) wide.insertExact(key, extracted, Actionable.MODULATE);
                 else pool.insert(key, extracted.longValueExact(), Actionable.MODULATE);
-                job.initialItemsRemaining.extractExact(key, extracted, Actionable.MODULATE);
                 total = total.add(extracted);
             }
             if (extracted.compareTo(wanted) < 0 || remaining.equals(extracted)) {
@@ -4693,7 +4697,8 @@ final class ParallelCraftingCpuLogic {
     static BigInteger claimDeclaredIntermediateOutput(ParallelExecutingCraftingJob job,
             WideCraftingInventory pool, AEKey what, BigInteger available, Consumer<AEKey> changed) {
         if (available.signum() <= 0 || (what.matches(job.finalOutput)
-                && !isDyeableRecursiveInternalItem(job, what))) {
+                && !isDyeableRecursiveInternalItem(job, what)
+                && !(job.dyeableRecursivePlan && job.link != null && !job.link.isStandalone()))) {
             return BigInteger.ZERO;
         }
         return claimDeclaredBufferedOutput(job, pool, what, available, changed);
@@ -4712,6 +4717,11 @@ final class ParallelCraftingCpuLogic {
         waiting.extractExact(owedKey, accepted, Actionable.MODULATE);
         job.accountReturned.add(what, accepted);
         job.timeTracker.decrementItems(PlanAmount.of(accepted), what.getType());
+        if (job.dyeableRecursivePlan && job.isFinalOutputKey(what)
+                && !isDyeableRecursiveInternalItem(job, what)) {
+            job.addFinalOutputDelivered(what, accepted);
+            job.recordFinalOutputAccepted(PlanAmount.of(accepted));
+        }
         changed.accept(what);
         // Useless 扣完真实队列并送达终局后，由正常 tick 收尾，避免交付回调内重入 finishJob。
         return accepted;
@@ -4744,9 +4754,35 @@ final class ParallelCraftingCpuLogic {
             long amount,
             Actionable type
     ) {
-        if (what == null || job == null || routingStandaloneOutput) {
+        if (what == null || amount <= 0L || job == null || routingStandaloneOutput) {
             return InsertResult.EMPTY;
         }
+
+        long initial = insertInitialItems(what, amount, type);
+        InsertResult output = insertExpectedOutput(what, amount - initial, type);
+        return new InsertResult(initial + output.insertedAmount(), initial + output.accountedAmount());
+    }
+
+    /** 外部补料只销初始缺口，不冒充已派发产物，也不推进产出计时或根订单进度。 */
+    private long insertInitialItems(AEKey what, long amount, Actionable mode) {
+        if (!acceptsInitialItems()) return 0L;
+        AEKey owedKey = ParallelBatchExtraction.resolvePoolKey(job.initialItemsRemaining, what);
+        long accepted = job.initialItemsRemaining.extract(owedKey, amount, Actionable.SIMULATE);
+        if (accepted > 0L && mode == Actionable.MODULATE) {
+            // 先销缺口再通知库存变化，索引与后续网络预取都立即看到剩余真值。
+            job.initialItemsRemaining.extract(owedKey, accepted, Actionable.MODULATE);
+            inventory.insert(what, accepted, Actionable.MODULATE);
+        }
+        return accepted;
+    }
+
+    private boolean acceptsInitialItems() {
+        return job != null && !job.cancellationRequested && !job.completionRequested
+                && (job.link == null || !job.link.isCanceled());
+    }
+
+    private InsertResult insertExpectedOutput(AEKey what, long amount, Actionable type) {
+        if (job == null || amount <= 0L) return InsertResult.EMPTY;
 
         AEKey owedKey = ParallelBatchExtraction.resolvePoolKey(job.waitingFor, what);
         long waitingFor = job.waitingFor.extract(owedKey, amount, Actionable.SIMULATE);
@@ -4889,6 +4925,7 @@ final class ParallelCraftingCpuLogic {
             return;
         }
         job.remainingAmount = 0L;
+        if (job.exactRemainingAmount != null) job.exactRemainingAmount = PlanAmount.ZERO;
         finishJob(true);
     }
 
@@ -5082,6 +5119,22 @@ final class ParallelCraftingCpuLogic {
             long offer = finishedJob.requesterDeliveryRemaining.exactValue()
                     .min(WideCeilings.LONG_ACCOUNT).longValueExact();
             long available = inventory.extract(poolKey, offer, Actionable.SIMULATE);
+            if (available <= 0 && finishedJob.completionRequested) {
+                // 旧作业可能已把终点直投网络。只在收尾且池为空时取回真实存量；
+                // requester 拒收的实物留在池内，下一 tick/重载后不会重复提取。
+                var grid = lane.cluster().grid();
+                if (grid != null) {
+                    BigInteger recovered = git.chexson.chexsonsaeutils.api.storage.ExactStorageExtraction.extract(
+                            grid.getStorageService().getInventory(), finishedJob.finalOutput.what(),
+                            BigInteger.valueOf(offer), Actionable.MODULATE, lane.cluster().source());
+                    if (recovered.signum() > 0) {
+                        ((WideCraftingInventory) inventory).insertExact(
+                                finishedJob.finalOutput.what(), recovered, Actionable.MODULATE);
+                        poolKey = ParallelBatchExtraction.resolvePoolKey(inventory, finishedJob.finalOutput.what());
+                        available = inventory.extract(poolKey, offer, Actionable.SIMULATE);
+                    }
+                }
+            }
             if (available <= 0) return false;
             long accepted = Math.max(0L, Math.min(available,
                     finishedJob.link.insert(poolKey, available, Actionable.MODULATE)));
@@ -5319,14 +5372,19 @@ final class ParallelCraftingCpuLogic {
         if (template == null || job == null) {
             return 0L;
         }
-        return job.waitingFor.extract(template, Long.MAX_VALUE, Actionable.SIMULATE);
+        AEKey outputKey = ParallelBatchExtraction.resolvePoolKey(job.waitingFor, template);
+        long output = job.waitingFor.extract(outputKey, Long.MAX_VALUE, Actionable.SIMULATE);
+        if (!acceptsInitialItems() || output == Long.MAX_VALUE) return output;
+        AEKey initialKey = ParallelBatchExtraction.resolvePoolKey(job.initialItemsRemaining, template);
+        return output + job.initialItemsRemaining.extract(
+                initialKey, Long.MAX_VALUE - output, Actionable.SIMULATE);
     }
 
     void getAllWaitingFor(Set<AEKey> waitingFor) {
         if (job == null || waitingFor == null) {
             return;
         }
-        for (var entry : job.waitingFor.list) {
+        for (var entry : getWaitingStacks()) {
             waitingFor.add(entry.getKey());
         }
     }
@@ -5335,6 +5393,7 @@ final class ParallelCraftingCpuLogic {
         if (job == null) {
             return false;
         }
+        if (acceptsInitialItems() && !job.initialItemsRemaining.list.isEmpty()) return true;
         for (var entry : job.waitingFor.list) {
             if (entry.getKey() != null && entry.getLongValue() > 0L) {
                 return true;
@@ -5362,7 +5421,17 @@ final class ParallelCraftingCpuLogic {
     }
 
     Iterable<it.unimi.dsi.fastutil.objects.Object2LongMap.Entry<AEKey>> getWaitingStacks() {
-        return job == null ? java.util.List.of() : job.waitingFor.list;
+        if (job == null) return java.util.List.of();
+        if (!acceptsInitialItems() || job.initialItemsRemaining.list.isEmpty()) return job.waitingFor.list;
+        // 两本账只在接收索引边界合并；不改变 waitingFor 的产出语义。
+        var totals = new java.util.HashMap<AEKey, BigInteger>();
+        for (var entry : job.waitingFor.list)
+            mergeExact(totals, entry.getKey(), WideCraftingInventory.amount(job.waitingFor, entry.getKey()));
+        for (var entry : job.initialItemsRemaining.list)
+            mergeExact(totals, entry.getKey(), job.initialItemsRemaining.amount(entry.getKey()));
+        var snapshot = new KeyCounter();
+        writeSaturated(snapshot, totals);
+        return snapshot;
     }
 
     void getAllItems(KeyCounter out) {
@@ -5401,6 +5470,10 @@ final class ParallelCraftingCpuLogic {
             mergeExact(totals, entry.getKey(),
                     WideCraftingInventory.amount(job.waitingFor, entry.getKey()));
         }
+        if (!job.cancellationRequested && !job.completionRequested) {
+            for (var entry : job.initialItemsRemaining.list)
+                mergeExact(totals, entry.getKey(), job.initialItemsRemaining.amount(entry.getKey()));
+        }
         for (var task : job.tasks.entrySet()) {
             for (var output : task.getKey().getOutputs()) {
                 // 状态栏读数：份数与单发产出先按精确值相乘，出口统一饱和，
@@ -5432,6 +5505,10 @@ final class ParallelCraftingCpuLogic {
         if (job != null) {
             for (var entry : job.waitingFor.list)
                 mergeExact(active, entry.getKey(), WideCraftingInventory.amount(job.waitingFor, entry.getKey()));
+            if (!job.cancellationRequested && !job.completionRequested) {
+                for (var entry : job.initialItemsRemaining.list)
+                    mergeExact(pending, entry.getKey(), job.initialItemsRemaining.amount(entry.getKey()));
+            }
             for (var task : job.tasks.entrySet()) for (var output : task.getKey().getOutputs())
                 mergeExact(pending, output.what(), PlanAmount.of(output.amount())
                         .multiply(task.getValue().exactRemaining()).exactValue());

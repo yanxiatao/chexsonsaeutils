@@ -34,17 +34,22 @@ import java.util.WeakHashMap;
 import java.util.function.ToLongFunction;
 
 public final class CraftingContinuationTracker {
-    // Tracker 持有 level，因此 WeakHashMap 不能释放世界；生命周期由服务端卸载事件明确结束。
+    // 世界索引与作业索引都由服务端卸载事件明确释放，不依赖 CPU 仍在网格内。
     private static final Map<ServerLevel, CraftingContinuationTracker> INSTANCES = new HashMap<>();
+    private static final Map<UUID, CraftingContinuationTracker> JOB_TRACKERS = new HashMap<>();
 
-    private final ServerLevel level;
+    private final CraftingContinuationSavedData savedData;
     private final Map<UUID, CraftingContinuationWaitingDetail> trackedJobs = new LinkedHashMap<>();
     private final Map<UUID, Map<AEKey, Long>> observedAvailableWaitingStacks = new HashMap<>();
     private final Map<CraftingCPUCluster, UUID> observedCpuJobs = new WeakHashMap<>();
 
     private CraftingContinuationTracker(ServerLevel level) {
-        this.level = level;
-        rebuildAfterLoad(level);
+        this(CraftingContinuationSavedData.get(level));
+    }
+
+    CraftingContinuationTracker(CraftingContinuationSavedData savedData) {
+        this.savedData = savedData;
+        rebuildAfterLoad();
     }
 
     public static CraftingContinuationTracker get(ServerLevel level) {
@@ -53,11 +58,37 @@ public final class CraftingContinuationTracker {
 
     /** 世界卸载只释放内存索引，等待明细仍由世界 SavedData 保存供下次加载。 */
     public static void release(ServerLevel level) {
-        INSTANCES.remove(level);
+        CraftingContinuationTracker tracker = INSTANCES.remove(level);
+        if (tracker != null) tracker.releaseJobIndex();
     }
 
     public static void clearAll() {
         INSTANCES.clear();
+        JOB_TRACKERS.clear();
+    }
+
+    /** 仅由 AE2 finishJob 的真实完成/取消入口调用；区块卸载和迁网不构成作业结束。 */
+    public static void onJobFinished(CraftingCPUCluster cpu, UUID craftId) {
+        CraftingContinuationTracker tracker = JOB_TRACKERS.get(craftId);
+        if (tracker == null) {
+            // 存档恢复后、首次网格 tick 之前也可能直接取消，不能要求它已经被观察过。
+            // 未完整构建的 CPU 没有 core，getLevel() 会抛异常；仅从它自己的块定位世界。
+            var blocks = cpu.getBlockEntities();
+            while (blocks.hasNext()) {
+                if (blocks.next().getLevel() instanceof ServerLevel serverLevel) {
+                    tracker = get(serverLevel);
+                    break;
+                }
+            }
+        }
+        if (tracker != null) {
+            tracker.observedCpuJobs.remove(cpu, craftId);
+            tracker.clearCompletedJob(craftId);
+        }
+    }
+
+    private void releaseJobIndex() {
+        for (UUID craftId : trackedJobs.keySet()) JOB_TRACKERS.remove(craftId, this);
     }
 
     public static void syncSelectedCpuDetailForMenu(CraftingCPUMenu menu) {
@@ -80,7 +111,8 @@ public final class CraftingContinuationTracker {
         }
 
         trackedJobs.put(detail.craftId(), detail);
-        CraftingContinuationSavedData.get(level).putWaitingDetail(detail.craftId(), detail);
+        JOB_TRACKERS.put(detail.craftId(), this);
+        savedData.putWaitingDetail(detail.craftId(), detail);
     }
 
     public void clearCompletedJob(UUID jobId) {
@@ -90,14 +122,17 @@ public final class CraftingContinuationTracker {
 
         trackedJobs.remove(jobId);
         observedAvailableWaitingStacks.remove(jobId);
-        CraftingContinuationSavedData.get(level).removeWaitingDetail(jobId);
+        JOB_TRACKERS.remove(jobId, this);
+        savedData.removeWaitingDetail(jobId);
     }
 
-    public void rebuildAfterLoad(ServerLevel level) {
+    private void rebuildAfterLoad() {
+        releaseJobIndex();
         trackedJobs.clear();
         observedAvailableWaitingStacks.clear();
         observedCpuJobs.clear();
-        trackedJobs.putAll(CraftingContinuationSavedData.get(level).snapshotWaitingDetails());
+        trackedJobs.putAll(savedData.snapshotWaitingDetails());
+        for (UUID craftId : trackedJobs.keySet()) JOB_TRACKERS.put(craftId, this);
     }
 
     public static void reconcileWaitingInputs(
@@ -341,9 +376,10 @@ public final class CraftingContinuationTracker {
             return detail;
         }
 
-        detail = CraftingContinuationSavedData.get(level).getWaitingDetail(craftId);
+        detail = savedData.getWaitingDetail(craftId);
         if (detail != null) {
             trackedJobs.put(craftId, detail);
+            JOB_TRACKERS.put(craftId, this);
         }
         return detail;
     }
